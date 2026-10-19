@@ -1,0 +1,877 @@
+{
+  "cat": "frontend",
+  "name": "HTML, CSS i przeglądarka",
+  "cards": [
+    {
+      "id": "frontend-001",
+      "topic": "Semantyczny HTML",
+      "level": 1,
+      "q": "Czym jest semantyczny HTML i dlaczego ma znaczenie?",
+      "a": "Semantyczny HTML to używanie elementów zgodnie z ich znaczeniem: `header`, `nav`, `main`, `article`, `section`, `aside`, `footer`, `button`, `h1–h6`, `ul/li`, `label`, zamiast samych `div` i `span`. Przeglądarka buduje z nich accessibility tree, więc czytnik ekranu dostaje role i landmarki (np. skok do `main` czy `nav`) za darmo. Do tego dochodzi SEO, reader mode, wbudowane zachowania (fokus, klawiatura, wysyłka formularza) i czytelniejszy kod. Zasada: najpierw dobierz właściwy element, dopiero potem styluj.",
+      "code": "<header>…</header>\n<nav aria-label=\"Główna\">…</nav>\n<main>\n  <article>\n    <h1>Tytuł</h1>\n    <section><h2>Rozdział</h2>…</section>\n  </article>\n  <aside>Powiązane</aside>\n</main>\n<footer>…</footer>",
+      "lang": "html",
+      "tip": "Często pytają o hierarchię nagłówków: jeden logiczny `h1` na widok, bez przeskakiwania poziomów tylko dla wyglądu – wygląd załatwia CSS."
+    },
+    {
+      "id": "frontend-002",
+      "topic": "Semantyczny HTML",
+      "level": 2,
+      "q": "Kiedy `<button>`, kiedy `<a>`, a dlaczego nie `<div (click)>`?",
+      "a": "`<a href>` służy do nawigacji (zmienia URL, da się otworzyć w nowej karcie, skopiować link), `<button>` do akcji na stronie (zapis, otwarcie modala, toggle). `div` z handlerem kliknięcia nie jest focusowalny, nie reaguje na Enter/Spację, nie ma roli dla czytnika ekranu i nie respektuje `disabled` – trzeba by to wszystko odtworzyć ręcznie (`role`, `tabindex`, obsługa klawiszy). W Angularze `routerLink` stawiamy na `<a>`, a `(click)` na `<button type=\"button\">`.",
+      "code": "<!-- źle -->\n<div class=\"btn\" (click)=\"save()\">Zapisz</div>\n\n<!-- dobrze -->\n<button type=\"button\" (click)=\"save()\">Zapisz</button>\n<a routerLink=\"/orders/42\">Zamówienie 42</a>",
+      "lang": "html",
+      "tip": "Pułapka: `<button>` wewnątrz `<form>` ma domyślnie `type=\"submit\"` – przycisk 'Anuluj' bez `type=\"button\"` wyśle formularz."
+    },
+    {
+      "id": "frontend-003",
+      "topic": "Dostępność i ARIA",
+      "level": 1,
+      "q": "Czym jest ARIA i kiedy NIE należy jej używać?",
+      "a": "ARIA (WAI-ARIA) to atrybuty `role` i `aria-*`, które uzupełniają semantykę w accessibility tree tam, gdzie HTML nie wystarcza (np. zakładki, combobox, komunikaty live). Pierwsza zasada ARIA: jeśli istnieje natywny element z potrzebną semantyką i zachowaniem – użyj go zamiast ARIA. ARIA zmienia tylko to, co słyszy czytnik ekranu; nie dodaje focusu ani obsługi klawiatury. Zła ARIA jest gorsza niż jej brak (raporty WebAIM regularnie pokazują więcej błędów na stronach z ARIA niż bez).",
+      "code": "<!-- zbędne/szkodliwe -->\n<button role=\"button\">OK</button>\n<h2 role=\"heading\" aria-level=\"3\">…</h2>\n<div role=\"button\">OK</div>      <!-- brak focusu i klawiatury -->\n\n<!-- uzasadnione -->\n<button aria-expanded=\"false\" aria-controls=\"menu\">Menu</button>",
+      "lang": "html",
+      "tip": "Dobra formułka: 'No ARIA is better than bad ARIA'. Rekruter chce usłyszeć, że ARIA to ostatnia deska ratunku, nie pierwsze narzędzie."
+    },
+    {
+      "id": "frontend-004",
+      "topic": "Dostępność i ARIA",
+      "level": 2,
+      "q": "Jakie atrybuty ARIA są najczęściej potrzebne w aplikacji SPA?",
+      "a": "Nazwa dostępna: `aria-label` (tekst wprost, np. dla przycisku z samą ikoną) albo `aria-labelledby` (wskazuje id widocznego tekstu – preferowane, bo tłumaczy się razem z UI); `aria-describedby` dla podpowiedzi i błędów walidacji. Stan: `aria-expanded`, `aria-selected`, `aria-checked`, `aria-current=\"page\"` dla aktywnego linku, `aria-invalid` przy błędnym polu. Komunikaty dynamiczne: `aria-live=\"polite\"` (lub `role=\"status\"`) dla toastów i wyników wyszukiwania, `assertive`/`role=\"alert\"` tylko dla pilnych błędów. `aria-hidden=\"true\"` ukrywa dekoracje przed czytnikiem.",
+      "code": "<label for=\"email\">E-mail</label>\n<input id=\"email\" type=\"email\"\n       [attr.aria-invalid]=\"email.invalid\"\n       aria-describedby=\"email-err\">\n<p id=\"email-err\">Podaj poprawny adres</p>\n\n<div role=\"status\" aria-live=\"polite\">{{ results().length }} wyników</div>\n<button aria-label=\"Zamknij\"><svg aria-hidden=\"true\">…</svg></button>",
+      "lang": "html",
+      "tip": "Region `aria-live` musi istnieć w DOM zanim zmieni się jego treść – wstawienie go razem z komunikatem często nie zostanie odczytane.",
+      "deep": "Accessible name liczona jest wg algorytmu accname: najpierw `aria-labelledby`, potem `aria-label`, potem natywne źródła (`<label>`, `alt`, treść przycisku), na końcu `title`. Dlatego `aria-label` nadpisuje widoczny tekst – jeśli się różnią, użytkownik sterujący głosem ('kliknij Zapisz') nie trafi w przycisk (WCAG 2.5.3 Label in Name). W Angularze atrybuty ARIA wiąże się klasycznie przez `[attr.aria-…]`; od v20 można też bindować je bezpośrednio (`[aria-label]=\"…\"`) – kompilator ustawi atrybut. Angular CDK daje gotowe klocki: `LiveAnnouncer` do komunikatów, `FocusTrap`, `FocusMonitor`, `ListKeyManager` do roving tabindex – na rozmowie warto o tym wspomnieć zamiast pisać to ręcznie. Testuj realnym czytnikiem (NVDA, VoiceOver) i drzewem Accessibility w DevTools; automaty (axe, Lighthouse) łapią szacunkowo 30–50% problemów."
+    },
+    {
+      "id": "frontend-005",
+      "topic": "Dostępność i ARIA",
+      "level": 1,
+      "q": "Czym są poziomy WCAG i jakie są wymagania kontrastu?",
+      "a": "WCAG ma trzy poziomy zgodności: A (minimum), AA (standard wymagany prawnie w UE – m.in. dyrektywa o dostępności stron sektora publicznego i European Accessibility Act stosowany od 28 czerwca 2025 dla wielu usług komercyjnych, np. e-commerce i bankowości) oraz AAA (najwyższy, rzadko wymagany dla całego serwisu). Aktualna wersja to WCAG 2.2 (2023). Kontrast AA: 4.5:1 dla zwykłego tekstu, 3:1 dla dużego tekstu (od 24px albo 18.66px pogrubione) oraz dla elementów UI i grafik niosących informację (obramowanie pola, ikona, focus ring). AAA wymaga 7:1. Kolor nie może być jedynym nośnikiem informacji (np. błąd tylko na czerwono).",
+      "tip": "Zasady WCAG streszcza skrót POUR: Perceivable, Operable, Understandable, Robust."
+    },
+    {
+      "id": "frontend-006",
+      "topic": "Focus i klawiatura",
+      "level": 2,
+      "q": "Jak zapewnić obsługę aplikacji samą klawiaturą?",
+      "a": "Wszystko interaktywne musi być osiągalne Tabem w logicznej kolejności (kolejność DOM = kolejność wizualna) i obsługiwalne Enter/Spacją/strzałkami jak natywne kontrolki. `tabindex=\"0\"` dodaje element do sekwencji Tab, `tabindex=\"-1\"` pozwala ustawić focus programowo, ale pomija go przy Tab; dodatnie wartości psują kolejność i są antywzorcem. Focus musi być widoczny – nie usuwaj `outline` bez zamiennika, używaj `:focus-visible`, żeby ring pojawiał się przy klawiaturze, a nie przy kliknięciu myszą. Na długich stronach dodaj skip link 'Przejdź do treści'.",
+      "code": "button:focus-visible {\n  outline: 3px solid var(--focus-color);\n  outline-offset: 2px;\n}\n/* antywzorzec */\n*:focus { outline: none; }",
+      "lang": "css",
+      "deep": "W złożonych widżetach (toolbar, lista opcji, tabs, grid) stosuje się roving tabindex: cały widżet to jeden przystanek Tab (`tabindex=0` na aktywnym elemencie, `-1` na pozostałych), a między elementami przechodzi się strzałkami – tak opisują to wzorce ARIA Authoring Practices. Alternatywą jest `aria-activedescendant`, gdy focus zostaje na kontenerze (typowe dla comboboxa). WCAG 2.2 dodało m.in. 2.4.11 Focus Not Obscured (sticky header nie może całkiem zasłaniać sfokusowanego elementu – pomaga `scroll-padding-top`) i 2.5.8 Target Size (min. 24×24 px). Kolejność wizualną psuje CSS: `order` we flexie, `grid-auto-flow: dense` czy `flex-direction: row-reverse` zmieniają wygląd, ale nie kolejność Tab. Test praktyczny na rozmowie: odłóż mysz i przejdź krytyczną ścieżkę (logowanie, zakup) samym Tab/Enter/Esc."
+    },
+    {
+      "id": "frontend-007",
+      "topic": "Focus i klawiatura",
+      "level": 3,
+      "q": "Jak zarządzać focusem w SPA – przy zmianie trasy i w oknach modalnych?",
+      "a": "W SPA nie ma przeładowania strony, więc po nawigacji focus zostaje na klikniętym linku, a czytnik ekranu nie wie, że treść się zmieniła. Po zmianie trasy przenoszę focus na nagłówek `h1` nowego widoku (z `tabindex=\"-1\"`) albo kontener `main` i ewentualnie ogłaszam tytuł przez live region; Angular ustawia też `document.title` przez `title` w definicji trasy. Modal: przy otwarciu focus wchodzi do środka, Tab jest uwięziony w oknie (focus trap), Esc zamyka, a po zamknięciu focus wraca na element, który go otworzył. Najprościej użyć natywnego `<dialog>` z `showModal()` albo CDK Dialog, które robią to za nas.",
+      "code": "const dialog = document.querySelector('dialog')!;\nlet opener: HTMLElement | null = null;\n\nfunction open() {\n  opener = document.activeElement as HTMLElement;\n  dialog.showModal();          // focus trap + Esc + tło inert\n}\ndialog.addEventListener('close', () => opener?.focus());",
+      "lang": "typescript",
+      "deep": "`dialog.showModal()` umieszcza okno w top layer (ponad każdym z-index), czyni resztę strony `inert` (nieklikalną i niefocusowalną, ukrytą przed czytnikiem), obsługuje Esc i ma pseudo-element `::backdrop` – to zastępuje sporo kodu, który kiedyś pisało się ręcznie. Atrybut `inert` można też ustawić samodzielnie, np. na treści pod szufladą nawigacji. Pułapki przy ręcznym focus trapie: elementy dynamicznie dodane do modala, iframe'y, Shadow DOM i elementy `tabindex=-1` przy liczeniu 'pierwszego/ostatniego focusowalnego'. Przy zmianie trasy nie przenoś focusu na każdy update – tylko na pełną zmianę widoku, inaczej filtrowanie listy przez query params wyrzuca użytkownika z pola wyszukiwania. Popover API (`popover` + `popovertarget`) daje top layer i light dismiss dla menu/tooltipów, ale nie robi focus trapu – nie jest zamiennikiem modala. Sprawdzaj `document.activeElement` w konsoli DevTools (albo Live Expression), żeby widzieć, gdzie naprawdę jest focus."
+    },
+    {
+      "id": "frontend-008",
+      "topic": "Box model",
+      "level": 1,
+      "q": "Jak działa box model i co zmienia `box-sizing: border-box`?",
+      "a": "Każdy element to prostokąt złożony z content, padding, border i margin. Przy domyślnym `box-sizing: content-box` właściwość `width` dotyczy tylko contentu, więc padding i border powiększają element (200px + 2×20px padding + 2×5px border = 250px). Przy `border-box` `width` obejmuje content+padding+border, co jest dużo bardziej intuicyjne przy layoutach procentowych. Dlatego praktycznie każdy reset CSS ustawia `border-box` globalnie. Margin nigdy nie wchodzi do szerokości elementu.",
+      "code": "*, *::before, *::after {\n  box-sizing: border-box;\n}\n.card { width: 300px; padding: 16px; border: 1px solid; }\n/* szerokość wizualna = 300px */",
+      "lang": "css"
+    },
+    {
+      "id": "frontend-009",
+      "topic": "Specificity i kaskada",
+      "level": 2,
+      "q": "Jak liczona jest specificity selektora?",
+      "a": "Specificity to trójka (A, B, C): A – liczba selektorów id, B – klas, atrybutów i pseudoklas, C – elementów i pseudoelementów; porównuje się kolejno A, potem B, potem C, więc żadna liczba klas nie pokona jednego id. Selektor uniwersalny `*` i kombinatory nie liczą się wcale. `:is()`, `:not()` i `:has()` przyjmują specificity najbardziej szczegółowego argumentu, a `:where()` ma zawsze 0 – idealne do stylów bazowych łatwych do nadpisania. Styl inline wygrywa z każdym selektorem, a `!important` przenosi deklarację na wyższy poziom kaskady.",
+      "code": "#nav a            /* (1,0,1) */\n.menu .link:hover /* (0,3,0) */\nul li a.active    /* (0,1,3) */\n:where(.card) p   /* (0,0,1) */\n:is(#x, .y) p     /* (1,0,1) */",
+      "lang": "css",
+      "tip": "Gdy słyszysz 'dodaliśmy !important, bo nie działało' – właściwa odpowiedź to niska specificity (klasy, BEM, `:where`) i `@layer`, a nie wyścig zbrojeń."
+    },
+    {
+      "id": "frontend-010",
+      "topic": "Specificity i kaskada",
+      "level": 3,
+      "q": "Jak działa kaskada i co wnoszą cascade layers (`@layer`)?",
+      "a": "Gdy kilka deklaracji pasuje do elementu, kaskada rozstrzyga kolejno: pochodzenie i ważność (user-agent, user, author, `!important`), kontekst (Shadow DOM), styl inline, warstwy (`@layer`), specificity, a na końcu kolejność w źródle. `@layer` pozwala jawnie ustalić priorytet całych grup stylów, np. `reset, base, vendor, components, utilities` – późniejsza warstwa wygrywa z wcześniejszą niezależnie od specificity. Style poza jakąkolwiek warstwą (unlayered) wygrywają ze wszystkimi warstwami. Dzięki temu można wciągnąć bibliotekę z ciężkimi selektorami do niskiej warstwy i nadpisywać ją prostymi klasami.",
+      "code": "@layer reset, vendor, components, utilities;\n\n@import url('lib.css') layer(vendor);\n\n@layer components {\n  .btn { padding: .5rem 1rem; }\n}\n@layer utilities {\n  .p-0 { padding: 0; }   /* wygrywa z .btn mimo równej specificity */\n}",
+      "lang": "css",
+      "deep": "Kolejność warstw ustala pierwsza deklaracja nazwy, dlatego dobrą praktyką jest jedna linia `@layer a, b, c;` na samym początku arkusza. Dla `!important` porządek warstw się odwraca: important we wcześniejszej warstwie (np. reset) wygrywa z important w późniejszej, a important w warstwie wygrywa z important poza warstwami – to celowe, by bazowe warstwy mogły 'zablokować' krytyczne reguły. Warstwy można zagnieżdżać (`@layer framework.base`) i tworzyć anonimowe. Wsparcie jest we wszystkich nowoczesnych przeglądarkach od 2022 r. W Angularze style komponentów trafiają do `<style>` w `head` dopiero w runtime, więc kolejność źródła bywa nieprzewidywalna – jawne warstwy w globalnym `styles.scss` dają deterministyczny wynik. Pułapka migracji: gdy owiniesz w warstwę własny kod, a CSS biblioteki zostanie unlayered, biblioteka nagle zacznie wygrywać ze wszystkim."
+    },
+    {
+      "id": "frontend-011",
+      "topic": "Flexbox vs Grid",
+      "level": 1,
+      "q": "Kiedy używasz flexboxa, a kiedy CSS Grid?",
+      "a": "Flexbox jest jednowymiarowy: układa elementy w wierszu albo kolumnie, a rozmiary wynikają z treści (content-out) – idealny do pasków narzędzi, nawigacji, wyrównania ikony z tekstem, rozpychania elementów. Grid jest dwuwymiarowy: definiuję wiersze i kolumny z góry (layout-in), a elementy trafiają w komórki i obszary – idealny do layoutu strony, galerii, formularzy z wyrównanymi kolumnami, dashboardów. Często się je łączy: grid na szkielet strony, flex wewnątrz komponentów. Oba wspierają `gap`.",
+      "code": "/* szkielet strony */\n.layout {\n  display: grid;\n  grid-template-columns: 240px 1fr;\n  grid-template-areas: \"side main\";\n}\n/* pasek w nagłówku */\n.toolbar { display: flex; align-items: center; gap: .5rem; }\n.toolbar .spacer { margin-left: auto; }",
+      "lang": "css"
+    },
+    {
+      "id": "frontend-012",
+      "topic": "Flexbox vs Grid",
+      "level": 2,
+      "q": "Co oznacza `flex: 1` i dlaczego długi tekst potrafi rozepchać flex item?",
+      "a": "`flex: 1` to skrót od `flex-grow: 1; flex-shrink: 1; flex-basis: 0%` – element startuje od zera i dzieli wolne miejsce proporcjonalnie z innymi. Flex itemy mają jednak domyślnie `min-width: auto`, czyli nie skurczą się poniżej minimalnej szerokości treści (najdłuższego słowa, długiego URL, tabeli, `pre`). Efekt: `text-overflow: ellipsis` nie działa, a layout wylewa się poza kontener. Rozwiązanie to `min-width: 0` (lub `overflow: hidden`) na flex itemie; w gridzie analogicznie `minmax(0, 1fr)` zamiast `1fr`.",
+      "code": ".row { display: flex; }\n.row .title {\n  flex: 1;\n  min-width: 0;            /* pozwala się skurczyć */\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}",
+      "lang": "css",
+      "deep": "`flex: auto` to `1 1 auto` – elementy rosną od swojej naturalnej szerokości, więc przy różnej ilości treści kolumny nie będą równe; `flex: 1` (basis 0) daje równe kolumny. `flex: none` to `0 0 auto` – sztywny element, np. avatar. W gridzie `1fr` oznacza w praktyce `minmax(auto, 1fr)`, dlatego jeden długi element potrafi rozszerzyć całą kolumnę – `minmax(0, 1fr)` to standardowy fix. Problem `min-width: auto` kaskaduje: jeśli flex item zawiera kolejny flex container, `min-width: 0` często trzeba dać na każdym poziomie. To jeden z najczęstszych 'dziwnych' bugów layoutu, więc rekruterzy lubią go jako pytanie praktyczne."
+    },
+    {
+      "id": "frontend-013",
+      "topic": "Pozycjonowanie i stacking context",
+      "level": 1,
+      "q": "Jakie są wartości `position` i jak się zachowują?",
+      "a": "`static` (domyślne) – normalny przepływ, `top/left` i `z-index` nie działają. `relative` – zostaje w przepływie, można go przesunąć względem własnej pozycji i staje się punktem odniesienia dla dzieci `absolute`. `absolute` – wypada z przepływu, pozycjonuje się względem najbliższego przodka z `position` innym niż static (containing block). `fixed` – względem viewportu, nie przewija się. `sticky` – zachowuje się jak relative, dopóki przy scrollu nie osiągnie progu (`top: 0`), potem 'przykleja się' w obrębie swojego rodzica.",
+      "code": ".card { position: relative; }\n.card .badge { position: absolute; top: 8px; right: 8px; }\n.header { position: sticky; top: 0; z-index: 10; }",
+      "lang": "css",
+      "tip": "Sticky nie działa, gdy któryś przodek ma `overflow: hidden/auto/scroll` (sticky przykleja się do najbliższego scroll containera) albo gdy nie podano `top`/`bottom`."
+    },
+    {
+      "id": "frontend-014",
+      "topic": "Pozycjonowanie i stacking context",
+      "level": 3,
+      "q": "Czym jest stacking context i dlaczego `z-index: 9999` czasem nie pomaga?",
+      "a": "Stacking context to izolowana 'warstwa', wewnątrz której elementy są sortowane po z-index; cały kontekst jest potem traktowany jak jeden element w kontekście rodzica. `z-index` porównuje się tylko w obrębie tego samego kontekstu – jeśli modal z `z-index: 9999` siedzi w rodzicu tworzącym kontekst z `z-index: 1`, a nagłówek ma `z-index: 10` w kontekście nadrzędnym, nagłówek i tak będzie wyżej. Kontekst tworzą m.in.: `position` relative/absolute z `z-index` innym niż auto, `fixed` i `sticky`, `opacity < 1`, `transform`, `filter`, `will-change` dla tych właściwości, `isolation: isolate`, element flex/grid z z-index, `contain: paint`.",
+      "code": "/* nagłówek */\n.header  { position: sticky; top: 0; z-index: 10; }\n/* rodzic modala tworzy kontekst przez transform */\n.panel   { transform: translateX(0); }\n.panel .modal { position: fixed; z-index: 9999; } /* i tak pod .header */",
+      "lang": "css",
+      "deep": "Rozwiązania: renderować overlaye na końcu `body` (portal – tak robi Angular CDK Overlay i Material), używać top layer przez `<dialog>.showModal()` lub Popover API (top layer jest ponad wszystkimi kontekstami i z-indexami), a w komponentach świadomie tworzyć kontekst przez `isolation: isolate`, by ich wewnętrzne z-indexy nie wyciekały. Druga pułapka `transform`/`filter`/`will-change: transform` na przodku: zmieniają one containing block dla `position: fixed`, więc 'fixed' modal przestaje być przyklejony do viewportu i przewija się z rodzicem. To częsty bug po dodaniu animacji wejścia do kontenera. Dobra praktyka to skala z-indexów w custom properties (`--z-header`, `--z-dropdown`, `--z-modal`) zamiast losowych liczb. Do debugowania: panel Layers w DevTools i rozszerzenia pokazujące stacking contexts; Chrome w Elements pokazuje też informację, że element tworzy stacking context."
+    },
+    {
+      "id": "frontend-015",
+      "topic": "Jednostki CSS",
+      "level": 1,
+      "q": "Czym różnią się `px`, `em`, `rem` i `%`?",
+      "a": "`px` to jednostka absolutna (w CSS to 'piksel referencyjny', nie fizyczny). `em` jest względny do `font-size` bieżącego elementu (a w samym `font-size` – rodzica), więc się kumuluje przy zagnieżdżeniu. `rem` jest względny do `font-size` elementu `html` (domyślnie 16px), dlatego jest przewidywalny i skaluje się z ustawieniami czcionki użytkownika. `%` odnosi się do różnych rzeczy zależnie od właściwości (szerokość rodzica dla `width`, a także dla pionowego `padding`). Praktyka: `rem` dla typografii i odstępów, `em` dla rzeczy, które mają rosnąć z tekstem komponentu (padding przycisku, ikony), `px` dla borderów.",
+      "tip": "Ustawianie `html { font-size: 62.5% }` 'dla wygody liczenia' jest dyskusyjne; nigdy nie ustawiaj `html` w px, bo blokuje to preferencję rozmiaru czcionki użytkownika."
+    },
+    {
+      "id": "frontend-016",
+      "topic": "Jednostki CSS",
+      "level": 2,
+      "q": "Co to `dvh`/`svh`/`lvh` i jak działa `clamp()`?",
+      "a": "Na mobile `100vh` odpowiada wysokości viewportu przy schowanym pasku adresu, więc pełnoekranowa sekcja jest ucięta, gdy pasek jest widoczny. Nowe jednostki: `svh` (small – pasek widoczny), `lvh` (large – pasek schowany) i `dvh` (dynamic – zmienia się na bieżąco). Dla layoutu pełnoekranowego zwykle `100dvh` lub `100svh` (dvh może powodować przeliczanie layoutu przy scrollu). `clamp(min, preferowana, max)` daje płynne wartości bez media queries, np. typografię skalującą się z szerokością ekranu w granicach.",
+      "code": ".hero { min-height: 100svh; }\n.app  { height: 100dvh; }\n\nh1 {\n  /* min 1.75rem, rośnie z viewportem, max 3rem */\n  font-size: clamp(1.75rem, 1.2rem + 2vw, 3rem);\n}",
+      "lang": "css",
+      "tip": "W `clamp()` dla fontów zawsze mieszaj `rem` z `vw` – sam `vw` nie reaguje na zoom/preferencje czcionki, co łamie WCAG 1.4.4 (Resize Text)."
+    },
+    {
+      "id": "frontend-017",
+      "topic": "Responsywność",
+      "level": 1,
+      "q": "Jak podchodzisz do responsywności i czym jest mobile-first?",
+      "a": "Podstawą jest `<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">`, bez którego mobilne przeglądarki renderują stronę jak desktop i ją zmniejszają. Mobile-first oznacza, że bazowy CSS opisuje wąski ekran, a media queries `min-width` dokładają układ dla większych – to zwykle mniej nadpisań i lżejszy CSS na telefonie. Najpierw korzystam z elastycznych narzędzi (flex-wrap, grid auto-fill, `clamp()`, `max-width`, procenty), a breakpointy dodaję tam, gdzie treść się 'łamie', nie pod konkretne urządzenia. Obrazy responsywne przez `srcset`/`sizes`.",
+      "code": "/* bazowo: jedna kolumna */\n.layout { display: grid; gap: 1rem; }\n\n@media (min-width: 48rem) {\n  .layout { grid-template-columns: 16rem 1fr; }\n}\n@media (prefers-color-scheme: dark) { :root { --bg: #111; } }",
+      "lang": "css"
+    },
+    {
+      "id": "frontend-018",
+      "topic": "Responsywność",
+      "level": 2,
+      "q": "Media queries vs container queries – kiedy które?",
+      "a": "Media queries pytają o viewport (szerokość okna, orientację, `prefers-*`), więc nadają się do układu całej strony. Container queries pytają o rozmiar przodka oznaczonego jako kontener, więc komponent dostosowuje się do miejsca, w którym go wstawiono – ta sama karta może być wąska w sidebarze i szeroka w main. To idealne dla bibliotek komponentów i Angularowych komponentów wielokrotnego użytku. Kontener deklaruje się przez `container-type: inline-size` (opcjonalnie `container-name`), a w środku pisze `@container`; dostępne są też jednostki `cqi`/`cqw`.",
+      "code": ".card-host { container: card / inline-size; }\n\n.card { display: grid; gap: .5rem; }\n\n@container card (min-width: 30rem) {\n  .card { grid-template-columns: 8rem 1fr; }\n  .card h3 { font-size: clamp(1rem, 4cqi, 1.5rem); }\n}",
+      "lang": "css",
+      "deep": "Container size queries są wspierane we wszystkich głównych przeglądarkach od 2023. Ograniczenie wynika z cyklu layoutu: element nie może pytać o własny rozmiar, tylko o rozmiar przodka-kontenera, a `container-type: inline-size` nakłada size containment w osi inline – kontener nie może brać szerokości z treści (np. w rodzicu flex z `width: auto` potrafi się zapaść do zera, trzeba mu dać szerokość). Dlatego w Angularze wygodnie jest ustawić kontener na `:host` komponentu-wrappera albo na slocie layoutu. Media queries zostają do rzeczy globalnych: preferencji użytkownika (`prefers-reduced-motion`, `prefers-color-scheme`), typu wejścia (`hover`, `pointer: coarse`) i makro-układu. Istnieją też style queries (`@container style(--variant: compact)`) dla custom properties, ale ich wsparcie jest węższe – przed użyciem trzeba sprawdzić docelowe przeglądarki."
+    },
+    {
+      "id": "frontend-019",
+      "topic": "Custom properties",
+      "level": 2,
+      "q": "Czym CSS custom properties różnią się od zmiennych Sass?",
+      "a": "Zmienne Sass (`$primary`) istnieją tylko w czasie kompilacji – w wynikowym CSS zostaje wartość. Custom properties (`--primary`) żyją w runtime: dziedziczą się w drzewie DOM, podlegają kaskadzie i media queries, można je zmieniać z JS (`el.style.setProperty`) i nadpisywać w poddrzewie. Dzięki temu nadają się do theming (dark mode przez zmianę kilku zmiennych na `:root`), wariantów komponentu i jako publiczne 'API stylów' komponentu, które przechodzi przez ViewEncapsulation i Shadow DOM. `var(--x, fallback)` daje wartość zapasową, gdy zmienna nie jest zdefiniowana.",
+      "code": ":root { --color-primary: #2563eb; --radius: 8px; }\n[data-theme=\"dark\"] { --color-primary: #60a5fa; }\n\n.btn {\n  background: var(--color-primary);\n  border-radius: var(--btn-radius, var(--radius));\n}",
+      "lang": "css",
+      "tip": "Sass nadal ma sens do mixinów i obliczeń w build time – na rozmowie mów 'oba, do różnych rzeczy', nie 'Sass jest przestarzały'."
+    },
+    {
+      "id": "frontend-020",
+      "topic": "Custom properties",
+      "level": 3,
+      "q": "Czym jest `@property` i jak działają niepoprawne wartości custom properties?",
+      "a": "Zwykła custom property jest dla przeglądarki ciągiem tokenów bez typu – nie da się jej płynnie animować (zmienia się skokowo) i zawsze się dziedziczy. `@property` rejestruje właściwość z typem (`syntax`), wartością początkową i flagą dziedziczenia; wtedy przeglądarka może interpolować np. kolor czy kąt gradientu w `transition`. Wsparcie we wszystkich głównych przeglądarkach jest od 2024. Druga ważna rzecz: zła wartość w `var()` nie powoduje odrzucenia deklaracji przy parsowaniu, tylko staje się 'invalid at computed-value time' – właściwość przyjmuje wtedy wartość dziedziczoną lub initial, a nie poprzednią deklarację z kaskady.",
+      "code": "@property --angle {\n  syntax: '<angle>';\n  inherits: false;\n  initial-value: 0deg;\n}\n.spinner {\n  background: conic-gradient(from var(--angle), red, blue);\n  transition: --angle 1s;\n}\n.spinner:hover { --angle: 180deg; }",
+      "lang": "css",
+      "deep": "'Invalid at computed-value time' zaskakuje: przy `color: red; color: var(--c);` i `--c: 20px` nie dostaniemy czerwieni (fallback przez kaskadę), tylko wartość dziedziczoną z rodzica – parser zaakceptował `var()`, a błąd wyszedł dopiero przy obliczaniu. Zarejestrowana właściwość z `syntax` waliduje się wcześniej i wraca do `initial-value`. `inherits: false` jest też optymalizacją: zmiana zmiennej na wysokim przodku (np. `:root` aktualizowany co klatkę z JS przy scrollu) nie wymusza przeliczania stylów całego poddrzewa. Z perspektywy wydajności częste zmiany custom properties na `:root` to recalc style dla całego dokumentu – przy animacjach lepiej ustawiać je na możliwie wąskim elemencie. Zarejestrować można też z JS przez `CSS.registerProperty()`."
+    },
+    {
+      "id": "frontend-021",
+      "topic": "BEM vs ViewEncapsulation",
+      "level": 2,
+      "q": "BEM vs ViewEncapsulation w Angularze – czy w komponentach nadal potrzebujesz konwencji nazewnictwa?",
+      "a": "BEM (Block__Element--Modifier, np. `.card__title--large`) to konwencja, która ręcznie zapobiega kolizjom nazw i trzyma specificity płasko (jedna klasa). ViewEncapsulation.Emulated robi izolację automatycznie: dopisuje atrybuty `_ngcontent-xxx` do selektorów, więc `.title` w jednym komponencie nie dotknie `.title` w innym. W stylach komponentów BEM jest więc w dużej mierze zbędny, ale nadal przydaje się w globalnych stylach (`styles.scss`, design system, layout), w komponentach z `ViewEncapsulation.None` i jako czytelna konwencja modyfikatorów. Zamiast przebijać enkapsulację (`::ng-deep`, deprecated), komponent powinien wystawić custom properties.",
+      "code": "/* globalnie – BEM */\n.card { }\n.card__title { }\n.card--featured { }\n\n/* w komponencie (Emulated) – proste nazwy */\n:host { display: block; }\n:host(.featured) .title { color: var(--card-accent, inherit); }",
+      "lang": "css",
+      "deep": "Emulated nie daje pełnej izolacji: style globalne nadal wchodzą do komponentu (izolacja jest tylko 'na zewnątrz'), a dziedziczone właściwości jak `color` czy `font` przechodzą przez granicę normalnie. Selektory z atrybutem `[_ngcontent-xxx]` podnoszą specificity o jedną 'klasę', co bywa zaskoczeniem przy nadpisywaniu z zewnątrz. `ViewEncapsulation.ShadowDom` daje prawdziwą izolację w obie strony, ale globalne style (np. utility classes czy czcionki z `@font-face` w środku shadow root) przestają działać, więc w aplikacjach biznesowych stosuje się go rzadko. `None` ma sens dla komponentów-layoutów i wrapperów bibliotek – wtedy BEM wraca jako konieczność. Przy Tailwindzie/utility-first temat BEM w zasadzie znika, a z enkapsulacją trzeba uważać na `@apply` w stylach komponentu. Na rozmowie dobrze brzmi: 'enkapsulacja zastępuje BEM wewnątrz komponentu, BEM porządkuje to, co globalne, a custom properties są kontraktem między nimi'."
+    },
+    {
+      "id": "frontend-022",
+      "topic": "Animacje i wydajność",
+      "level": 2,
+      "q": "Jak animować wydajnie i dlaczego `transform`/`opacity` są 'tanie'?",
+      "a": "Każda klatka to (potencjalnie) style → layout → paint → composite. Animowanie `width`, `height`, `top`, `left`, `margin` wymusza layout i paint w każdej klatce na main thread, więc przy obciążonym JS animacja klatkuje. `transform` i `opacity` (a także `filter` w wielu przypadkach) mogą być obsłużone przez compositor na osobnej warstwie GPU, bez ponownego layoutu i paintu – animacja jest płynna nawet gdy main thread jest zajęty. Zamiast `left: 100px` używam `transform: translateX(100px)`, zamiast animować `height` – `transform: scaleY()` albo grid-rows `0fr → 1fr` z akceptacją kosztu.",
+      "code": ".drawer {\n  transform: translateX(-100%);\n  transition: transform 200ms ease-out;\n}\n.drawer.open { transform: none; }\n\n@media (prefers-reduced-motion: reduce) {\n  .drawer { transition: none; }\n}",
+      "lang": "css",
+      "deep": "Warstwę compositora przeglądarka tworzy m.in. dla elementów z aktywną animacją transform/opacity albo z `will-change: transform`. `will-change` to wskazówka, nie magiczny przyspieszacz: każda warstwa kosztuje pamięć GPU (tekstura o rozmiarze elementu), a nadużycie (np. `* { will-change: transform }`) pogarsza wydajność, zwłaszcza na mobile – ustawiaj je tuż przed animacją lub na kilku kluczowych elementach. `will-change`/`transform` tworzą stacking context i containing block dla `fixed`, co zmienia layout. Animacje CSS i Web Animations API mogą działać w całości na compositorze; animacja sterowana z JS przez `requestAnimationFrame` zmieniającym style zawsze potrzebuje main threadu. `box-shadow` i `background-color` wymagają paintu – zamiast animować cień, animuj `opacity` pseudo-elementu z gotowym cieniem. Sprawdzasz to w DevTools: Rendering → Paint flashing i Layer borders oraz w Performance (zielone paint w każdej klatce = problem). Zawsze respektuj `prefers-reduced-motion`."
+    },
+    {
+      "id": "frontend-023",
+      "topic": "Critical rendering path",
+      "level": 2,
+      "q": "Czym jest critical rendering path i co blokuje pierwsze wyrenderowanie?",
+      "a": "To kroki od otrzymania HTML do pikseli: parsowanie HTML do DOM, CSS do CSSOM, połączenie w render tree, layout (geometria), paint i composite. CSS jest render-blocking: przeglądarka nie wyrenderuje strony, zanim nie pobierze i nie sparsuje arkuszy z `head` (inaczej byłby flash of unstyled content). Klasyczny `<script>` bez atrybutów jest parser-blocking – zatrzymuje budowę DOM na czas pobrania i wykonania, a sam czeka na wcześniejszy CSS. Optymalizacja: mało krytycznego CSS (inline critical CSS), skrypty z `defer`/`type=\"module\"`, mniej requestów na ścieżce krytycznej, preload kluczowych zasobów, SSR dla szybkiego pierwszego HTML.",
+      "code": "<head>\n  <link rel=\"stylesheet\" href=\"app.css\">          <!-- render-blocking -->\n  <link rel=\"stylesheet\" href=\"print.css\" media=\"print\"> <!-- nie blokuje -->\n  <script src=\"legacy.js\"></script>               <!-- parser-blocking -->\n  <script src=\"main.js\" defer></script>\n  <script src=\"analytics.js\" async></script>\n</head>",
+      "lang": "html",
+      "deep": "`defer`: pobieranie równolegle z parsowaniem, wykonanie po zbudowaniu DOM, przed `DOMContentLoaded`, w kolejności z dokumentu. `async`: wykonanie zaraz po pobraniu, w dowolnej kolejności, przerywa parser – dobre dla niezależnych skryptów (analityka). `type=\"module\"` jest domyślnie deferred, a z `async` zachowuje się jak async. Preload scanner przegląda HTML z wyprzedzeniem nawet gdy parser stoi, ale nie widzi zasobów dodawanych z JS ani obrazów w CSS (`background-image`) – stąd zysk z `<link rel=preload>` dla obrazu LCP w tle. `@import` w CSS tworzy łańcuch żądań (waterfall) i jest antywzorcem na ścieżce krytycznej. Angular CLI (builder `application` na esbuild) generuje skrypty jako moduły i domyślnie w produkcji inline'uje krytyczny CSS (Beasties, dawniej Critters), a resztę ładuje nieblokująco. W Performance panel widać to jako długie 'Parse HTML' przerwane pobieraniem skryptu i późne First Contentful Paint."
+    },
+    {
+      "id": "frontend-024",
+      "topic": "Reflow vs repaint",
+      "level": 3,
+      "q": "Czym różni się reflow (layout) od repaint i czym jest layout thrashing?",
+      "a": "Reflow (layout) to przeliczenie geometrii – pozycji i rozmiarów – wywołane zmianą np. `width`, `font-size`, dodaniem elementów do DOM czy zmianą rozmiaru okna; często dotyka dużej części drzewa i jest najdroższy. Repaint to ponowne narysowanie pikseli bez zmiany geometrii (`color`, `background`, `visibility`). Composite to tylko złożenie warstw (`transform`, `opacity`). Layout thrashing (forced synchronous layout) powstaje, gdy w pętli przeplatamy zapisy stylów z odczytami geometrii (`offsetHeight`, `getBoundingClientRect()`, `scrollTop`) – każdy odczyt po zapisie zmusza przeglądarkę do natychmiastowego layoutu.",
+      "code": "// źle: layout w każdej iteracji\nfor (const el of items) {\n  el.style.width = box.offsetWidth + 'px';\n}\n// dobrze: najpierw odczyty, potem zapisy\nconst w = box.offsetWidth;\nfor (const el of items) el.style.width = w + 'px';",
+      "lang": "typescript",
+      "deep": "Przeglądarka normalnie batchuje zmiany i robi layout raz przed klatką; wymuszamy go tylko odczytem wartości zależnej od layoutu, gdy styl jest 'brudny'. W Performance panelu objawia się to fioletowymi blokami 'Layout' z ostrzeżeniem 'Forced reflow is a likely performance bottleneck' i wskazaniem linii kodu. Techniki: grupowanie odczytów i zapisów (wzorzec read-then-write, kiedyś biblioteka fastdom), `requestAnimationFrame` na zapisy, `ResizeObserver`/`IntersectionObserver` zamiast odpytywania geometrii przy scrollu, wirtualizacja długich list (CDK `cdk-virtual-scroll-viewport`). `contain: layout paint` lub `content-visibility: auto` ograniczają zasięg przeliczeń do poddrzewa, a `content-visibility: auto` pomija rendering elementów poza ekranem (podaj `contain-intrinsic-size`, by nie skakał scrollbar). W Angularze odpowiednikiem 'read/write phase' jest `afterNextRender({ read, write })`."
+    },
+    {
+      "id": "frontend-025",
+      "topic": "Event loop i renderowanie",
+      "level": 3,
+      "q": "Gdzie w event loop jest renderowanie i co to oznacza dla responsywności UI?",
+      "a": "Event loop wykonuje jeden task (np. handler kliknięcia, callback `setTimeout`), potem opróżnia całą kolejkę microtasków (Promise, `queueMicrotask`), a dopiero wtedy przeglądarka może zrobić krok renderowania: `requestAnimationFrame` callbacks, style, layout, paint (zwykle co ~16,7 ms przy 60 Hz). Wniosek: dopóki trwa synchroniczny kod lub kolejka microtasków, nic się nie odmaluje i nie obsłuży kliknięcia. Długie zadania (>50 ms, long tasks) trzeba dzielić i oddawać kontrolę przeglądarce; animacje z JS robi się w `requestAnimationFrame`, a nie `setTimeout`.",
+      "code": "async function processAll(items: Item[]) {\n  for (let i = 0; i < items.length; i++) {\n    process(items[i]);\n    if (i % 200 === 0) {\n      // oddaj wątek: przeglądarka może odmalować i obsłużyć input\n      await new Promise(r => setTimeout(r));\n    }\n  }\n}",
+      "lang": "typescript",
+      "deep": "Microtaski nie oddają kontroli renderowaniu – `await Promise.resolve()` w pętli nie pomoże, a nieskończona rekurencja microtasków zamrozi kartę na amen. Oddanie wątku to nowy macrotask: `setTimeout(0)` (z clampingiem do ~4 ms po kilku zagnieżdżeniach), `MessageChannel` albo `scheduler.yield()` z Prioritized Task Scheduling API, które wznawia kontynuację z wyższym priorytetem niż inne taski – nie jest dostępne we wszystkich przeglądarkach (np. Safari), więc potrzebny jest fallback. `requestAnimationFrame` uruchamia się tuż przed renderem, więc to właściwe miejsce na zapis stylów w animacji; `requestIdleCallback` na pracę niskiego priorytetu. Ciężkie obliczenia (parsowanie dużego JSON, filtrowanie 100k rekordów, kryptografia) najlepiej przenieść do Web Workera – Angular CLI generuje go przez `ng generate web-worker`. To bezpośrednio przekłada się na INP: opóźnienie wejścia (input delay) to czas, przez jaki main thread był zajęty innym taskiem. W zoneless Angularze change detection planowany jest przez scheduler Angulara, ale sam render DOM nadal czeka na wolny main thread."
+    },
+    {
+      "id": "frontend-026",
+      "topic": "Zdarzenia DOM",
+      "level": 1,
+      "q": "Jakie są fazy propagacji zdarzenia i czym różni się `stopPropagation` od `preventDefault`?",
+      "a": "Zdarzenie przechodzi trzy fazy: capturing (od `window` w dół do celu), target (na elemencie docelowym) i bubbling (w górę do `window`). `addEventListener` domyślnie słucha w fazie bubbling, a z `{ capture: true }` w capturing. `stopPropagation()` zatrzymuje dalszą propagację do innych elementów, `stopImmediatePropagation()` dodatkowo kolejne listenery na tym samym elemencie. `preventDefault()` to coś zupełnie innego: blokuje domyślną akcję przeglądarki (wysłanie formularza, przejście linku, zaznaczenie checkboxa), ale nie propagację.",
+      "code": "form.addEventListener('submit', e => {\n  e.preventDefault();      // bez przeładowania strony\n  save(new FormData(form));\n});",
+      "lang": "typescript",
+      "tip": "Nie wszystkie zdarzenia bąbelkują: `focus`/`blur`, `mouseenter`/`mouseleave`, `load` nie – ich bąbelkujące odpowiedniki to `focusin`/`focusout` i `mouseover`/`mouseout`."
+    },
+    {
+      "id": "frontend-027",
+      "topic": "Zdarzenia DOM",
+      "level": 2,
+      "q": "Czym jest event delegation i kiedy się przydaje?",
+      "a": "Zamiast podpinać listener do każdego elementu listy, podpina się jeden do wspólnego przodka i dzięki bubbling sprawdza, z którego dziecka przyszło zdarzenie (`event.target.closest(...)`). Zalety: jeden listener zamiast tysięcy (mniej pamięci, szybszy render), automatyczna obsługa elementów dodanych później i brak potrzeby odpinania listenerów przy usuwaniu wierszy. `event.target` to element, który faktycznie kliknięto (może to być `span` wewnątrz przycisku), a `event.currentTarget` – element, do którego podpięto listener. Frameworki same korzystają z delegacji (np. React podpina listenery na roocie).",
+      "code": "list.addEventListener('click', (e) => {\n  const btn = (e.target as Element).closest('button[data-id]');\n  if (!btn || !list.contains(btn)) return;\n  remove(btn.getAttribute('data-id')!);\n});",
+      "lang": "typescript",
+      "tip": "Dla zdarzeń przewijania i dotyku używaj `{ passive: true }` – przeglądarka nie musi czekać na handler, czy nie wywoła `preventDefault()`, więc scroll jest płynny."
+    },
+    {
+      "id": "frontend-028",
+      "topic": "Storage w przeglądarce",
+      "level": 1,
+      "q": "localStorage vs sessionStorage vs IndexedDB vs cookies – czym się różnią?",
+      "a": "`localStorage`: klucz–wartość (stringi), ok. 5 MB na origin, trwały, współdzielony przez wszystkie karty tego originu, synchroniczne API (blokuje main thread). `sessionStorage`: to samo API, ale żyje w obrębie jednej karty i znika po jej zamknięciu; nowa karta ma własny. IndexedDB: asynchroniczna baza obiektów z indeksami i transakcjami, przechowuje duże ilości danych (też Blob), dostępna w Web Workerach i service workerach – do offline i cache danych. Cookies: małe (~4 KB), wysyłane automatycznie z każdym żądaniem do domeny, mogą być `HttpOnly` (niedostępne dla JS) – służą głównie do sesji i komunikacji z serwerem, nie do przechowywania danych.",
+      "code": "localStorage.setItem('theme', 'dark');\nsessionStorage.setItem('wizardStep', '2');\nconst settings = JSON.parse(localStorage.getItem('settings') ?? '{}');",
+      "lang": "typescript",
+      "tip": "Web Storage nie jest dostępny w SSR (Node) – w Angularze z SSR odwołuj się do niego tylko w przeglądarce (`afterNextRender`, `isPlatformBrowser`)."
+    },
+    {
+      "id": "frontend-029",
+      "topic": "Storage w przeglądarce",
+      "level": 3,
+      "q": "Czy dane w przeglądarce są trwałe? Limity, eviction i synchronizacja między kartami.",
+      "a": "Nie ma gwarancji: przeglądarka przydziela originowi quota (zależną od wolnego miejsca dysku), a dane IndexedDB/Cache API w trybie 'best-effort' mogą zostać usunięte przy braku miejsca. Safari (ITP) potrafi wyczyścić skryptowo zapisany storage witryny, z którą użytkownik nie wchodził w interakcję przez 7 dni. `navigator.storage.estimate()` zwraca zużycie i limit, a `navigator.storage.persist()` prosi o trwały storage. Synchronizacja kart: zdarzenie `storage` przychodzi w innych kartach przy zmianie `localStorage` (nie w tej, która zapisała), a do komunikacji ogólnej służy `BroadcastChannel`.",
+      "code": "// karta A wylogowuje\nlocalStorage.setItem('logout', Date.now().toString());\n\n// pozostałe karty\nwindow.addEventListener('storage', e => {\n  if (e.key === 'logout') router.navigate(['/login']);\n});\n// albo: new BroadcastChannel('auth').postMessage('logout')",
+      "lang": "typescript",
+      "deep": "Storage jest partycjonowany: w iframe zewnętrznej domeny (third-party) `localStorage` i IndexedDB są przypisane do pary (strona najwyższego poziomu, origin iframe'a), więc widget osadzony na dwóch stronach nie widzi wspólnych danych – to część ochrony prywatności w Chrome, Firefoxie i Safari. Tryb prywatny ma zwykle mniejszą quota i czyści wszystko po zamknięciu. `localStorage` jest synchroniczny i serializuje się do stringa, więc duże obiekty (JSON kilka MB) blokują main thread przy każdym odczycie – do większych danych IndexedDB (np. przez bibliotekę `idb` lub Dexie). Przekroczenie limitu rzuca `QuotaExceededError` – zapis trzeba owinąć w try/catch. Dane w storage są dostępne dla każdego skryptu na originie, więc XSS = wyciek wszystkiego, co tam leży; nie trzymaj tam sekretów. Dla offline danych biznesowych pamiętaj o wersjonowaniu schematu (`onupgradeneeded`) i migracjach jak w zwykłej bazie."
+    },
+    {
+      "id": "frontend-030",
+      "topic": "CORS na froncie",
+      "level": 2,
+      "q": "Jak wygląda CORS z perspektywy frontendu i jak go debugujesz?",
+      "a": "CORS egzekwuje przeglądarka: żądanie często dociera do serwera i jest wykonane, ale jeśli odpowiedź nie ma właściwych nagłówków `Access-Control-Allow-*`, JS nie dostanie jej treści, a w konsoli pojawi się błąd CORS (w `fetch` to `TypeError: Failed to fetch`, w HttpClient `status: 0`). Naprawia się to na serwerze, nie na froncie – na froncie można jedynie unikać cross-origin, np. proxy w dev serverze Angular CLI (`proxy.conf.json`) lub reverse proxy na produkcji (ten sam origin). Przy wysyłaniu ciasteczek potrzebne są `credentials: 'include'` (`withCredentials: true` w HttpClient), a serwer musi odpowiedzieć konkretnym originem (nie `*`) i `Access-Control-Allow-Credentials: true`.",
+      "code": "// proxy.conf.json – dev server przekazuje /api do backendu\n{\n  \"/api\": {\n    \"target\": \"https://localhost:7001\",\n    \"secure\": false,\n    \"changeOrigin\": true\n  }\n}",
+      "lang": "json",
+      "tip": "`mode: 'no-cors'` w fetch nie 'wyłącza CORS' – daje opaque response, z którego JS nie odczyta ani statusu, ani treści.",
+      "deep": "W Network panelu sprawdź, czy był preflight `OPTIONS` (wysyłany dla metod innych niż GET/HEAD/POST, niestandardowych nagłówków jak `Authorization` czy `Content-Type: application/json`) i co zwrócił – częsty błąd to 401 na preflight, bo middleware autoryzacji odrzuca OPTIONS bez tokenu, albo brak CORS w odpowiedzi błędu 500 (wtedy front widzi 'błąd CORS' zamiast prawdziwego błędu serwera). Nagłówki odpowiedzi niestandardowe (np. `X-Total-Count`, `Location`) są niewidoczne dla JS, dopóki serwer nie wypisze ich w `Access-Control-Expose-Headers`. `Access-Control-Max-Age` cache'uje preflight, co zmniejsza liczbę round-tripów. Proxy w dev to obejście, nie rozwiązanie – na produkcji wybierasz: ten sam origin za reverse proxy/BFF (najprościej, bez CORS i z ciasteczkami SameSite=Strict) albo poprawnie skonfigurowany CORS na API z białą listą originów. Pamiętaj: CORS chroni użytkownika przeglądarki, nie API – curl czy Postman go ignorują."
+    },
+    {
+      "id": "frontend-031",
+      "topic": "Core Web Vitals",
+      "level": 1,
+      "q": "Czym są Core Web Vitals i jakie mają progi?",
+      "a": "To trzy metryki Google mierzące doświadczenie użytkownika: LCP (Largest Contentful Paint) – kiedy wyrenderował się największy element treści, dobrze ≤ 2,5 s; INP (Interaction to Next Paint) – opóźnienie od interakcji do następnej klatki, dobrze ≤ 200 ms (zastąpił FID w marcu 2024); CLS (Cumulative Layout Shift) – suma nieoczekiwanych przesunięć layoutu, dobrze ≤ 0,1. Ocenia się 75. percentyl wizyt z danych polowych (field data, CrUX), osobno dla mobile i desktop. Lighthouse to pomiar laboratoryjny – dobry do diagnozy, ale nie mierzy INP (zamiast tego TBT jako proxy).",
+      "tip": "Rozróżnienie lab vs field jest kluczowe: 'Lighthouse 100' nie znaczy, że realni użytkownicy na słabych telefonach mają dobre CWV."
+    },
+    {
+      "id": "frontend-032",
+      "topic": "Core Web Vitals",
+      "level": 3,
+      "q": "Jak konkretnie poprawiasz LCP, INP i CLS?",
+      "a": "LCP: szybki TTFB (cache, CDN, SSR), element LCP wykrywalny w HTML (nie wstawiany przez JS), obraz LCP z `fetchpriority=\"high\"` i bez `loading=\"lazy\"`, preload obrazu tła lub fontu, nowoczesne formaty (AVIF/WebP) i `srcset`, mniej render-blocking CSS/JS. INP: krótsze handlery, dzielenie long tasks i oddawanie wątku, natychmiastowy feedback wizualny przed ciężką pracą, mniej pracy w change detection, debounce, Web Workers, mniejszy DOM. CLS: `width`/`height` lub `aspect-ratio` dla obrazów, iframe'ów i reklam, rezerwacja miejsca na treść ładowaną asynchronicznie (skeletony), nie wstawianie banerów nad istniejącą treścią, `font-display` z dopasowanym fallbackiem, animacje przez `transform`.",
+      "code": "<img src=\"hero.avif\" width=\"1200\" height=\"600\"\n     fetchpriority=\"high\" alt=\"…\">\n\n<!-- Angular -->\n<img ngSrc=\"hero.avif\" width=\"1200\" height=\"600\" priority alt=\"…\">",
+      "lang": "html",
+      "deep": "LCP rozbija się na cztery części: TTFB, opóźnienie startu ładowania zasobu (resource load delay – np. obraz odkryty dopiero po wykonaniu JS), czas pobrania i opóźnienie renderu – DevTools Performance pokazuje ten podział i warto najpierw znaleźć największą część, zamiast optymalizować na ślepo. W czystym CSR (Angular bez SSR) LCP jest z natury słabe, bo treść pojawia się dopiero po pobraniu i wykonaniu bundle'a – SSR/prerendering z hydracją i `@defer` dla ciężkich sekcji to główna dźwignia. INP mierzy najgorszą (prawie) interakcję w całej wizycie i składa się z input delay, processing time i presentation delay; duży DOM i drogie style wydłużają ostatnią fazę. CLS liczy przesunięcia w oknach sesji (max 5 s), a przesunięcia w ciągu 500 ms po interakcji użytkownika nie są liczone – dlatego rozwinięcie akordeonu po kliknięciu nie szkodzi, ale doładowanie baneru po 3 s już tak. Do pomiaru u realnych użytkowników: biblioteka `web-vitals` wysyłająca dane do analityki, z atrybucją (który element, który handler). Back/forward cache (bfcache) daje natychmiastowe nawigacje wstecz – blokuje go np. `unload` listener lub `Cache-Control: no-store`."
+    },
+    {
+      "id": "frontend-033",
+      "topic": "Ładowanie zasobów",
+      "level": 1,
+      "q": "Jak działa lazy loading obrazów i kiedy go nie stosować?",
+      "a": "Natywne `loading=\"lazy\"` na `<img>` i `<iframe>` odkłada pobranie, aż element zbliży się do viewportu – mniej transferu i szybsze ładowanie tego, co ważne. Obraz musi mieć `width` i `height` (lub `aspect-ratio`), żeby przeglądarka zarezerwowała miejsce i nie było CLS. Nie stosuj lazy dla obrazów above the fold, a zwłaszcza dla elementu LCP – opóźnisz go, bo przeglądarka czeka na layout, żeby ustalić, czy obraz jest widoczny. Dla responsywności `srcset` + `sizes`, by telefon nie pobierał obrazu w rozdzielczości desktopowej. W Angularze `NgOptimizedImage` (`ngSrc`) wymusza te dobre praktyki.",
+      "code": "<img src=\"photo-800.webp\"\n     srcset=\"photo-400.webp 400w, photo-800.webp 800w, photo-1600.webp 1600w\"\n     sizes=\"(min-width: 48rem) 50vw, 100vw\"\n     width=\"800\" height=\"533\" loading=\"lazy\" decoding=\"async\" alt=\"Opis\">",
+      "lang": "html"
+    },
+    {
+      "id": "frontend-034",
+      "topic": "Ładowanie zasobów",
+      "level": 3,
+      "q": "Czym różnią się `preload`, `prefetch`, `preconnect` i `modulepreload`?",
+      "a": "`preload` – pobierz teraz, z wysokim priorytetem, zasób potrzebny na bieżącej stronie, którego preload scanner sam nie odkryje (font z CSS, obraz tła LCP, krytyczny skrypt); wymaga `as` i dla fontów `crossorigin`. `prefetch` – pobierz z niskim priorytetem zasób prawdopodobnie potrzebny przy następnej nawigacji (chunk kolejnej trasy). `preconnect` – zestaw wcześniej DNS+TCP+TLS z obcym originem (CDN, API, Google Fonts), `dns-prefetch` – tylko DNS. `modulepreload` – preload modułu ES razem z parsowaniem; Angular CLI dodaje go dla chunków ładowanych na starcie.",
+      "code": "<link rel=\"preconnect\" href=\"https://cdn.example.com\" crossorigin>\n<link rel=\"preload\" href=\"/fonts/inter.woff2\" as=\"font\"\n      type=\"font/woff2\" crossorigin>\n<link rel=\"preload\" href=\"/img/hero.avif\" as=\"image\" fetchpriority=\"high\">\n<link rel=\"prefetch\" href=\"/chunk-checkout.js\">\n<link rel=\"modulepreload\" href=\"/main.js\">",
+      "lang": "html",
+      "tip": "Preload to nie 'przyspieszacz wszystkiego' – każdy preload konkuruje o pasmo z zasobami krytycznymi; nieużyty w ciągu kilku sekund daje ostrzeżenie w konsoli.",
+      "deep": "Preload fontu bez `crossorigin` skutkuje podwójnym pobraniem, bo fonty zawsze pobierane są w trybie CORS i wpis w cache nie pasuje. `fetchpriority` (high/low/auto) to lżejsza alternatywa: nie dodaje zasobu, tylko zmienia priorytet tego, który i tak będzie pobrany (np. obniżenie priorytetu obrazów w karuzeli poza pierwszym slajdem). Dla nawigacji między stronami MPA jest Speculation Rules API (prefetch/prerender całych stron) – w Chromium. W SPA Angular odpowiednikiem prefetch jest `PreloadAllModules` lub własna strategia preloadingu tras (`withPreloading()`) oraz `@defer (prefetch on idle)`. Odpowiedź 103 Early Hints pozwala serwerowi wysłać nagłówki `Link: rel=preload/preconnect`, zanim wygeneruje HTML – przydatne przy wolnym SSR. Mierz efekt w Network waterfall: kolumna Priority i moment startu żądania pokazują, czy preload faktycznie coś zmienił."
+    },
+    {
+      "id": "frontend-035",
+      "topic": "Service Workers i PWA",
+      "level": 2,
+      "q": "Czym jest service worker i PWA?",
+      "a": "Service worker to skrypt działający w tle w osobnym wątku, pomiędzy aplikacją a siecią: przechwytuje żądania (`fetch` event) i może odpowiadać z Cache API, co daje działanie offline i szybkie ładowanie, a do tego push notifications i background sync. Działa tylko na HTTPS (poza localhost), nie ma dostępu do DOM i ma zasięg (scope) zależny od ścieżki pliku. PWA to aplikacja webowa z manifestem (`manifest.webmanifest`: nazwa, ikony, `display: standalone`), service workerem i HTTPS – można ją zainstalować jak natywną. W Angularze `ng add @angular/pwa` dodaje `@angular/service-worker` z konfiguracją `ngsw-config.json`.",
+      "code": "// app.config.ts\nimport { provideServiceWorker } from '@angular/service-worker';\n\nexport const appConfig = {\n  providers: [\n    provideServiceWorker('ngsw-worker.js', {\n      enabled: !isDevMode(),\n      registrationStrategy: 'registerWhenStable:30000',\n    }),\n  ],\n};",
+      "lang": "typescript",
+      "deep": "Cykl życia: `install` (precache plików aplikacji) → `waiting` (nowa wersja czeka, dopóki jakakolwiek karta używa starej) → `activate` (sprzątanie starych cache) → kontrola stron i obsługa `fetch`. Stąd klasyczny problem 'wdrożyłem, a użytkownicy widzą starą wersję' – rozwiązaniem jest wykrycie nowej wersji (w Angularze `SwUpdate.versionUpdates` z eventem `VERSION_READY`), komunikat 'Dostępna nowa wersja' i `activateUpdate()` + przeładowanie; `skipWaiting()` bez przeładowania grozi mieszaniem starych i nowych chunków. Strategie cache: cache-first (statyczne assety z hashem), network-first (dane API, z fallbackiem offline), stale-while-revalidate (dane, które mogą być lekko nieaktualne) – w `ngsw-config.json` to `dataGroups` ze strategią `performance` lub `freshness`. Plik service workera serwuj z `Cache-Control: no-cache`, inaczej aktualizacje utkną. Na iOS PWA mają ograniczenia (m.in. push dopiero po dodaniu do ekranu głównego). Debugowanie: Application → Service Workers (Update on reload, Bypass for network) i Cache Storage."
+    },
+    {
+      "id": "frontend-036",
+      "topic": "Bezpieczeństwo frontu",
+      "level": 2,
+      "q": "Czym jest Content Security Policy i jak współgra z Angularem?",
+      "a": "CSP to nagłówek odpowiedzi (`Content-Security-Policy`), który mówi przeglądarce, skąd wolno ładować i wykonywać zasoby: skrypty, style, obrazy, połączenia (`connect-src`), ramki. Główny cel to ograniczenie skutków XSS – nawet jeśli atakujący wstrzyknie `<script>` czy `onclick`, przeglądarka go nie wykona, bo inline skrypty są domyślnie zablokowane. Nowoczesne podejście to strict CSP oparty na nonce lub hashach ze `strict-dynamic` zamiast długich whitelist domen. Angular wspiera nonce (atrybut `ngCspNonce` na roocie lub token `CSP_NONCE`) dla stylów, które wstrzykuje w runtime, a w trybie produkcyjnym nie używa `eval`.",
+      "code": "Content-Security-Policy:\n  default-src 'self';\n  script-src 'self' 'nonce-r4nd0m' 'strict-dynamic';\n  style-src 'self' 'nonce-r4nd0m';\n  img-src 'self' data: https://cdn.example.com;\n  connect-src 'self' https://api.example.com;\n  frame-ancestors 'none';\n  object-src 'none'; base-uri 'self'",
+      "lang": "text",
+      "deep": "Nonce musi być losowy i inny w każdej odpowiedzi – przy statycznym hostingu SPA (index.html z CDN) to problem, dlatego tam stosuje się hashe skryptów albo generuje nonce w SSR/serwerze brzegowym. `unsafe-inline` w `script-src` praktycznie unieważnia ochronę przed XSS; dla stylów jest częstszym kompromisem. Wdrażanie zaczyna się od `Content-Security-Policy-Report-Only` z endpointem raportów (`report-to`), żeby zebrać naruszenia bez psucia produkcji – zewnętrzne skrypty marketingowe zwykle wychodzą wtedy na jaw. Angular ma też wsparcie dla Trusted Types (dyrektywa `require-trusted-types-for 'script'`, polityka `angular`), które blokują przypisywanie zwykłych stringów do niebezpiecznych sinków DOM (`innerHTML`, `src` skryptu) w całej aplikacji, także w bibliotekach. CSP nie zastępuje sanityzacji i nie chroni przed CSRF ani przed złośliwym kodem z dozwolonego originu (np. przejęty CDN – na to SRI, atrybut `integrity`)."
+    },
+    {
+      "id": "frontend-037",
+      "topic": "Bezpieczeństwo frontu",
+      "level": 2,
+      "q": "Jakie są wektory XSS w aplikacji frontendowej poza `innerHTML`?",
+      "a": "XSS to wykonanie obcego skryptu w kontekście Twojej strony – atakujący ma wtedy dostęp do DOM, storage i może wykonywać żądania jako użytkownik. Poza `innerHTML`/`insertAdjacentHTML` typowe źródła to: `href`/`src` z danymi użytkownika (`javascript:` URL), `eval`, `new Function`, `setTimeout(string)`, dynamiczne tworzenie `<script>`, `document.write`, biblioteki renderujące markdown/HTML bez sanityzacji, `postMessage` bez sprawdzenia `origin` i template injection przy łączeniu szablonów z danymi. W Angularze interpolacja i bindingi są domyślnie escapowane/sanityzowane, więc dziury powstają przy `bypassSecurityTrust*`, bezpośredniej manipulacji DOM przez `ElementRef.nativeElement` i w bibliotekach zewnętrznych.",
+      "code": "// źle\nwindow.addEventListener('message', e => {\n  el.innerHTML = e.data.html;\n});\n// dobrze\nwindow.addEventListener('message', e => {\n  if (e.origin !== 'https://widget.example.com') return;\n  el.textContent = e.data.text;\n});",
+      "lang": "typescript",
+      "tip": "Warstwy obrony: escapowanie przez framework, sanityzacja (DOMPurify) gdy naprawdę trzeba renderować HTML, CSP jako siatka bezpieczeństwa i `HttpOnly` dla ciasteczek sesyjnych."
+    },
+    {
+      "id": "frontend-038",
+      "topic": "Web Components i Shadow DOM",
+      "level": 2,
+      "q": "Czym są Web Components i Shadow DOM?",
+      "a": "Web Components to zestaw natywnych standardów do tworzenia własnych elementów niezależnych od frameworka: Custom Elements (`customElements.define('my-rating', class extends HTMLElement {…})` z lifecycle `connectedCallback`, `disconnectedCallback`, `attributeChangedCallback`), Shadow DOM (izolowane poddrzewo z własnymi stylami) oraz `<template>` i `<slot>` do projekcji treści. Shadow DOM izoluje style w obie strony: style strony nie wchodzą do środka, a style komponentu nie wyciekają. Przez granicę przechodzą tylko właściwości dziedziczone (`color`, `font`), custom properties i jawnie wystawione części (`::part()`). Angular może eksportować komponenty jako custom elements przez `@angular/elements` (`createCustomElement`).",
+      "code": "class MyBadge extends HTMLElement {\n  connectedCallback() {\n    const root = this.attachShadow({ mode: 'open' });\n    root.innerHTML = `\n      <style>span { padding: 2px 6px; background: var(--badge-bg, #eee); }</style>\n      <span part=\"label\"><slot></slot></span>`;\n  }\n}\ncustomElements.define('my-badge', MyBadge);",
+      "lang": "typescript",
+      "deep": "Kiedy warto: design system współdzielony przez aplikacje w różnych frameworkach (Angular, React, CMS), mikrofrontendy, widgety osadzane u klientów. Koszty: brak SSR bez Declarative Shadow DOM (`<template shadowrootmode=\"open\">`, wspierany we wszystkich głównych silnikach od 2024), problemy z formularzami (potrzebne `ElementInternals` i `static formAssociated = true`, by element brał udział w `<form>` i walidacji), dostępność przez granicę shadow root (`aria-labelledby` nie widzi id z innego drzewa), zdarzenia retargetowane do hosta (`event.target` wskazuje host, pełną ścieżkę daje `composedPath()`, a własne zdarzenia muszą mieć `composed: true`, by wyjść poza shadow root). Angular Elements dołącza runtime Angulara do każdego bundla, więc pojedynczy widget bywa ciężki. W Angularze do konsumowania obcych custom elements potrzebny jest `CUSTOM_ELEMENTS_SCHEMA` w komponencie, a bindowanie do właściwości (`[value]`) zamiast atrybutów przekazuje obiekty. Style z zewnątrz podaje się przez custom properties i `::part()`, a `:host`, `::slotted()` stylują od środka."
+    },
+    {
+      "id": "frontend-039",
+      "topic": "fetch vs XHR",
+      "level": 1,
+      "q": "Czym różni się `fetch` od `XMLHttpRequest` i co wybiera Angular HttpClient?",
+      "a": "`fetch` ma API oparte na Promise, obsługuje streaming odpowiedzi (`response.body` jako ReadableStream), anulowanie przez `AbortController` i działa w service workerach (XHR tam nie ma). Pułapka: `fetch` odrzuca promise tylko przy błędzie sieci/CORS – odpowiedź 404 czy 500 to sukces, trzeba sprawdzić `response.ok`. Domyślnie nie wysyła ciasteczek cross-origin (`credentials: 'same-origin'`). XHR jest starszy, oparty na eventach, ale ma zdarzenia postępu uploadu (`upload.onprogress`). Angular HttpClient domyślnie używa XHR; `provideHttpClient(withFetch())` przełącza na fetch (zalecane przy SSR), kosztem braku postępu uploadu.",
+      "code": "const ctrl = new AbortController();\nconst res = await fetch('/api/orders', { signal: ctrl.signal });\nif (!res.ok) throw new Error(`HTTP ${res.status}`);\nconst orders = await res.json();\n// ctrl.abort() – anuluje żądanie",
+      "lang": "typescript",
+      "tip": "`AbortSignal.timeout(5000)` daje gotowy timeout bez ręcznego `setTimeout` + `abort()`."
+    },
+    {
+      "id": "frontend-040",
+      "topic": "DevTools",
+      "level": 2,
+      "q": "Jak szukasz przyczyny wolnego działania strony w DevTools?",
+      "a": "Zaczynam od reprodukcji w warunkach realnych: Performance panel z CPU throttling (4–6×) i network throttling, nagranie konkretnej interakcji. Szukam long tasks (czerwony róg, >50 ms) na głównym wątku i w flame chart schodzę do funkcji, które zajmują najwięcej self time; fioletowe bloki to style/layout (podejrzenie layout thrashing), zielone – paint. Panel pokazuje też LCP, CLS i INP z atrybucją do elementu oraz interakcji. Network: waterfall, priorytety, rozmiar bundli, łańcuchy żądań i brak cache. Lighthouse daje szybki audit, a Coverage pokazuje nieużywany JS/CSS. Dla Angulara Angular DevTools ma profiler change detection.",
+      "tip": "Mierz build produkcyjny, nie `ng serve` w trybie dev – dodatkowe sprawdzenia w dev modzie zawyżają koszty. (Wyjątek: Angular DevTools działa tylko w trybie dev – używaj go do znalezienia przyczyny, nie do pomiaru czasów.)"
+    },
+    {
+      "id": "frontend-041",
+      "topic": "DevTools",
+      "level": 3,
+      "q": "Jak znajdujesz i naprawiasz wyciek pamięci w SPA?",
+      "a": "Objaw: zużycie pamięci rośnie przy powtarzaniu tej samej akcji (wejście/wyjście z widoku) i nie spada po GC. Procedura: w Memory panelu robię heap snapshot, kilka razy powtarzam akcję, wymuszam GC (ikona kosza), robię drugi snapshot i porównuję (Comparison) – szukam obiektów, których przybywa, oraz 'Detached' elementów DOM. Retainers pokazują ścieżkę referencji, która trzyma obiekt przy życiu. Typowe przyczyny w Angularze: niezakończone subskrypcje RxJS na długo żyjących strumieniach, listenery na `window`/`document` bez usunięcia, `setInterval` bez czyszczenia, cache w serwisie `providedIn: 'root'` trzymający komponenty lub elementy DOM, biblioteki zewnętrzne bez `destroy()`.",
+      "code": "export class ChartComponent {\n  private destroyRef = inject(DestroyRef);\n  constructor() {\n    const onResize = () => this.redraw();\n    window.addEventListener('resize', onResize);\n    this.destroyRef.onDestroy(() => window.removeEventListener('resize', onResize));\n\n    this.store.updates$.pipe(takeUntilDestroyed()).subscribe(...);\n  }\n}",
+      "lang": "typescript",
+      "deep": "Allocation instrumentation on timeline pokazuje alokacje w czasie – niebieskie paski, które nie szarzeją, to pamięć, która przetrwała GC. Detached DOM tree to elementy usunięte z dokumentu, ale wciąż osiągalne z JS (np. tablica w serwisie, closure listenera, referencja w bibliotece wykresów); jeden zatrzymany element trzyma całe swoje poddrzewo, często razem z instancją komponentu. Panel 'Detached elements' w Chromium bezpośrednio je listuje. Uwaga na fałszywe tropy: otwarta konsola trzyma referencje do zalogowanych obiektów, a dev mode Angulara i rozszerzenia przeglądarki zaburzają pomiar – testuj w oknie incognito na buildzie produkcyjnym. `performance.memory` jest niestandardowe; do monitoringu w produkcji jest `performance.measureUserAgentSpecificMemory()` (wymaga cross-origin isolation). W Angularze z sygnałami wycieki mogą też dotyczyć `effect()` tworzonych poza kontekstem injection z ręcznym injectorem o zbyt długim życiu. Po naprawie powtórz porównanie snapshotów – liczba instancji komponentu po N wejściach i wyjściach powinna wrócić do zera lub jednej."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "frontend-q001",
+      "topic": "Semantyczny HTML",
+      "level": 1,
+      "q": "Na stronie jest 'przycisk' zrobiony z `div`. Użytkownik obsługujący stronę wyłącznie klawiaturą zgłasza, że nie może go użyć. Dlaczego?",
+      "code": "<div class=\"btn\" (click)=\"delete()\">Usuń</div>",
+      "lang": "html",
+      "options": [
+        "`(click)` w Angularze nie obsługuje zdarzeń klawiatury, trzeba dodać `(keydown)` – `div` jest poza tym w porządku",
+        "Brakuje atrybutu `aria-label`, bez którego klawiatura nie aktywuje elementu",
+        "Przeglądarki blokują zdarzenia na elementach z `display: block`",
+        "`div` nie jest focusowalny i nie reaguje na Enter/Spację – trzeba użyć `<button>` (albo ręcznie dodać `tabindex`, rolę i obsługę klawiszy)"
+      ],
+      "correct": 3,
+      "why": "Natywny `<button>` jest w sekwencji Tab, aktywuje się Enterem i Spacją (generując `click`) i ma rolę button w accessibility tree. `div` nie ma żadnej z tych cech. `aria-label` daje tylko nazwę dla czytnika, nie zachowanie; samo `(keydown)` bez `tabindex` nie pomoże, bo element nigdy nie dostanie focusu."
+    },
+    {
+      "id": "frontend-q002",
+      "topic": "Dostępność i ARIA",
+      "level": 2,
+      "q": "Co jest problemem w tym kodzie?",
+      "code": "<div class=\"promo\" aria-hidden=\"true\">\n  <img src=\"promo.png\" alt=\"\">\n  <button (click)=\"close()\">Zamknij</button>\n</div>",
+      "lang": "html",
+      "options": [
+        "Nie ma problemu – `aria-hidden` automatycznie usuwa przycisk z kolejności Tab",
+        "Przycisk w środku jest ukryty przed czytnikiem ekranu, ale nadal osiągalny Tabem – użytkownik trafia focusem na 'pusty' element",
+        "`aria-hidden` ukrywa element także wizualnie, więc baner jest niewidoczny",
+        "`aria-hidden=\"true\"` blokuje kliknięcia myszą w przycisk"
+      ],
+      "correct": 1,
+      "why": "`aria-hidden=\"true\"` usuwa poddrzewo tylko z accessibility tree; nie zmienia wyglądu, kliknięć ani focusu. Focusowalny element w ukrytym poddrzewie to błąd (axe: aria-hidden-focus). Jeśli treść ma być nieaktywna, użyj atrybutu `inert`, który blokuje focus, interakcje i ukrywa ją przed technologiami asystującymi."
+    },
+    {
+      "id": "frontend-q003",
+      "topic": "Focus i klawiatura",
+      "level": 3,
+      "q": "Po zamknięciu modala (własna implementacja na `div`) użytkownik klawiatury musi Tabem przechodzić od początku strony. Co jest brakującym elementem?",
+      "options": [
+        "Zapamiętanie elementu, który otworzył modal, i przywrócenie na nim focusu po zamknięciu",
+        "Dodanie `aria-modal=\"true\"`, które przywraca focus automatycznie",
+        "Wywołanie `blur()` na aktywnym elemencie przy zamykaniu",
+        "Ustawienie `tabindex=\"-1\"` na `body`"
+      ],
+      "correct": 0,
+      "why": "Po usunięciu modala z DOM focus 'spada' na `body`, więc kolejny Tab zaczyna od początku dokumentu. Wzorzec dialogu wymaga powrotu focusu do wyzwalacza. `aria-modal` informuje tylko czytnik ekranu, że tło jest nieaktywne, a `blur()` właśnie przenosi focus na body. Natywny `<dialog>` z `showModal()` lub CDK Dialog robią to automatycznie."
+    },
+    {
+      "id": "frontend-q004",
+      "topic": "Box model",
+      "level": 1,
+      "q": "Jaka będzie całkowita szerokość wyrenderowanego elementu (bez marginesów)?",
+      "code": ".box {\n  box-sizing: content-box;\n  width: 200px;\n  padding: 20px;\n  border: 5px solid black;\n  margin: 10px;\n}",
+      "lang": "css",
+      "options": [
+        "210px",
+        "240px",
+        "250px",
+        "200px"
+      ],
+      "correct": 2,
+      "why": "Przy `box-sizing: content-box` (domyślnym) `width` dotyczy tylko contentu: 200 + 2×20 (padding) + 2×5 (border) = 250px. Wynik 200px dałby `border-box`; 240px pomija border, a 210px pomija padding."
+    },
+    {
+      "id": "frontend-q005",
+      "topic": "Box model",
+      "level": 2,
+      "q": "Jaki będzie pionowy odstęp między `.a` i `.b` (zwykłe elementy blokowe w normalnym przepływie)?",
+      "code": ".a { margin-bottom: 20px; }\n.b { margin-top: 30px; }",
+      "lang": "css",
+      "options": [
+        "0px, bo marginesy sąsiadów się znoszą",
+        "20px",
+        "30px",
+        "50px"
+      ],
+      "correct": 2,
+      "why": "Pionowe marginesy sąsiadujących bloków się zlewają (margin collapsing) – wynikowy odstęp to większy z nich, czyli 30px. Gdyby rodzic był kontenerem flex lub grid (np. `display: flex; flex-direction: column`), marginesy by się nie zlewały i odstęp wyniósłby 50px."
+    },
+    {
+      "id": "frontend-q006",
+      "topic": "Specificity i kaskada",
+      "level": 2,
+      "q": "Jaki kolor będzie miał link `<a class=\"active\">` umieszczony w `<ul class=\"list\"><li>…</li></ul>`?",
+      "code": "a                    { color: gray; }\n.list li a           { color: green; }\na.active             { color: red; }\n:where(.list) a.active { color: blue; }",
+      "lang": "css",
+      "options": [
+        "czerwony",
+        "niebieski",
+        "szary",
+        "zielony"
+      ],
+      "correct": 3,
+      "why": "Specificity: `.list li a` = (0,1,2), `a.active` = (0,1,1), `:where(.list) a.active` = (0,1,1) (bo `:where` ma 0), `a` = (0,0,1). Wygrywa `.list li a` – zielony, mimo że `a.active` stoi później w pliku. Kolejność w źródle rozstrzyga dopiero przy równej specificity."
+    },
+    {
+      "id": "frontend-q007",
+      "topic": "Specificity i kaskada",
+      "level": 3,
+      "q": "Jaki kolor będzie miał link `<a class=\"link\">` wewnątrz `<main id=\"main\">`?",
+      "code": "@layer reset, components;\n\n@layer components {\n  #main a.link { color: red; }\n}\n\na { color: blue; }",
+      "lang": "css",
+      "options": [
+        "czerwony – `#main a.link` ma wyższą specificity",
+        "niebieski – style poza warstwami wygrywają z warstwami niezależnie od specificity",
+        "czerwony – warstwa `components` jest zadeklarowana jako ostatnia",
+        "zależy od kolejności w pliku, bo warstwy nie wpływają na kaskadę"
+      ],
+      "correct": 1,
+      "why": "W kaskadzie warstwy są sprawdzane przed specificity. Dla zwykłych (nie-important) deklaracji style unlayered mają najwyższy priorytet spośród stylów autora, więc `a { color: blue }` wygrywa z `#main a.link` w warstwie. Kolejność warstw (`reset, components`) decyduje tylko między warstwami. Z `!important` porządek by się odwrócił."
+    },
+    {
+      "id": "frontend-q008",
+      "topic": "Flexbox vs Grid",
+      "level": 2,
+      "q": "Kolumna `.title` ma `flex: 1`, a tekst w jej środku ma `text-overflow: ellipsis`, ale długi tytuł zamiast się uciąć rozpycha cały wiersz poza ekran. Co dodać?",
+      "code": ".row { display: flex; }\n.title { flex: 1; }\n.title .text {\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}",
+      "lang": "css",
+      "options": [
+        "`flex-shrink: 1` na elemencie `.title`",
+        "`flex-wrap: wrap` na kontenerze `.row`",
+        "`min-width: 0` na elemencie `.title`",
+        "`width: 100%` na elemencie `.title`"
+      ],
+      "correct": 2,
+      "why": "Flex itemy mają domyślnie `min-width: auto`, czyli nie skurczą się poniżej min-content (całego tekstu z `nowrap`). `flex-shrink: 1` jest już częścią `flex: 1`, więc nic nie zmieni. `width: 100%` nie zdejmuje ograniczenia minimum, a `flex-wrap` tylko przeniesie element do nowej linii. `min-width: 0` (lub `overflow: hidden` na samym `.title`) pozwala elementowi się skurczyć i ellipsis zadziała. Gdyby `overflow: hidden` było na flex itemie od początku, minimum automatycznie wyniosłoby 0 i problemu by nie było."
+    },
+    {
+      "id": "frontend-q009",
+      "topic": "Pozycjonowanie i stacking context",
+      "level": 3,
+      "q": "Modal ma `position: fixed; z-index: 9999`, ale wyświetla się POD sticky nagłówkiem (`z-index: 10`). Modal jest wewnątrz `.page`, który ma `transform: translateY(0)` dla animacji wejścia. Dlaczego?",
+      "options": [
+        "`z-index` powyżej 9998 jest ignorowany przez przeglądarki",
+        "`position: fixed` nie obsługuje `z-index`, potrzebne jest `absolute`",
+        "`.page` z `transform` tworzy własny stacking context (i containing block dla `fixed`), więc z-index modala liczy się tylko w jego obrębie",
+        "sticky elementy zawsze są rysowane ponad fixed"
+      ],
+      "correct": 2,
+      "why": "`transform` na przodku tworzy stacking context, więc cały `.page` (z modalem w środku) jest porównywany z nagłówkiem jako jedna warstwa z `z-index: auto`/0 – nagłówek z 10 wygrywa. Dodatkowo `transform` sprawia, że `fixed` pozycjonuje się względem `.page`, a nie viewportu. Rozwiązania: wyrenderować modal na końcu `body` (portal, CDK Overlay) albo użyć `<dialog>.showModal()` (top layer)."
+    },
+    {
+      "id": "frontend-q010",
+      "topic": "Jednostki CSS",
+      "level": 2,
+      "q": "`html` ma domyślny `font-size: 16px`. Jaki będzie rozmiar czcionki tekstu w `.c`?",
+      "code": ".a, .b { font-size: 1.25em; }\n/* <div class=\"a\"><div class=\"b\"><p class=\"c\">Tekst</p></div></div> */",
+      "lang": "css",
+      "options": [
+        "31.25px",
+        "16px",
+        "25px",
+        "20px"
+      ],
+      "correct": 2,
+      "why": "`em` w `font-size` odnosi się do rozmiaru rodzica i się kumuluje: `.a` = 16 × 1.25 = 20px, `.b` = 20 × 1.25 = 25px, a `.c` nie ustawia własnego rozmiaru, więc go dziedziczy – 25px. 20px wyszłoby przy `rem` (zawsze względem `html`), a 31.25px przy trzecim mnożeniu."
+    },
+    {
+      "id": "frontend-q011",
+      "topic": "Responsywność",
+      "level": 2,
+      "q": "Reguła `@container` w ogóle nie działa. Czego brakuje?",
+      "code": "<aside class=\"sidebar\"><div class=\"card\">…</div></aside>\n\n@container (min-width: 400px) {\n  .card { display: grid; grid-template-columns: 1fr 2fr; }\n}",
+      "lang": "css",
+      "options": [
+        "`@container` wymaga dodatkowo media query `@media screen`",
+        "Przodek `.card` musi być kontenerem, np. `.sidebar { container-type: inline-size; }`",
+        "Container queries działają tylko w Shadow DOM",
+        "Trzeba ustawić `container-type` na samym elemencie `.card`, a nie na przodku"
+      ],
+      "correct": 1,
+      "why": "Bez `container-type` (lub skrótu `container`) na przodku nie ma kontenera do odpytania, więc reguła się nie aplikuje. Element nie może odpytywać samego siebie – gdyby `.card` była kontenerem, style w `@container` dotyczyłyby jej potomków, nie jej samej. Media queries ani Shadow DOM nie są potrzebne."
+    },
+    {
+      "id": "frontend-q012",
+      "topic": "Custom properties",
+      "level": 2,
+      "q": "Jaki `gap` będzie miał element `.list`, który jest wewnątrz `.sidebar`, a nie wewnątrz `.card`?",
+      "code": ".card { --gap: 16px; }\n.list { display: flex; gap: var(--gap, 4px); }",
+      "lang": "css",
+      "options": [
+        "16px – custom properties są globalne jak zmienne Sass",
+        "16px, bo `.card` jest zdefiniowane wcześniej w pliku",
+        "0 – deklaracja z niezdefiniowaną zmienną jest pomijana",
+        "4px – zmienna nie jest zdefiniowana na żadnym przodku, więc użyty zostanie fallback"
+      ],
+      "correct": 3,
+      "why": "Custom properties dziedziczą się w drzewie DOM, a nie są globalne. `--gap` istnieje tylko w `.card` i jej potomkach. Dla `.list` poza `.card` `var(--gap, 4px)` zwróci fallback 4px. Bez fallbacku deklaracja byłaby 'invalid at computed-value time' i `gap` przyjąłby wartość initial (normal)."
+    },
+    {
+      "id": "frontend-q013",
+      "topic": "BEM vs ViewEncapsulation",
+      "level": 1,
+      "q": "Która nazwa klasy jest zgodna z konwencją BEM?",
+      "options": [
+        "`.product-card--price__discounted`",
+        "`.productCard-price_discounted`",
+        "`.product-card__body__price`",
+        "`.product-card__price--discounted`"
+      ],
+      "correct": 3,
+      "why": "BEM to `block__element--modifier`: blok `product-card`, element `price`, modyfikator `discounted`. Zagnieżdżanie elementów (`__body__price`) jest antywzorcem – element należy zawsze bezpośrednio do bloku, niezależnie od struktury DOM. Modyfikator stoi na końcu i modyfikuje blok lub element, a nie odwrotnie."
+    },
+    {
+      "id": "frontend-q014",
+      "topic": "Animacje i wydajność",
+      "level": 2,
+      "q": "Animacja wysuwania panelu klatkuje na słabszych telefonach. Którą zmianę wybierzesz, żeby animacja mogła działać na compositorze?",
+      "code": ".panel { position: absolute; left: -300px; transition: left 300ms; }\n.panel.open { left: 0; }",
+      "lang": "css",
+      "options": [
+        "Animować `transform: translateX()` zamiast `left`",
+        "Zmienić czas animacji z 300ms na 150ms",
+        "Animować `margin-left` zamiast `left`",
+        "Dodać `will-change: left`"
+      ],
+      "correct": 0,
+      "why": "`left` i `margin-left` wpływają na geometrię, więc każda klatka wymaga layoutu i paintu na main thread. `will-change: left` nie zmienia natury właściwości – nadal wymaga layoutu. Krótszy czas nie usuwa kosztu klatki. `transform` może być animowany przez compositor na osobnej warstwie bez layoutu i paintu."
+    },
+    {
+      "id": "frontend-q015",
+      "topic": "Critical rendering path",
+      "level": 1,
+      "q": "Masz dwa skrypty: `vendor.js` i `app.js`, który od niego zależy i operuje na DOM. Chcesz nie blokować parsowania HTML. Jak je załadować?",
+      "options": [
+        "`vendor.js` z `async`, `app.js` bez atrybutów",
+        "Oba z `defer` – wykonają się po sparsowaniu DOM, w kolejności z dokumentu",
+        "Oba z `async` – wykonają się po sparsowaniu DOM, w kolejności z dokumentu",
+        "Oba bez atrybutów na końcu `head` – tak parser ich nie zauważy"
+      ],
+      "correct": 1,
+      "why": "`defer` pobiera równolegle i wykonuje po zbudowaniu DOM, zachowując kolejność. `async` wykonuje skrypt zaraz po pobraniu, w nieprzewidywalnej kolejności – `app.js` mógłby ruszyć przed `vendor.js` lub przed zakończeniem DOM. Skrypt bez atrybutów w `head` blokuje parser."
+    },
+    {
+      "id": "frontend-q016",
+      "topic": "Reflow vs repaint",
+      "level": 3,
+      "q": "Ten kod ustawia wysokość 500 wierszy i jest bardzo wolny. Co jest przyczyną?",
+      "code": "const rows = document.querySelectorAll('.row');\nrows.forEach(row => {\n  const h = row.querySelector('.content')!.offsetHeight;\n  (row as HTMLElement).style.height = h + 20 + 'px';\n});",
+      "lang": "typescript",
+      "options": [
+        "Przeplatanie zapisu stylu z odczytem `offsetHeight` wymusza synchroniczny layout w każdej iteracji (layout thrashing)",
+        "`offsetHeight` wysyła dodatkowe żądanie do GPU",
+        "`querySelectorAll` zwraca żywą kolekcję, która przelicza się przy każdej zmianie",
+        "Ustawianie `style.height` zawsze powoduje pełny repaint całej strony, niezależnie od kolejności operacji"
+      ],
+      "correct": 0,
+      "why": "Zapis `style.height` unieważnia layout, a odczyt `offsetHeight` w kolejnej iteracji zmusza przeglądarkę do natychmiastowego przeliczenia – 500 layoutów zamiast jednego. Rozwiązanie: najpierw zebrać wszystkie odczyty do tablicy, potem wykonać wszystkie zapisy. `querySelectorAll` zwraca statyczną NodeList (żywa jest np. `getElementsByClassName`)."
+    },
+    {
+      "id": "frontend-q017",
+      "topic": "Event loop i renderowanie",
+      "level": 3,
+      "q": "Co zobaczy użytkownik po kliknięciu przycisku?",
+      "code": "btn.addEventListener('click', () => {\n  btn.textContent = 'Liczę…';\n  heavyComputation();          // synchronicznie ~2 s\n  btn.textContent = 'Gotowe';\n});",
+      "lang": "typescript",
+      "options": [
+        "'Gotowe' natychmiast, a obliczenia wykonają się w tle",
+        "Przycisk zamarznie na ~2 s, a potem od razu pokaże 'Gotowe' – tekstu 'Liczę…' nie zobaczy",
+        "Najpierw 'Liczę…', a po ~2 s 'Gotowe'",
+        "Najpierw 'Liczę…', a 'Gotowe' nigdy, bo pętla blokuje event loop na stałe"
+      ],
+      "correct": 1,
+      "why": "Renderowanie odbywa się dopiero po zakończeniu bieżącego taska (i microtasków). Cały handler jest synchroniczny, więc przeglądarka nie ma okazji odmalować 'Liczę…' – zanim nastąpi render, tekst jest już 'Gotowe'. Żeby pokazać stan pośredni, trzeba oddać wątek (np. `await new Promise(r => setTimeout(r))` lub `requestAnimationFrame` + `setTimeout`) albo przenieść obliczenia do Web Workera."
+    },
+    {
+      "id": "frontend-q018",
+      "topic": "Zdarzenia DOM",
+      "level": 1,
+      "q": "Listener jest podpięty do `ul`. Użytkownik klika w `<span>` wewnątrz `<li>`. Co zawierają `e.target` i `e.currentTarget`?",
+      "code": "<ul id=\"list\">\n  <li data-id=\"1\"><span>Produkt</span></li>\n</ul>",
+      "lang": "html",
+      "options": [
+        "oba wskazują na ul",
+        "`target` = li, `currentTarget` = ul",
+        "`target` = span, `currentTarget` = ul",
+        "`target` = ul, `currentTarget` = span"
+      ],
+      "correct": 2,
+      "why": "`target` to najgłębszy element, w który faktycznie kliknięto (span), a `currentTarget` to element, na którym aktualnie wykonuje się listener (ul). Dlatego przy event delegation używa się `e.target.closest('li')`, żeby dotrzeć do interesującego elementu."
+    },
+    {
+      "id": "frontend-q019",
+      "topic": "Zdarzenia DOM",
+      "level": 2,
+      "q": "W jakiej kolejności zostaną wypisane logi po kliknięciu `#child`?",
+      "code": "parent.addEventListener('click', () => console.log('parent-bubble'));\nparent.addEventListener('click', () => console.log('parent-capture'), { capture: true });\nchild.addEventListener('click', () => console.log('child'));",
+      "lang": "typescript",
+      "options": [
+        "child, parent-capture, parent-bubble",
+        "child, parent-bubble, parent-capture",
+        "parent-capture, child, parent-bubble",
+        "parent-capture, parent-bubble, child"
+      ],
+      "correct": 2,
+      "why": "Zdarzenie najpierw schodzi w fazie capturing (od window do celu), więc listener z `capture: true` na rodzicu odpala się pierwszy. Potem faza target (child), a następnie bubbling w górę (listener rodzica bez capture)."
+    },
+    {
+      "id": "frontend-q020",
+      "topic": "Storage w przeglądarce",
+      "level": 3,
+      "q": "Użytkownik ma aplikację otwartą w dwóch kartach. W karcie A kod wykonuje `localStorage.setItem('cart', json)`. Gdzie zostanie wywołany listener `window.addEventListener('storage', …)`?",
+      "options": [
+        "Nigdzie – zdarzenie `storage` dotyczy tylko `sessionStorage`",
+        "Tylko w karcie A, która dokonała zmiany",
+        "W obu kartach",
+        "Tylko w karcie B (i innych kartach tego originu), nie w karcie A"
+      ],
+      "correct": 3,
+      "why": "Zdarzenie `storage` jest wysyłane do innych dokumentów z tego samego originu, które współdzielą storage, ale nie do dokumentu, który dokonał zmiany. To czyni je wygodnym mechanizmem synchronizacji kart (np. wylogowanie wszędzie). `sessionStorage` jest per karta, więc zmiany w nim nie trafiają do innych kart."
+    },
+    {
+      "id": "frontend-q021",
+      "topic": "CORS na froncie",
+      "level": 2,
+      "q": "Frontend na `https://app.example.com` wywołuje `fetch('https://api.example.com/me', { credentials: 'include' })`. Serwer odpowiada 200 z `Access-Control-Allow-Origin: *` i `Access-Control-Allow-Credentials: true`. Co się stanie?",
+      "options": [
+        "Przeglądarka zablokuje dostęp do odpowiedzi – przy credentials origin nie może być `*`, musi być jawny",
+        "Przeglądarka w ogóle nie wyśle żądania, bo GET z credentials wymaga preflightu",
+        "Zadziała, bo `*` obejmuje każdy origin, w tym `app.example.com`",
+        "Zadziała, ale ciasteczka nie zostaną wysłane"
+      ],
+      "correct": 0,
+      "why": "Dla żądań z credentials specyfikacja zabrania wildcardu – serwer musi odesłać dokładny origin (`Access-Control-Allow-Origin: https://app.example.com`, zwykle z `Vary: Origin`). Prosty GET z credentials nie wymaga preflightu, więc żądanie zostanie wysłane razem z ciasteczkami, ale JS nie dostanie odpowiedzi i zobaczy `TypeError: Failed to fetch`."
+    },
+    {
+      "id": "frontend-q022",
+      "topic": "Core Web Vitals",
+      "level": 2,
+      "q": "Po załadowaniu strony nad listą produktów pojawia się asynchronicznie baner z promocją i spycha listę w dół. Którą metrykę to pogarsza i jak to naprawić?",
+      "options": [
+        "CLS – dodać `loading=\"lazy\"` do obrazów listy",
+        "CLS – zarezerwować miejsce na baner (stała wysokość/`min-height`, skeleton) albo wyświetlić go jako nakładkę",
+        "INP – przenieść ładowanie banera do Web Workera",
+        "LCP – dodać `fetchpriority=\"high\"` do obrazu banera"
+      ],
+      "correct": 1,
+      "why": "Nieoczekiwane przesunięcie treści bez interakcji użytkownika to layout shift liczony do CLS. Naprawia się to rezerwacją miejsca przed pojawieniem się treści lub umieszczeniem jej tak, by nie przesuwała innych elementów (np. overlay, pozycja poniżej widocznej treści). Priorytet pobrania banera nie usunie przesunięcia, a lazy loading listy nie ma związku z wstawianiem banera."
+    },
+    {
+      "id": "frontend-q023",
+      "topic": "Core Web Vitals",
+      "level": 3,
+      "q": "Klik w checkbox filtra w liście 5000 produktów daje INP ~600 ms: handler synchronicznie filtruje dane i przerysowuje całą listę. Które podejście najbardziej poprawi INP?",
+      "options": [
+        "Natychmiast zaktualizować stan checkboxa, a ciężką pracę podzielić/odroczyć (oddać wątek, zwirtualizować listę lub filtrować w Web Workerze)",
+        "Dodać `will-change: transform` do listy produktów",
+        "Preloadować dane produktów przez `<link rel=\"preload\">`",
+        "Opóźnić cały handler o 300 ms przez `debounceTime`, żeby nie obciążać wątku"
+      ],
+      "correct": 0,
+      "why": "INP mierzy czas od interakcji do następnej klatki – liczy się, żeby przeglądarka mogła szybko odmalować reakcję. Rozbicie pracy (szybki feedback, potem `setTimeout`/`scheduler.yield()`), wirtualizacja (mniej DOM do renderowania) i Web Worker skracają processing i presentation delay. `will-change` nie zmniejsza kosztu JS ani layoutu, debounce dla pojedynczego kliknięcia tylko opóźnia efekt, a preload nie dotyczy pracy na main thread."
+    },
+    {
+      "id": "frontend-q024",
+      "topic": "Ładowanie zasobów",
+      "level": 2,
+      "q": "Zespół dodał `loading=\"lazy\"` do WSZYSTKICH obrazów, w tym dużego zdjęcia hero na górze strony. Jaki będzie efekt?",
+      "options": [
+        "Nic się nie zmieni – przeglądarki ignorują `loading=\"lazy\"` dla obrazów widocznych od razu",
+        "Pogorszy się CLS, bo lazy obrazy nie mają rezerwacji miejsca nawet z `width`/`height`",
+        "Pogorszy się LCP – przeglądarka opóźni pobranie obrazu hero, dopóki layout nie potwierdzi, że jest w viewporcie",
+        "Poprawi się LCP, bo mniej obrazów konkuruje o pasmo"
+      ],
+      "correct": 2,
+      "why": "Lazy loading wyłącza obraz z wczesnego pobierania przez preload scanner – pobranie startuje dopiero po layoucie, więc element LCP pojawia się później. Obrazy above the fold (zwłaszcza LCP) powinny ładować się eager, najlepiej z `fetchpriority=\"high\"`. Atrybuty `width`/`height` rezerwują miejsce niezależnie od lazy."
+    },
+    {
+      "id": "frontend-q025",
+      "topic": "Service Workers i PWA",
+      "level": 3,
+      "q": "Po wdrożeniu nowej wersji aplikacji Angular z service workerem część użytkowników nadal widzi starą wersję, nawet po odświeżeniu strony. Dlaczego i co zrobić?",
+      "options": [
+        "Trzeba w `ngsw-config.json` ustawić `installMode: \"lazy\"` dla wszystkich assetów",
+        "SW serwuje aplikację z cache, a nową wersję pobiera w tle, więc otwarte karty (i często pierwsze odświeżenie) dostają starą – nasłuchiwać `SwUpdate.versionUpdates` (VERSION_READY), poinformować użytkownika i po `activateUpdate()` przeładować stronę",
+        "Przeglądarka cache'uje `index.html` na 24 h – trzeba zmienić nazwę pliku przy każdym wdrożeniu",
+        "Service worker aktualizuje się tylko po reinstalacji PWA przez użytkownika"
+      ],
+      "correct": 1,
+      "why": "SW serwuje aplikację z Cache Storage, a sprawdzenie i pobranie nowej wersji (w Angularze manifest `ngsw.json`) odbywa się w tle – dlatego otwarte karty i często pierwsze odświeżenie nadal dostają starą wersję (w generycznym SW nowy worker dodatkowo czeka w stanie waiting, aż karty ze starą wersją zostaną zamknięte). Angular udostępnia `SwUpdate`: wykrycie gotowej wersji, aktywacja i `document.location.reload()`. Aktualizacja nie wymaga reinstalacji, a `installMode` dotyczy tylko tego, kiedy pobierać grupy assetów."
+    },
+    {
+      "id": "frontend-q026",
+      "topic": "Bezpieczeństwo frontu",
+      "level": 2,
+      "q": "Serwer wysyła nagłówek `Content-Security-Policy: script-src 'self'`. Co z poniższego zostanie zablokowane?",
+      "options": [
+        "Inline `<script>` w HTML i atrybuty typu `onclick=\"…\"`",
+        "Skrypt ładowany przez `<script src=\"/main.js\">` z tej samej domeny",
+        "Żądania `fetch` do API na innej domenie",
+        "Obrazy z zewnętrznego CDN"
+      ],
+      "correct": 0,
+      "why": "`script-src 'self'` pozwala tylko na skrypty z plików z tego samego originu – inline skrypty i handlery w atrybutach wymagałyby `'unsafe-inline'`, nonce lub hash. Żądania `fetch` reguluje `connect-src`, a obrazy `img-src`; ponieważ nie ma `default-src`, nie są ograniczone."
+    },
+    {
+      "id": "frontend-q027",
+      "topic": "Bezpieczeństwo frontu",
+      "level": 1,
+      "q": "Atakujący osadza Twoją stronę bankowości w przezroczystym `iframe` nad przyciskiem 'Odbierz nagrodę'. Który mechanizm temu zapobiega?",
+      "options": [
+        "Ciasteczka z flagą `HttpOnly`",
+        "Nagłówek `Access-Control-Allow-Origin` z Twoją domeną",
+        "Atrybut `sandbox` na iframe'ach w Twojej aplikacji",
+        "Nagłówek `Content-Security-Policy: frame-ancestors 'none'` (lub `X-Frame-Options: DENY`)"
+      ],
+      "correct": 3,
+      "why": "To clickjacking. `frame-ancestors` (i starszy `X-Frame-Options`) mówi przeglądarce, kto może osadzić stronę w ramce. `sandbox` ogranicza iframe'y, które Ty osadzasz, a nie odwrotnie; CORS dotyczy odczytu odpowiedzi przez JS, a `HttpOnly` tylko blokuje dostęp skryptów do ciasteczka – w ramce zostanie ono wysłane, jeśli SameSite na to pozwala."
+    },
+    {
+      "id": "frontend-q028",
+      "topic": "Web Components i Shadow DOM",
+      "level": 3,
+      "q": "Strona ma globalny CSS poniżej. Element `<my-card>` renderuje swoją treść w Shadow DOM (bez własnych stylów dla `p`). Jak będzie wyglądał `<p>` w środku shadow root?",
+      "code": "body { font-family: Georgia, serif; }\np    { color: red; }",
+      "lang": "css",
+      "options": [
+        "Font będzie Georgia (dziedziczony z body), ale kolor nie będzie czerwony",
+        "Domyślny font przeglądarki i domyślny kolor – shadow root nic nie dziedziczy",
+        "Czerwony, ale z domyślnym fontem – selektory przechodzą, dziedziczenie nie",
+        "Czerwony i Georgia – style globalne obowiązują wszędzie"
+      ],
+      "correct": 0,
+      "why": "Selektory z zewnątrz nie dopasowują elementów wewnątrz shadow root, więc `p { color: red }` nie zadziała. Dziedziczenie natomiast działa normalnie przez granicę (od hosta w dół), więc `font-family` z `body` przechodzi. Tak samo dziedziczą się custom properties – dlatego są głównym kanałem themingu Web Components."
+    },
+    {
+      "id": "frontend-q029",
+      "topic": "fetch vs XHR",
+      "level": 1,
+      "q": "API zwraca 404. Co zrobi ten kod?",
+      "code": "try {\n  const res = await fetch('/api/orders/999');\n  const data = await res.json();\n  console.log('OK', data);\n} catch {\n  console.log('Błąd');\n}",
+      "lang": "typescript",
+      "options": [
+        "Wypisze 'OK' i spróbuje sparsować treść błędu jako dane – `fetch` nie odrzuca promise dla 4xx/5xx",
+        "Wypisze 'Błąd' tylko dla 500, a dla 404 zwróci `null`",
+        "Zawiesi się, bo promise nigdy się nie rozwiąże",
+        "Wypisze 'Błąd', bo `fetch` rzuca wyjątek dla każdego statusu ≥ 400"
+      ],
+      "correct": 0,
+      "why": "`fetch` odrzuca promise tylko przy błędzie sieciowym, CORS lub przerwaniu (`AbortController`). Odpowiedź HTTP z dowolnym statusem to sukces – trzeba sprawdzić `res.ok` (status 200–299) i samemu rzucić błąd. Angular HttpClient zachowuje się inaczej: dla 4xx/5xx emituje `HttpErrorResponse` w kanale błędu."
+    },
+    {
+      "id": "frontend-q030",
+      "topic": "DevTools",
+      "level": 2,
+      "q": "Po kilkukrotnym wejściu i wyjściu z widoku z wykresem pamięć rośnie i nie spada. Co jest najlepszym pierwszym krokiem diagnozy?",
+      "options": [
+        "W Network włączyć 'Disable cache' i obserwować rozmiar transferu",
+        "Zrobić heap snapshot, powtórzyć nawigację kilka razy, wymusić GC, zrobić drugi snapshot i porównać – szukając m.in. detached DOM i rosnącej liczby instancji komponentu",
+        "Dodać `ChangeDetectionStrategy.OnPush` do komponentu wykresu",
+        "Nagrać profil w Lighthouse i sprawdzić wynik Performance"
+      ],
+      "correct": 1,
+      "why": "Wyciek pamięci diagnozuje się porównaniem heap snapshotów w Memory panelu – widać, czego przybywa, a widok Retainers pokazuje, co trzyma obiekt (np. listener na `window`, niezakończona subskrypcja). Lighthouse i Network nie mierzą pamięci JS, a OnPush dotyczy częstotliwości change detection, nie zwalniania referencji."
+    },
+    {
+      "id": "frontend-q031",
+      "topic": "DevTools",
+      "level": 1,
+      "q": "W Network panelu widzisz tajemnicze żądanie do `/api/stats` i chcesz wiedzieć, która linia kodu je wywołała. Gdzie patrzysz?",
+      "options": [
+        "Zakładka Timing – rozbija czas żądania na etapy",
+        "Zakładka Headers – nagłówek `Referer` wskazuje plik źródłowy",
+        "Panel Application → Frames",
+        "Kolumna/zakładka Initiator – pokazuje stack wywołań, który wysłał żądanie"
+      ],
+      "correct": 3,
+      "why": "Initiator pokazuje, co zainicjowało żądanie: parser HTML, skrypt (z pełnym call stackiem), preload itd. Timing to fazy połączenia (DNS, TLS, TTFB, pobranie), a `Referer` wskazuje stronę, nie linię kodu."
+    }
+  ]
+}

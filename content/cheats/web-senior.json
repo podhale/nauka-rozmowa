@@ -1,0 +1,141 @@
+{
+  "cat": "web",
+  "sheets": [
+    {
+      "topic": "BFF",
+      "points": [
+        "BFF = backend na **tym samym originie** co SPA, poufny klient OIDC (Code + PKCE).",
+        "Tokeny tylko na serwerze; przeglądarka ma ciasteczko `HttpOnly; Secure; SameSite`, najlepiej z prefiksem `__Host-`.",
+        "Angular woła `/api` na swoim originie; BFF (np. YARP) dokleja access token i odświeża go.",
+        "Ciasteczko = ryzyko **CSRF** → SameSite + wymagany niestandardowy nagłówek (np. `X-CSRF: 1`).",
+        "Wiele instancji: wspólne klucze Data Protection, sesja server-side (np. Redis) zamiast dużych ciasteczek.",
+        "Wylogowanie: sesja lokalna + `end_session` u IdP, najlepiej back-channel logout."
+      ],
+      "pitfalls": [
+        "Myślenie, że BFF eliminuje XSS – skrypt nadal może wołać API w sesji ofiary, tylko nie wykradnie tokenów.",
+        "Brak ochrony CSRF po przejściu z tokenów w nagłówku na ciasteczka."
+      ],
+      "say": "BFF trzyma tokeny po stronie serwera, a SPA dostaje tylko ciasteczko HttpOnly na tym samym originie; w zamian muszę dodać ochronę CSRF i zadbać o sesję przy wielu instancjach."
+    },
+    {
+      "topic": "CSP",
+      "points": [
+        "CSP = druga linia obrony przed XSS: przeglądarka nie wykona skryptów spoza polityki.",
+        "Rekomendacja: **strict CSP** z nonce lub hashami + `'strict-dynamic'`, nie allowlisty domen.",
+        "`'unsafe-inline'` w `script-src` (bez nonce/hash) = brak ochrony przed wstrzykniętym inline script.",
+        "Angular: atrybut `ngCspNonce` lub token `CSP_NONCE`; Angular 19+ `autoCsp` (developer preview) – hash-based.",
+        "Ważne dyrektywy: `object-src 'none'`, `base-uri`, `frame-ancestors` (clickjacking), `connect-src`.",
+        "Wdrożenie: najpierw `Content-Security-Policy-Report-Only` + `report-to`, potem tryb blokujący."
+      ],
+      "pitfalls": [
+        "Statyczny, powtarzany nonce – musi być losowy per odpowiedź.",
+        "Dopisywanie kolejnych domen analityki aż polityka przestaje cokolwiek blokować."
+      ],
+      "code": "Content-Security-Policy: script-src 'nonce-{random}' 'strict-dynamic'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      "lang": "text",
+      "say": "Wdrażam strict CSP opartą na nonce lub hashach, zaczynając od trybu Report-Only; to druga linia obrony, gdy XSS jednak się przedostanie."
+    },
+    {
+      "topic": "SSRF",
+      "points": [
+        "SSRF: serwer wysyła żądanie pod adres kontrolowany przez atakującego (import z URL, podgląd linku, webhooki, PDF z HTML).",
+        "Cele: usługi wewnętrzne, panele admina, **metadane chmury `169.254.169.254`** z poświadczeniami.",
+        "Allowlista domen, gdy możliwa; inaczej blokada adresów prywatnych, loopback, link-local.",
+        "Waliduj **IP faktycznie używany do połączenia** (np. `SocketsHttpHandler.ConnectCallback`) – chroni przed DNS rebinding.",
+        "`AllowAutoRedirect = false` i walidacja każdego przekierowania; tylko `http/https`; limity rozmiaru i czasu.",
+        "Infrastruktura: IMDSv2 (AWS), egress proxy, segmentacja sieci, izolowany serwis do pobrań."
+      ],
+      "pitfalls": [
+        "Walidacja tekstu hosta (`localhost`, `127.`) – omijana przez inne zapisy IP, domeny i przekierowania.",
+        "Zapominanie o webhookach wychodzących jako wektorze SSRF."
+      ],
+      "say": "Przed SSRF bronię się walidacją adresu IP w momencie połączenia, blokadą zakresów wewnętrznych i przekierowań oraz izolacją sieciową, bo walidacja samego tekstu URL-a nie wystarcza."
+    },
+    {
+      "topic": "Brute force",
+      "points": [
+        "Brute force (jedno konto, wiele haseł) vs **credential stuffing** (wyciekłe pary, wiele kont, botnet).",
+        "Rate limiting po koncie **i** po IP; progresywne opóźnienia; lockout w Identity (`MaxFailedAccessAttempts`).",
+        "MFA = najskuteczniejsza ochrona; passkeys (WebAuthn) wspierane w ASP.NET Core Identity od .NET 10.",
+        "Sprawdzanie haseł z wycieków (Have I Been Pwned, k-anonimowość) przy rejestracji i zmianie hasła.",
+        "Jednolite odpowiedzi i czasy odpowiedzi – brak enumeracji kont (logowanie, reset, rejestracja).",
+        "Sygnały globalne: odsetek nieudanych logowań, bot detection/WAF na brzegu, CAPTCHA po anomalii."
+      ],
+      "pitfalls": [
+        "Trwała blokada konta po N próbach – atakujący może zablokować ofiary (DoS).",
+        "Limit tylko po IP – nie zatrzyma botnetu robiącego 1 próbę z każdego adresu."
+      ],
+      "say": "Logowanie chronię warstwowo: limity po koncie i IP, krótkie rosnące blokady, wykrywanie haseł z wycieków i MFA, bo przy credential stuffingu z botnetu limit po IP nie wystarczy."
+    },
+    {
+      "topic": "mTLS",
+      "points": [
+        "mTLS: obie strony przedstawiają certyfikaty – uwierzytelnienie na poziomie połączenia.",
+        "Zastosowania: serwis–serwis (zero trust), B2B, IoT; w K8s zwykle **service mesh** (Istio, Linkerd).",
+        "Kestrel: `ClientCertificateMode.RequireCertificate`; uwierzytelnianie `AddCertificate()`.",
+        "TLS kończony na proxy → certyfikat w nagłówku + certificate forwarding, **tylko od zaufanego proxy**.",
+        "Waliduj nie tylko łańcuch, ale też czy to oczekiwany klient (thumbprint, SAN, dedykowane CA).",
+        "Największy koszt: cykl życia certyfikatów – automatyczne wydawanie i rotacja (mesh, cert-manager)."
+      ],
+      "pitfalls": [
+        "Akceptowanie nagłówka z certyfikatem od dowolnego źródła – trywialne podszycie.",
+        "Traktowanie mTLS jako autoryzacji użytkownika – uwierzytelnia serwis, nie osobę."
+      ],
+      "say": "mTLS stosuję do uwierzytelniania serwisów w sieci wewnętrznej, najczęściej przez service mesh, bo kluczowe jest automatyczne zarządzanie certyfikatami."
+    },
+    {
+      "topic": "API Gateway",
+      "points": [
+        "Pojedynczy punkt wejścia: routing, terminacja TLS, walidacja tokenów, rate limiting, CORS, logowanie/tracing.",
+        "Implementacje: YARP (.NET), Azure API Management, AWS API Gateway, Kong.",
+        "Ma być **cienki** – bez logiki biznesowej; agregacje per klient → wzorzec BFF.",
+        "Zero trust: serwisy za gatewayem nadal walidują tokeny (audience, scope).",
+        "Serwisy za gatewayem: `ForwardedHeaders` z zaufanymi proxy (`X-Forwarded-*`).",
+        "Gateway = ruch północ–południe; service mesh = wschód–zachód."
+      ],
+      "pitfalls": [
+        "Gateway jako single point of failure bez HA i timeoutów.",
+        "Rozrost logiki w gatewayu do rozproszonego monolitu."
+      ],
+      "code": "builder.Services.AddReverseProxy()\n    .LoadFromConfig(builder.Configuration.GetSection(\"ReverseProxy\"));\napp.MapReverseProxy();",
+      "lang": "csharp",
+      "say": "API Gateway to cienka warstwa brzegowa: routing, uwierzytelnienie, limity i observability, a logika per klient trafia do BFF, nie do gatewaya."
+    },
+    {
+      "topic": "HTTP/2 i HTTP/3",
+      "points": [
+        "HTTP/1.1: jedno żądanie naraz na połączenie; HTTP/2: **multipleksacja** w jednym TCP, HPACK, binarny.",
+        "HTTP/2 ma **head-of-line blocking TCP** – zgubiony pakiet wstrzymuje wszystkie strumienie.",
+        "HTTP/3 = QUIC (UDP) + TLS 1.3: niezależne strumienie, szybszy handshake, migracja połączenia.",
+        "Odkrywanie HTTP/3 przez `Alt-Svc` (lub rekord DNS HTTPS); fallback do HTTP/2, gdy UDP zablokowane.",
+        "Kestrel: `HttpProtocols.Http1AndHttp2AndHttp3`, na Linuksie wymaga libmsquic; często HTTP/3 kończy się na CDN.",
+        "0-RTT może być odtworzone (replay) – tylko żądania idempotentne; gRPC wymaga HTTP/2+."
+      ],
+      "pitfalls": [
+        "Utrzymywanie domain shardingu i sklejania plików z czasów HTTP/1.1.",
+        "Oczekiwanie dużego zysku z HTTP/3 w stabilnej sieci data center."
+      ],
+      "code": "l.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;",
+      "lang": "csharp",
+      "say": "HTTP/2 rozwiązał multipleksację, ale zostawił head-of-line blocking TCP; HTTP/3 na QUIC usuwa go i najbardziej pomaga na sieciach mobilnych ze stratami pakietów."
+    },
+    {
+      "topic": "Webhooks",
+      "points": [
+        "Podpis HMAC-SHA256 z `id.timestamp.rawBody`; nagłówki wg Standard Webhooks: `webhook-id`, `webhook-timestamp`, `webhook-signature`.",
+        "Odbiorca liczy podpis z **surowych bajtów body** i porównuje `CryptographicOperations.FixedTimeEquals`.",
+        "Replay: odrzucaj stare znaczniki czasu (kilka minut) i deduplikuj po id zdarzenia.",
+        "Dostawa **at-least-once**, kolejność niegwarantowana → idempotentny odbiorca, wersje lub 'thin events'.",
+        "Odbiorca szybko zwraca 2xx i przetwarza asynchronicznie; nadawca: retry z backoffem, potem wyłączenie endpointu.",
+        "Nadawca: outbox dla zdarzeń, walidacja URL-i klientów (SSRF), rotacja sekretów z okresem dwóch kluczy."
+      ],
+      "pitfalls": [
+        "Liczenie HMAC z ponownie zserializowanego JSON-a zamiast surowego body.",
+        "Porównanie podpisów przez `==` (timing attack) i brak ochrony przed replay."
+      ],
+      "code": "var expected = HMACSHA256.HashData(secret, signedBytes);\nif (!CryptographicOperations.FixedTimeEquals(expected, given))\n    return Results.Unauthorized();",
+      "lang": "csharp",
+      "say": "Webhooki podpisuję HMAC z id, timestampem i surowym body; odbiorca weryfikuje podpis w czasie stałym, odrzuca stare wiadomości i deduplikuje, bo dostawa jest at-least-once."
+    }
+  ]
+}

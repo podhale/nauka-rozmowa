@@ -1,0 +1,571 @@
+{
+  "cat": "testing",
+  "name": "Testy (.NET i Angular)",
+  "cards": [
+    {
+      "id": "testing-001",
+      "topic": "Piramida testów",
+      "level": 1,
+      "q": "Czym jest piramida testów i dlaczego ma taki kształt?",
+      "a": "Na dole jest dużo szybkich i tanich testów jednostkowych, w środku mniej testów integracyjnych, na górze nieliczne testy e2e. Im wyżej, tym test daje więcej pewności, że całość działa, ale jest wolniejszy, droższy w utrzymaniu i bardziej podatny na flakiness. Kształt to kwestia ekonomii: szybki feedback z dołu, a e2e tylko dla kluczowych ścieżek biznesowych. Istnieją alternatywy, np. testing trophy (nacisk na testy integracyjne), i dla typowego Web API z bazą danych testy integracyjne często dają najlepszy stosunek kosztu do pewności.",
+      "tip": "Rekruter lubi usłyszeć, że proporcje zależą od systemu, a nie są dogmatem – oraz antywzorzec „ice cream cone”, czyli głównie ręczne testy i e2e."
+    },
+    {
+      "id": "testing-002",
+      "topic": "Unit vs integration vs e2e",
+      "level": 1,
+      "q": "Czym różnią się testy jednostkowe, integracyjne i end-to-end?",
+      "a": "Test jednostkowy sprawdza małą jednostkę logiki (klasę, funkcję) w izolacji – zależności zewnętrzne są zastąpione test doubles, wykonuje się w milisekundach. Test integracyjny sprawdza współpracę kilku elementów z prawdziwą infrastrukturą: np. endpoint API + EF Core + prawdziwa baza w kontenerze. Test e2e przechodzi przez cały system z perspektywy użytkownika – przeglądarka, frontend, backend, baza. Granica „jednostki” bywa dyskusyjna: dla mnie to raczej jednostka zachowania niż pojedyncza klasa."
+    },
+    {
+      "id": "testing-003",
+      "topic": "AAA",
+      "level": 1,
+      "q": "Co oznacza wzorzec AAA w testach?",
+      "a": "Arrange – przygotowanie danych, obiektu testowanego i zależności; Act – jedno wywołanie testowanego zachowania; Assert – sprawdzenie wyniku lub efektu. Taki podział sprawia, że test czyta się jak specyfikację. Dobra praktyka: jedno Act na test, a nazwa testu opisuje scenariusz i oczekiwany wynik, np. Method_Scenario_ExpectedResult albo zdanie po ludzku. Odpowiednik w BDD to Given-When-Then.",
+      "code": "[Fact]\npublic void ApplyDiscount_WhenOrderAbove100_Gives10Percent()\n{\n    // Arrange\n    var order = new Order(total: 200m);\n    var sut = new DiscountService();\n\n    // Act\n    var result = sut.Apply(order);\n\n    // Assert\n    Assert.Equal(180m, result.Total);\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "testing-004",
+      "topic": "FIRST",
+      "level": 2,
+      "q": "Co oznacza akronim FIRST w kontekście dobrych testów jednostkowych?",
+      "a": "Fast – wykonują się szybko, więc uruchamiam je często. Independent/Isolated – nie zależą od siebie ani od kolejności, każdy przygotowuje własny stan. Repeatable – dają ten sam wynik zawsze i wszędzie, bez zależności od czasu, sieci czy losowości. Self-validating – same mówią pass/fail, bez ręcznego sprawdzania logów. Timely – pisane w odpowiednim momencie, najlepiej razem z kodem (lub przed nim w TDD). Naruszenie R lub I to najczęstsze źródło flaky testów."
+    },
+    {
+      "id": "testing-005",
+      "topic": "Test doubles",
+      "level": 1,
+      "q": "Jakie są rodzaje test doubles i czym różni się mock od stuba?",
+      "a": "Dummy – obiekt przekazywany tylko po to, żeby spełnić sygnaturę. Stub – zwraca zaprogramowane odpowiedzi, służy do sterowania wejściem testu (np. repozytorium zwraca użytkownika). Mock – ma oczekiwania co do interakcji i test weryfikuje, że wywołano go w określony sposób (np. że wysłano e-mail). Spy – rejestruje wywołania prawdziwego lub zastępczego obiektu do późniejszego sprawdzenia. Fake – działająca, uproszczona implementacja, np. repozytorium w pamięci na słowniku albo FakeTimeProvider. Zasada: stubuję zapytania, mockuję tylko istotne efekty uboczne.",
+      "tip": "W bibliotekach jak Moq wszystko nazywa się Mock, ale rozróżnienie stub/mock dotyczy tego, jak go używasz w teście – to częsty follow-up."
+    },
+    {
+      "id": "testing-006",
+      "topic": "xUnit: Fact i Theory",
+      "level": 1,
+      "q": "Czym różni się [Fact] od [Theory] w xUnit?",
+      "a": "[Fact] to test bez parametrów – jeden przypadek. [Theory] to test parametryzowany: dane dostarczają atrybuty [InlineData] (stałe w atrybucie), [MemberData] (właściwość lub metoda statyczna) albo [ClassData] (osobna klasa). Każdy zestaw danych jest osobnym przypadkiem testowym w raporcie. Dla złożonych obiektów wygodne jest TheoryData<T>, które daje typowanie.",
+      "code": "[Theory]\n[InlineData(\"\", false)]\n[InlineData(\"abc\", false)]\n[InlineData(\"jan@example.com\", true)]\npublic void IsValidEmail_ReturnsExpected(string input, bool expected)\n{\n    Assert.Equal(expected, EmailValidator.IsValid(input));\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "testing-007",
+      "topic": "xUnit: cykl życia testu",
+      "level": 2,
+      "q": "Jak w xUnit zrobić setup i teardown, skoro nie ma [SetUp]?",
+      "a": "xUnit tworzy nową instancję klasy testowej dla każdego testu, więc setup piszę w konstruktorze, a sprzątanie w Dispose (IDisposable) lub DisposeAsync. To wymusza izolację: pola klasy nie przenoszą stanu między testami. Dla asynchronicznego przygotowania jest IAsyncLifetime. Gdy coś drogiego ma być współdzielone (kontener z bazą, WebApplicationFactory), używam fixture: IClassFixture<T> albo collection fixture.",
+      "code": "public class CartTests : IDisposable\n{\n    private readonly Cart _cart;\n\n    public CartTests() => _cart = new Cart(); // setup przed każdym testem\n\n    [Fact]\n    public void NewCart_IsEmpty() => Assert.Empty(_cart.Items);\n\n    public void Dispose() { /* teardown po każdym teście */ }\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "testing-008",
+      "topic": "xUnit: fixtures",
+      "level": 2,
+      "q": "Czym są IClassFixture i ICollectionFixture w xUnit?",
+      "a": "IClassFixture<T> tworzy jeden obiekt T współdzielony przez wszystkie testy w danej klasie – xUnit wstrzykuje go przez konstruktor i zwalnia po zakończeniu klasy. Collection fixture (klasa z [CollectionDefinition] implementująca ICollectionFixture<T>) współdzieli obiekt między wieloma klasami oznaczonymi [Collection(\"nazwa\")]. Typowe zastosowanie to drogi zasób: WebApplicationFactory, kontener z bazą. Trzeba pamiętać, że współdzielony obiekt może przenosić stan, więc dane testowe muszą być odizolowane (unikalne id, reset bazy).",
+      "code": "public class OrdersApiTests : IClassFixture<ApiFactory>\n{\n    private readonly HttpClient _client;\n\n    public OrdersApiTests(ApiFactory factory) => _client = factory.CreateClient();\n\n    [Fact]\n    public async Task GetOrders_Returns200()\n        => (await _client.GetAsync(\"/api/orders\")).EnsureSuccessStatusCode();\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "testing-009",
+      "topic": "xUnit: IAsyncLifetime",
+      "level": 2,
+      "q": "Do czego służy IAsyncLifetime w xUnit?",
+      "a": "Konstruktor nie może być asynchroniczny, a Dispose jest synchroniczny, więc do asynchronicznego setupu i sprzątania służy IAsyncLifetime z metodami InitializeAsync i DisposeAsync. Implementuje go klasa testowa albo fixture – typowo fixture uruchamiający kontener Testcontainers albo migrujący bazę. W xUnit v3 te metody zwracają ValueTask, a interfejs rozszerza IAsyncDisposable; w v2 zwracały Task.",
+      "code": "public class PostgresFixture : IAsyncLifetime\n{\n    public PostgreSqlContainer Db { get; } = new PostgreSqlBuilder(\"postgres:17-alpine\").Build(); // nowsze Testcontainers wymagają jawnego obrazu\n\n    public async ValueTask InitializeAsync() => await Db.StartAsync();\n    public async ValueTask DisposeAsync() => await Db.DisposeAsync();\n}",
+      "lang": "csharp",
+      "tip": "Kod pokazuje sygnatury xUnit v3; w xUnit v2 byłoby Task InitializeAsync() i Task DisposeAsync()."
+    },
+    {
+      "id": "testing-010",
+      "topic": "NUnit vs xUnit",
+      "level": 2,
+      "q": "Czym różnią się NUnit i xUnit? Który wybierasz?",
+      "a": "Najważniejsza różnica to model cyklu życia: NUnit domyślnie używa jednej instancji klasy dla wszystkich testów i ma atrybuty [SetUp]/[TearDown]/[OneTimeSetUp], a xUnit tworzy instancję per test i używa konstruktora, IDisposable oraz fixtures. NUnit ma [Test]/[TestCase], xUnit [Fact]/[Theory]. NUnit ma bogatszy constraint model (Assert.That) i więcej wbudowanych atrybutów, xUnit jest bardziej minimalistyczny i domyślnie zrównolegla kolekcje testów. Oba są dojrzałe; wybieram to, czego używa zespół – w nowych projektach .NET najczęściej spotyka się xUnit, a MSTest także jest aktywnie rozwijany."
+    },
+    {
+      "id": "testing-011",
+      "topic": "Moq i NSubstitute",
+      "level": 2,
+      "q": "Jak tworzysz mocki w .NET? Porównaj Moq i NSubstitute.",
+      "a": "Obie biblioteki generują dynamiczne implementacje interfejsów (i wirtualnych członków klas). Moq opiera się na obiekcie Mock<T> i wyrażeniach Setup/Returns/Verify, a sam obiekt bierze się z .Object. NSubstitute ma zwięźlejszą składnię: Substitute.For<T>(), konfiguracja przez wywołanie metody + Returns i weryfikacja przez Received(). Funkcjonalnie są porównywalne, wybór to głównie kwestia stylu. W 2023 r. Moq był przedmiotem kontrowersji, gdy wersja 4.20 dołączyła narzędzie SponsorLink odczytujące lokalnie e-mail z konfiguracji git; zostało usunięte w kolejnym wydaniu, ale część zespołów przeszła wtedy na NSubstitute.",
+      "code": "// Moq\nvar repo = new Mock<IUserRepository>();\nrepo.Setup(r => r.GetAsync(1)).ReturnsAsync(new User(1, \"Ala\"));\nvar sut = new UserService(repo.Object);\nrepo.Verify(r => r.SaveAsync(It.IsAny<User>()), Times.Never);\n\n// NSubstitute\nvar repo2 = Substitute.For<IUserRepository>();\nrepo2.GetAsync(1).Returns(new User(1, \"Ala\"));\nawait repo2.DidNotReceive().SaveAsync(Arg.Any<User>());",
+      "lang": "csharp"
+    },
+    {
+      "id": "testing-012",
+      "topic": "Biblioteki asercji",
+      "level": 2,
+      "q": "Po co FluentAssertions czy Shouldly, skoro jest Assert?",
+      "a": "Dają czytelniejsze asercje w stylu języka naturalnego (result.Should().Be(5), result.ShouldBe(5)) i przede wszystkim lepsze komunikaty błędów – np. porównanie grafu obiektów pokazuje, które pole się różni (BeEquivalentTo). Mają też wygodne asercje dla kolekcji, wyjątków i czasu. Warto wiedzieć o licencji: FluentAssertions od wersji 8 (2025) wymaga płatnej licencji przy użyciu komercyjnym, wersje 7.x pozostały na licencji Apache 2.0. Dlatego część zespołów zostaje na v7, przechodzi na Shouldly (open source) albo wraca do wbudowanych asercji.",
+      "code": "// FluentAssertions\norder.Should().BeEquivalentTo(expected, o => o.Excluding(x => x.CreatedAt));\nawait act.Should().ThrowAsync<ValidationException>();\n\n// Shouldly\norder.Total.ShouldBe(180m);",
+      "lang": "csharp"
+    },
+    {
+      "id": "testing-013",
+      "topic": "WebApplicationFactory",
+      "level": 2,
+      "q": "Jak pisać testy integracyjne ASP.NET Core z WebApplicationFactory?",
+      "a": "WebApplicationFactory<TEntryPoint> z pakietu Microsoft.AspNetCore.Mvc.Testing uruchamia całą aplikację w pamięci na TestServer – prawdziwy pipeline middleware, routing, DI, serializację – a CreateClient() daje HttpClient bez otwierania portu. W podklasie nadpisuję ConfigureWebHost i w ConfigureTestServices podmieniam zależności zewnętrzne: connection string na kontener testowy, zewnętrzne API na fake, uwierzytelnianie na testowy handler. Przy top-level statements klasa Program musi być dostępna dla projektu testów (w starszych wersjach .NET dodawało się public partial class Program {}).",
+      "code": "public class ApiFactory : WebApplicationFactory<Program>\n{\n    protected override void ConfigureWebHost(IWebHostBuilder builder)\n    {\n        builder.UseEnvironment(\"Testing\");\n        builder.ConfigureTestServices(services =>\n        {\n            services.RemoveAll<IPaymentGateway>();\n            services.AddSingleton<IPaymentGateway, FakePaymentGateway>();\n        });\n    }\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "testing-014",
+      "topic": "Testcontainers vs InMemory",
+      "level": 3,
+      "q": "Dlaczego EF Core InMemory provider to zły wybór do testów integracyjnych i czym go zastąpić?",
+      "a": "InMemory nie jest relacyjną bazą: nie egzekwuje ograniczeń (klucze obce, unikalność, długości), nie ma prawdziwych transakcji, nie tłumaczy LINQ na SQL – więc zapytanie, które w produkcji rzuci wyjątek translacji albo zachowa się inaczej (case sensitivity, collation), w teście przejdzie. Nie obsługuje też surowego SQL ani funkcji specyficznych dla bazy. Sam zespół EF Core odradza go do testów. Lepiej użyć Testcontainers – prawdziwy SQL Server/PostgreSQL w kontenerze Docker uruchamiany przez fixture, a stan między testami resetować np. biblioteką Respawn albo transakcją wycofywaną po teście. SQLite in-memory to kompromis, ale też inny silnik.",
+      "code": "public class DbFixture : IAsyncLifetime\n{\n    private readonly MsSqlContainer _db = new MsSqlBuilder(\"mcr.microsoft.com/mssql/server:2022-latest\").Build();\n    public string ConnectionString => _db.GetConnectionString();\n\n    public async ValueTask InitializeAsync() => await _db.StartAsync();\n    public async ValueTask DisposeAsync() => await _db.DisposeAsync();\n}",
+      "lang": "csharp",
+      "tip": "Testy jednostkowe logiki domenowej i tak nie powinny potrzebować DbContext – izoluj zapytania za repozytorium lub testuj je integracyjnie."
+    },
+    {
+      "id": "testing-015",
+      "topic": "TimeProvider",
+      "level": 2,
+      "q": "Jak testować kod zależny od aktualnego czasu w .NET?",
+      "a": "Bezpośrednie DateTime.UtcNow czyni test niepowtarzalnym. Od .NET 8 jest abstrakcja TimeProvider: w produkcji rejestruję TimeProvider.System, a w kodzie wstrzykuję TimeProvider i wołam GetUtcNow(). W testach używam FakeTimeProvider z pakietu Microsoft.Extensions.TimeProvider.Testing – mogę ustawić konkretny moment (SetUtcNow) i przesuwać czas (Advance), co działa też z timerami i Task.Delay przyjmującym TimeProvider. Wcześniej pisało się własny interfejs IClock / ISystemClock.",
+      "code": "public class TokenService(TimeProvider time)\n{\n    public bool IsExpired(Token t) => time.GetUtcNow() >= t.ExpiresAt;\n}\n\n[Fact]\npublic void Token_ExpiresAfterOneHour()\n{\n    var time = new FakeTimeProvider(DateTimeOffset.Parse(\"2026-01-01T10:00Z\"));\n    var sut = new TokenService(time);\n    var token = new Token(ExpiresAt: time.GetUtcNow().AddHours(1));\n\n    time.Advance(TimeSpan.FromHours(1));\n\n    Assert.True(sut.IsExpired(token));\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "testing-016",
+      "topic": "Co testować",
+      "level": 2,
+      "q": "Co warto testować, a czego nie?",
+      "a": "Testuję logikę biznesową, reguły walidacji, przypadki brzegowe i ścieżki błędów, integrację z bazą i kontrakty API, a w UI – zachowanie widoczne dla użytkownika. Każdy znaleziony bug dostaje test regresyjny. Nie testuję kodu frameworka i bibliotek (że EF Core zapisuje albo że Angular renderuje binding), trywialnych getterów/setterów, mapowań bez logiki, prywatnych metod bezpośrednio – one są pokryte przez publiczne zachowanie. Kryterium: czy ten test złapie realny błąd i czy nie zepsuje się przy refaktoryzacji, która nie zmienia zachowania."
+    },
+    {
+      "id": "testing-017",
+      "topic": "Code coverage",
+      "level": 2,
+      "q": "Czy wysokie code coverage powinno być celem?",
+      "a": "Coverage mówi, które linie lub gałęzie zostały wykonane podczas testów, a nie czy zostały sensownie sprawdzone – test bez asercji też podnosi pokrycie. Dlatego jest dobrym narzędziem diagnostycznym (pokazuje nieprzetestowane obszary), ale złym celem: wymuszony próg typu 100% prowadzi do testów pisanych pod metrykę, kruchych i testujących implementację (prawo Goodharta). Rozsądne podejście: obserwować trend, pilnować pokrycia krytycznej logiki, ewentualnie mutation testing (np. Stryker.NET) do oceny jakości testów. W .NET coverage zbiera się np. przez coverlet lub Microsoft.Testing.Extensions.CodeCoverage."
+    },
+    {
+      "id": "testing-018",
+      "topic": "TDD",
+      "level": 2,
+      "q": "Na czym polega TDD i cykl red-green-refactor?",
+      "a": "Red – piszę mały test na kolejne zachowanie i sprawdzam, że nie przechodzi (to potwierdza, że test w ogóle coś sprawdza). Green – piszę najprostszy kod, który sprawia, że test przechodzi. Refactor – poprawiam strukturę kodu i testów przy zielonych testach jako siatce bezpieczeństwa. Korzyści: projekt API od strony użytkownika, mały krok, wysoka testowalność i brak martwego kodu. TDD dobrze sprawdza się w logice domenowej i algorytmach; przy eksploracji czy UI bywa mniej praktyczne i warto to szczerze powiedzieć."
+    },
+    {
+      "id": "testing-019",
+      "topic": "Over-mocking",
+      "level": 3,
+      "q": "Jakie są skutki nadmiernego mockowania i jak go unikać?",
+      "a": "Testy, które mockują każdą zależność i weryfikują każde wywołanie, testują implementację zamiast zachowania – psują się przy każdej refaktoryzacji, choć zachowanie się nie zmieniło, i potrafią przechodzić, choć system nie działa (mock zachowuje się inaczej niż prawdziwa zależność). Unikam tego, mockując tylko granice systemu (zewnętrzne API, e-mail, czas, kolejki), używając prawdziwych obiektów domenowych i fake'ów zamiast mocków, sprawdzając wynik i stan zamiast sekwencji wywołań, oraz przenosząc część pewności do testów integracyjnych. Duża liczba mocków w setupie to też sygnał, że klasa ma za dużo zależności."
+    },
+    {
+      "id": "testing-020",
+      "topic": "TestBed",
+      "level": 1,
+      "q": "Czym jest TestBed w Angularze?",
+      "a": "TestBed tworzy testowy moduł/środowisko Angulara – konfiguruję w nim importy (standalone komponent trafia do imports), providery i ewentualne nadpisania, a następnie tworzę komponent przez TestBed.createComponent albo pobieram serwis przez TestBed.inject. Dzięki temu testuję klasę razem z DI i szablonem tak, jak działa w aplikacji. Proste serwisy bez zależności Angulara można testować bez TestBed, po prostu przez new.",
+      "code": "beforeEach(() => {\n  TestBed.configureTestingModule({\n    imports: [UserCardComponent],\n    providers: [{ provide: UserService, useValue: userServiceStub }],\n  });\n  fixture = TestBed.createComponent(UserCardComponent);\n});",
+      "lang": "typescript"
+    },
+    {
+      "id": "testing-021",
+      "topic": "ComponentFixture",
+      "level": 2,
+      "q": "Do czego służą ComponentFixture, detectChanges i whenStable?",
+      "a": "ComponentFixture to uchwyt do utworzonego komponentu: componentInstance (klasa), nativeElement/debugElement (DOM), componentRef. W testach change detection nie dzieje się samo – fixture.detectChanges() uruchamia ją, wywołując przy pierwszym razie ngOnInit i aktualizując DOM. await fixture.whenStable() czeka, aż aplikacja się ustabilizuje – zakończą się zaplanowane zadania asynchroniczne i oczekujące renderowanie; w testach zoneless to podstawowy sposób oczekiwania na aktualizację widoku. Alternatywnie fixture.autoDetectChanges() włącza automatyczne wykrywanie.",
+      "code": "it('shows user name', async () => {\n  fixture.componentRef.setInput('userId', 1);\n  await fixture.whenStable();\n\n  const h2 = fixture.nativeElement.querySelector('h2');\n  expect(h2.textContent).toContain('Ala');\n});",
+      "lang": "typescript"
+    },
+    {
+      "id": "testing-022",
+      "topic": "Testowanie input()",
+      "level": 2,
+      "q": "Jak w teście ustawić wartość inputu komponentu zdefiniowanego przez input()?",
+      "a": "input() tworzy InputSignal, który jest tylko do odczytu z perspektywy komponentu – nie da się zrobić component.name = 'x' ani wywołać set. W teście używam fixture.componentRef.setInput('nazwa', wartość), które działa jak binding z rodzica i oznacza komponent do odświeżenia; potem detectChanges lub whenStable. Ta sama metoda działa też dla klasycznych @Input. Nazwa w setInput to publiczna nazwa inputu (alias, jeśli jest). Alternatywa to test-host – mały komponent-rodzic w teście, który przekazuje dane przez szablon.",
+      "code": "@Component({ selector: 'app-badge', template: `{{ label() }} ({{ count() }})` })\nexport class BadgeComponent {\n  label = input.required<string>();\n  count = input(0);\n}\n\n// test\nfixture.componentRef.setInput('label', 'Nowe');\nfixture.componentRef.setInput('count', 3);\nfixture.detectChanges();\nexpect(fixture.nativeElement.textContent).toContain('Nowe (3)');",
+      "lang": "typescript"
+    },
+    {
+      "id": "testing-023",
+      "topic": "HttpTestingController",
+      "level": 2,
+      "q": "Jak testować serwis korzystający z HttpClient?",
+      "a": "W providerach konfiguruję provideHttpClient() i provideHttpClientTesting() (kolejność ma znaczenie – testing po zwykłym), co podmienia backend na atrapę. Następnie pobieram HttpTestingController, wywołuję metodę serwisu, a expectOne(url) sprawdza, że poszedł dokładnie jeden pasujący request i zwraca TestRequest; mogę sprawdzić metodę i body, a odpowiedź podaję przez flush (lub błąd przez flush z statusem / error). W afterEach httpTesting.verify() upewnia się, że nie ma nieoczekiwanych, niezałatwionych requestów. HttpClientTestingModule to starsze podejście.",
+      "code": "TestBed.configureTestingModule({\n  providers: [provideHttpClient(), provideHttpClientTesting()],\n});\nconst service = TestBed.inject(UserApi);\nconst httpTesting = TestBed.inject(HttpTestingController);\n\nconst result = firstValueFrom(service.getUser(1));\nconst req = httpTesting.expectOne('/api/users/1');\nexpect(req.request.method).toBe('GET');\nreq.flush({ id: 1, name: 'Ala' });\n\nexpect(await result).toEqual({ id: 1, name: 'Ala' });\nhttpTesting.verify();",
+      "lang": "typescript"
+    },
+    {
+      "id": "testing-024",
+      "topic": "Mockowanie serwisów",
+      "level": 2,
+      "q": "Jak zamockować zależność komponentu w teście Angulara?",
+      "a": "Przez providery w TestBed: { provide: Serwis, useValue: stub } dla prostego obiektu z metodami, useClass dla klasy-fake'a albo useFactory. Stub może zwracać of(...) dla Observable lub signal(...) dla stanu. Jeśli serwis jest dostarczany na poziomie komponentu (providers w @Component), trzeba użyć TestBed.overrideComponent albo overrideProvider, bo zwykłe providery modułu tego nie nadpiszą. Do weryfikacji wywołań używam spy z frameworka testowego (vi.fn() w Vitest, jest.fn(), jasmine.createSpyObj).",
+      "code": "const cartStub = {\n  items: signal<Item[]>([]),\n  add: vi.fn(),\n};\n\nTestBed.configureTestingModule({\n  imports: [ProductComponent],\n  providers: [{ provide: CartService, useValue: cartStub }],\n});",
+      "lang": "typescript"
+    },
+    {
+      "id": "testing-025",
+      "topic": "fakeAsync vs async",
+      "level": 3,
+      "q": "Czym różnią się fakeAsync/tick, waitForAsync i zwykłe async/await w testach Angulara?",
+      "a": "fakeAsync uruchamia test w specjalnej strefie zone.js z wirtualnym czasem: tick(ms) przesuwa zegar i wykonuje timery, flush() wykonuje wszystkie, flushMicrotasks() – mikrotaski; test jest synchroniczny i deterministyczny, idealny do debounceTime czy setTimeout. Pozostawione timery kończą test błędem. waitForAsync (dawne async) czeka na wszystkie zadania asynchroniczne w strefie – dziś rzadko potrzebne. Zwykłe async/await z await fixture.whenStable() działa bez zone.js, więc to naturalny wybór w aplikacjach zoneless. fakeAsync wymaga zone.js; przy Vitest do wirtualnego czasu używa się zwykle fake timers z Vitest (vi.useFakeTimers / vi.advanceTimersByTime).",
+      "code": "it('debounces search', fakeAsync(() => {\n  component.query.set('ang');\n  tick(299);\n  expect(api.search).not.toHaveBeenCalled();\n  tick(1);\n  expect(api.search).toHaveBeenCalledWith('ang');\n}));",
+      "lang": "typescript"
+    },
+    {
+      "id": "testing-026",
+      "topic": "Test runnery w Angularze",
+      "level": 2,
+      "q": "Jak zmieniały się narzędzia do testów jednostkowych w Angularze?",
+      "a": "Przez lata domyślne były Jasmine (framework i asercje) oraz Karma (runner w prawdziwej przeglądarce) – Karma została oficjalnie zdeprecjonowana. Wiele zespołów przeszło na Jest (jsdom, szybki, snapshoty), zwykle przez zewnętrzne presety. Od Angular 21 domyślnym runnerem w nowych projektach CLI jest Vitest – szybki, oparty na Vite/esbuild, z API zgodnym z Jest (describe/it/expect, vi.fn), działający w jsdom/happy-dom lub w trybie przeglądarkowym. Przy migracji ze starych testów trzeba głównie zamienić jasmine.createSpyObj i spyOn na odpowiedniki vi.* oraz przejrzeć użycie fakeAsync.",
+      "tip": "Ważniejsze od runnera jest to, jak piszesz testy – TestBed i Angular Testing Library działają ze wszystkimi."
+    },
+    {
+      "id": "testing-027",
+      "topic": "Angular Testing Library",
+      "level": 2,
+      "q": "Czym jest Angular Testing Library i czym różni się od testów na samym TestBed?",
+      "a": "To nakładka na TestBed z rodziny Testing Library, której filozofia brzmi: testuj tak, jak użytkownik używa aplikacji. Zamiast odwoływać się do componentInstance i selektorów CSS, renderuję komponent funkcją render i szukam elementów po roli, etykiecie czy tekście (screen.getByRole('button', { name: 'Zapisz' })), a interakcje symuluję przez user-event. Testy są odporne na refaktoryzację szablonu i przy okazji wymuszają dostępność. render sam wywołuje change detection, a findBy* czeka na asynchroniczne pojawienie się elementu.",
+      "code": "it('adds item to cart', async () => {\n  await render(ProductComponent, {\n    inputs: { product: { id: 1, name: 'Kubek' } },\n    providers: [{ provide: CartService, useValue: cartStub }],\n  });\n\n  await userEvent.click(screen.getByRole('button', { name: /dodaj/i }));\n\n  expect(cartStub.add).toHaveBeenCalledWith(1);\n});",
+      "lang": "typescript"
+    },
+    {
+      "id": "testing-028",
+      "topic": "E2E: Playwright vs Cypress",
+      "level": 2,
+      "q": "Jak podchodzisz do testów e2e? Playwright czy Cypress?",
+      "a": "Testy e2e piszę tylko dla krytycznych ścieżek (logowanie, zakup, główny proces), bo są wolne i droższe w utrzymaniu. Playwright (Microsoft) steruje przeglądarkami z zewnątrz przez protokoły, obsługuje Chromium, Firefox i WebKit, wiele kart i domen, równoległość out of the box, ma auto-waiting, trace viewer i codegen; ma też wersję dla .NET. Cypress działa wewnątrz przeglądarki, ma świetny interaktywny runner i time-travel debugging, ale historycznie miał ograniczenia z wieloma kartami i domenami. Niezależnie od narzędzia: stabilne selektory (role, data-testid), brak sztywnych sleepów, izolowane dane testowe i seedowanie stanu przez API zamiast przez UI."
+    },
+    {
+      "id": "testing-029",
+      "topic": "Testowanie sygnałów i serwisów",
+      "level": 3,
+      "q": "Jak testować serwis lub logikę opartą na sygnałach i funkcji inject()?",
+      "a": "Serwis pobieram przez TestBed.inject – wtedy inject() w polach działa, bo jest injection context. Sygnały i computed są synchroniczne: po set() mogę od razu odczytać computed i asercje są proste, bez czekania. Effecty są planowane asynchronicznie i wykonują się w ramach change detection, więc w teście trzeba je wyzwolić – np. przez detectChanges/whenStable komponentu albo dedykowane API TestBed (sprawdź właściwą metodę dla swojej wersji). Funkcje używające inject() poza klasą (np. guardy funkcyjne, fabryki) wywołuję w TestBed.runInInjectionContext.",
+      "code": "it('computes total', () => {\n  const cart = TestBed.inject(CartStore);\n  cart.add({ id: 1, price: 10 });\n  cart.add({ id: 2, price: 5 });\n  expect(cart.total()).toBe(15);           // computed od razu aktualne\n});\n\nit('guard redirects anonymous user', () => {\n  const result = TestBed.runInInjectionContext(() => authGuard(route, state));\n  expect(result).toBeInstanceOf(UrlTree);\n});",
+      "lang": "typescript"
+    },
+    {
+      "id": "testing-030",
+      "topic": "Flaky tests",
+      "level": 3,
+      "q": "Skąd biorą się niestabilne (flaky) testy i jak z nimi walczyć?",
+      "a": "Najczęstsze przyczyny: zależność od czasu i strefy czasowej, sztywne opóźnienia zamiast czekania na warunek, współdzielony stan między testami (statyczne pola, wspólna baza bez resetu) w połączeniu z równoległością i kolejnością, losowe dane bez stałego seeda, zewnętrzne usługi i sieć, wyścigi w kodzie asynchronicznym. Walka: izolacja danych (unikalne identyfikatory, reset bazy), TimeProvider/fake timers, auto-waiting i web-first assertions w e2e, fake'i dla zewnętrznych usług, deterministyczne seedy. Flaky testu nie wyłączam po cichu – kwarantanna z ticketem i naprawa, bo ignorowane czerwone testy niszczą zaufanie do całego zestawu."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "testing-q001",
+      "topic": "xUnit: cykl życia testu",
+      "level": 2,
+      "q": "Klasa testowa xUnit ma 3 metody [Fact] i konstruktor inicjalizujący pole _list = new List<int>(). Ile razy wykona się konstruktor podczas uruchomienia tych testów?",
+      "options": [
+        "3 razy – xUnit tworzy nową instancję klasy dla każdego testu",
+        "1 raz – instancja jest współdzielona przez wszystkie testy w klasie",
+        "0 razy – xUnit wymaga atrybutu [SetUp] do inicjalizacji",
+        "1 raz na kolekcję testów"
+      ],
+      "correct": 0,
+      "why": "xUnit celowo tworzy nową instancję klasy per test, żeby testy nie współdzieliły stanu. Współdzielenie obiektu między testami klasy uzyskuje się jawnie przez IClassFixture. [SetUp] i jedna instancja na klasę to model NUnit."
+    },
+    {
+      "id": "testing-q002",
+      "topic": "xUnit: cykl życia testu",
+      "level": 1,
+      "q": "Gdzie w xUnit umieścić kod przygotowujący (setup) wykonywany przed każdym testem?",
+      "options": [
+        "W metodzie oznaczonej [SetUp]",
+        "W metodzie oznaczonej [TestInitialize]",
+        "W statycznym konstruktorze klasy",
+        "W konstruktorze klasy testowej"
+      ],
+      "correct": 3,
+      "why": "xUnit nie ma atrybutów setup – konstruktor wykonuje się przed każdym testem, a Dispose po nim. [SetUp] to NUnit, [TestInitialize] to MSTest, a statyczny konstruktor wykona się tylko raz."
+    },
+    {
+      "id": "testing-q003",
+      "topic": "xUnit: Fact i Theory",
+      "level": 1,
+      "q": "Metoda oznaczona [Theory] ma trzy atrybuty [InlineData]. Ile przypadków testowych pojawi się w raporcie?",
+      "options": [
+        "Jeden",
+        "Cztery – trzy z danymi i jeden bez",
+        "Trzy",
+        "Zero, bo [Theory] wymaga [MemberData]"
+      ],
+      "correct": 2,
+      "why": "Każdy zestaw danych z [InlineData] to osobny przypadek testowy z własnym wynikiem. [Theory] może korzystać z InlineData, MemberData lub ClassData."
+    },
+    {
+      "id": "testing-q004",
+      "topic": "Test doubles",
+      "level": 2,
+      "q": "Testujesz RegistrationService i chcesz sprawdzić, że po rejestracji wysyłany jest e-mail powitalny przez IEmailSender. Jakiego test double potrzebujesz dla IEmailSender?",
+      "options": [
+        "Stub – wystarczy, że Send zwraca zaprogramowaną wartość",
+        "Mock (lub spy) – weryfikujesz interakcję, czyli czy i z jakimi argumentami wywołano Send",
+        "Dummy – zależność tylko spełnia sygnaturę konstruktora",
+        "Prawdziwej implementacji z serwerem SMTP"
+      ],
+      "correct": 1,
+      "why": "Wysłanie e-maila to efekt uboczny, który jest istotą testowanego zachowania, więc trzeba zweryfikować interakcję – do tego służy mock lub spy. Stub tylko dostarcza dane wejściowe, dummy nic nie robi, a prawdziwy SMTP to materiał na test integracyjny, nie jednostkowy."
+    },
+    {
+      "id": "testing-q005",
+      "topic": "Testcontainers vs InMemory",
+      "level": 3,
+      "q": "Test używający EF Core InMemory provider przechodzi, a na produkcji (SQL Server) ten sam kod rzuca wyjątek przy dodaniu encji z duplikatem unikalnego e-maila. Co jest najbardziej prawdopodobną przyczyną?",
+      "options": [
+        "Test nie wywołał SaveChangesAsync",
+        "InMemory provider nie egzekwuje unikalnych indeksów ani innych ograniczeń relacyjnych",
+        "SQL Server inaczej serializuje DateTime",
+        "InMemory provider działa wolniej, więc timeout ukrył błąd"
+      ],
+      "correct": 1,
+      "why": "InMemory to nie baza relacyjna – nie wymusza unikalnych indeksów, kluczy obcych ani nie tłumaczy zapytań na SQL. Dlatego testy integracyjne lepiej uruchamiać na prawdziwym silniku, np. przez Testcontainers."
+    },
+    {
+      "id": "testing-q006",
+      "topic": "TimeProvider",
+      "level": 2,
+      "q": "Jak najlepiej uczynić testowalną metodę IsWeekendPromoActive(), która wewnątrz używa DateTime.Now?",
+      "options": [
+        "Wstrzyknąć TimeProvider i w teście użyć FakeTimeProvider z ustawioną datą",
+        "Uruchamiać ten test tylko w weekend",
+        "Zmienić datę systemową w teście",
+        "Oznaczyć test jako [Fact(Skip = \"zależy od czasu\")]"
+      ],
+      "correct": 0,
+      "why": "TimeProvider (od .NET 8) to abstrakcja czasu – produkcyjnie TimeProvider.System, w testach FakeTimeProvider z kontrolowaną datą, dzięki czemu test jest powtarzalny. Pozostałe opcje łamią zasadę Repeatable albo po prostu nie testują."
+    },
+    {
+      "id": "testing-q007",
+      "topic": "xUnit: fixtures",
+      "level": 2,
+      "q": "Chcesz, żeby jeden kontener z bazą był uruchamiany raz i współdzielony przez testy z trzech różnych klas. Co użyć w xUnit?",
+      "options": [
+        "IClassFixture<T> na każdej z trzech klas",
+        "Pole statyczne inicjalizowane w konstruktorze każdej klasy",
+        "Atrybut [OneTimeSetUp] w klasie bazowej",
+        "Collection fixture: klasa z [CollectionDefinition] implementująca ICollectionFixture<T> i [Collection] na klasach testowych"
+      ],
+      "correct": 3,
+      "why": "IClassFixture tworzy osobny obiekt dla każdej klasy, więc kontener uruchomiłby się trzy razy. Współdzielenie między klasami daje collection fixture. Pole statyczne bez synchronizacji i sprzątania to proszenie się o kłopoty, a [OneTimeSetUp] to NUnit."
+    },
+    {
+      "id": "testing-q008",
+      "topic": "Code coverage",
+      "level": 1,
+      "q": "Projekt ma 100% line coverage. Co to gwarantuje?",
+      "options": [
+        "Że kod nie zawiera błędów",
+        "Że wszystkie gałęzie i kombinacje warunków zostały sprawdzone",
+        "Że każda linia została wykonana przynajmniej raz podczas testów",
+        "Że każdy test ma poprawne asercje"
+      ],
+      "correct": 2,
+      "why": "Coverage mierzy wyłącznie wykonanie kodu. Test bez asercji też go podnosi, a line coverage nie oznacza pokrycia wszystkich gałęzi ani kombinacji warunków. Dlatego to narzędzie diagnostyczne, a nie dowód jakości."
+    },
+    {
+      "id": "testing-q009",
+      "topic": "TDD",
+      "level": 1,
+      "q": "Jaka jest właściwa kolejność kroków w cyklu TDD?",
+      "options": [
+        "Napisz kod → napisz test → zrefaktoryzuj",
+        "Zrefaktoryzuj → napisz test → napisz kod",
+        "Napisz test, który nie przechodzi → napisz minimalny kod, by przeszedł → zrefaktoryzuj",
+        "Napisz wszystkie testy dla modułu → napisz cały moduł → uruchom testy"
+      ],
+      "correct": 2,
+      "why": "Red-green-refactor: najpierw czerwony test (potwierdza, że test coś sprawdza), potem najprostszy kod do zielonego, na końcu refaktoryzacja przy zielonych testach. TDD to małe iteracje, a nie pisanie wszystkich testów z góry."
+    },
+    {
+      "id": "testing-q010",
+      "topic": "Moq i NSubstitute",
+      "level": 2,
+      "q": "Co sprawdza ostatnia linia testu?",
+      "code": "var sender = new Mock<IEmailSender>();\nvar sut = new RegistrationService(sender.Object);\n\nawait sut.RegisterAsync(\"jan@example.com\");\n\nsender.Verify(s => s.Send(It.IsAny<string>()), Times.Once);",
+      "lang": "csharp",
+      "options": [
+        "Że metoda Send zwróciła wartość różną od null",
+        "Że metoda Send została wywołana dokładnie raz z dowolnym argumentem typu string",
+        "Że metoda Send została skonfigurowana przez Setup",
+        "Że Send wywołano co najmniej raz z pustym stringiem"
+      ],
+      "correct": 1,
+      "why": "Verify sprawdza interakcję z mockiem: It.IsAny<string>() dopasowuje dowolny argument, a Times.Once wymaga dokładnie jednego wywołania (zero lub dwa wywołania kończą test błędem). Verify nie sprawdza zwracanej wartości ani konfiguracji Setup."
+    },
+    {
+      "id": "testing-q011",
+      "topic": "WebApplicationFactory",
+      "level": 2,
+      "q": "W teście z WebApplicationFactory chcesz zastąpić prawdziwą bramkę płatności fake'iem. Gdzie to zrobić, żeby rejestracja nadpisała tę z Program.cs?",
+      "options": [
+        "W ConfigureWebHost przez builder.ConfigureTestServices(...), które wykonuje się po rejestracjach aplikacji",
+        "W konstruktorze klasy testowej, tworząc new ServiceCollection()",
+        "W appsettings.Testing.json",
+        "Nie da się – WebApplicationFactory zawsze używa prawdziwych serwisów"
+      ],
+      "correct": 0,
+      "why": "ConfigureTestServices uruchamia się po rejestracjach z aplikacji, więc pozwala usunąć (RemoveAll) i podmienić serwisy. Nowa ServiceCollection w teście nie ma związku z hostem aplikacji, a appsettings zmienia konfigurację, nie rejestracje w DI."
+    },
+    {
+      "id": "testing-q012",
+      "topic": "ComponentFixture",
+      "level": 1,
+      "q": "W teście ustawiasz component.title = 'Nowy' (zwykłe pole) i od razu sprawdzasz h1 w DOM, ale wciąż widzisz starą wartość. Co jest najbardziej prawdopodobną przyczyną?",
+      "options": [
+        "Pole title musi być oznaczone @Input",
+        "TestBed nie renderuje szablonów, trzeba użyć e2e",
+        "Należy użyć fixture.destroy() i utworzyć komponent ponownie",
+        "Nie uruchomiono change detection – brakuje fixture.detectChanges() lub await fixture.whenStable()"
+      ],
+      "correct": 3,
+      "why": "W testach widok nie aktualizuje się samoczynnie po zmianie pola – trzeba wyzwolić change detection. TestBed renderuje szablon normalnie, a @Input nie ma tu znaczenia."
+    },
+    {
+      "id": "testing-q013",
+      "topic": "Testowanie input()",
+      "level": 2,
+      "q": "Komponent ma pole userId = input.required<number>(). Jak poprawnie ustawić jego wartość w teście?",
+      "options": [
+        "fixture.componentInstance.userId = 5",
+        "fixture.componentInstance.userId.set(5)",
+        "TestBed.overrideInput(UserComponent, 'userId', 5)",
+        "fixture.componentRef.setInput('userId', 5)"
+      ],
+      "correct": 3,
+      "why": "input() zwraca InputSignal tylko do odczytu – nie ma set(), a nadpisanie pola zastąpiłoby sygnał liczbą i zepsuło komponent. setInput na ComponentRef działa jak binding z rodzica. TestBed.overrideInput nie istnieje."
+    },
+    {
+      "id": "testing-q014",
+      "topic": "HttpTestingController",
+      "level": 2,
+      "q": "Test kończy się błędem rzuconym przez httpTesting.verify() w afterEach. Co to oznacza?",
+      "options": [
+        "Odpowiedź przekazana do flush miała zły typ",
+        "Zapomniano dodać provideHttpClient() do providerów",
+        "Serwis wysłał request, który nie został dopasowany przez expectOne ani obsłużony w teście",
+        "Request został obsłużony dwukrotnie przez flush"
+      ],
+      "correct": 2,
+      "why": "verify() sprawdza, że nie zostały żadne oczekujące, nieobsłużone requesty – np. serwis robi dodatkowe wywołanie, którego test się nie spodziewał. Brak provideHttpClient spowodowałby błąd już przy wstrzykiwaniu, a flush nie sprawdza typu w runtime."
+    },
+    {
+      "id": "testing-q015",
+      "topic": "fakeAsync vs async",
+      "level": 3,
+      "q": "Co się stanie po uruchomieniu tego testu?",
+      "code": "it('saves after delay', fakeAsync(() => {\n  let saved = false;\n  setTimeout(() => saved = true, 1000);\n  tick(500);\n  expect(saved).toBe(true);\n}));",
+      "lang": "typescript",
+      "options": [
+        "Test przejdzie, bo fakeAsync na końcu automatycznie wykonuje wszystkie timery",
+        "Test zakończy się błędem, bo zostanie 1 niewykonany timer w kolejce, a asercja na saved też nie przejdzie",
+        "Test przejdzie, bo tick(500) wykonuje timery do 1000 ms",
+        "Test zawiśnie na 1 sekundę i przejdzie"
+      ],
+      "correct": 1,
+      "why": "tick(500) przesuwa wirtualny zegar tylko o 500 ms, więc setTimeout(1000) się nie wykonał – saved nadal jest false. Dodatkowo fakeAsync zgłasza błąd, gdy po teście zostają oczekujące timery. Potrzebne jest tick(1000) albo flush()."
+    },
+    {
+      "id": "testing-q016",
+      "topic": "Mockowanie serwisów",
+      "level": 2,
+      "q": "Komponent ma w dekoratorze providers: [OrderStore]. W teście dodajesz { provide: OrderStore, useValue: storeStub } do TestBed.configureTestingModule, ale komponent nadal używa prawdziwego OrderStore. Dlaczego?",
+      "options": [
+        "Provider na poziomie komponentu ma pierwszeństwo przed providerem modułu testowego – trzeba użyć TestBed.overrideComponent (lub overrideProvider)",
+        "useValue nie działa dla klas, trzeba użyć useClass",
+        "Stub musi implementować wszystkie metody OrderStore",
+        "Trzeba wywołać fixture.detectChanges() przed configureTestingModule"
+      ],
+      "correct": 0,
+      "why": "Hierarchical DI: komponent z własnymi providers tworzy własny injector i rozwiązuje OrderStore lokalnie, zanim sięgnie do providerów TestBed. overrideComponent pozwala podmienić providers w metadanych komponentu. useValue działa dla dowolnego tokena."
+    },
+    {
+      "id": "testing-q017",
+      "topic": "Test runnery w Angularze",
+      "level": 1,
+      "q": "Który test runner jest domyślny dla nowych projektów tworzonych przez Angular CLI w wersji 21?",
+      "options": [
+        "Vitest",
+        "Karma z Jasmine",
+        "Jest",
+        "Web Test Runner"
+      ],
+      "correct": 0,
+      "why": "Od Angular 21 nowe projekty CLI domyślnie używają Vitest. Karma była wcześniej domyślna, ale została zdeprecjonowana; Jest i Web Test Runner były wspierane eksperymentalnie lub przez społeczność."
+    },
+    {
+      "id": "testing-q018",
+      "topic": "Angular Testing Library",
+      "level": 2,
+      "q": "Która metoda wyszukiwania elementu jest najbardziej zalecana przez filozofię Testing Library dla przycisku „Zapisz”?",
+      "options": [
+        "fixture.nativeElement.querySelector('.btn-primary')",
+        "screen.getByTestId('save-btn')",
+        "fixture.debugElement.query(By.css('button:nth-child(2)'))",
+        "screen.getByRole('button', { name: 'Zapisz' })"
+      ],
+      "correct": 3,
+      "why": "Testing Library zaleca zapytania odzwierciedlające to, jak użytkownik i technologie asystujące widzą stronę – na pierwszym miejscu getByRole z nazwą dostępną. data-testid to wyjście awaryjne, a selektory CSS i pozycyjne są kruche przy zmianach szablonu."
+    },
+    {
+      "id": "testing-q019",
+      "topic": "E2E: Playwright vs Cypress",
+      "level": 2,
+      "q": "Test e2e czasami nie przechodzi, bo kliknięcie następuje, zanim lista się załaduje. Obecnie jest tam page.waitForTimeout(2000). Co jest najlepszą poprawką?",
+      "options": [
+        "Zwiększyć timeout do 5000 ms",
+        "Dodać retry całego testu 3 razy w CI",
+        "Usunąć sztywne czekanie i użyć web-first assertion / locatora z auto-waiting, np. await expect(page.getByRole('listitem')).toHaveCount(3)",
+        "Przenieść test na koniec zestawu"
+      ],
+      "correct": 2,
+      "why": "Sztywne opóźnienia są albo za krótkie (flaky), albo za długie (wolne testy). Playwright potrafi czekać na konkretny warunek – locatory i expect z auto-retry. Retry testów i zmiana kolejności tylko maskują problem."
+    },
+    {
+      "id": "testing-q020",
+      "topic": "Testcontainers vs InMemory",
+      "level": 3,
+      "q": "Gdzie najlepiej uruchamiać i zatrzymywać kontener Testcontainers z bazą dla zestawu testów integracyjnych w xUnit?",
+      "options": [
+        "W konstruktorze każdej klasy testowej, wywołując StartAsync().Wait()",
+        "W fixture implementującym IAsyncLifetime (InitializeAsync/DisposeAsync), współdzielonym przez IClassFixture lub collection fixture",
+        "W każdej metodzie testowej, żeby testy były w pełni izolowane",
+        "W Program.cs aplikacji, sprawdzając zmienną środowiskową"
+      ],
+      "correct": 1,
+      "why": "Start kontenera jest asynchroniczny i kosztowny, więc robi się go raz w fixture z IAsyncLifetime i współdzieli. Blokowanie .Wait() w konstruktorze grozi zakleszczeniami, kontener per test jest bardzo wolny, a kod testowy nie powinien trafiać do Program.cs. Izolację danych zapewnia się resetem bazy, np. Respawn."
+    },
+    {
+      "id": "testing-q021",
+      "topic": "xUnit: fixtures",
+      "level": 3,
+      "q": "Jak domyślnie xUnit (v2) zrównolegla testy?",
+      "options": [
+        "Każda metoda testowa działa równolegle ze wszystkimi innymi",
+        "Kolekcje testów (domyślnie każda klasa to osobna kolekcja) działają równolegle, a testy w obrębie jednej kolekcji sekwencyjnie",
+        "Wszystkie testy wykonują się sekwencyjnie, równoległość trzeba włączyć",
+        "Równolegle działają tylko testy oznaczone [Parallel]"
+      ],
+      "correct": 1,
+      "why": "Jednostką równoległości w xUnit jest kolekcja testów. Domyślnie każda klasa to osobna kolekcja, więc klasy działają równolegle, a testy w klasie – po kolei. Klasy w tej samej [Collection] wykonują się sekwencyjnie, co wykorzystuje się m.in. przy współdzielonej bazie."
+    },
+    {
+      "id": "testing-q022",
+      "topic": "Over-mocking",
+      "level": 3,
+      "q": "Po refaktoryzacji (wydzielenie prywatnej metody i zmiana kolejności dwóch wywołań repozytorium, bez zmiany wyniku) połowa testów jednostkowych serwisu przestała przechodzić. Co to najprawdopodobniej mówi o tych testach?",
+      "options": [
+        "Testują szczegóły implementacji (kolejność i liczbę wywołań mocków) zamiast obserwowalnego zachowania",
+        "Są dobrze napisane, bo wykryły zmianę w kodzie",
+        "Brakuje im [Theory] z większą liczbą przypadków",
+        "Refaktoryzacja musiała wprowadzić błąd, skoro testy padły"
+      ],
+      "correct": 0,
+      "why": "Refaktoryzacja z definicji nie zmienia zachowania, więc dobre testy powinny ją przetrwać. Testy złamane przez zmianę kolejności wywołań są sprzężone z implementacją (nadmierne mockowanie, Verify na wszystkim, MockBehavior.Strict) i dają fałszywe alarmy."
+    }
+  ]
+}

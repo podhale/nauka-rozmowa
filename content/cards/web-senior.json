@@ -1,0 +1,313 @@
+{
+  "cat": "web",
+  "name": "HTTP, REST i bezpieczeństwo",
+  "cards": [
+    {
+      "id": "web-s001",
+      "topic": "BFF",
+      "level": 3,
+      "q": "Jak zaprojektować wzorzec BFF (Backend for Frontend) dla aplikacji Angular z ASP.NET Core – end-to-end?",
+      "a": "BFF to backend hostowany na tym samym originie co SPA, który jest poufnym klientem OIDC: wykonuje Authorization Code + PKCE, trzyma access i refresh tokeny po stronie serwera, a przeglądarce wydaje tylko ciasteczko sesyjne HttpOnly, Secure, SameSite (najlepiej z prefiksem __Host-). Angular woła /api na tym samym originie, a BFF (np. przez YARP) dokleja access token i przekazuje żądanie do właściwych API, odświeżając tokeny w razie potrzeby. Dzięki temu tokeny nie są dostępne dla JavaScriptu, a CORS nie jest potrzebny.",
+      "code": "builder.Services.AddAuthentication(o =>\n    {\n        o.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;\n        o.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;\n    })\n    .AddCookie(o =>\n    {\n        o.Cookie.Name = \"__Host-app\";\n        o.Cookie.SameSite = SameSiteMode.Strict;\n        o.Cookie.SecurePolicy = CookieSecurePolicy.Always;\n    })\n    .AddOpenIdConnect(o =>\n    {\n        o.Authority = \"https://login.example.com\";\n        o.ClientId = \"spa-bff\";\n        o.ResponseType = \"code\";\n        o.SaveTokens = true;\n    });",
+      "lang": "csharp",
+      "deep": "Skoro uwierzytelnienie opiera się na ciasteczku, wraca CSRF: SameSite=Strict/Lax ogranicza ryzyko, ale standardem jest też wymaganie niestandardowego nagłówka (np. X-CSRF: 1) na wszystkich endpointach API BFF – formularz z obcej strony nie może go ustawić bez preflightu CORS, który zostanie odrzucony. Sesja po stronie serwera (w ciasteczku lub w magazynie typu Redis) przy kilku instancjach wymaga współdzielonych kluczy Data Protection, inaczej ciasteczka z jednej instancji nie zadziałają na drugiej. Duże ciasteczka z tokenami mogą przekroczyć limity nagłówków – stąd server-side session store. Wylogowanie musi usunąć sesję lokalną i wywołać end_session u dostawcy tożsamości, a najlepiej obsłużyć back-channel logout. BFF nie chroni przed XSS w pełni – złośliwy skrypt nadal może wywoływać API w imieniu użytkownika, ale nie wykradnie tokenów do użycia poza przeglądarką. Gotowe biblioteki (np. Duende BFF) implementują te elementy; własna implementacja wymaga starannego przeglądu bezpieczeństwa."
+    },
+    {
+      "id": "web-s002",
+      "topic": "JWT",
+      "level": 3,
+      "q": "Jak unieważnić access token JWT przed upływem exp (np. po zablokowaniu konta)? Jakie są trade-offy?",
+      "a": "Samodzielny JWT jest walidowany lokalnie, więc z definicji nie da się go 'odwołać' bez dodatkowego stanu. Opcje: krótki czas życia (5–15 min) plus odwołanie refresh tokenu – najprostsze, ale z oknem do kilku minut; denylista jti (lub sid) w szybkim magazynie (Redis) sprawdzana przy każdym żądaniu; wersja bezpieczeństwa użytkownika (security stamp) w tokenie porównywana z bazą/cache; albo reference tokens z introspekcją (RFC 7662), gdzie API pyta serwer autoryzacji o ważność. Wybór zależy od tego, jak krótkie okno ryzyka jest akceptowalne.",
+      "tip": "Dobra odpowiedź zaczyna się od pytania o wymagane okno ryzyka: 'czy 5 minut jest akceptowalne?'.",
+      "deep": "Denylista przywraca stan, przed którym JWT miał uciec, ale jest mała (tylko odwołane tokeny do ich exp) i dobrze się cache'uje; jej awaria wymaga decyzji fail-open vs fail-closed. Security stamp unieważnia wszystkie tokeny użytkownika naraz (zmiana hasła, blokada konta) jednym zapisem, kosztem odczytu cache przy każdym żądaniu. Introspekcja daje natychmiastowe odwołanie i krótkie tokeny w przeglądarce, ale dodaje zależność i latencję – zwykle cache wyniku na kilkanaście–kilkadziesiąt sekund, co znowu tworzy małe okno. Wielu dostawców wspiera OpenID Connect back-channel logout i Shared Signals (CAEP) do sygnalizowania odwołań. W architekturze mikroserwisów sensowne jest sprawdzanie odwołania na gatewayu zamiast w każdym serwisie. Trzeba też pamiętać o odwołaniu sesji w BFF i refresh tokenów, inaczej klient od razu dostanie nowy access token."
+    },
+    {
+      "id": "web-s003",
+      "topic": "OAuth/OIDC",
+      "level": 3,
+      "q": "Czym są sender-constrained tokens (DPoP, mTLS) i jaki problem rozwiązują?",
+      "a": "Zwykły access token to bearer token: kto go ma, ten go użyje – wyciek z logów, proxy czy przez XSS pozwala atakującemu korzystać z API. Sender-constrained token jest powiązany z kluczem kryptograficznym klienta, więc samo posiadanie tokenu nie wystarcza. DPoP (RFC 9449) wiąże token z kluczem, którym klient podpisuje dla każdego żądania krótki JWT (DPoP proof) zawierający metodę, URL i znacznik czasu; mTLS-bound tokens (RFC 8705) wiążą token z certyfikatem klienta TLS. Serwer zasobów sprawdza, czy żądanie pochodzi od właściciela klucza.",
+      "code": "GET /api/accounts HTTP/1.1\nAuthorization: DPoP eyJhbGciOi...   (access token z cnf.jkt)\nDPoP: eyJ0eXAiOiJkcG9wK2p3dCIs...   (proof: htm=GET, htu=URL, iat, jti)",
+      "lang": "text",
+      "deep": "DPoP działa w przeglądarce: klucz można wygenerować przez WebCrypto jako nieeksportowalny i trzymać w IndexedDB, więc nawet skrypt z XSS nie wyeksportuje klucza (choć może wykonywać żądania w trakcie sesji). Proof zawiera jti i iat, więc serwer może ograniczać replay (okno czasowe, opcjonalnie cache jti, nonce od serwera). mTLS-bound tokens lepiej pasują do komunikacji serwer–serwer, gdzie certyfikaty klienta są naturalne; w przeglądarkach UX certyfikatów klienta jest zły. Profil FAPI 2.0 (bankowość, open banking) wymaga sender-constrained tokens. Koszt: dodatkowa kryptografia per żądanie, wsparcie po stronie IdP i bibliotek, trudniejsze debugowanie. Dla typowego SPA BFF jest prostszą alternatywą, bo token w ogóle nie trafia do przeglądarki."
+    },
+    {
+      "id": "web-s004",
+      "topic": "OAuth/OIDC",
+      "level": 3,
+      "q": "Jak uwierzytelniasz komunikację machine-to-machine (serwis–serwis, joby) w OAuth 2.0?",
+      "a": "Flow Client Credentials: serwis uwierzytelnia się w serwerze autoryzacji własnymi danymi klienta i dostaje access token dla siebie (bez użytkownika) z określonymi scope'ami lub audience. Serwis docelowy waliduje token jak każdy inny, a autoryzację opiera na scope'ach/rolach aplikacji. Zamiast client secret wolę private_key_jwt (podpisana asercja kluczem prywatnym, RFC 7523) lub tożsamość zarządzaną platformy (managed identity, workload identity federation), żeby nie było współdzielonego sekretu do rotowania. Token cache'uję do bliskiego wygaśnięcia, zamiast pobierać go przy każdym wywołaniu.",
+      "code": "POST /connect/token\nContent-Type: application/x-www-form-urlencoded\n\ngrant_type=client_credentials\n&scope=billing.read\n&client_id=orders-service\n&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer\n&client_assertion=eyJhbGciOiJSUzI1NiIs...",
+      "lang": "text",
+      "deep": "Pobieranie tokenu per żądanie to typowy błąd wydajnościowy: dodaje latencję, a pod obciążeniem IdP zaczyna rate-limitować i cała komunikacja pada – biblioteki (np. Duende.AccessTokenManagement, MSAL) cache'ują i odświeżają tokeny automatycznie. Gdy serwis działa w imieniu użytkownika dalej w łańcuchu, client credentials gubi tożsamość użytkownika – wtedy token exchange (RFC 8693) lub on-behalf-of, a nie przekazywanie oryginalnego tokenu użytkownika do wszystkich serwisów (audience powinien wskazywać konkretne API). Zasada najmniejszych uprawnień: osobny klient per serwis i minimalne scope'y, żeby kompromitacja jednego nie dawała dostępu do wszystkiego. Workload identity federation (np. GitHub Actions, Kubernetes service account → Entra ID/AWS) eliminuje długowieczne sekrety w CI i klastrach. W sieci wewnętrznej token nie zastępuje szyfrowania – nadal TLS, często mTLS."
+    },
+    {
+      "id": "web-s005",
+      "topic": "CSP",
+      "level": 3,
+      "q": "Jak wdrażasz Content Security Policy dla aplikacji Angular i dlaczego 'unsafe-inline' niweczy jej sens?",
+      "a": "CSP to nagłówek, którym serwer mówi przeglądarce, skąd wolno ładować i wykonywać skrypty, style, ramki czy połączenia – to druga linia obrony przed XSS: nawet jeśli atakujący wstrzyknie <script>, przeglądarka go nie wykona. Rekomendowana jest strict CSP oparta na nonce lub hashach z 'strict-dynamic', a nie na długich allowlistach domen (łatwo je obejść przez JSONP czy hostowane biblioteki). Angular wspiera nonce dla stylów, które sam wstrzykuje (atrybut ngCspNonce na elemencie root lub token CSP_NONCE). 'unsafe-inline' w script-src pozwala wykonać każdy wstrzyknięty skrypt inline, więc CSP przestaje chronić przed XSS.",
+      "code": "Content-Security-Policy:\n  script-src 'nonce-r4nd0m' 'strict-dynamic';\n  object-src 'none';\n  base-uri 'none';\n  frame-ancestors 'none';\n  connect-src 'self' https://api.example.com;\n  report-to csp-endpoint",
+      "lang": "text",
+      "deep": "Wdrożenie zaczynam od Content-Security-Policy-Report-Only z raportowaniem (report-to), zbieram naruszenia z produkcji i dopiero potem włączam tryb blokujący – inaczej łatwo zepsuć aplikację. Nonce musi być losowy i nowy dla każdej odpowiedzi HTML, co oznacza, że index.html nie może być w pełni statyczny (serwer lub edge musi go wstawić); w statycznym hostingu łatwiej o CSP opartą na hashach. Angular 19 wprowadził opcję autoCsp (developer preview) generującą hash-based CSP przy buildzie. Ważne dyrektywy poza script-src: object-src 'none', base-uri 'none' lub 'self', frame-ancestors (zastępuje X-Frame-Options – ochrona przed clickjackingiem), connect-src (dokąd SPA może wysyłać żądania), upgrade-insecure-requests. Skrypty zewnętrzne (analityka, czat) to najczęstszy powód osłabienia CSP – każdy z nich to zaufanie do cudzego kodu. Trusted Types (require-trusted-types-for 'script') dodatkowo blokują niebezpieczne sinki DOM, a Angular jest z nimi kompatybilny."
+    },
+    {
+      "id": "web-s006",
+      "topic": "CORS",
+      "level": 3,
+      "q": "Jakie są najgroźniejsze błędne konfiguracje CORS i jak je wykryć?",
+      "a": "Najgroźniejsza: odbijanie dowolnego nagłówka Origin w Access-Control-Allow-Origin razem z Access-Control-Allow-Credentials: true (w ASP.NET Core np. SetIsOriginAllowed(_ => true) + AllowCredentials) – każda strona w internecie może wtedy czytać odpowiedzi API z ciasteczkami zalogowanego użytkownika. Kolejne: walidacja originu przez dopasowanie fragmentu (EndsWith(\"example.com\") przepuszcza evil-example.com, a StartsWith przepuszcza example.com.attacker.net), akceptowanie Origin: null (wysyłany m.in. przez sandboxowane iframe'y i file://) oraz zbyt szerokie wildcardy subdomen, gdy którakolwiek subdomena może hostować treści użytkowników.",
+      "code": "// ŹLE: każda strona może czytać odpowiedzi z ciasteczkami użytkownika\np.SetIsOriginAllowed(_ => true).AllowCredentials();\n\n// DOBRZE: jawna lista z konfiguracji\np.WithOrigins(builder.Configuration.GetSection(\"Cors:Origins\").Get<string[]>()!)\n .AllowCredentials()\n .WithMethods(\"GET\", \"POST\", \"PUT\", \"DELETE\")\n .WithHeaders(\"Content-Type\", \"X-CSRF\");",
+      "lang": "csharp",
+      "deep": "CORS nie jest mechanizmem ochrony API – to rozluźnienie Same-Origin Policy w przeglądarce; nie chroni przed curl ani innymi serwerami. Problem z credentials dotyczy głównie API uwierzytelnianych ciasteczkiem; przy tokenie w nagłówku Authorization atakujący nie ma tokenu, ale nadal może czytać odpowiedzi endpointów dostępnych anonimowo lub z sieci wewnętrznej. Gdy ACAO zależy od Origin, odpowiedź musi mieć Vary: Origin, inaczej cache (CDN, proxy) może podać odpowiedź z nagłówkiem dla jednego originu innemu – ASP.NET Core dodaje Vary: Origin automatycznie, ale własne middleware lub konfiguracja CDN potrafią to zepsuć. Przy subdomenach XSS na dowolnej z dozwolonych subdomen daje dostęp do API. Wykrywanie: test wysyłający żądanie z Origin: https://evil.example i sprawdzający, czy odpowiedź go odbija; skanery (Burp, ZAP) robią to automatycznie. Najlepsza konfiguracja to jawna lista originów z konfiguracji per środowisko, a z BFF na tym samym originie CORS w ogóle nie jest potrzebny."
+    },
+    {
+      "id": "web-s007",
+      "topic": "SSRF",
+      "level": 3,
+      "q": "Czym jest SSRF (Server-Side Request Forgery) i jak się przed nim bronić w API, które pobiera zasoby z URL-a podanego przez użytkownika?",
+      "a": "SSRF to sytuacja, gdy atakujący skłania serwer do wysłania żądania pod wybrany adres – typowo przez funkcje typu 'import z URL', podgląd linku, avatar z URL, webhooki czy generowanie PDF z HTML. Serwer ma dostęp do sieci wewnętrznej, więc atakujący może skanować usługi wewnętrzne, wywołać panele administracyjne bez uwierzytelnienia albo odczytać endpoint metadanych chmury (169.254.169.254) z poświadczeniami. Obrona: allowlista domen tam, gdzie się da; w przeciwnym razie rozwiązanie DNS i blokowanie adresów prywatnych, loopback, link-local i metadanych, sprawdzanie każdego przekierowania, tylko http/https oraz osobny ruch wychodzący przez egress proxy z regułami.",
+      "code": "var handler = new SocketsHttpHandler\n{\n    AllowAutoRedirect = false,\n    ConnectCallback = async (ctx, ct) =>\n    {\n        var ips = await Dns.GetHostAddressesAsync(ctx.DnsEndPoint.Host, ct);\n        var ip = ips.FirstOrDefault(a => !IpPolicy.IsInternal(a))\n                 ?? throw new HttpRequestException(\"Blocked destination\");\n        var socket = new Socket(ip.AddressFamily, SocketType.Stream, ProtocolType.Tcp);\n        await socket.ConnectAsync(ip, ctx.DnsEndPoint.Port, ct);\n        return new NetworkStream(socket, ownsSocket: true);\n    }\n};",
+      "lang": "csharp",
+      "deep": "Walidacja tekstu URL-a nie wystarcza: atakujący użyje alternatywnych zapisów IP (dziesiętny, ósemkowy, IPv6, ::ffff:127.0.0.1), domeny rozwiązującej się na adres wewnętrzny albo DNS rebinding (pierwsze rozwiązanie zwraca publiczny adres do walidacji, drugie – wewnętrzny przy połączeniu). Dlatego sprawdzam adres IP faktycznie używany do połączenia – w .NET np. przez SocketsHttpHandler.ConnectCallback, który rozwiązuje nazwę, weryfikuje IP i łączy się z tym samym adresem. Automatyczne przekierowania wyłączam (AllowAutoRedirect = false) i każde waliduję osobno. Blind SSRF (bez zwracania odpowiedzi) nadal pozwala na skanowanie przez pomiar czasu i efekty uboczne. W chmurze ochrona po stronie infrastruktury: IMDSv2 w AWS (wymaga tokenu uzyskanego przez PUT) i nagłówek Metadata: true w Azure utrudniają proste ataki, a segmentacja sieci ogranicza to, co serwer w ogóle widzi. Najbezpieczniej wykonywać takie pobrania w odizolowanym serwisie bez dostępu do sieci wewnętrznej, z limitami rozmiaru i czasu odpowiedzi."
+    },
+    {
+      "id": "web-s008",
+      "topic": "Bezpieczeństwo",
+      "level": 2,
+      "q": "Czym jest mass assignment (over-posting) i jak się przed nim chronić w ASP.NET Core?",
+      "a": "Mass assignment to podatność, w której model binding przypisuje wartości wszystkim pasującym właściwościom obiektu, także tym, których użytkownik nie powinien zmieniać – np. IsAdmin, Balance, OwnerId czy Status. Dzieje się tak, gdy endpoint binduje encję bezpośrednio albo DTO jest 'za szerokie'. Ochrona: osobne DTO wejściowe per operacja zawierające tylko dozwolone pola, jawne mapowanie na encję oraz sprawdzanie uprawnień do zmiany konkretnych pól. Pola nadawane przez serwer (Id, CreatedAt, TenantId, OwnerId) ustawiam po stronie serwera, nigdy z inputu.",
+      "code": "public sealed record UpdateProfileRequest(string DisplayName, string? Bio);\n\napp.MapPut(\"/api/me/profile\", async (UpdateProfileRequest req, ClaimsPrincipal user,\n                                     AppDbContext db, CancellationToken ct) =>\n{\n    var p = await db.Profiles.SingleAsync(x => x.UserId == user.GetUserId(), ct);\n    p.DisplayName = req.DisplayName;   // tylko dozwolone pola\n    p.Bio = req.Bio;\n    await db.SaveChangesAsync(ct);\n    return TypedResults.NoContent();\n});",
+      "lang": "csharp",
+      "deep": "JSON Patch (Microsoft.AspNetCore.JsonPatch) jest szczególnie ryzykowny: operacja może dotyczyć dowolnej ścieżki obiektu, więc patch stosuję na DTO z dozwolonymi polami, a nie na encji, i waliduję wynik po aplikacji. Ten sam problem dotyczy update'ów 'merge' – db.Update(entity) ze zbindowanego obiektu oznacza wszystkie kolumny jako zmienione, także te, których klient nie przysłał (nadpisanie nullami). Atrybuty [Bind] i [BindNever] w MVC pomagają, ale są kruche – nowe pole w encji automatycznie staje się bindowalne. Testy bezpieczeństwa powinny próbować wysłać dodatkowe pola (isAdmin: true) i sprawdzić, że nic się nie zmieniło. Mass assignment często łączy się z IDOR: zmiana OwnerId na cudzy pozwala 'przejąć' zasób. W OWASP API Security Top 10 mieści się to w kategorii Broken Object Property Level Authorization."
+    },
+    {
+      "id": "web-s009",
+      "topic": "Brute force",
+      "level": 3,
+      "q": "Jak chronisz endpoint logowania przed brute force i credential stuffing?",
+      "a": "Brute force to zgadywanie haseł do jednego konta, credential stuffing to próbowanie par login–hasło wyciekłych z innych serwisów na wielu kontach, zwykle z botnetu tysięcy IP. Warstwy obrony: rate limiting po koncie i po IP, progresywne opóźnienia lub tymczasowa blokada konta (w ASP.NET Core Identity lockout po N nieudanych próbach), CAPTCHA/challenge po wykryciu anomalii, sprawdzanie haseł z wycieków przy rejestracji i zmianie hasła oraz MFA – najskuteczniejsza ochrona, bo samo hasło przestaje wystarczać. Odpowiedzi muszą być jednolite ('nieprawidłowy login lub hasło'), żeby nie ujawniać, które konta istnieją.",
+      "code": "builder.Services.Configure<IdentityOptions>(o =>\n{\n    o.Lockout.MaxFailedAccessAttempts = 5;\n    o.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);\n    o.Lockout.AllowedForNewUsers = true;\n});\n// + rate limiter na /login partycjonowany po IP i po nazwie użytkownika",
+      "lang": "csharp",
+      "deep": "Blokada konta po kilku próbach to miecz obosieczny: atakujący może celowo zablokować konta ofiar (DoS), stąd krótkie, rosnące blokady i powiadomienia zamiast trwałej blokady. Limit po IP nie zatrzyma credential stuffingu z botnetu, gdzie każde IP robi jedną próbę – potrzebne są sygnały globalne: wzrost odsetka nieudanych logowań, fingerprinting, reputacja IP, bot detection na brzegu (WAF). Enumeracja kont przecieka nie tylko przez komunikaty, ale też przez różnice czasu odpowiedzi (hashowanie hasła tylko dla istniejących kont) i endpointy reset hasła/rejestracji – trzeba je ujednolicić. Sprawdzanie wycieków można zrobić przez Have I Been Pwned z k-anonimowością (wysyła się tylko prefiks hasha). Reset hasła i endpoint MFA też wymagają limitów, bo kody 6-cyfrowe łatwo zgadnąć bez ograniczeń. Najmocniejszą ochroną przed phishingiem i stuffingiem są passkeys (WebAuthn), które ASP.NET Core Identity wspiera od .NET 10."
+    },
+    {
+      "id": "web-s010",
+      "topic": "Sekrety",
+      "level": 3,
+      "q": "Jak zaprojektować rotację sekretów i kluczy (hasła do bazy, klucze API, klucze podpisujące JWT) bez przestojów?",
+      "a": "Zasada: przez pewien czas muszą działać jednocześnie stary i nowy sekret. Dla haseł i kluczy API: utwórz nowy sekret (druga wersja w Key Vault lub drugie konto/klucz w systemie docelowym), wdroż aplikację lub poczekaj na odświeżenie konfiguracji, zweryfikuj użycie nowego, dopiero potem unieważnij stary. Dla kluczy podpisujących JWT: publikuję nowy klucz w JWKS z nowym kid z wyprzedzeniem, przełączam podpisywanie na nowy klucz, a stary zostawiam w JWKS co najmniej przez maksymalny czas życia tokenów. Najlepiej w ogóle eliminować sekrety przez managed identity / workload identity.",
+      "code": "builder.Configuration.AddAzureKeyVault(\n    new Uri(\"https://my-kv.vault.azure.net/\"),\n    new DefaultAzureCredential(),\n    new AzureKeyVaultConfigurationOptions { ReloadInterval = TimeSpan.FromMinutes(5) });",
+      "lang": "csharp",
+      "deep": "Aplikacja musi umieć przeładować sekret bez restartu: provider konfiguracji Key Vault z ReloadInterval, IOptionsMonitor, albo pobieranie przy tworzeniu połączenia – inaczej rotacja wymaga rolling restartu. Walidatory JWT (JwtBearer) pobierają JWKS z endpointu metadanych i cache'ują go; po napotkaniu nieznanego kid odświeżają metadane, ale z ograniczeniem częstotliwości – dlatego nowy klucz publikuje się przed jego użyciem. Ten sam model dwóch aktywnych kluczy stosuje ASP.NET Core Data Protection (pierścień kluczy z domyślnym czasem życia 90 dni), który przy wielu instancjach musi mieć wspólny magazyn kluczy. Wyciek sekretu to rotacja natychmiastowa i przegląd logów dostępu – usunięcie z repozytorium nie wystarcza, bo historia gita i forki pozostają. Rotacja powinna być zautomatyzowana i ćwiczona, bo ręczna rotacja raz na rok zwykle kończy się awarią. Krótkotrwałe, dynamicznie generowane poświadczenia (np. HashiCorp Vault database secrets) eliminują problem długowiecznych haseł."
+    },
+    {
+      "id": "web-s011",
+      "topic": "mTLS",
+      "level": 3,
+      "q": "Czym jest mutual TLS (mTLS), kiedy go używasz i jak skonfigurować go w ASP.NET Core?",
+      "a": "W zwykłym TLS tylko serwer przedstawia certyfikat; w mTLS klient też przedstawia certyfikat, więc obie strony uwierzytelniają się kryptograficznie na poziomie połączenia. Stosuję go w komunikacji serwis–serwis (zero trust w sieci wewnętrznej), dla integracji B2B i urządzeń IoT. W Kubernetesie najczęściej realizuje go service mesh (Istio, Linkerd) automatycznie, wraz z wydawaniem i rotacją certyfikatów. W samym ASP.NET Core konfiguruję Kestrel do żądania certyfikatu klienta i używam uwierzytelniania Certificate, które waliduje łańcuch, i mapuję certyfikat na tożsamość.",
+      "code": "builder.WebHost.ConfigureKestrel(k => k.ConfigureHttpsDefaults(h =>\n    h.ClientCertificateMode = ClientCertificateMode.RequireCertificate));\n\nbuilder.Services.AddAuthentication(CertificateAuthenticationDefaults.AuthenticationScheme)\n    .AddCertificate(o =>\n    {\n        o.AllowedCertificateTypes = CertificateTypes.Chained;\n        o.RevocationMode = X509RevocationMode.NoCheck;\n    });",
+      "lang": "csharp",
+      "deep": "Największym wyzwaniem jest zarządzanie certyfikatami: wydawanie, krótkie okresy ważności, automatyczna rotacja i odwoływanie – ręczne zarządzanie nie skaluje się, stąd mesh lub cert-manager. Gdy TLS kończy się na load balancerze lub ingressie, aplikacja nie widzi certyfikatu klienta; proxy przekazuje go w nagłówku, a aplikacja używa certificate forwarding – wtedy nagłówek musi być akceptowany wyłącznie od zaufanego proxy, inaczej atakujący go podrobi. Walidacja musi obejmować nie tylko poprawność łańcucha, ale też to, czy certyfikat należy do oczekiwanego klienta (thumbprint, subject, SAN, dedykowane CA). mTLS uwierzytelnia serwis, ale nie użytkownika – w łańcuchu wywołań zwykle łączy się go z tokenami (np. mTLS-bound tokens z RFC 8705). Sprawdzanie odwołań (CRL/OCSP) dodaje latencję i zależności; przy krótkotrwałych certyfikatach często się z niego rezygnuje na rzecz szybkiego wygasania."
+    },
+    {
+      "id": "web-s012",
+      "topic": "API Gateway",
+      "level": 2,
+      "q": "Jaką rolę pełni API Gateway, co powinno się w nim znaleźć, a czego unikać?",
+      "a": "API Gateway to pojedynczy punkt wejścia dla klientów do wielu usług: routing, terminacja TLS, uwierzytelnianie (walidacja tokenów), rate limiting i kwoty, CORS, nagłówki bezpieczeństwa, logowanie i tracing na brzegu, czasem cache i transformacje. Upraszcza klientów i pozwala zmieniać topologię backendu bez zmian po stronie frontu. W .NET mogę go zbudować na YARP, a w chmurze użyć zarządzanych rozwiązań (Azure API Management, AWS API Gateway, Kong). Unikam logiki biznesowej w gatewayu – ma być cienki.",
+      "code": "builder.Services.AddReverseProxy()\n    .LoadFromConfig(builder.Configuration.GetSection(\"ReverseProxy\"));\nbuilder.Services.AddAuthentication().AddJwtBearer();\nbuilder.Services.AddAuthorization();\n\nvar app = builder.Build();\napp.UseAuthentication();\napp.UseAuthorization();\napp.MapReverseProxy();",
+      "lang": "csharp",
+      "deep": "Gateway jest single point of failure i wąskim gardłem, więc musi być wysoko dostępny, skalowany poziomo i mieć własne timeouty oraz circuit breakery. Zbyt wiele logiki (agregacje, mapowania, reguły biznesowe) zamienia go w rozproszony monolit, który każdy zespół musi zmieniać – stąd wzorzec BFF: osobny backend per typ klienta, a gateway tylko na brzegu. Uwierzytelnienie na gatewayu nie zwalnia serwisów z autoryzacji – zero trust oznacza, że serwisy nadal walidują tokeny (przynajmniej audience i scope), bo ruch może ominąć gateway. Za gatewayem serwisy muszą poprawnie rozumieć nagłówki X-Forwarded-* (ForwardedHeaders z zaufanymi proxy). Gateway to też dobre miejsce na globalny rate limiting i odwołania tokenów, które trudno zrobić w każdej instancji osobno. Różnica gateway vs service mesh: gateway obsługuje ruch północ–południe (z zewnątrz), mesh – wschód–zachód (między serwisami)."
+    },
+    {
+      "id": "web-s013",
+      "topic": "HTTP/2 i HTTP/3",
+      "level": 3,
+      "q": "Czym różnią się HTTP/1.1, HTTP/2 i HTTP/3 i co z tego wynika dla API oraz aplikacji SPA?",
+      "a": "HTTP/1.1 obsługuje jedno żądanie naraz na połączenie, więc przeglądarki otwierają kilka połączeń na origin. HTTP/2 multipleksuje wiele strumieni w jednym połączeniu TCP, kompresuje nagłówki (HPACK) i jest binarny – sztuczki typu łączenie plików czy domain sharding tracą sens. Problemem HTTP/2 jest head-of-line blocking na poziomie TCP: zgubiony pakiet wstrzymuje wszystkie strumienie. HTTP/3 działa na QUIC (UDP) z TLS 1.3 wbudowanym w transport: strumienie są niezależne, nawiązanie połączenia szybsze, a połączenie może przetrwać zmianę sieci (np. Wi-Fi → LTE).",
+      "code": "builder.WebHost.ConfigureKestrel(k =>\n    k.ListenAnyIP(443, l =>\n    {\n        l.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;\n        l.UseHttps();\n    }));",
+      "lang": "csharp",
+      "deep": "Zysk z HTTP/3 jest największy na sieciach mobilnych ze stratami pakietów; w stabilnym data center różnica bywa pomijalna. Przeglądarka odkrywa HTTP/3 przez nagłówek Alt-Svc (lub rekord DNS HTTPS), więc pierwsze połączenie idzie zwykle po HTTP/2. W Kestrel HTTP/3 trzeba jawnie włączyć (Protocols = Http1AndHttp2AndHttp3) i na Linuksie wymaga biblioteki libmsquic; często jednak HTTP/3 kończy się na CDN/load balancerze, a do aplikacji idzie HTTP/1.1 lub HTTP/2. 0-RTT (wznowienie z danymi w pierwszym pakiecie) przyspiesza połączenie, ale dane 0-RTT mogą być odtworzone przez atakującego (replay), więc wolno w nich przyjmować tylko żądania idempotentne. gRPC wymaga HTTP/2 (lub HTTP/3), a gRPC-Web pozwala go używać z przeglądarki. Firewalle korporacyjne często blokują UDP – klient musi umieć wrócić do HTTP/2. W HTTP/2 jedno połączenie do serwera może stać się wąskim gardłem przy dużym ruchu serwis–serwis (limit równoległych strumieni), co rozwiązuje się wieloma połączeniami."
+    },
+    {
+      "id": "web-s014",
+      "topic": "Caching",
+      "level": 3,
+      "q": "Jak projektujesz cache'owanie na CDN dla aplikacji Angular i API, żeby było szybko i bezpiecznie?",
+      "a": "Statyczne zasoby z hashem w nazwie (Angular buduje je z outputHashing) dostają Cache-Control: public, max-age=31536000, immutable – zmiana treści to nowa nazwa pliku, więc nigdy nie trzeba ich unieważniać. index.html dostaje no-cache (lub bardzo krótki czas), żeby użytkownik szybko dostał nową wersję aplikacji wskazującą na nowe pliki. Dla publicznych odpowiedzi API używam s-maxage (czas dla cache współdzielonych) i stale-while-revalidate, a odpowiedzi zależne od użytkownika oznaczam private lub no-store. Klucz cache na CDN musi uwzględniać wszystko, od czego zależy odpowiedź (Vary, query string).",
+      "code": "/main.3f9a1c.js     Cache-Control: public, max-age=31536000, immutable\n/index.html         Cache-Control: no-cache\n/api/products       Cache-Control: public, s-maxage=60, stale-while-revalidate=300\n/api/me/orders      Cache-Control: private, no-store",
+      "lang": "text",
+      "deep": "Najgroźniejszy błąd to zcache'owanie spersonalizowanej odpowiedzi jako publicznej – kolejni użytkownicy widzą cudze dane; stąd zasada 'domyślnie private/no-store dla API z uwierzytelnieniem' i jawne włączanie public tylko dla danych publicznych. Web cache deception: atakujący nakłania ofiarę do wejścia na /api/me/profile.css, CDN cache'uje to po rozszerzeniu jako zasób statyczny, a serwer i tak zwraca dane profilu – CDN powinien respektować Cache-Control originu, a nie reguły po rozszerzeniu. Vary: Accept-Encoding jest normalne, ale Vary: Cookie lub User-Agent praktycznie wyłącza cache przez eksplozję wariantów. stale-if-error pozwala serwować starą treść, gdy origin ma awarię – zwiększa odporność. Unieważnianie (purge) jest wolne i kosztowne, więc lepiej projektować na wersjonowane URL-e i krótkie TTL z rewalidacją (ETag). Ciasteczka ustawiane w odpowiedzi publicznej mogą zostać zcache'owane – CDN-y zwykle nie cache'ują odpowiedzi z Set-Cookie, ale trzeba to sprawdzić w konfiguracji."
+    },
+    {
+      "id": "web-s015",
+      "topic": "Caching",
+      "level": 3,
+      "q": "Strong vs weak ETag, 412 i 428 – jak wymusić optimistic concurrency w API przez nagłówki warunkowe?",
+      "a": "Strong ETag oznacza identyczność bajt po bajcie, weak (z prefiksem W/) – semantyczną równoważność. If-None-Match (rewalidacja cache) używa porównania słabego, więc weak ETag wystarcza dla 304. If-Match (zapis warunkowy) wymaga porównania silnego – weak ETag nigdy nie spełni If-Match. Żeby zapobiec lost update, API wymaga If-Match przy PUT/PATCH/DELETE: brak nagłówka to 428 Precondition Required, nieaktualna wersja to 412 Precondition Failed. ETag generuję z wersji wiersza (rowversion w SQL Server, xmin w PostgreSQL lub kolumna wersji), a nie z hasha całej odpowiedzi.",
+      "code": "app.MapPut(\"/api/products/{id:int}\", async (int id, ProductUpdate dto,\n    [FromHeader(Name = \"If-Match\")] string? ifMatch, AppDbContext db, CancellationToken ct) =>\n{\n    if (ifMatch is null) return Results.StatusCode(StatusCodes.Status428PreconditionRequired);\n    var p = await db.Products.FindAsync([id], ct);\n    if (p is null) return Results.NotFound();\n    db.Entry(p).Property(x => x.Version).OriginalValue = ETags.ToVersion(ifMatch);\n    p.Apply(dto);\n    try { await db.SaveChangesAsync(ct); }\n    catch (DbUpdateConcurrencyException) { return Results.StatusCode(StatusCodes.Status412PreconditionFailed); }\n    return Results.NoContent();\n});",
+      "lang": "csharp",
+      "deep": "Wersja z bazy pozwala połączyć ETag z concurrency token EF Core: wartość z If-Match ustawiam jako OriginalValue tokenu, a DbUpdateConcurrencyException mapuję na 412 – sprawdzenie i zapis są wtedy atomowe, bez okna wyścigu między odczytem a zapisem. Hash odpowiedzi wymaga wygenerowania całej odpowiedzi, by odpowiedzieć 304, więc oszczędza tylko transfer, nie pracę serwera. Kompresja po drodze: niektóre serwery i proxy przy kompresji zmieniają strong ETag na weak (bo bajty się różnią), co nagle psuje If-Match – warto to przetestować na pełnym stosie. ETag dla kolekcji jest trudniejszy (zmiana dowolnego elementu, paginacja) – często używa się max(updatedAt) + liczby elementów. Klient Angular musi przechować ETag z odpowiedzi GET (observe: 'response') i odesłać go w If-Match; przy 412 pokazuje konflikt i ponownie pobiera zasób. Dla zasobów edytowanych przez wielu użytkowników 412 jest lepsze niż ciche 'last write wins'."
+    },
+    {
+      "id": "web-s016",
+      "topic": "Webhooks",
+      "level": 3,
+      "q": "Jak bezpiecznie wysyłać i odbierać webhooki (podpisy, replay, retry, idempotencja)?",
+      "a": "Nadawca podpisuje każdy webhook HMAC-SHA256 współdzielonym sekretem (lub kluczem asymetrycznym) z treści obejmującej identyfikator wiadomości, znacznik czasu i surowe body, i wysyła podpis w nagłówku. Odbiorca liczy podpis z surowych bajtów body, porównuje w czasie stałym, odrzuca wiadomości ze znacznikiem czasu starszym niż kilka minut (ochrona przed replay) i deduplikuje po identyfikatorze zdarzenia, bo dostawa jest at-least-once. Odbiorca szybko zwraca 2xx i przetwarza zdarzenie asynchronicznie, a nadawca ponawia z exponential backoff przez godziny lub dni, po czym oznacza endpoint jako wyłączony.",
+      "code": "using var ms = new MemoryStream();\nawait req.Body.CopyToAsync(ms, ct);\nvar body = ms.ToArray();\nvar signed = Encoding.UTF8.GetBytes($\"{id}.{timestamp}.\").Concat(body).ToArray();\nvar expected = HMACSHA256.HashData(secret, signed);\nvar given = Convert.FromBase64String(signatureHeader);\nif (!CryptographicOperations.FixedTimeEquals(expected, given))\n    return Results.Unauthorized();",
+      "lang": "csharp",
+      "deep": "Podpis liczony z ponownie zserializowanego JSON-a (po model bindingu) nie zgodzi się z podpisem nadawcy – kolejność pól, białe znaki czy format liczb się różnią, dlatego czytam surowe body. Porównanie podpisów przez == zdradza informacje przez timing; w .NET używam CryptographicOperations.FixedTimeEquals. Rotacja sekretów: nadawca przez okres przejściowy wysyła podpisy oboma kluczami (np. kilka wartości w nagłówku), a odbiorca akceptuje dowolny ważny. Po stronie nadawcy webhook to potencjalny SSRF – URL podany przez klienta musi przejść walidację adresu docelowego, a wysyłka powinna iść z izolowanej sieci. Kolejność zdarzeń nie jest gwarantowana, więc odbiorca powinien opierać się na wersji/znaczniku czasu zasobu albo pobrać aktualny stan przez API ('thin events'). Specyfikacja Standard Webhooks ujednolica nagłówki (webhook-id, webhook-timestamp, webhook-signature) i sposób podpisywania – warto ją znać. Nadawca potrzebuje outboxa, żeby zdarzenie nie zginęło między zapisem w bazie a wysyłką."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "web-sq001",
+      "topic": "BFF",
+      "level": 3,
+      "q": "Aplikacja Angular przeszła na wzorzec BFF: tokeny są tylko na serwerze, przeglądarka ma ciasteczko sesyjne HttpOnly, Secure, SameSite=Lax. Która ochrona jest nadal potrzebna dla endpointów zmieniających stan?",
+      "options": [
+        "Szyfrowanie ciasteczka po stronie klienta w Angularze",
+        "Przechowywanie dodatkowej kopii tokenu w sessionStorage",
+        "Ochrona przed CSRF, np. wymaganie niestandardowego nagłówka (X-CSRF) lub tokenu antyforgery na żądaniach API",
+        "Włączenie CORS z AllowAnyOrigin dla BFF"
+      ],
+      "correct": 2,
+      "why": "Skoro uwierzytelnienie opiera się na ciasteczku, które przeglądarka dołącza automatycznie, wraca ryzyko CSRF. SameSite=Lax ogranicza je dla większości żądań cross-site, ale nie dla wszystkich scenariuszy (np. ataki z tej samej site, GET zmieniające stan). Niestandardowy nagłówek wymusza preflight CORS, którego obca strona nie przejdzie. Szyfrowanie po stronie klienta i kopia tokenu w sessionStorage niweczą sens BFF, a AllowAnyOrigin otwiera API dla dowolnych stron."
+    },
+    {
+      "id": "web-sq002",
+      "topic": "JWT",
+      "level": 3,
+      "q": "Pracownik został zwolniony i jego konto zablokowano o 10:00. Access tokeny JWT mają exp 60 minut, refresh token został odwołany. API waliduje tokeny tylko lokalnie. Co jest prawdą?",
+      "options": [
+        "Pracownik może nadal wywoływać API wydanym wcześniej access tokenem do jego wygaśnięcia (do ok. 11:00), chyba że API sprawdza dodatkowo denylistę lub security stamp",
+        "Odwołanie refresh tokenu automatycznie unieważnia wszystkie access tokeny",
+        "JWT zostanie odrzucony, bo API pobiera JWKS przy każdym żądaniu i sprawdza status konta",
+        "Token przestanie działać po najbliższym odświeżeniu strony w przeglądarce"
+      ],
+      "correct": 0,
+      "why": "Lokalna walidacja JWT sprawdza tylko podpis, exp, issuer i audience – nie stan konta. Odwołanie refresh tokenu zapobiega wydaniu nowych access tokenów, ale istniejący pozostaje ważny do exp. JWKS zawiera klucze publiczne, a nie informacje o użytkownikach, i jest cache'owany. Rozwiązania: krótszy exp, denylista jti/sid, security stamp porównywany przy żądaniu albo introspekcja."
+    },
+    {
+      "id": "web-sq003",
+      "topic": "OAuth/OIDC",
+      "level": 2,
+      "q": "Serwis Orders pobiera nowy token client credentials z IdP przed każdym wywołaniem serwisu Billing. Przy wzroście ruchu wszystkie wywołania Billing zaczynają kończyć się błędem. Co jest najbardziej prawdopodobną przyczyną i naprawą?",
+      "options": [
+        "Client credentials nie wspiera wielu równoległych żądań – trzeba przejść na Authorization Code",
+        "IdP rate-limituje lub nie nadąża z wydawaniem tokenów; token należy cache'ować i odświeżać przed wygaśnięciem",
+        "Billing odrzuca tokeny, bo są za świeże (nbf w przyszłości)",
+        "Trzeba wydłużyć exp tokenu do 30 dni"
+      ],
+      "correct": 1,
+      "why": "Token client credentials jest ważny przez określony czas i może być współdzielony przez wszystkie wywołania tego serwisu. Pobieranie go per żądanie mnoży ruch do IdP, który zaczyna odpowiadać 429/błędami i blokuje całą komunikację. Biblioteki zarządzania tokenami cache'ują je i odświeżają z wyprzedzeniem. Authorization Code jest dla użytkowników, problem nbf zdarza się przy rozjechanych zegarach, a nie przy obciążeniu, a 30-dniowe tokeny to niepotrzebne ryzyko."
+    },
+    {
+      "id": "web-sq004",
+      "topic": "CORS",
+      "level": 3,
+      "q": "API uwierzytelnia przez ciasteczko sesyjne i ma poniższą politykę CORS. Co może zrobić atakujący, który nakłoni zalogowanego użytkownika do wejścia na https://evil.example?",
+      "code": "builder.Services.AddCors(o => o.AddDefaultPolicy(p => p\n    .SetIsOriginAllowed(_ => true)\n    .AllowAnyHeader()\n    .AllowAnyMethod()\n    .AllowCredentials()));",
+      "lang": "csharp",
+      "options": [
+        "Nic – SameSite i CORS zawsze blokują żądania z obcych domen",
+        "Tylko wysłać żądanie bez możliwości odczytu odpowiedzi",
+        "Odczytać odpowiedzi, ale tylko dla żądań GET bez ciasteczek",
+        "Wysłać żądanie z ciasteczkiem ofiary (jeśli SameSite na to pozwala) i odczytać odpowiedź, bo serwer odbija każdy origin z Allow-Credentials: true"
+      ],
+      "correct": 3,
+      "why": "SetIsOriginAllowed(_ => true) + AllowCredentials sprawia, że serwer zwraca Access-Control-Allow-Origin: https://evil.example i Access-Control-Allow-Credentials: true, więc przeglądarka udostępnia odpowiedź skryptowi atakującego. Ciasteczko zostanie dołączone, jeśli ma SameSite=None (typowe przy konfiguracjach cross-site) – wtedy atakujący czyta dane ofiary. Rozwiązanie: jawna lista originów. CORS sam w sobie nie blokuje wysyłania żądań, tylko odczyt odpowiedzi."
+    },
+    {
+      "id": "web-sq005",
+      "topic": "SSRF",
+      "level": 3,
+      "q": "Endpoint 'importuj obrazek z URL' blokuje adresy, których host jest równy 'localhost' lub zaczyna się od '127.' albo '10.'. Który atak nadal przejdzie najłatwiej?",
+      "options": [
+        "SQL injection przez parametr URL",
+        "XSS w nazwie pliku obrazka",
+        "URL z domeną atakującego, która rozwiązuje się (lub przekierowuje) na 169.254.169.254 albo inny adres wewnętrzny",
+        "Atak CSRF na endpoint importu"
+      ],
+      "correct": 2,
+      "why": "Walidacja tekstu hosta nie widzi, na jaki adres faktycznie rozwiąże się domena, i nie obejmuje przekierowań ani alternatywnych zapisów IP. Endpoint metadanych chmury 169.254.169.254 nie pasuje do żadnej z reguł, a domena atakującego może wskazywać dowolny adres wewnętrzny (także przez DNS rebinding). Poprawna obrona to walidacja adresu IP używanego do połączenia, blokada zakresów prywatnych/link-local, brak automatycznych przekierowań i izolacja sieciowa. Pozostałe opcje to inne klasy podatności, niezwiązane z tą walidacją."
+    },
+    {
+      "id": "web-sq006",
+      "topic": "CSP",
+      "level": 2,
+      "q": "Która polityka CSP daje najsłabszą ochronę przed wstrzykniętym skryptem inline (<script>...</script> w treści użytkownika)?",
+      "options": [
+        "script-src 'self' 'unsafe-inline'",
+        "script-src 'nonce-abc123' 'strict-dynamic'; object-src 'none'",
+        "script-src 'self'; object-src 'none'; base-uri 'none'",
+        "script-src 'sha256-...'; object-src 'none'"
+      ],
+      "correct": 0,
+      "why": "'unsafe-inline' zezwala na wykonanie dowolnego skryptu inline, więc wstrzyknięty <script> zadziała – CSP nie chroni przed typowym XSS. Polityki z nonce, hashami lub samym 'self' blokują skrypty inline bez poprawnego nonce/hasha. Uwaga: jeśli w script-src jest nonce lub hash, przeglądarki ignorują 'unsafe-inline' – dlatego dodaje się go czasem dla zgodności ze starymi przeglądarkami bez utraty ochrony."
+    },
+    {
+      "id": "web-sq007",
+      "topic": "Webhooks",
+      "level": 3,
+      "q": "Odbiorca webhooków weryfikuje podpis HMAC w poniższy sposób. Około 30% poprawnych webhooków jest odrzucanych jako 'invalid signature'. Najbardziej prawdopodobna przyczyna?",
+      "code": "app.MapPost(\"/webhooks/payments\", (PaymentEvent evt, HttpRequest req) =>\n{\n    var json = JsonSerializer.Serialize(evt);\n    var sig = Convert.ToBase64String(\n        HMACSHA256.HashData(secret, Encoding.UTF8.GetBytes(json)));\n    return sig == req.Headers[\"X-Signature\"] ? Results.Ok() : Results.Unauthorized();\n});",
+      "lang": "csharp",
+      "options": [
+        "HMAC-SHA256 nie nadaje się do podpisywania JSON",
+        "Podpis jest liczony z ponownie zserializowanego obiektu, który różni się bajtowo od surowego body wysłanego przez nadawcę (kolejność pól, białe znaki, format liczb, escaping)",
+        "Sekret powinien być zakodowany w Base64 po obu stronach",
+        "Porównanie podpisów powinno ignorować wielkość liter"
+      ],
+      "correct": 1,
+      "why": "Nadawca podpisuje dokładne bajty body. JsonSerializer.Serialize po deserializacji tworzy inną reprezentację (np. inne escapowanie znaków, format liczb, brak nieznanych pól), więc HMAC wychodzi inny dla części wiadomości. Trzeba odczytać surowe body (np. z Request.Body przed deserializacją) i liczyć podpis z niego, a porównywać przez CryptographicOperations.FixedTimeEquals. Pozostałe opcje nie tłumaczą częściowych, zależnych od treści błędów."
+    },
+    {
+      "id": "web-sq008",
+      "topic": "Caching",
+      "level": 3,
+      "q": "Po włączeniu CDN przed API część użytkowników widzi na stronie 'Moje zamówienia' zamówienia innej osoby. Endpoint /api/me/orders zwraca nagłówek z poniższego fragmentu. Co jest przyczyną?",
+      "code": "GET /api/me/orders\nAuthorization: Bearer eyJ...\n\nHTTP/1.1 200 OK\nCache-Control: public, max-age=60",
+      "lang": "text",
+      "options": [
+        "CDN nie obsługuje nagłówka Authorization",
+        "Brak ETag w odpowiedzi",
+        "max-age=60 jest za długie – wystarczy skrócić do 5 sekund",
+        "Dyrektywa public pozwala CDN zcache'ować spersonalizowaną odpowiedź pod kluczem URL i podać ją innym użytkownikom – powinno być private lub no-store"
+      ],
+      "correct": 3,
+      "why": "public jawnie zezwala cache'om współdzielonym na przechowanie odpowiedzi, nawet przy żądaniu z Authorization. Klucz cache to URL, który jest taki sam dla wszystkich (/api/me/orders), więc kolejni użytkownicy dostają cudze dane. Skrócenie TTL zmniejsza tylko okno wycieku, a ETag nie zmienia decyzji o współdzieleniu. Dla danych per użytkownik: Cache-Control: private albo no-store."
+    },
+    {
+      "id": "web-sq009",
+      "topic": "HTTP/2 i HTTP/3",
+      "level": 3,
+      "q": "Aplikacja mobilna korzysta z API przez HTTP/2. Na sieciach komórkowych z utratą pakietów ok. 2% czasy ładowania ekranu z kilkunastoma równoległymi żądaniami są bardzo nierówne. Dlaczego przejście na HTTP/3 może pomóc?",
+      "options": [
+        "QUIC eliminuje head-of-line blocking warstwy TCP – utrata pakietu wstrzymuje tylko jeden strumień, a nie wszystkie w połączeniu",
+        "HTTP/3 kompresuje body odpowiedzi lepiej niż gzip",
+        "HTTP/3 pozwala wysłać więcej niż jedno żądanie na połączenie, czego HTTP/2 nie umie",
+        "HTTP/3 nie używa szyfrowania, więc jest szybszy"
+      ],
+      "correct": 0,
+      "why": "W HTTP/2 wszystkie strumienie dzielą jedno połączenie TCP, a TCP dostarcza bajty w kolejności – zgubiony pakiet blokuje wszystkie strumienie do retransmisji. QUIC (UDP) ma niezależne strumienie, więc strata dotyka tylko jednego z nich. HTTP/2 już multipleksuje żądania, HTTP/3 nie zmienia kompresji body, a TLS 1.3 jest w QUIC obowiązkowy."
+    },
+    {
+      "id": "web-sq010",
+      "topic": "Sekrety",
+      "level": 3,
+      "q": "Zespół rotuje klucz podpisujący JWT: o 12:00 IdP zaczyna podpisywać nowym kluczem (nowy kid) i w tym samym momencie usuwa stary klucz z JWKS. Tokeny żyją 60 minut. Co się stanie?",
+      "options": [
+        "Nic – API automatycznie zaufa nowemu kluczowi, bo pochodzi od tego samego issuera",
+        "Wszystkie tokeny zostaną natychmiast odświeżone przez klientów",
+        "Nowe tokeny będą odrzucane do restartu API",
+        "Tokeny wydane przed 12:00 przestaną przechodzić walidację (brak klucza dla ich kid), a API mogą chwilowo odrzucać też nowe tokeny, dopóki nie odświeżą zcache'owanego JWKS"
+      ],
+      "correct": 3,
+      "why": "Walidator potrzebuje klucza publicznego o kid z nagłówka tokenu. Usunięcie starego klucza unieważnia wszystkie wciąż ważne tokeny, a API z cache'owanym JWKS może nie znać jeszcze nowego klucza (odświeżenie metadanych jest ograniczane czasowo). Poprawna rotacja: opublikuj nowy klucz w JWKS z wyprzedzeniem, przełącz podpisywanie, a stary usuń po upływie maksymalnego czasu życia tokenów. Restart nie jest konieczny, a klienci nie odświeżają tokenów 'automatycznie' na zmianę klucza."
+    }
+  ]
+}

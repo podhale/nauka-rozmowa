@@ -1,0 +1,129 @@
+{
+ "cat": "angular",
+ "sheets": [
+  {
+   "topic": "Mikrofrontendy",
+   "points": [
+    "Rozwiązują problem **organizacyjny**: wiele niezależnych zespołów z osobnymi wdrożeniami.",
+    "**Module Federation** – mechanizm webpacka (np. `@angular-architects/module-federation`), wymaga pozostania przy webpacku.",
+    "**Native Federation** (`@angular-architects/native-federation`) – ES modules + import maps, niezależna od bundlera, działa z esbuild.",
+    "Współdzielone zależności (Angular, RxJS, UI) jako singletony w zgodnych wersjach – aktualizacje wymagają koordynacji.",
+    "Koszty: integracja w runtime, wersjonowanie kontraktów, spójność UX, testy E2E całości.",
+    "Alternatywy: monorepo (Nx affected/cache) + lazy loading; osobne aplikacje za reverse proxy; Angular Elements dla widżetów."
+   ],
+   "pitfalls": [
+    "Mikrofrontendy jako lek na wolny build przy jednym zespole.",
+    "Różne wersje major Angulara w shellu i remote'ach jako 'niezależność'."
+   ],
+   "say": "Mikrofrontendy wybieram dla wielu niezależnych zespołów z osobnymi wdrożeniami; dla nowych projektów Native Federation, a gdy zespół jest jeden – monorepo i lazy loading wystarczą."
+  },
+  {
+   "topic": "i18n",
+   "points": [
+    "`@angular/localize`: atrybut `i18n` w szablonach, `$localize` w TS, `ng extract-i18n` → XLIFF/JSON.",
+    "Kompilacja per locale – osobny build i ścieżka (`/pl/`, `/en/`); zero narzutu w runtime; zmiana języka = przeładowanie.",
+    "Format `i18n=\"znaczenie|opis@@id\"` – stałe `@@id`, żeby poprawki tekstu nie unieważniały tłumaczeń.",
+    "ICU: `plural` (dla polskiego kategorie one/few/many/other), `select`.",
+    "`loadTranslations()` przed bootstrapem – tłumaczenia w runtime przy starcie, jeden build (bez przełączania w locie).",
+    "Biblioteki runtime (Transloco, ngx-translate): przełączanie bez przeładowania, tłumaczenia z CMS; koszt runtime.",
+    "Daty, liczby, waluty przez pipe'y z `LOCALE_ID`."
+   ],
+   "pitfalls": [
+    "Polski plural tylko z one/other – błędne formy dla 2–4 i 5+.",
+    "Sklejanie zdań z kawałków w kodzie – tłumacz nie zmieni szyku."
+   ],
+   "code": "<span i18n=\"@@cartCount\">{count, plural,\n  one {1 produkt} few {{{count}} produkty} many {{{count}} produktów} other {{{count}} produktu}}</span>",
+   "lang": "html",
+   "say": "Wbudowane i18n daje najlepszą wydajność i SEO kosztem builda per język; gdy produkt wymaga przełączania języka w locie, wybieram bibliotekę runtime."
+  },
+  {
+   "topic": "Dostępność (a11y)",
+   "points": [
+    "Najpierw semantyczny HTML (`button`, `label`, nagłówki, `alt`), dopiero potem ARIA.",
+    "CDK a11y: `cdkTrapFocus`, `FocusMonitor`, `LiveAnnouncer`, `ListKeyManager` / `ActiveDescendantKeyManager`.",
+    "SPA: po nawigacji przenieś focus (nagłówek/`main`) i ustaw tytuł (`title` w trasach, TitleStrategy).",
+    "Dynamiczne komunikaty (toasty, błędy, wyniki) przez `LiveAnnouncer` lub `aria-live`.",
+    "Komponenty design systemu z wbudowanymi rolami, stanami ARIA i obsługą klawiatury (ARIA Authoring Practices).",
+    "`@angular/aria` – headless, dostępne prymitywy w v21 (**developer preview**).",
+    "Kontrola: reguły accessibility w angular-eslint, axe w E2E + ręczny test klawiaturą i czytnikiem."
+   ],
+   "pitfalls": [
+    "`div (click)` bez roli, tabindex i obsługi klawiatury.",
+    "Poleganie tylko na automatach – nie ocenią kolejności fokusu."
+   ],
+   "say": "Dostępność buduję od semantycznego HTML, zachowania biorę z CDK a11y, w SPA pilnuję fokusu i tytułu po nawigacji, a jakość sprawdzam automatami i ręcznie."
+  },
+  {
+   "topic": "Aktualizacje wersji",
+   "points": [
+    "**Jedna wersja major na raz**, wg update.angular.dev; każdy krok osobny PR z zielonym CI.",
+    "`ng update @angular/core@X @angular/cli@X` uruchamia automatyczne migracje; Material/CDK osobno.",
+    "Major co ~6 miesięcy; wsparcie 18 miesięcy (6 aktywne + 12 LTS).",
+    "Deprecated API usuwane zwykle nie wcześniej niż po dwóch wersjach major – usuwaj deprecations na bieżąco.",
+    "Sprawdź peer dependencies bibliotek (NgRx, UI) i wymagane wersje TypeScript/Node przed startem.",
+    "Opcjonalne migracje (control flow, signals, inject) uruchamiaj osobno; w Nx – `nx migrate`."
+   ],
+   "pitfalls": [
+    "Skok o kilka wersji naraz.",
+    "Mieszanie aktualizacji z refaktoryzacją w jednym PR."
+   ],
+   "code": "ng update @angular/core@20 @angular/cli@20\nng update @angular/material@20",
+   "lang": "bash",
+   "say": "Aktualizuję regularnie, jedną wersję major na raz przez ng update z migracjami, po sprawdzeniu zależności i z testami E2E krytycznych ścieżek."
+  },
+  {
+   "topic": "Design system",
+   "points": [
+    "Zachowanie i a11y z **Angular CDK**: Overlay, Portal, Dialog, Menu, Listbox, DragDrop, Table, a11y.",
+    "API komponentów: sygnałowe inputy, `model()` dla kontrolek, ControlValueAccessor dla formularzy.",
+    "Kompozycja przez **content projection** (sloty `select`) i `ngTemplateOutlet` zamiast dziesiątek inputów.",
+    "**Host directives** – współdzielone zachowania (focus, disabled, tooltip) bez dziedziczenia.",
+    "Wygląd: design tokeny jako **CSS custom properties**; bez `::ng-deep` u konsumentów.",
+    "Dystrybucja: `ng generate library` (ng-packagr, APF), secondary entry points, semver + changelog.",
+    "Jakość: Storybook, testy wizualnej regresji, testy a11y w CI."
+   ],
+   "pitfalls": [
+    "Komponent z 20 inputami konfiguracyjnymi zamiast kompozycji.",
+    "Jeden entry point biblioteki – aplikacje ciągną całość."
+   ],
+   "say": "Design system buduję na CDK, z API opartym o kompozycję – projekcję, szablony i host directives – stylowany tokenami w CSS custom properties i dystrybuowany jako biblioteka z secondary entry points."
+  },
+  {
+   "topic": "Obsługa błędów",
+   "points": [
+    "Warstwy: interceptor HTTP (mapowanie, retry, auth) → obsługa w feature (stan error) → globalny `ErrorHandler`.",
+    "Własny `ErrorHandler`: logowanie do monitoringu z kontekstem + ogólny komunikat; zależności przez `Injector` (cykle).",
+    "`provideBrowserGlobalErrorListeners()` (v20) – nieobsłużone błędy i odrzucone Promise z `window` trafiają do ErrorHandler.",
+    "Router: `withNavigationErrorHandler` – np. nieudany import chunka po wdrożeniu → przeładowanie.",
+    "Interceptor nie połyka błędów – po efektach ubocznych `throwError(() => err)`.",
+    "Retry tylko dla żądań idempotentnych, z limitem i backoffem.",
+    "Backend .NET: ProblemDetails → spójne mapowanie (także błędów walidacji na formularz)."
+   ],
+   "pitfalls": [
+    "`catchError(() => EMPTY)` w interceptorze – wiszący spinner, nikt nie wie o błędzie.",
+    "Logowanie tokenów i danych osobowych w raportach."
+   ],
+   "code": "providers: [\n  provideBrowserGlobalErrorListeners(),\n  { provide: ErrorHandler, useClass: AppErrorHandler },\n  provideRouter(routes, withNavigationErrorHandler(e => console.error(e))),\n]",
+   "lang": "typescript",
+   "say": "Błędy obsługuję warstwowo: interceptor mapuje i przekazuje dalej, feature pokazuje stan błędu, a globalny ErrorHandler z global listeners loguje wszystko, co nieobsłużone."
+  },
+  {
+   "topic": "Konfiguracja runtime",
+   "points": [
+    "`environment.*.ts` + `fileReplacements` = **build-time** – osobny build na środowisko.",
+    "Runtime: `config.json` pobierany przy starcie – **build once, deploy many** (jeden obraz Dockera).",
+    "`provideAppInitializer` (v19+, zastępuje `APP_INITIALIZER`) blokuje bootstrap do załadowania configu.",
+    "Alternatywa: fetch w `main.ts` przed `bootstrapApplication` i `{ provide: APP_CONFIG, useValue }` – config synchronicznie wszędzie.",
+    "Plik generowany przy starcie kontenera ze zmiennych środowiskowych; krótki cache.",
+    "**Brak sekretów** w konfiguracji frontendu – wszystko w przeglądarce jest publiczne."
+   ],
+   "pitfalls": [
+    "Agresywnie cache'owany config.json – stare adresy po zmianie.",
+    "`process.env` w kodzie przeglądarkowym."
+   ],
+   "code": "export const APP_CONFIG = new InjectionToken<AppConfig>('APP_CONFIG');\nproviders: [\n  provideAppInitializer(() => inject(ConfigService).load()),\n]",
+   "lang": "typescript",
+   "say": "Konfigurację zależną od środowiska ładuję w runtime z config.json przez provideAppInitializer lub przed bootstrapem, żeby jeden artefakt przechodził przez wszystkie środowiska."
+  }
+ ]
+}

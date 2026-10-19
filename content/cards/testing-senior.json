@@ -1,0 +1,305 @@
+{
+  "cat": "testing",
+  "name": "Testy (.NET i Angular)",
+  "cards": [
+    {
+      "id": "testing-s001",
+      "topic": "Piramida testów",
+      "level": 3,
+      "q": "Jak zaprojektujesz strategię testów dla dużego projektu (.NET API + Angular)? Piramida, testing trophy czy coś innego?",
+      "a": "Proporcje dobieram do tego, gdzie w systemie jest ryzyko, a nie do kształtu z obrazka. Dla typowego Web API, którego logika to w dużej mierze zapytania i integracja z bazą, środek ciężkości kładę na testy integracyjne przez HTTP z prawdziwą bazą w kontenerze (podejście bliskie testing trophy/honeycomb), unit testy piszę dla bogatej logiki domenowej i algorytmów, a e2e tylko dla kilku krytycznych ścieżek. Na froncie podobnie: testy komponentów z perspektywy użytkownika (Testing Library, harnessy), a nie testy implementacji. Do tego warstwa statyczna – strict TypeScript, analizatory, testy architektury – która łapie całe klasy błędów za darmo.",
+      "tip": "Rekruter seniorski chce usłyszeć uzasadnienie przez ryzyko i koszt oraz konkretne metryki, a nie recytację piramidy.",
+      "deep": "Testing trophy (Kent C. Dodds) stawia na dole analizę statyczną, a największy nacisk kładzie na testy integracyjne, bo dają najlepszy stosunek pewności do kosztu; honeycomb (Spotify) mówi to samo dla mikroserwisów, gdzie ryzyko leży w integracji, nie w pojedynczych klasach. Piramida nadal ma sens dla systemów z bogatą domeną (wyceny, reguły podatkowe), gdzie tysiące szybkich unit testów pokrywają kombinatorykę. W mikroserwisach dochodzą testy kontraktowe zamiast kruchych e2e przez wiele usług. Metryki, którymi weryfikuję strategię: czas pipeline'u (cel: feedback z PR poniżej ~10–15 min), odsetek flaky testów, liczba bugów, które uciekły na produkcję i na jakim poziomie powinny były zostać złapane (escape analysis). Coverage traktuję jako sygnał dziur, a mutation testing jako miarę jakości asercji w krytycznych modułach. Strategię zapisuję w krótkim dokumencie: co testujemy na którym poziomie, jak izolujemy dane, co blokuje merge – bez tego każdy zespół robi to inaczej."
+    },
+    {
+      "id": "testing-s002",
+      "topic": "Testcontainers vs InMemory",
+      "level": 3,
+      "q": "Jak czyścisz bazę między testami integracyjnymi z Testcontainers? Porównaj Respawn, transakcje i inne podejścia.",
+      "a": "Kontener i migracje uruchamiam raz na kolekcję testów (fixture), a między testami resetuję tylko dane. Najczęściej używam Respawn: przy inicjalizacji analizuje schemat i graf kluczy obcych, a ResetAsync czyści tabele w poprawnej kolejności (DELETE lub TRUNCATE – zależnie od adaptera bazy), pomijając wskazane tabele (np. __EFMigrationsHistory, słowniki). Alternatywą jest transakcja otwierana przed testem i wycofywana po nim – bardzo szybka, ale nie działa, gdy kod sam zarządza transakcjami, korzysta z wielu połączeń albo test przechodzi przez HTTP do WebApplicationFactory. Przy dużej równoległości stosuję osobną bazę na kolekcję lub na worker.",
+      "code": "public class ApiFixture : IAsyncLifetime\n{\n    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder().Build();\n    private Respawner _respawner = null!;\n    private NpgsqlConnection _conn = null!;\n\n    public async ValueTask InitializeAsync()\n    {\n        await _db.StartAsync();\n        // ... uruchom migracje EF Core\n        _conn = new NpgsqlConnection(_db.GetConnectionString());\n        await _conn.OpenAsync();\n        _respawner = await Respawner.CreateAsync(_conn, new RespawnerOptions\n        {\n            DbAdapter = DbAdapter.Postgres,\n            TablesToIgnore = [new Table(\"__EFMigrationsHistory\")],\n        });\n    }\n    public Task ResetAsync() => _respawner.ResetAsync(_conn);\n    public async ValueTask DisposeAsync() { await _conn.DisposeAsync(); await _db.DisposeAsync(); }\n}",
+      "lang": "csharp",
+      "deep": "Respawn jest szybki, bo nie odtwarza schematu – reset kilkudziesięciu tabel to typowo kilka–kilkadziesiąt milisekund, podczas gdy migracje od zera to sekundy. Ważne: Respawnera tworzę raz (CreateAsync jest kosztowne), a ResetAsync wołam przed testem, nie po nim – wtedy po nieudanym teście dane zostają do analizy. Reset przed testem nie chroni przed testami równoległymi na tej samej bazie: dwie kolekcje xUnit resetujące wspólną bazę wzajemnie kasują sobie dane, więc albo jedna kolekcja, albo baza per kolekcja (CREATE DATABASE z szablonu w PostgreSQL jest bardzo szybkie). Dane referencyjne seeduję w migracji lub osobnym kroku i wykluczam z resetu. W CI przyspieszają start: lekkie obrazy (postgres:alpine), reuse kontenerów lokalnie, a na SQL Server tmpfs dla danych. Kontrowersja: niektóre zespoły zamiast czyszczenia generują unikalne dane per test (np. tenant id z Guid) i nigdy nie czyszczą – działa przy dobrym modelu multi-tenant i daje pełną równoległość."
+    },
+    {
+      "id": "testing-s003",
+      "topic": "Testy kontraktowe",
+      "level": 3,
+      "q": "Czym są testy kontraktowe (consumer-driven contracts, Pact) i kiedy zastępują testy e2e?",
+      "a": "Test kontraktowy sprawdza, że dostawca API i jego konsument zgadzają się co do formatu komunikacji, bez uruchamiania obu systemów naraz. W podejściu consumer-driven (Pact) konsument w swoich testach definiuje oczekiwane interakcje na mock serwerze – z tego powstaje plik kontraktu, publikowany do Pact Brokera. Dostawca w swoim pipeline odtwarza te interakcje na prawdziwej aplikacji (provider verification), z przygotowaniem stanu przez provider states. Dzięki temu zmiana łamiąca konsumenta wychodzi w CI dostawcy, zanim trafi na środowisko, a nie w kruchym e2e przez pięć serwisów.",
+      "deep": "Największą wartość daje to w architekturze mikroserwisowej z wieloma zespołami: zamiast wspólnego środowiska integracyjnego, które ciągle jest zepsute, każdy serwis wdraża się niezależnie, a narzędzie can-i-deploy w brokerze sprawdza, czy wersja jest zgodna z wersjami konsumentów aktualnie na danym środowisku. Kontrakt opisuje tylko to, czego konsument naprawdę używa – dostawca może swobodnie dodawać pola i zmieniać nieużywane części. Pułapki: kontrakty nie testują logiki biznesowej dostawcy (to nie są testy funkcjonalne), wymagają dyscypliny w obu zespołach i utrzymania brokera, a provider states potrafią się rozrosnąć. Dla jednego frontu i jednego backendu w monorepo to zwykle overkill – wystarczy generowanie klienta z OpenAPI i test, który porównuje wygenerowaną specyfikację z zatwierdzoną (wykrywanie breaking changes, np. narzędziami typu oasdiff). Pact obsługuje też komunikację asynchroniczną (wiadomości w kolejce), gdzie e2e jest jeszcze trudniejsze. W .NET implementacją jest PactNet, w TypeScript pact-js."
+    },
+    {
+      "id": "testing-s004",
+      "topic": "Testy architektury",
+      "level": 3,
+      "q": "Czym są testy architektury (NetArchTest, ArchUnitNET) i jakie reguły warto nimi pilnować?",
+      "a": "To zwykłe testy jednostkowe, które przez refleksję analizują skompilowane assembly i sprawdzają reguły zależności: warstwa Domain nie zależy od Infrastructure ani EF Core, kontrolery nie używają DbContext bezpośrednio, handlery są sealed i kończą się na Handler, moduły modularnego monolitu nie sięgają do swoich wewnętrznych typów. Zamieniają ustalenia z diagramu i code review w automatyczną bramkę w CI. Używam NetArchTest dla prostych reguł w stylu fluent API, ArchUnitNET gdy potrzebuję bogatszego modelu (np. reguły na poziomie metod czy slice'ów).",
+      "code": "[Fact]\npublic void Domain_should_not_depend_on_infrastructure()\n{\n    var result = Types.InAssembly(typeof(Order).Assembly)\n        .That().ResideInNamespace(\"Shop.Domain\")\n        .ShouldNot().HaveDependencyOnAny(\"Microsoft.EntityFrameworkCore\", \"Shop.Infrastructure\")\n        .GetResult();\n\n    Assert.True(result.IsSuccessful,\n        string.Join(\", \", result.FailingTypeNames ?? []));\n}",
+      "lang": "csharp",
+      "deep": "Wartość rośnie z wielkością zespołu i wiekiem projektu: architektura erozuje przez pojedyncze „tylko ten jeden raz” w PR-ach, a test łapie to od razu z czytelnym komunikatem, które typy łamią regułę. Najlepsze reguły to te, które są tanie w utrzymaniu i odpowiadają realnym decyzjom: kierunek zależności w Clean Architecture, granice modułów, brak referencji do zakazanych bibliotek (np. Newtonsoft w nowym kodzie), konwencje nazewnictwa ważne dla DI/skanowania. Ograniczenia: testy widzą tylko zależności widoczne w IL – refleksja, stringi czy wywołania przez DI kontener są niewidoczne; zbyt drobiazgowe reguły stają się biurokracją i są wyłączane. Część reguł lepiej egzekwować wcześniej i taniej: osobne projekty (csproj) z kontrolowanymi referencjami, modyfikator internal, analizatory Roslyn. Na froncie odpowiednikiem są reguły granic modułów w Nx (enforce-module-boundaries) albo dependency-cruiser."
+    },
+    {
+      "id": "testing-s005",
+      "topic": "Mutation testing",
+      "level": 3,
+      "q": "Czym jest mutation testing (Stryker) i co mówi więcej niż code coverage?",
+      "a": "Narzędzie wprowadza do kodu małe zmiany – mutanty, np. zamienia >= na >, && na ||, usuwa wywołanie metody, zmienia stałą – i dla każdego uruchamia testy. Jeśli któryś test padnie, mutant jest zabity; jeśli wszystkie przejdą, mutant przeżył, co znaczy, że testy nie sprawdzają tego zachowania. Mutation score (zabite / wszystkie) mierzy jakość asercji, a nie tylko to, czy linia została wykonana – 100% coverage z testami bez asercji daje zerowy wynik mutacyjny. W .NET używam Stryker.NET, w TypeScript StrykerJS.",
+      "code": "dotnet tool install -g dotnet-stryker\ncd tests/Pricing.Tests\ndotnet stryker --since:main          # tylko zmiany względem main\n# raport: StrykerOutput/<data>/reports/mutation-report.html",
+      "lang": "bash",
+      "deep": "Koszt jest główną barierą: dla każdego mutanta trzeba uruchomić (część) testów, więc przy tysiącach mutantów pełny przebieg trwa długo. Stryker łagodzi to analizą pokrycia – uruchamia tylko testy pokrywające zmutowaną linię – a w CI warto używać trybu przyrostowego (opcja since, mutowanie tylko zmienionych plików względem gałęzi głównej) i baseline'u. Nie celuję w 100%: część mutantów jest równoważna (zmiana nie zmienia zachowania, np. w logowaniu), a pogoń za wynikiem prowadzi do testów implementacji. Stosuję go punktowo: logika finansowa, reguły uprawnień, parsery, wspólne biblioteki – tam, gdzie przeżyły mutant na warunku brzegowym to realny bug. Raport HTML pokazuje dokładnie, który mutant przeżył, co jest świetnym materiałem do review testów. Progi (thresholds high/low/break) pozwalają zablokować build przy spadku jakości."
+    },
+    {
+      "id": "testing-s006",
+      "topic": "Flaky tests",
+      "level": 3,
+      "q": "Jak systemowo zarządzasz flaky testami w dużym projekcie i pipeline CI?",
+      "a": "Traktuję flaky testy jako dług z właścicielem, a nie szum. Najpierw wykrywanie: zbieram wyniki testów historycznie (raporty JUnit/TRX do narzędzia analitycznego) i oznaczam testy, które na tym samym commicie raz przechodzą, raz nie. Potem kwarantanna: test trafia do osobnej kategorii, która nie blokuje merge, ale dalej się wykonuje i ma ticket z terminem. Automatyczne retry w CI dopuszczam tylko z raportowaniem – Playwright oznacza test jako flaky, gdy przeszedł dopiero przy powtórzeniu. Retry bez widoczności chowa realne race conditions, także w kodzie produkcyjnym.",
+      "code": "// playwright.config.ts\nexport default defineConfig({\n  retries: process.env.CI ? 2 : 0,     // test zaliczony przy retry = 'flaky' w raporcie\n  use: { trace: 'on-first-retry' },\n  reporter: [['html'], ['junit', { outputFile: 'results.xml' }]],\n});",
+      "lang": "typescript",
+      "deep": "Liczby robią wrażenie na rozmowie: jeśli 1% testów jest flaky z prawdopodobieństwem 1%, to przy 2000 testów pipeline czerwienieje bez powodu w kilkunastu procentach przebiegów – zespół uczy się ignorować czerwień i przepuszcza prawdziwe błędy. Do lokalnego odtwarzania: uruchamianie testu w pętli (Playwright --repeat-each, w xUnit Theory z wieloma iteracjami lub skrypt), losowa kolejność, ograniczenie CPU, by wywołać wyścigi, oraz uruchamianie samodzielnie vs w całym zestawie – różnica wskazuje na współdzielony stan. Dla e2e najskuteczniejsze leki to trace viewer z artefaktów CI, web-first assertions zamiast sleepów i dane per test. Czasem flaky test wskazuje prawdziwy bug (wyścig, brak idempotencji) – zanim go „naprawię” w teście, sprawdzam, czy problem nie jest w kodzie. Metryka zespołowa: odsetek flaky i czas od wykrycia do naprawy, przeglądana na retro."
+    },
+    {
+      "id": "testing-s007",
+      "topic": "Testowanie współbieżności",
+      "level": 3,
+      "q": "Jak testujesz kod współbieżny i race conditions, np. podwójne przetworzenie zamówienia albo optimistic concurrency?",
+      "a": "Rozdzielam dwa poziomy. Na poziomie bazy i API piszę test integracyjny, który celowo wywołuje kolizję: dwa DbContexty wczytują ten sam rekord, oba go zmieniają, a drugi SaveChanges ma rzucić DbUpdateConcurrencyException; albo wysyłam równolegle kilkadziesiąt identycznych requestów przez Task.WhenAll i sprawdzam, że powstał dokładnie jeden rekord (unikalny indeks, idempotency key). Na poziomie kodu w pamięci zamiast liczyć na szczęście w pętli wprowadzam punkty synchronizacji – TaskCompletionSource lub SemaphoreSlim w fake'u zależności – żeby deterministycznie ustawić przeplot, który chcę sprawdzić.",
+      "code": "[Fact]\npublic async Task Parallel_checkout_creates_single_order()\n{\n    var client = _factory.CreateClient();\n    var key = Guid.NewGuid().ToString();\n\n    var responses = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ =>\n    {\n        var req = new HttpRequestMessage(HttpMethod.Post, \"/api/checkout\");\n        req.Headers.Add(\"Idempotency-Key\", key);\n        return client.SendAsync(req);\n    }));\n\n    Assert.Equal(1, await _db.CountOrdersAsync(key));\n}",
+      "lang": "csharp",
+      "deep": "Testy „odpal 1000 razy równolegle i zobacz” są probabilistyczne: przechodzą lokalnie na 16 rdzeniach, a w CI na 2 vCPU nie odtwarzają wyścigu albo stają się flaky. Deterministyczny przeplot: fake repozytorium zatrzymuje pierwsze wywołanie na TaskCompletionSource, test uruchamia drugie wywołanie, potem zwalnia pierwsze – dokładnie scenariusz lost update. Optimistic concurrency w EF Core wymaga tokenu ([Timestamp]/rowversion w SQL Server, xmin w PostgreSQL przez Npgsql) – test na InMemory providerze tego nie sprawdzi, więc tylko prawdziwa baza. Przy kolejkach i outboxie testuję idempotencję konsumenta: ta sama wiadomość dostarczona dwa razy nie może dać dwóch efektów. Do systematycznego przeszukiwania przeplotów istnieje Microsoft Coyote, ale w typowym projekcie wystarczy dobra izolacja i kilka celowanych testów. Dla kodu z czasem (timeouty, retry, wygasanie) łączę to z FakeTimeProvider, żeby nie mieszać dwóch źródeł niedeterminizmu."
+    },
+    {
+      "id": "testing-s008",
+      "topic": "TimeProvider",
+      "level": 3,
+      "q": "Jak testujesz kod zależny od upływu czasu: timery, BackgroundService, wygasanie cache, retry z opóźnieniem?",
+      "a": "Wstrzykuję TimeProvider (.NET 8+) i wszystkie operacje czasowe przepuszczam przez niego: GetUtcNow(), CreateTimer, Task.Delay(TimeSpan, TimeProvider), a w testach podstawiam FakeTimeProvider z paczki Microsoft.Extensions.TimeProvider.Testing. Metoda Advance przesuwa wirtualny zegar i synchronicznie odpala timery, których termin minął, więc test „po 5 minutach worker wysyła raport” trwa milisekundy. Na froncie analogicznie: vi.useFakeTimers() w Vitest i vi.advanceTimersByTime, a w aplikacjach z zone.js nadal fakeAsync/tick.",
+      "code": "[Fact]\npublic async Task Sends_report_every_5_minutes()\n{\n    var time = new FakeTimeProvider(DateTimeOffset.Parse(\"2026-01-10T08:00Z\"));\n    var sender = new FakeReportSender();\n    var worker = new ReportWorker(sender, time);\n\n    await worker.StartAsync(CancellationToken.None);\n    await sender.WaitingForDelay;            // worker doszedł do Task.Delay\n\n    time.Advance(TimeSpan.FromMinutes(5));\n    await sender.FirstReport.WaitAsync(TimeSpan.FromSeconds(2));\n    Assert.Equal(1, sender.Count);\n}",
+      "lang": "csharp",
+      "deep": "Najczęstsza pułapka z FakeTimeProvider to wyścig między testem a kodem asynchronicznym: jeśli Advance zostanie wywołane, zanim BackgroundService dotrze do Task.Delay, timer jeszcze nie istnieje, a po rejestracji liczy czas od nowego „teraz” – test raz przechodzi, raz wisi. Rozwiązanie: punkt synchronizacji (np. sygnał z fake'a zależności, że pętla doszła do oczekiwania) albo przesuwanie czasu małymi krokami w pętli z oczekiwaniem na efekt. FakeTimeProvider ma też AutoAdvanceAmount dla prostych scenariuszy. Kod biblioteczny, który ignoruje TimeProvider (DateTime.UtcNow wewnątrz zewnętrznej paczki, Stopwatch), nadal będzie używał prawdziwego czasu – trzeba to sprawdzić. Strefy czasowe testuję jawnie: FakeTimeProvider.SetLocalTimeZone i daty na granicach (zmiana czasu letniego, koniec miesiąca, 29 lutego). Polly v8 (i Microsoft.Extensions.Http.Resilience) wspiera TimeProvider, więc opóźnienia retry da się testować bez czekania; przy cache sprawdź, jak dana implementacja pobiera czas (MemoryCache historycznie używa ISystemClock w MemoryCacheOptions.Clock)."
+    },
+    {
+      "id": "testing-s009",
+      "topic": "Snapshot i approval testing",
+      "level": 3,
+      "q": "Czym jest snapshot/approval testing (np. Verify) i kiedy ma sens?",
+      "a": "Zamiast pisać dziesiątki asercji na pojedyncze pola, serializuję wynik (obiekt, odpowiedź HTTP, wygenerowany SQL, dokument) do pliku i porównuję z zatwierdzoną wersją. Verify przy pierwszym uruchomieniu tworzy plik .received, który po przejrzeniu zatwierdzam jako .verified i commituję do repo; każda późniejsza różnica kończy test błędem i pokazuje diff. Sprawdza się przy dużych, złożonych wynikach: kontrakty odpowiedzi API, mapowania, generatory raportów i kodu, migracje danych. Na froncie odpowiednikiem są snapshoty w Vitest/Jest.",
+      "code": "[Fact]\npublic async Task Order_summary_contract()\n{\n    var response = await _client.GetFromJsonAsync<OrderSummary>(\"/api/orders/42/summary\");\n\n    await Verify(response)\n        .ScrubMembers(\"ETag\", \"RequestId\");   // pola niedeterministyczne\n}\n// OrderTests.Order_summary_contract.verified.txt -> commit do repo",
+      "lang": "csharp",
+      "deep": "Największe ryzyko to bezrefleksyjne akceptowanie zmian – jeśli snapshot ma 500 linii, reviewer klika „accept” bez czytania i test przestaje cokolwiek chronić. Dlatego snapshoty mają być małe i czytelne, a zatwierdzenie zmiany to świadoma decyzja w PR (diff .verified jest częścią review). Niedeterministyczne wartości trzeba scrubować: Verify domyślnie zamienia Guidy i daty na stabilne placeholdery (Guid_1, DateTime_1), a własne pola (tokeny, numery seryjne) usuwa się przez ScrubMembers/IgnoreMember lub scrubbery. Kolejność kolekcji musi być deterministyczna, inaczej test jest flaky. Ekosystem rozszerzeń jest szeroki: Verify.Http (żądania wychodzące), Verify.EntityFramework (zapisywanie wygenerowanego SQL – świetne do wykrywania regresji zapytań), Verify.ImageSharp/Playwright dla obrazów. Snapshoty całych drzew DOM komponentów Angulara są zwykle złym pomysłem – łamią się przy każdej zmianie klasy CSS; lepiej snapshotować dane albo małe fragmenty."
+    },
+    {
+      "id": "testing-s010",
+      "topic": "Testy wydajnościowe i obciążeniowe",
+      "level": 3,
+      "q": "Jak podchodzisz do testów wydajnościowych i obciążeniowych (k6, NBomber, BenchmarkDotNet)?",
+      "a": "Rozróżniam typy: benchmark mikro (BenchmarkDotNet – czas i alokacje pojedynczej metody), load test (spodziewany ruch przez dłuższy czas), stress test (gdzie system pęka), spike test (nagły skok) i soak test (wiele godzin – wycieki pamięci, wyczerpanie puli połączeń). Do testów HTTP używam k6 (skrypty JS/TS, progi pass/fail w CI) albo NBomber, gdy zespół woli C# lub testuje protokoły inne niż HTTP. Kluczowe jest zdefiniowanie celu przed testem: np. p95 poniżej 300 ms i błędy poniżej 1% przy 500 RPS – bez tego wynik nic nie znaczy.",
+      "code": "import http from 'k6/http';\nimport { sleep } from 'k6';\n\nexport const options = {\n  stages: [\n    { duration: '2m', target: 200 },   // rampa\n    { duration: '10m', target: 200 },  // stałe obciążenie\n    { duration: '1m', target: 0 },\n  ],\n  thresholds: { http_req_duration: ['p(95)<300'], http_req_failed: ['rate<0.01'] },\n};\n\nexport default function () {\n  http.get(`${__ENV.BASE_URL}/api/products?page=1`);\n  sleep(1);\n}",
+      "lang": "typescript",
+      "deep": "Patrzę na percentyle, nie średnią: średnia 120 ms może ukrywać p99 = 4 s, które dotyka co setnego żądania – a przy stronie robiącej 30 requestów większość użytkowników trafi na ogon. Środowisko musi przypominać produkcję (rozmiar danych w bazie, limity CPU kontenera, ta sama konfiguracja), a generator obciążenia nie może być wąskim gardłem – obciążony generator zaniża wyniki. Model obciążenia ma znaczenie: open model (stała liczba nowych żądań na sekundę, w k6 executor constant-arrival-rate) lepiej oddaje ruch z internetu niż closed model z wirtualnymi użytkownikami, który przy spowolnieniu systemu sam zmniejsza obciążenie i maskuje problem (coordinated omission). Podczas testu zbieram metryki serwera: CPU, GC, pula wątków, pula połączeń do bazy, zapytania z Query Store – sam czas odpowiedzi nie powie, co jest wąskim gardłem. W CI uruchamiam krótki smoke load test z progami na każdym merge, a pełne testy cyklicznie lub przed release. BenchmarkDotNet zawsze w Release, bez debuggera, z [MemoryDiagnoser]."
+    },
+    {
+      "id": "testing-s011",
+      "topic": "Test data builders",
+      "level": 2,
+      "q": "Jak przygotowujesz dane testowe, żeby testy były czytelne i odporne na zmiany modelu (builder, Object Mother, AutoFixture)?",
+      "a": "Używam test data builderów: klasa z sensownymi wartościami domyślnymi i metodami With…/semantycznymi (Paid(), WithLine(...)), dzięki czemu test ustawia tylko to, co jest dla niego istotne. Gdy do encji dochodzi nowe wymagane pole, zmieniam jedno miejsce – builder – a nie sto testów. AutoFixture generuje anonimowe dane automatycznie i dobrze sprawdza się, gdy wartości nie mają znaczenia; Bogus daje realistyczne dane (imiona, adresy) do seedów i testów wydajnościowych.",
+      "code": "public sealed class OrderBuilder\n{\n    private CustomerId _customer = CustomerId.New();\n    private readonly List<(string Sku, int Qty, decimal Price)> _lines = [(\"SKU-1\", 1, 10m)];\n    private bool _paid;\n\n    public OrderBuilder For(CustomerId c) { _customer = c; return this; }\n    public OrderBuilder WithLine(string sku, int qty, decimal price) { _lines.Add((sku, qty, price)); return this; }\n    public OrderBuilder Paid() { _paid = true; return this; }\n\n    public Order Build()\n    {\n        var order = Order.Create(_customer);\n        foreach (var l in _lines) order.AddLine(l.Sku, l.Qty, l.Price);\n        if (_paid) order.MarkPaid(DateTimeOffset.UnixEpoch);\n        return order;\n    }\n}",
+      "lang": "csharp",
+      "deep": "Object Mother (statyczne fabryki typu Orders.Paid()) jest prostszy, ale rozrasta się w dziesiątki wariantów; builder skaluje się lepiej, a oba podejścia można łączyć (Mother zwraca prekonfigurowany builder). AutoFixture z customizacjami potrafi automatycznie wstrzyknąć mocki (AutoMoq/AutoNSubstitute), ale nadużywany ukrywa, co test naprawdę sprawdza – czytelnik nie wie, które wartości są istotne. Losowe dane wymagają stałego seeda lub logowania wartości przy porażce, inaczej błąd jest nie do odtworzenia. Builder powinien tworzyć obiekty przez publiczne API domeny (fabryki, konstruktory z walidacją), a nie omijać invarianty refleksją – inaczej testy przechodzą na stanach niemożliwych w produkcji. W testach integracyjnych buildery dobrze łączyć z metodą zapisu do bazy (await Given.Order().Paid().SavedAsync()). Na froncie to samo: fabryki obiektów (np. createUser({ role: 'admin' })) zamiast kopiowanych literałów JSON."
+    },
+    {
+      "id": "testing-s012",
+      "topic": "Testy w CI",
+      "level": 3,
+      "q": "Jak organizujesz uruchamianie testów w CI w dużym projekcie: równoległość, izolacja, czas pipeline'u?",
+      "a": "Cel to szybki i wiarygodny feedback na PR. Dzielę testy na etapy: najpierw build i szybkie unit testy, równolegle testy integracyjne z Testcontainers, a e2e na końcu, rozbite na shardy (Playwright --shard na kilku maszynach, raporty scalane z formatu blob). Każdy równoległy wykonawca ma izolowane dane: osobny kontener lub bazę, osobne konta testowe, unikalne identyfikatory. Uruchamiam tylko to, czego dotyczy zmiana (affected w Nx, filtrowanie po projektach), a pełny zestaw na gałęzi głównej i nocą. Artefakty – raporty, trace'y, logi, zrzuty – zawsze publikuję, żeby porażkę dało się zdiagnozować bez ponownego uruchamiania.",
+      "code": "# GitHub Actions – e2e rozbite na 4 shardy\nstrategy:\n  matrix:\n    shard: [1, 2, 3, 4]\nsteps:\n  - run: npx playwright test --shard=${{ matrix.shard }}/4 --reporter=blob\n  - uses: actions/upload-artifact@v4\n    with:\n      name: blob-report-${{ matrix.shard }}\n      path: blob-report\n# osobny job: npx playwright merge-reports --reporter html ./all-blob-reports",
+      "lang": "bash",
+      "deep": "W .NET równoległość działa na dwóch poziomach: dotnet test uruchamia różne projekty testowe równolegle jako osobne procesy, a xUnit wewnątrz assembly równolegle wykonuje kolekcje (domyślnie klasa = kolekcja). Pułapka: dwa projekty testowe korzystające z tej samej bazy lub portu kolidują, mimo że w każdym projekcie wszystko jest poprawnie zserializowane. Testcontainers w CI wymaga dostępu do Dockera (docker-in-docker lub socket), a Ryuk sprząta kontenery po przerwanym jobie; kontenery per projekt testowy eliminują kolizje. Cache: pakiety NuGet/npm, obrazy Dockera, przeglądarki Playwright i wyniki budowania (Nx/Turborepo remote cache) potrafią skrócić pipeline o połowę. Sharding e2e ma sens dopiero przy izolowanych danych – inaczej shardy nadpisują sobie stan i rośnie flakiness. Czas pipeline'u traktuję jak metrykę produktu: budżet np. 10 minut dla PR, alarm, gdy rośnie, i regularne przycinanie najwolniejszych testów (raport czasów z TRX/JUnit)."
+    },
+    {
+      "id": "testing-s013",
+      "topic": "Testowanie sygnałów i serwisów",
+      "level": 3,
+      "q": "Jak testujesz komponenty z sygnałami, effectami i w trybie zoneless?",
+      "a": "W zoneless change detection nie jest wyzwalana przez zone.js, więc test musi pozwolić Angularowi zareagować na zmianę sygnału: po zmianie stanu robię await fixture.whenStable() zamiast polegać na ręcznym detectChanges. Inputy ustawiam przez fixture.componentRef.setInput albo bindings w TestBed.createComponent (Angular 20+). Effecty są planowane asynchronicznie – w testach serwisu wyzwalam je przez TestBed.tick() (zastąpiło wycofywane flushEffects), w komponencie przez whenStable. W projekcie bez zone.js nie użyję fakeAsync/tick – zamiast tego fake timers runnera, np. vi.useFakeTimers() w Vitest.",
+      "code": "TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });\n\nit('shows filtered count', async () => {\n  const fixture = TestBed.createComponent(TodoList);\n  fixture.componentRef.setInput('todos', [{ done: true }, { done: false }]);\n  await fixture.whenStable();\n  expect(fixture.nativeElement.textContent).toContain('1 / 2');\n});\n\nit('persists theme via effect', () => {\n  const store = TestBed.inject(ThemeStore);\n  store.theme.set('dark');\n  TestBed.tick();                       // uruchamia zaplanowane effecty\n  expect(localStorage.getItem('theme')).toBe('dark');\n});",
+      "lang": "typescript",
+      "deep": "Testowanie w trybie zoneless jest bliższe produkcji: testy, które przechodziły tylko dzięki temu, że zone.js wyzwalał CD po każdym setTimeout, ujawniają komponenty, które w zoneless by się nie odświeżyły (np. zwykłe pole zmieniane w subskrypcji bez sygnału lub markForCheck). computed testuję synchronicznie – nie potrzebuje CD. Effecty piszące do zewnętrznego świata (localStorage, analityka) testuję przez obserwowalny efekt po TestBed.tick(), a jeśli effect jest trudny do testu, to często sygnał, że logikę należy wydzielić do computed albo zwykłej metody. resource/httpResource testuję z HttpTestingController lub MSW, czekając na whenStable i sprawdzając status() oraz value(). Ogólna zasada: testuję z perspektywy DOM i publicznego API komponentu, nie wołam ręcznie metod cyklu życia."
+    },
+    {
+      "id": "testing-s014",
+      "topic": "Component harnesses",
+      "level": 3,
+      "q": "Czym są component harnesses z Angular CDK i kiedy warto pisać własne?",
+      "a": "Harness to obiekt, który opakowuje interakcję z komponentem w semantyczne, asynchroniczne API: zamiast szukać w DOM klasy .mat-mdc-button i ręcznie wołać detectChanges, piszę await loader.getHarness(MatButtonHarness.with({ text: 'Zapisz' })) i await button.click(). Angular Material dostarcza harnessy do swoich komponentów, a własne piszę, rozszerzając ComponentHarness z hostSelector i lokatorami. Test przestaje zależeć od wewnętrznej struktury DOM komponentu – przy zmianie implementacji poprawiam jeden harness, nie sto testów.",
+      "code": "export class QuantityHarness extends ComponentHarness {\n  static hostSelector = 'app-quantity';\n  private input = this.locatorFor('input');\n  private plus = this.locatorFor('button.plus');\n\n  async getValue() { return Number(await (await this.input()).getProperty('value')); }\n  async increment() { await (await this.plus()).click(); }\n}\n\nconst loader = TestbedHarnessEnvironment.loader(fixture);\nconst qty = await loader.getHarness(QuantityHarness);\nawait qty.increment();\nexpect(await qty.getValue()).toBe(2);",
+      "lang": "typescript",
+      "deep": "Harnessy same zarządzają stabilizacją: każda akcja wyzwala change detection i czeka na whenStable, dlatego wszystkie metody są async. W dużym projekcie własne harnessy dla komponentów z biblioteki UI (design system) to inwestycja, która spłaca się wielokrotnie: zespoły produktowe testują formularze z datepickerami czy tabelami bez znajomości ich DOM. API harnessa powinno odzwierciedlać intencję użytkownika (selectOption('PL'), getRowCount()), a nie selektory. Filtry with() tworzy się przez HarnessPredicate, co pozwala szukać np. wiersza o konkretnej treści. Harness działa w środowisku TestbedHarnessEnvironment; idea pochodzi z page objects znanych z e2e, więc w Playwright stosuję analogiczny wzorzec Page Object/locatorów. Wada: dodatkowa warstwa kodu do utrzymania – dla prostych komponentów aplikacyjnych Angular Testing Library z zapytaniami po roli bywa wystarczająca."
+    },
+    {
+      "id": "testing-s015",
+      "topic": "E2E: Playwright vs Cypress",
+      "level": 3,
+      "q": "Jak budujesz stabilny i szybki zestaw testów Playwright w dużym projekcie (e2e i testy komponentów)?",
+      "a": "Uwierzytelnienie robię raz w projekcie setup i zapisuję storageState, który pozostałe testy ładują – nie logują się przez UI w każdym teście. Dane przygotowuję przez API lub bezpośrednio w bazie (fixtures Playwrighta), każdy test na własnych danych. Lokatory po roli i tekście (getByRole, getByLabel) oraz web-first assertions (await expect(locator).toHaveText) z auto-waitingiem eliminują sleepy. Zewnętrzne zależności (płatności, feature flagi) mockuję przez page.route, ale ścieżkę z prawdziwym backendem zostawiam dla krytycznych scenariuszy. W CI włączam trace on-first-retry i sharding.",
+      "code": "// auth.setup.ts – logowanie raz\nsetup('authenticate', async ({ page }) => {\n  await page.goto('/login');\n  await page.getByLabel('E-mail').fill(process.env.E2E_USER!);\n  await page.getByLabel('Hasło').fill(process.env.E2E_PASS!);\n  await page.getByRole('button', { name: 'Zaloguj' }).click();\n  await expect(page.getByRole('heading', { name: 'Pulpit' })).toBeVisible();\n  await page.context().storageState({ path: '.auth/user.json' });\n});\n\ntest('shows error banner when API fails', async ({ page }) => {\n  await page.route('**/api/orders', r => r.fulfill({ status: 500 }));\n  await page.goto('/orders');\n  await expect(page.getByRole('alert')).toContainText('Spróbuj ponownie');\n});",
+      "lang": "typescript",
+      "deep": "Własne fixtures (test.extend) to najlepsze narzędzie do skalowania: fixture może utworzyć użytkownika przez API, zwrócić gotowy Page Object i posprzątać po teście; fixtures z zakresem worker pozwalają mieć osobne konto na każdy równoległy worker, co eliminuje kolizje danych. Testy komponentów Playwrighta (experimental) oficjalnie obsługują React, Vue i Svelte – dla Angulara są tylko inicjatywy społeczności, więc testy komponentów robię w Vitest (także w trybie przeglądarkowym, który wspiera builder Angulara) z Testing Library lub harnessami, a Playwright zostawiam do e2e. page.route z route.fulfill pozwala testować stany trudne do wywołania (500, timeout, pusta lista) bez manipulowania backendem. Wizualne regresje (toHaveScreenshot) działają, ale wymagają stałego środowiska renderowania – zrzuty generuję w tym samym obrazie Dockera co CI. Trace viewer z nagranym DOM, siecią i konsolą skraca diagnozę porażki z godzin do minut."
+    },
+    {
+      "id": "testing-s016",
+      "topic": "MSW",
+      "level": 3,
+      "q": "Czym jest MSW (Mock Service Worker) i kiedy wybierasz go zamiast HttpTestingController?",
+      "a": "MSW przechwytuje żądania na poziomie sieci: w przeglądarce przez Service Workera, w Node (Vitest, Jest) przez interceptory dla fetch i XMLHttpRequest. Definiuję handlery opisujące API (http.get('/api/products', () => HttpResponse.json([...]))) i ten sam zestaw wykorzystuję w testach jednostkowych, w lokalnym developmencie bez backendu i w Storybooku. W odróżnieniu od HttpTestingController test nie zależy od tego, czy kod używa HttpClient, fetch czy httpResource – testuję zachowanie aplikacji, a nie wywołania konkretnego klienta. HttpTestingController wybieram, gdy chcę precyzyjnie sprawdzić samo żądanie (nagłówki, kolejność) w teście serwisu.",
+      "code": "import { http, HttpResponse } from 'msw';\nimport { setupServer } from 'msw/node';\n\nexport const server = setupServer(\n  http.get('/api/products', () => HttpResponse.json([{ id: 1, name: 'Kawa' }])),\n);\n\nbeforeAll(() => server.listen({ onUnhandledRequest: 'error' }));\nafterEach(() => server.resetHandlers());\nafterAll(() => server.close());\n\n// w teście scenariusza błędu:\nserver.use(http.get('/api/products', () => new HttpResponse(null, { status: 500 })));",
+      "lang": "typescript",
+      "deep": "Standardowa konfiguracja w testach: server.listen({ onUnhandledRequest: 'error' }) w beforeAll – każde nieobsłużone żądanie jest błędem, co wyłapuje zapomniane mocki i niespodziewane wywołania; server.resetHandlers() w afterEach, żeby nadpisania z server.use() w jednym teście nie przeciekały do następnych; server.close() w afterAll. Domyślne handlery opisują happy path, a pojedynczy test nadpisuje je dla scenariusza błędu (status 500, opóźnienie przez delay()). Handlery warto generować lub typować z kontraktu OpenAPI, żeby mocki nie rozjechały się z prawdziwym API – inaczej testy zielone, produkcja czerwona. MSW 2.x przeszło na API zgodne z Fetch (http, HttpResponse) – stare przykłady z rest i res(ctx.json()) są nieaktualne. Ograniczenie: to wciąż mock, więc nie zastąpi testów kontraktowych ani integracyjnych z prawdziwym backendem."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "testing-sq001",
+      "topic": "Testcontainers vs InMemory",
+      "level": 3,
+      "q": "Dwie klasy testowe (różne kolekcje xUnit) korzystają z tego samego kontenera PostgreSQL przez wspólną fixture i w konstruktorze wołają respawner.ResetAsync(). Testy losowo padają – rekordy wstawione w Arrange znikają przed Assert. Co jest przyczyną?",
+      "options": [
+        "Respawn nie obsługuje PostgreSQL i usuwa dane asynchronicznie w tle",
+        "Kolekcje xUnit wykonują się równolegle, więc reset jednej klasy kasuje dane testu z drugiej; trzeba umieścić je w jednej kolekcji albo dać każdej kolekcji osobną bazę",
+        "Respawner trzeba tworzyć na nowo przed każdym testem",
+        "Konstruktor klasy testowej w xUnit jest wywoływany tylko raz, więc reset nie działa"
+      ],
+      "correct": 1,
+      "why": "Różne kolekcje xUnit domyślnie działają równolegle. Reset przed testem chroni przed danymi z poprzednich testów, ale nie przed testem wykonywanym w tym samym czasie na tej samej bazie. Rozwiązania: wspólna kolekcja (sekwencyjnie) lub izolacja bazy per kolekcja/worker. Respawn obsługuje PostgreSQL, jego tworzenie raz jest zalecane, a konstruktor xUnit wywołuje się per test."
+    },
+    {
+      "id": "testing-sq002",
+      "topic": "Testy kontraktowe",
+      "level": 3,
+      "q": "Zespół API zmienia nazwę pola totalPrice na total w odpowiedzi GET /orders. Front i API korzystają z Pact z brokerem i can-i-deploy. Gdzie najwcześniej zostanie wykryty problem?",
+      "options": [
+        "Dopiero w testach e2e na środowisku staging",
+        "W testach jednostkowych frontu, bo mock serwer Pact odrzuci nową odpowiedź",
+        "W pipeline API: weryfikacja providera odtworzy interakcje z kontraktu konsumenta i test padnie, a can-i-deploy zablokuje wdrożenie",
+        "Nigdzie – Pact sprawdza tylko kody statusu HTTP, nie strukturę ciała"
+      ],
+      "correct": 2,
+      "why": "W consumer-driven contracts kontrakt konsumenta zawiera oczekiwane pola odpowiedzi. Provider verification uruchamiana w CI dostawcy wysyła te żądania do prawdziwej aplikacji i porównuje odpowiedź z kontraktem – brak totalPrice powoduje porażkę jeszcze przed wdrożeniem. Testy konsumenta działają na mocku z kontraktem, więc nie wiedzą o zmianie w API."
+    },
+    {
+      "id": "testing-sq003",
+      "topic": "Mutation testing",
+      "level": 2,
+      "q": "Moduł rabatów ma 100% line coverage. Stryker raportuje, że przeżył mutant zamieniający `if (total >= 1000)` na `if (total > 1000)`. Co to oznacza?",
+      "options": [
+        "Żaden test nie sprawdza wartości granicznej total = 1000; warto dodać przypadek brzegowy",
+        "Stryker się myli – przy 100% coverage wszystkie mutanty powinny zginąć",
+        "Mutant jest równoważny i należy go zignorować",
+        "Testy są zbyt wolne i Stryker przerwał je przez timeout"
+      ],
+      "correct": 0,
+      "why": "Mutant przeżywa, gdy żaden test nie zauważa zmiany zachowania. Różnica między >= i > ujawnia się tylko dla total równego 1000 – brak tego przypadku to klasyczna luka w warunkach brzegowych. Coverage mówi tylko, że linia została wykonana, nie że wynik został sprawdzony. Mutant nie jest równoważny, bo dla 1000 zmienia wynik, a timeout jest raportowany osobno."
+    },
+    {
+      "id": "testing-sq004",
+      "topic": "Flaky tests",
+      "level": 3,
+      "q": "Test integracyjny zawsze przechodzi uruchamiany pojedynczo, a w CI z całym zestawem pada w ok. 5% przebiegów. Co sprawdzasz najpierw?",
+      "options": [
+        "Wersję SDK .NET na agencie CI",
+        "Czy test ma wystarczająco długi Thread.Sleep na początku",
+        "Współdzielony stan między testami: statyczne pola, wspólne rekordy w bazie, singletony w WebApplicationFactory i równoległe kolekcje",
+        "Czy test nie jest za długi – trzeba go podzielić na mniejsze"
+      ],
+      "correct": 2,
+      "why": "Różnica „sam przechodzi, w zestawie czasem nie” jest typowym sygnałem zależności od kolejności lub równoległości – współdzielony stan to najczęstsza przyczyna. Pomaga uruchamianie w losowej kolejności i izolacja danych. Sleep maskuje problem i spowalnia zestaw, a wersja SDK czy długość testu nie tłumaczą losowości zależnej od reszty zestawu."
+    },
+    {
+      "id": "testing-sq005",
+      "topic": "TimeProvider",
+      "level": 3,
+      "q": "Test BackgroundService używa FakeTimeProvider. Worker w pętli robi await Task.Delay(TimeSpan.FromMinutes(5), _time, ct). Test: await worker.StartAsync(...); time.Advance(TimeSpan.FromMinutes(5)); i oczekuje raportu. Czasem raport nie powstaje i test wisi. Dlaczego?",
+      "options": [
+        "FakeTimeProvider nie obsługuje Task.Delay – trzeba użyć Thread.Sleep",
+        "Advance działa tylko z AutoAdvanceAmount ustawionym na wartość większą od zera",
+        "BackgroundService ignoruje TimeProvider przekazany do Task.Delay",
+        "Advance może zostać wywołane, zanim worker zarejestruje timer w Task.Delay; timer utworzony później liczy 5 minut od nowego „teraz” – potrzebny punkt synchronizacji przed przesunięciem czasu"
+      ],
+      "correct": 3,
+      "why": "FakeTimeProvider odpala przy Advance tylko te timery, które już istnieją i których termin minął. StartAsync zwraca sterowanie, zanim pętla ExecuteAsync dojdzie do Task.Delay, więc kolejność zależy od planowania wątków – klasyczny wyścig w teście. Rozwiązaniem jest sygnał, że worker czeka, albo przesuwanie czasu w pętli aż do efektu. Task.Delay z TimeProvider jest wspierany, a AutoAdvanceAmount to opcja, nie wymóg."
+    },
+    {
+      "id": "testing-sq006",
+      "topic": "Testy wydajnościowe i obciążeniowe",
+      "level": 3,
+      "q": "Load test k6 dla endpointu katalogu: avg = 110 ms, p(50) = 80 ms, p(95) = 450 ms, p(99) = 3,8 s, błędy 0,2%. Cel SLO to p95 < 300 ms. Który wniosek jest poprawny?",
+      "options": [
+        "Endpoint spełnia wymagania, bo średnia jest poniżej 300 ms",
+        "Test jest niewiarygodny, bo średnia i mediana się różnią",
+        "Wystarczy zwiększyć liczbę wirtualnych użytkowników, żeby percentyle się ustabilizowały",
+        "SLO nie jest spełnione, a długi ogon (p99 3,8 s) sugeruje problem dotykający części żądań – np. pula połączeń, GC, blokady lub wolne zapytania dla części danych – trzeba skorelować z metrykami serwera"
+      ],
+      "correct": 3,
+      "why": "Średnia i mediana ukrywają ogon rozkładu. p95 = 450 ms łamie cel, a p99 rzędu sekund oznacza, że co setne żądanie jest bardzo wolne – przy stronach wykonujących wiele requestów dotyka to większości użytkowników. Diagnozę prowadzi się, łącząc wynik z metrykami serwera. Różnica średniej i mediany jest normalna dla rozkładów czasów odpowiedzi, a zwiększenie obciążenia raczej pogorszy ogon."
+    },
+    {
+      "id": "testing-sq007",
+      "topic": "Testowanie sygnałów i serwisów",
+      "level": 3,
+      "q": "Serwis ThemeStore ma effect zapisujący theme() do localStorage. W teście: store.theme.set('dark'); expect(localStorage.getItem('theme')).toBe('dark'); – asercja nie przechodzi. Jak to poprawić?",
+      "options": [
+        "Wywołać TestBed.tick() po set(), żeby uruchomić zaplanowane effecty",
+        "Zamienić effect na computed, bo effecty nie działają w testach",
+        "Owinąć test w fakeAsync i wywołać flush() – inaczej się nie da",
+        "Wywołać store.theme() po set(), bo odczyt sygnału synchronicznie wyzwala effect"
+      ],
+      "correct": 0,
+      "why": "Effecty są planowane i wykonywane asynchronicznie w ramach cyklu change detection, a nie synchronicznie przy set(). W testach serwisu Angular udostępnia TestBed.tick() (w nowszych wersjach zamiast wycofywanego TestBed.flushEffects()). computed nie służy do efektów ubocznych, fakeAsync wymaga zone.js i nie jest jedynym sposobem, a odczyt sygnału nie uruchamia effectów."
+    },
+    {
+      "id": "testing-sq008",
+      "topic": "MSW",
+      "level": 2,
+      "q": "W teście A dodano server.use(http.get('/api/products', () => new HttpResponse(null, { status: 500 }))). Od tego momentu test B (happy path, wykonywany później w tym samym pliku) też dostaje 500. Czego brakuje?",
+      "options": [
+        "onUnhandledRequest: 'bypass' w server.listen()",
+        "server.resetHandlers() w afterEach – nadpisania z server.use() obowiązują do resetu",
+        "Ponownego wywołania setupServer() w każdym teście",
+        "Wyłączenia równoległości w Vitest"
+      ],
+      "correct": 1,
+      "why": "server.use() dokłada handlery runtime z wyższym priorytetem na cały czas życia serwera, aż do resetHandlers(). Standardowy wzorzec to listen w beforeAll, resetHandlers w afterEach i close w afterAll. onUnhandledRequest dotyczy żądań bez handlera, tworzenie serwera per test jest niepotrzebne, a testy w jednym pliku Vitest i tak wykonują się domyślnie sekwencyjnie."
+    },
+    {
+      "id": "testing-sq009",
+      "topic": "Component harnesses",
+      "level": 2,
+      "q": "Po aktualizacji Angular Material testy szukające przycisków przez querySelector('.mat-mdc-raised-button') przestały działać, choć aplikacja działa poprawnie. Co rozwiązuje problem na przyszłość?",
+      "options": [
+        "Dodanie fixture.detectChanges() przed każdym querySelector",
+        "Używanie harnessów (np. MatButtonHarness.with({ text: 'Zapisz' })), które ukrywają wewnętrzny DOM biblioteki za stabilnym API utrzymywanym przez jej autorów",
+        "Przypięcie wersji Angular Material na stałe",
+        "Zastąpienie testów komponentów testami snapshotów całego DOM"
+      ],
+      "correct": 1,
+      "why": "Klasy CSS i struktura DOM komponentów Material to szczegół implementacyjny, który zmienia się między wersjami (jak przy migracji na MDC). Harnessy są publicznym API do testów, aktualizowanym razem z biblioteką, więc testy przeżywają takie zmiany. detectChanges nie przywróci starej klasy, przypinanie wersji to dług, a snapshot DOM łamałby się jeszcze częściej."
+    },
+    {
+      "id": "testing-sq010",
+      "topic": "Testy w CI",
+      "level": 3,
+      "q": "Po włączeniu fullyParallel i 4 shardów w Playwright testy koszyka zaczęły losowo padać: w koszyku pojawiają się produkty dodane przez inne testy. Wszystkie testy logują się tym samym kontem z storageState. Najlepsze rozwiązanie?",
+      "options": [
+        "Wyłączyć równoległość – workers: 1",
+        "Dodać retries: 3, żeby testy w końcu przeszły",
+        "Czyścić koszyk w afterEach",
+        "Zapewnić izolację danych: osobne konto na worker (fixture o zakresie worker tworzące użytkownika przez API) lub konto per test"
+      ],
+      "correct": 3,
+      "why": "Przyczyną jest współdzielony stan – wiele równoległych testów modyfikuje ten sam koszyk. Izolacja danych per worker/test usuwa kolizję i zachowuje szybkość. Wyłączenie równoległości wydłuży pipeline kilkukrotnie, retry ukryje problem, a czyszczenie w afterEach nie pomaga, gdy testy działają jednocześnie."
+    }
+  ]
+}

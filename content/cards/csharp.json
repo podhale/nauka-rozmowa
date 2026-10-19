@@ -1,0 +1,902 @@
+{
+  "cat": "csharp",
+  "name": "C# i .NET",
+  "cards": [
+    {
+      "id": "csharp-001",
+      "topic": "Typy wartościowe vs referencyjne",
+      "level": 1,
+      "q": "Czym różnią się typy wartościowe (value types) od referencyjnych (reference types)?",
+      "a": "Zmienna typu wartościowego (struct, int, bool, enum) przechowuje samą wartość – przypisanie i przekazanie do metody kopiuje całe dane. Zmienna typu referencyjnego (class, string, tablice, delegaty) przechowuje referencję do obiektu na managed heap – przypisanie kopiuje referencję, więc dwie zmienne wskazują ten sam obiekt. Typy referencyjne mogą być null i podlegają GC; typy wartościowe domyślnie nie są nullable (trzeba Nullable<T>, czyli int?).",
+      "code": "struct P { public int X; }\nclass C { public int X; }\n\nvar p1 = new P { X = 1 }; var p2 = p1; p2.X = 2; // p1.X == 1 (kopia)\nvar c1 = new C { X = 1 }; var c2 = c1; c2.X = 2; // c1.X == 2 (ta sama instancja)",
+      "lang": "csharp",
+      "tip": "Unikaj uproszczenia „struct jest zawsze na stosie” – struct będący polem klasy albo elementem tablicy żyje na heapie razem z nią. Różnica dotyczy semantyki kopiowania, nie miejsca w pamięci."
+    },
+    {
+      "id": "csharp-002",
+      "topic": "struct / class / record",
+      "level": 2,
+      "q": "Kiedy wybrać class, struct, record, a kiedy record struct?",
+      "a": "class – domyślny wybór dla obiektów z tożsamością i zachowaniem (encje, serwisy). struct – małe (do kilkunastu bajtów), krótko żyjące wartości bez tożsamości, najlepiej readonly; unikają alokacji, ale są kopiowane. record (record class) – typ referencyjny z value equality, generowanym ToString, dekonstrukcją i wyrażeniem with; świetny na DTO, komendy, value objects. record struct – to samo, ale jako typ wartościowy; pozycyjny record struct ma domyślnie mutowalne właściwości, więc zwykle piszemy readonly record struct.",
+      "code": "public record Person(string Name, int Age);              // class, właściwości init-only\npublic readonly record struct Money(decimal Amount, string Currency);\n\nvar p1 = new Person(\"Ala\", 30);\nvar p2 = p1 with { Age = 31 };   // nowa instancja, p1 bez zmian\nConsole.WriteLine(p1 == new Person(\"Ala\", 30)); // True – value equality",
+      "lang": "csharp",
+      "tip": "Follow-up: „czy record jest niemutowalny?” – tylko płytko (shallow). Właściwość typu List<T> w recordzie nadal można modyfikować, a equality porównuje referencję tej listy."
+    },
+    {
+      "id": "csharp-003",
+      "topic": "Boxing",
+      "level": 2,
+      "q": "Czym jest boxing i unboxing i dlaczego warto go unikać?",
+      "a": "Boxing to opakowanie typu wartościowego w obiekt na heapie, gdy traktujemy go jako object lub interfejs – oznacza alokację i późniejszą pracę dla GC. Unboxing to jawne rzutowanie z powrotem, sprawdzające dokładny typ (inaczej InvalidCastException). Problem pojawia się w gorących ścieżkach: kolekcje niegeneryczne (ArrayList), rzutowanie struct na interfejs, Equals bez IEquatable<T>. Generics rozwiązują to, bo List<int> przechowuje inty bez opakowywania.",
+      "code": "int x = 42;\nobject o = x;            // boxing – alokacja na heapie\nint y = (int)o;          // unboxing\nlong z = (long)o;        // InvalidCastException – musi być dokładnie int\nIComparable c = x;       // też boxing (struct -> interfejs)\nList<int> ok = [1, 2];   // bez boxingu",
+      "lang": "csharp",
+      "tip": "Dobry przykład z praktyki: struct jako klucz słownika bez implementacji IEquatable<T> – domyślny Equals boksuje i używa refleksji."
+    },
+    {
+      "id": "csharp-004",
+      "topic": "string i StringBuilder",
+      "level": 1,
+      "q": "Dlaczego string jest immutable i kiedy użyć StringBuildera?",
+      "a": "string jest niemutowalny – każda „modyfikacja” (Replace, ToUpper, +) tworzy nowy obiekt. Dzięki temu stringi są bezpieczne wątkowo, mogą być internowane i bezpiecznie używane jako klucze słowników. Wadą jest koszt sklejania w pętli: każda iteracja alokuje nowy string i kopiuje dotychczasową treść (O(n²)). StringBuilder trzyma mutowalny bufor i dopisuje do niego, więc przy budowaniu tekstu w pętli jest dużo wydajniejszy.",
+      "code": "var sb = new StringBuilder();\nforeach (var item in items)\n    sb.Append(item.Name).Append(';');\nstring result = sb.ToString();\n\n// dla kilku elementów wystarczy interpolacja lub string.Join\nstring csv = string.Join(';', items.Select(i => i.Name));",
+      "lang": "csharp",
+      "tip": "Nie przesadzaj w drugą stronę: kilka konkatenacji w jednej linii kompilator zamienia na string.Concat, a interpolacja od C# 10 używa wydajnych interpolated string handlers."
+    },
+    {
+      "id": "csharp-005",
+      "topic": "ref / out / in",
+      "level": 2,
+      "q": "Czym różnią się modyfikatory parametrów ref, out i in?",
+      "a": "Wszystkie trzy przekazują argument przez referencję (bez kopiowania). ref – zmienna musi być zainicjalizowana przed wywołaniem, metoda może ją czytać i zmieniać. out – nie musi być zainicjalizowana, ale metoda musi przypisać wartość przed powrotem (wzorzec TryParse). in – przekazanie przez referencję tylko do odczytu; ma sens dla dużych structów, by uniknąć kopiowania. Jest też ref readonly (C# 12) – podobne do in, ale sygnalizuje, że oczekiwana jest zmienna (przekazanie wartości tymczasowej daje ostrzeżenie kompilatora).",
+      "code": "void Increment(ref int x) => x++;\n\nif (int.TryParse(\"42\", out var number))\n    Console.WriteLine(number);\n\ndouble Length(in Vector3 v) => Math.Sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z);",
+      "lang": "csharp",
+      "tip": "Pułapka: in z mutowalnym (nie-readonly) structem może powodować defensive copy przy wywoływaniu metod – stąd zalecenie używania readonly struct."
+    },
+    {
+      "id": "csharp-006",
+      "topic": "Nullable reference types",
+      "level": 2,
+      "q": "Jak działają nullable reference types (NRT) i co dają w praktyce?",
+      "a": "Po włączeniu <Nullable>enable</Nullable> zwykły string oznacza „nie powinien być null”, a string? – „może być null”. Kompilator robi analizę przepływu i ostrzega przy dereferencji potencjalnego nulla lub przypisaniu nulla do typu non-nullable. To wyłącznie mechanizm compile-time – w runtime string i string? to ten sam typ, nie ma żadnych automatycznych sprawdzeń. Operator ! (null-forgiving) wycisza ostrzeżenie, a atrybuty jak [NotNullWhen(true)] czy [MaybeNull] pomagają opisać kontrakt API.",
+      "code": "public bool TryFind(int id, [NotNullWhen(true)] out User? user)\n{\n    user = _users.GetValueOrDefault(id);\n    return user is not null;\n}\n\nif (TryFind(1, out var u))\n    Console.WriteLine(u.Name);   // brak ostrzeżenia – kompilator wie, że u != null",
+      "lang": "csharp",
+      "tip": "Rekruter często pyta, czy NRT chroni przed nullem z deserializacji JSON-a lub z bazy – nie, dlatego na granicach systemu nadal potrzebna jest walidacja."
+    },
+    {
+      "id": "csharp-007",
+      "topic": "Generics i constraints",
+      "level": 2,
+      "q": "Po co są constraints w generics i jakie znasz?",
+      "a": "Constraints (klauzula where) ograniczają, jakie typy można podstawić pod T, a w zamian pozwalają używać ich możliwości w kodzie generycznym. Najważniejsze: class / class? (typ referencyjny), struct (typ wartościowy), notnull, unmanaged, new() (konstruktor bezparametrowy), konkretna klasa bazowa lub interfejs, oraz allows ref struct (C# 13). Od .NET 7 dzięki static abstract members w interfejsach mamy generic math – np. INumber<T> pozwala napisać jedną metodę Sum dla wszystkich typów liczbowych.",
+      "code": "public static T Max<T>(T a, T b) where T : IComparable<T>\n    => a.CompareTo(b) >= 0 ? a : b;\n\npublic static T Sum<T>(IEnumerable<T> values) where T : INumber<T>\n{\n    T sum = T.Zero;\n    foreach (var v in values) sum += v;\n    return sum;\n}",
+      "lang": "csharp",
+      "tip": "Warto wspomnieć, że generics w .NET są reifikowane (w przeciwieństwie do type erasure w Javie) – dla typów wartościowych JIT generuje osobny kod, stąd brak boxingu."
+    },
+    {
+      "id": "csharp-008",
+      "topic": "Kowariancja i kontrawariancja",
+      "level": 3,
+      "q": "Wyjaśnij kowariancję i kontrawariancję w C#.",
+      "a": "Wariancja określa, czy typ generyczny z bardziej szczegółowym argumentem można traktować jak typ z ogólniejszym. Kowariancja (out T) – IEnumerable<string> można przypisać do IEnumerable<object>, bo T jest tylko „wyjściem”. Kontrawariancja (in T) – Action<object> można przypisać do Action<string>, bo T jest tylko „wejściem”. Działa wyłącznie dla interfejsów i delegatów oraz tylko dla argumentów będących typami referencyjnymi. List<T> jest inwariantna, bo T występuje i na wejściu (Add), i na wyjściu.",
+      "code": "IEnumerable<object> objs = new List<string>();      // OK – kowariancja (out T)\nAction<object> logAny = o => Console.WriteLine(o);\nAction<string> logString = logAny;                   // OK – kontrawariancja (in T)\n// List<object> list = new List<string>();           // błąd – List<T> jest inwariantna\n// IEnumerable<object> ints = new List<int>();       // błąd – int to value type",
+      "lang": "csharp",
+      "tip": "Bonus: tablice w C# są kowariantne „po staremu” i niebezpiecznie – object[] arr = new string[1]; arr[0] = 1; rzuca ArrayTypeMismatchException w runtime."
+    },
+    {
+      "id": "csharp-009",
+      "topic": "Delegaty, Func i Action",
+      "level": 1,
+      "q": "Czym jest delegat i czym różnią się Func, Action i Predicate?",
+      "a": "Delegat to typ reprezentujący referencję do metody o określonej sygnaturze – coś jak bezpieczny typowo wskaźnik na funkcję. Func<T1,...,TResult> to wbudowany delegat zwracający wartość (ostatni parametr generyczny to typ wyniku), Action<T1,...> – delegat zwracający void, a Predicate<T> to odpowiednik Func<T,bool>. Delegaty są multicast – można łączyć je operatorem +=, wtedy wywołują się wszystkie metody po kolei.",
+      "code": "Func<int, int, int> add = (a, b) => a + b;\nAction<string> log = msg => Console.WriteLine(msg);\nPredicate<int> isEven = n => n % 2 == 0;\n\nlog += msg => Debug.WriteLine(msg);   // multicast\nlog(\"Hello\");                        // wywoła obie metody\nConsole.WriteLine(add(2, 3));         // 5",
+      "lang": "csharp",
+      "tip": "W multicast delegacie z wartością zwracaną (Func) dostajesz wynik tylko ostatniej metody – dlatego eventy są zwykle typu void."
+    },
+    {
+      "id": "csharp-010",
+      "topic": "Eventy",
+      "level": 2,
+      "q": "Czym event różni się od zwykłego pola-delegata i jakie są pułapki eventów?",
+      "a": "Słowo kluczowe event ogranicza dostęp z zewnątrz: subskrybent może tylko dodać (+=) lub usunąć (-=) handler, nie może wywołać eventu ani nadpisać listy handlerów (=). Wywołać może tylko klasa, która go deklaruje. Główna pułapka to memory leak: publisher trzyma referencję do subskrybenta, więc długo żyjący publisher (np. singleton) nie pozwoli GC zebrać subskrybenta, jeśli ten się nie odsubskrybuje.",
+      "code": "public class OrderService\n{\n    public event EventHandler<OrderPlacedEventArgs>? OrderPlaced;\n\n    public void Place(Order order)\n    {\n        // ...\n        OrderPlaced?.Invoke(this, new OrderPlacedEventArgs(order));\n    }\n}",
+      "lang": "csharp",
+      "tip": "Wzorzec ?.Invoke jest bezpieczny wątkowo, bo odczytuje delegat raz do zmiennej tymczasowej – stare `if (E != null) E(...)` miało race condition."
+    },
+    {
+      "id": "csharp-011",
+      "topic": "Closure",
+      "level": 2,
+      "q": "Czym jest closure i jaka jest klasyczna pułapka z lambdą w pętli for?",
+      "a": "Closure to lambda, która „przechwytuje” zmienne z otaczającego zakresu – kompilator przenosi je do wygenerowanej klasy, więc lambda widzi zmienną, a nie jej wartość z chwili utworzenia. W pętli for zmienna i jest jedna na całą pętlę, więc wszystkie lambdy widzą jej końcową wartość. Od C# 5 foreach tworzy nową zmienną w każdej iteracji, więc tam problem nie występuje. Rozwiązanie dla for: skopiować wartość do lokalnej zmiennej wewnątrz pętli.",
+      "code": "var actions = new List<Action>();\nfor (int i = 0; i < 3; i++)\n    actions.Add(() => Console.Write(i));\nactions.ForEach(a => a());      // 333\n\nfor (int i = 0; i < 3; i++)\n{\n    int copy = i;\n    actions.Add(() => Console.Write(copy)); // 012\n}",
+      "lang": "csharp",
+      "tip": "Closure ma też koszt – alokację obiektu na przechwycone zmienne. Gdy lambda niczego nie przechwytuje, można oznaczyć ją jako static, a kompilator tego dopilnuje."
+    },
+    {
+      "id": "csharp-012",
+      "topic": "LINQ – deferred execution",
+      "level": 2,
+      "q": "Co to jest deferred execution w LINQ i jakie ma konsekwencje?",
+      "a": "Większość operatorów LINQ (Where, Select, OrderBy, Take) nie wykonuje się w momencie wywołania – budują tylko opis zapytania. Wykonanie następuje dopiero przy enumeracji: foreach, ToList(), ToArray(), Count(), First(), Any(). Konsekwencje: zapytanie widzi stan źródła z chwili enumeracji, a nie definicji; każda kolejna enumeracja wykonuje całą pracę od nowa (dla EF Core – kolejne zapytanie do bazy). Jeśli wynik będzie używany kilka razy, materializujemy go przez ToList().",
+      "code": "IEnumerable<Order> expensive = orders.Where(o => o.Total > 1000); // nic się nie dzieje\n\nif (expensive.Any())                 // 1. enumeracja\n    foreach (var o in expensive)     // 2. enumeracja – filtr liczony ponownie\n        Process(o);\n\nvar list = expensive.ToList();       // materializacja – jedna enumeracja",
+      "lang": "csharp",
+      "tip": "Rider/analizatory ostrzegają o „possible multiple enumeration” – warto znać to pojęcie i wiedzieć, kiedy jest realnym problemem (EF, yield z efektami ubocznymi)."
+    },
+    {
+      "id": "csharp-013",
+      "topic": "IEnumerable vs IQueryable",
+      "level": 2,
+      "q": "Jaka jest różnica między IEnumerable<T> a IQueryable<T>?",
+      "a": "IEnumerable<T> wykonuje operatory LINQ w pamięci – lambdy to skompilowane delegaty Func<T,bool>. IQueryable<T> przyjmuje Expression<Func<T,bool>>, czyli drzewo wyrażeń, które provider (np. EF Core) tłumaczy na SQL i wykonuje po stronie bazy. Jeśli w łańcuchu zapytania zbyt wcześnie przejdziemy na IEnumerable (AsEnumerable, ToList, parametr metody typu IEnumerable), cała tabela zostanie pobrana, a filtrowanie odbędzie się w aplikacji.",
+      "code": "// IQueryable – WHERE i TOP trafiają do SQL\nvar top = await db.Orders\n    .Where(o => o.Status == Status.Paid)\n    .OrderByDescending(o => o.Total)\n    .Take(10)\n    .ToListAsync();\n\n// IEnumerable – pobiera wszystkie zamówienia i filtruje w pamięci\nIEnumerable<Order> all = db.Orders;\nvar bad = all.Where(o => o.Status == Status.Paid).ToList();",
+      "lang": "csharp",
+      "tip": "Typowy follow-up: repozytorium zwracające IQueryable – elastyczne, ale „przecieka” abstrakcja EF poza warstwę danych. Dobrze mieć zdanie na ten temat."
+    },
+    {
+      "id": "csharp-014",
+      "topic": "yield",
+      "level": 2,
+      "q": "Jak działa yield return i do czego go używać?",
+      "a": "Metoda z yield return jest przez kompilator zamieniana na maszynę stanów implementującą IEnumerable/IEnumerator. Kod wykonuje się leniwie – dopiero przy MoveNext(), kawałek po kawałku, do kolejnego yield return. Pozwala to generować sekwencje bez budowania całej kolekcji w pamięci (np. czytanie dużego pliku linia po linii, nieskończone sekwencje). yield break kończy sekwencję. Istnieje też wariant asynchroniczny: IAsyncEnumerable<T> z await foreach.",
+      "code": "IEnumerable<string> ReadLines(string path)\n{\n    using var reader = new StreamReader(path);\n    string? line;\n    while ((line = reader.ReadLine()) is not null)\n        yield return line;\n}\n\nforeach (var line in ReadLines(\"big.log\").Take(5))\n    Console.WriteLine(line);   // czyta tylko 5 linii",
+      "lang": "csharp",
+      "tip": "Pułapka: walidacja argumentów w metodzie z yield wykona się dopiero przy enumeracji. Rozwiązanie – publiczna metoda waliduje i wywołuje prywatny iterator (lub lokalną funkcję)."
+    },
+    {
+      "id": "csharp-015",
+      "topic": "async/await – mechanizm",
+      "level": 2,
+      "q": "Co tak naprawdę robi kompilator z metodą async i czy async oznacza nowy wątek?",
+      "a": "Kompilator przepisuje metodę async na maszynę stanów (struct implementujący IAsyncStateMachine). Przy await na niezakończonym zadaniu metoda rejestruje kontynuację i zwraca kontrolę wywołującemu – wątek wraca do puli i może obsługiwać inne żądania. Gdy operacja się zakończy, kontynuacja jest wznawiana (na wątku z puli lub w przechwyconym SynchronizationContext). async/await nie tworzy nowych wątków: przy I/O w trakcie oczekiwania żaden wątek nie jest zablokowany, co daje skalowalność serwera.",
+      "code": "public async Task<string> GetUserNameAsync(int id, CancellationToken ct)\n{\n    var user = await _db.Users.FindAsync([id], ct); // wątek wraca do puli\n    return user?.Name ?? \"unknown\";                  // kontynuacja po zakończeniu I/O\n}",
+      "lang": "csharp",
+      "tip": "Rozróżnij I/O-bound (await na operacji asynchronicznej) od CPU-bound (Task.Run). W ASP.NET Core opakowywanie kodu w Task.Run nic nie daje – tylko przenosi pracę na inny wątek z tej samej puli."
+    },
+    {
+      "id": "csharp-016",
+      "topic": "Task vs ValueTask",
+      "level": 3,
+      "q": "Kiedy użyć ValueTask zamiast Task i jakie ma ograniczenia?",
+      "a": "Task to klasa – każde wywołanie metody async zwracającej Task<T> zwykle alokuje obiekt (poza cache'owanymi przypadkami). ValueTask<T> to struct, który może trzymać gotowy wynik bez alokacji, więc opłaca się w gorących ścieżkach, gdzie metoda często kończy się synchronicznie (np. odczyt z cache lub bufora). Ograniczenia: ValueTask wolno awaitować tylko raz, nie wolno awaitować go współbieżnie ani wołać .Result przed zakończeniem. Jeśli potrzebujesz tego wszystkiego – wywołaj .AsTask(). Domyślnym wyborem pozostaje Task.",
+      "code": "public ValueTask<Product?> GetAsync(int id)\n{\n    if (_cache.TryGetValue(id, out var p))\n        return ValueTask.FromResult<Product?>(p);   // bez alokacji\n    return new ValueTask<Product?>(LoadAsync(id));  // ścieżka asynchroniczna\n}",
+      "lang": "csharp",
+      "tip": "ValueTask może być wspierany przez poolowany IValueTaskSource – stąd zakaz ponownego awaitowania: obiekt mógł już zostać użyty przez inną operację."
+    },
+    {
+      "id": "csharp-017",
+      "topic": "ConfigureAwait",
+      "level": 3,
+      "q": "Co robi ConfigureAwait(false) i czy trzeba go używać w ASP.NET Core?",
+      "a": "Domyślnie await przechwytuje bieżący SynchronizationContext (lub TaskScheduler) i wznawia kontynuację w nim – np. na wątku UI w WPF/WinForms. ConfigureAwait(false) mówi: kontynuuj na dowolnym wątku z puli, co daje trochę wydajności i chroni przed deadlockiem, gdy ktoś wyżej zablokuje się przez .Result. ASP.NET Core nie ma SynchronizationContext, więc w kodzie aplikacji nie ma to praktycznego znaczenia. W bibliotekach ogólnego przeznaczenia nadal jest zalecane, bo nie wiemy, w jakim środowisku zostaną użyte.",
+      "code": "// kod biblioteki\npublic async Task<byte[]> DownloadAsync(Uri uri, CancellationToken ct)\n{\n    using var response = await _http.GetAsync(uri, ct).ConfigureAwait(false);\n    return await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);\n}",
+      "lang": "csharp",
+      "tip": "Po ConfigureAwait(false) w aplikacji UI nie wolno dotykać kontrolek – kontynuacja nie jest już na wątku UI. Od .NET 8 istnieje też przeciążenie z ConfigureAwaitOptions (np. SuppressThrowing)."
+    },
+    {
+      "id": "csharp-018",
+      "topic": "Deadlock przy .Result/.Wait()",
+      "level": 2,
+      "q": "Dlaczego blokowanie na Task przez .Result lub .Wait() może spowodować deadlock?",
+      "a": "W środowisku z jednowątkowym SynchronizationContext (WPF, WinForms, klasyczny ASP.NET) wątek wywołujący blokuje się na .Result. Metoda async po zakończeniu I/O chce wznowić kontynuację w tym samym kontekście, czyli na zablokowanym wątku – oba czekają na siebie nawzajem. W ASP.NET Core klasyczny deadlock nie występuje (brak SynchronizationContext), ale blokowanie wątków przy obciążeniu prowadzi do thread pool starvation. Zasada: async all the way.",
+      "code": "// WPF – deadlock\nprivate void Button_Click(object sender, RoutedEventArgs e)\n{\n    var data = LoadDataAsync().Result;   // blokuje wątek UI\n}\n\n// poprawnie\nprivate async void Button_Click(object sender, RoutedEventArgs e)\n    => DataGrid.ItemsSource = await LoadDataAsync();",
+      "lang": "csharp",
+      "tip": ".GetAwaiter().GetResult() różni się od .Result tylko tym, że rzuca oryginalny wyjątek zamiast AggregateException – nadal blokuje i nadal może zakleszczyć."
+    },
+    {
+      "id": "csharp-019",
+      "topic": "async void",
+      "level": 2,
+      "q": "Dlaczego należy unikać async void?",
+      "a": "Metody async void nie da się awaitować, więc wywołujący nie wie, kiedy się zakończyła. Wyjątek rzucony w takiej metodzie nie trafia do wywołującego – jest zgłaszany w SynchronizationContext albo na puli wątków, co zwykle kończy proces. Utrudnia też testowanie. Jedyny uzasadniony przypadek to event handlery (np. w UI), gdzie sygnatura void jest narzucona – wtedy całe ciało warto opakować w try/catch.",
+      "code": "// źle\npublic async void SaveAsync() { await _repo.SaveAsync(); }\n\n// dobrze\npublic async Task SaveAsync() { await _repo.SaveAsync(); }\n\n// wyjątek: event handler\nprivate async void OnSaveClicked(object? s, EventArgs e)\n{\n    try { await SaveAsync(); } catch (Exception ex) { ShowError(ex); }\n}",
+      "lang": "csharp",
+      "tip": "Ukryta forma async void: lambda async przekazana do parametru typu Action, np. list.ForEach(async x => await ...). Kompilator to przepuści, a wyjątki i kolejność wykonania się rozjadą."
+    },
+    {
+      "id": "csharp-020",
+      "topic": "CancellationToken",
+      "level": 2,
+      "q": "Jak działa CancellationToken i jak go poprawnie używać?",
+      "a": "Anulowanie w .NET jest kooperacyjne: CancellationTokenSource wydaje token, a kod, który go dostaje, sam sprawdza go i przerywa pracę (ThrowIfCancellationRequested, przekazanie do metod I/O). Token należy przepuszczać przez cały łańcuch wywołań aż do EF Core, HttpClient itp. W ASP.NET Core parametr CancellationToken w akcji jest automatycznie powiązany z HttpContext.RequestAborted – anuluje się, gdy klient zerwie połączenie. Timeout można zrobić przez CancelAfter, a łączenie tokenów przez CreateLinkedTokenSource.",
+      "code": "[HttpGet(\"{id}\")]\npublic async Task<IActionResult> Get(int id, CancellationToken ct)\n{\n    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);\n    cts.CancelAfter(TimeSpan.FromSeconds(5));\n\n    var report = await _service.BuildReportAsync(id, cts.Token);\n    return Ok(report);\n}",
+      "lang": "csharp",
+      "tip": "Anulowanie objawia się OperationCanceledException (TaskCanceledException dziedziczy po niej) – nie loguj jej jako błędu, gdy to klient przerwał żądanie."
+    },
+    {
+      "id": "csharp-021",
+      "topic": "Task.WhenAll i równoległość",
+      "level": 2,
+      "q": "Jak uruchomić kilka operacji asynchronicznych równolegle i jak obsłużyć wyjątki?",
+      "a": "Trzeba najpierw wystartować wszystkie zadania (wywołać metody bez await), a potem poczekać na nie przez await Task.WhenAll – czas wyniesie tyle, ile najdłuższa operacja, a nie sumę. await na WhenAll rzuca tylko pierwszy wyjątek; wszystkie są dostępne w właściwości Exception zwróconego taska (AggregateException). Przy dużej liczbie operacji warto ograniczyć współbieżność, np. Parallel.ForEachAsync z MaxDegreeOfParallelism lub SemaphoreSlim. Od .NET 9 jest Task.WhenEach do przetwarzania wyników w kolejności kończenia.",
+      "code": "var userTask   = _users.GetAsync(id, ct);\nvar ordersTask = _orders.GetForUserAsync(id, ct);\n\nawait Task.WhenAll(userTask, ordersTask);\nvar dto = new UserDto(userTask.Result, ordersTask.Result); // już zakończone – bezpieczne\n\nawait Parallel.ForEachAsync(ids, new ParallelOptions { MaxDegreeOfParallelism = 4 },\n    async (id, token) => await ProcessAsync(id, token));",
+      "lang": "csharp",
+      "tip": "Pułapka EF Core: DbContext nie jest thread-safe – dwa równoległe zapytania na tym samym kontekście rzucą wyjątek. Potrzebne są osobne instancje (np. IDbContextFactory)."
+    },
+    {
+      "id": "csharp-022",
+      "topic": "lock i SemaphoreSlim",
+      "level": 2,
+      "q": "Jak synchronizować dostęp do współdzielonego stanu i czemu nie można użyć await wewnątrz lock?",
+      "a": "lock (Monitor) zapewnia wzajemne wykluczanie dla kodu synchronicznego. Monitor jest powiązany z wątkiem, który go zajął, a po await kontynuacja może działać na innym wątku – dlatego kompilator zabrania await w bloku lock. W kodzie async używa się SemaphoreSlim(1, 1) z WaitAsync i zwolnieniem w finally. Dla prostych operacji na liczbach są Interlocked.Increment/CompareExchange. Od .NET 9 jest dedykowany typ System.Threading.Lock, który instrukcja lock obsługuje wydajniej niż zwykły object.",
+      "code": "private readonly SemaphoreSlim _gate = new(1, 1);\n\npublic async Task RefreshAsync(CancellationToken ct)\n{\n    await _gate.WaitAsync(ct);\n    try   { _data = await LoadAsync(ct); }\n    finally { _gate.Release(); }\n}",
+      "lang": "csharp",
+      "tip": "Nie blokuj na this ani na typeof(...) czy stringu – ktoś z zewnątrz może zablokować ten sam obiekt. Używaj prywatnego pola readonly."
+    },
+    {
+      "id": "csharp-023",
+      "topic": "ConcurrentDictionary",
+      "level": 2,
+      "q": "Co gwarantuje ConcurrentDictionary, a czego nie?",
+      "a": "Pojedyncze operacje (TryAdd, TryGetValue, TryRemove, indekser, GetOrAdd, AddOrUpdate) są atomowe i bezpieczne wątkowo, a odczyty nie blokują. Natomiast fabryki przekazane do GetOrAdd/AddOrUpdate wykonują się poza lockiem, więc przy współbieżności mogą zostać wywołane więcej niż raz (do słownika trafi tylko jeden wynik). Jeśli tworzenie wartości jest kosztowne lub ma efekty uboczne, opakowuje się ją w Lazy<T>. Sekwencja kilku operacji (sprawdź, potem dodaj) nie jest atomowa.",
+      "code": "private readonly ConcurrentDictionary<string, Lazy<HttpClient>> _clients = new();\n\npublic HttpClient Get(string name) =>\n    _clients.GetOrAdd(name, n => new Lazy<HttpClient>(() => Create(n))).Value;\n\n// źle – race condition między ContainsKey a dodaniem\n// if (!dict.ContainsKey(k)) dict[k] = Create();",
+      "lang": "csharp",
+      "tip": "Enumeracja ConcurrentDictionary jest bezpieczna (nie rzuci wyjątku przy równoległych zmianach), ale nie jest spójnym snapshotem."
+    },
+    {
+      "id": "csharp-024",
+      "topic": "Garbage Collector",
+      "level": 3,
+      "q": "Jak działa GC w .NET – generacje, LOH, tryby pracy?",
+      "a": "GC jest generacyjny: nowe obiekty trafiają do generacji 0, która jest sprzątana często i tanio; obiekty, które przetrwają, są promowane do gen 1, a potem gen 2 (pełne GC, najdroższe). Opiera się to na obserwacji, że większość obiektów żyje krótko. Obiekty od 85 000 bajtów trafiają na Large Object Heap – zbierany razem z gen 2 i domyślnie niekompaktowany, co grozi fragmentacją. Istnieją tryby Workstation i Server GC (ASP.NET Core domyślnie Server) oraz tryb concurrent/background.",
+      "code": "// zamiast alokować duże bufory w każdym żądaniu:\nbyte[] buffer = ArrayPool<byte>.Shared.Rent(100_000);\ntry\n{\n    // praca na buforze\n}\nfinally\n{\n    ArrayPool<byte>.Shared.Return(buffer);\n}",
+      "lang": "csharp",
+      "tip": "Dobrze brzmi praktyczne podejście: mierzenie (dotnet-counters, dotnet-trace), ograniczanie alokacji w gorących ścieżkach (ArrayPool, Span, struct), a nie wywoływanie GC.Collect()."
+    },
+    {
+      "id": "csharp-025",
+      "topic": "IDisposable vs finalizer",
+      "level": 2,
+      "q": "Czym różni się IDisposable od finalizera i jak działa using / await using?",
+      "a": "Dispose() to deterministyczne zwolnienie zasobów (połączenia, pliki, uchwyty) w momencie, który wybieramy – zwykle przez using. Finalizer (~Klasa) jest wywoływany przez GC w nieokreślonym czasie na osobnym wątku, opóźnia zebranie obiektu o co najmniej jeden cykl GC i służy tylko jako siatka bezpieczeństwa dla zasobów niezarządzanych. W praktyce zamiast finalizera używa się SafeHandle. using wywołuje Dispose w finally, a await using wywołuje DisposeAsync dla IAsyncDisposable. Deklaracja using var zwalnia zasób na końcu bieżącego zakresu.",
+      "code": "await using var connection = new SqlConnection(connString);\nawait connection.OpenAsync(ct);\n\nusing (var stream = File.OpenRead(path))\n{\n    // ...\n} // Dispose tutaj\n\n// w pełnym Dispose pattern: GC.SuppressFinalize(this);",
+      "lang": "csharp",
+      "tip": "Klasyczny błąd: new HttpClient() w using przy każdym żądaniu – prowadzi do wyczerpania portów (socket exhaustion). Używa się IHttpClientFactory lub współdzielonej instancji."
+    },
+    {
+      "id": "csharp-026",
+      "topic": "Span<T> i Memory<T>",
+      "level": 3,
+      "q": "Czym są Span<T> i Memory<T> i kiedy ich używać?",
+      "a": "Span<T> to ref struct reprezentujący ciągły fragment pamięci – tablicy, stackalloc lub pamięci natywnej – bez kopiowania i alokacji. Pozwala tanio robić slicing, np. parsować fragmenty stringa przez ReadOnlySpan<char> zamiast Substring. Jako ref struct może żyć tylko na stosie: nie może być polem klasy, nie może być boksowany ani przechowany przez await. Memory<T> to jego odpowiednik, który można trzymać na heapie (pola, async), a gdy trzeba operować na danych, wywołuje się .Span.",
+      "code": "ReadOnlySpan<char> date = \"2026-10-19\".AsSpan();\nint year  = int.Parse(date[..4]);      // bez alokacji Substring\nint month = int.Parse(date[5..7]);\n\nSpan<byte> buffer = stackalloc byte[256];\nint written = Encoding.UTF8.GetBytes(\"hello\", buffer);",
+      "lang": "csharp",
+      "tip": "Na poziomie mid wystarczy wiedzieć „po co” i znać ograniczenia ref struct; na senior warto wspomnieć, że BCL (parsery, System.Text.Json, Kestrel) jest zbudowany na Span właśnie po to, by ograniczyć alokacje."
+    },
+    {
+      "id": "csharp-027",
+      "topic": "Kolekcje – złożoność",
+      "level": 1,
+      "q": "Jaka jest złożoność podstawowych operacji na List<T>, Dictionary<TKey,TValue> i HashSet<T>?",
+      "a": "List<T> to dynamiczna tablica: dostęp po indeksie O(1), Add zamortyzowane O(1) (przy przepełnieniu podwaja pojemność i kopiuje), Insert/RemoveAt w środku i Contains – O(n). Dictionary i HashSet to tablice haszujące: dodawanie, wyszukiwanie po kluczu i usuwanie średnio O(1), w najgorszym przypadku (kolizje) O(n). SortedDictionary to drzewo czerwono-czarne – O(log n), ale z zachowaniem kolejności kluczy. Jeśli znamy rozmiar, warto podać capacity w konstruktorze.",
+      "code": "var ids = new HashSet<int>(orders.Select(o => o.CustomerId)); // O(n) budowa\nvar vip = customers.Where(c => ids.Contains(c.Id));            // O(1) na sprawdzenie\n\nvar byId = new Dictionary<int, Customer>(capacity: customers.Count);\nforeach (var c in customers) byId[c.Id] = c;",
+      "lang": "csharp",
+      "tip": "Klasyczne zadanie: zamiana zagnieżdżonego list.Contains w pętli (O(n·m)) na HashSet (O(n+m)). Warto umieć to zauważyć w code review."
+    },
+    {
+      "id": "csharp-028",
+      "topic": "Kolekcje read-only, immutable, frozen",
+      "level": 3,
+      "q": "Czym różnią się IReadOnlyCollection/IReadOnlyList, kolekcje Immutable i FrozenDictionary?",
+      "a": "IReadOnlyList<T> czy IReadOnlyCollection<T> to tylko interfejs-widok – wywołujący nie zmieni kolekcji przez ten interfejs, ale właściciel nadal może ją modyfikować pod spodem (i można zrzutować z powrotem na List<T>). Kolekcje z System.Collections.Immutable (ImmutableArray, ImmutableList, ImmutableDictionary) naprawdę nie mogą się zmienić – każda „modyfikacja” zwraca nową instancję, co jest bezpieczne wątkowo. FrozenDictionary/FrozenSet (.NET 8) są zoptymalizowane pod bardzo szybkie odczyty kosztem droższego tworzenia – idealne na dane konfiguracyjne budowane raz przy starcie.",
+      "code": "public IReadOnlyList<OrderLine> Lines => _lines;          // widok na prywatną listę\n\nImmutableArray<string> roles = [\"Admin\", \"User\"];\nvar more = roles.Add(\"Guest\");                            // roles bez zmian\n\nFrozenDictionary<string, int> codes =\n    new Dictionary<string, int> { [\"PL\"] = 48, [\"DE\"] = 49 }.ToFrozenDictionary();",
+      "lang": "csharp",
+      "tip": "Dobrym argumentem w dyskusji o API jest: przyjmuj możliwie ogólne typy (IEnumerable<T>, IReadOnlyCollection<T>), zwracaj możliwie konkretne i niemutowalne z punktu widzenia klienta."
+    },
+    {
+      "id": "csharp-029",
+      "topic": "Pattern matching",
+      "level": 2,
+      "q": "Jakie rodzaje pattern matchingu znasz w nowoczesnym C#?",
+      "a": "Type pattern (o is string s), constant pattern, relational (> 0, <= 100), logical (and, or, not – np. is not null), property pattern ({ Status: Paid, Total: > 100 }), positional (dekonstrukcja recordów/krotek), list pattern ([first, .., last], C# 11) oraz var pattern. Najwygodniej używać ich w switch expression, które jest wyrażeniem zwracającym wartość, a kompilator ostrzega, jeśli przypadki nie są wyczerpujące.",
+      "code": "decimal Discount(Order order) => order switch\n{\n    { Customer.IsVip: true, Total: > 1000 } => 0.15m,\n    { Total: > 1000 }                         => 0.10m,\n    { Items.Count: >= 5 }                     => 0.05m,\n    null                                      => throw new ArgumentNullException(nameof(order)),\n    _                                         => 0m\n};\n\nif (args is [var first, .., var last]) Console.WriteLine($\"{first}..{last}\");",
+      "lang": "csharp",
+      "tip": "Kolejność ramion ma znaczenie – wygrywa pierwsze pasujące. Kompilator zgłosi błąd, jeśli ramię jest nieosiągalne, bo poprzednie je przykrywa."
+    },
+    {
+      "id": "csharp-030",
+      "topic": "Interfejs vs klasa abstrakcyjna",
+      "level": 2,
+      "q": "Kiedy interfejs, a kiedy klasa abstrakcyjna – i co zmieniły default interface methods?",
+      "a": "Klasa abstrakcyjna może mieć stan (pola), konstruktory, modyfikatory dostępu i częściową implementację, ale klasa może dziedziczyć tylko po jednej. Interfejs definiuje kontrakt, a klasa może implementować wiele interfejsów – to podstawa DI i testowalności. Od C# 8 interfejs może mieć default implementation – główny cel to rozwijanie API bez łamania istniejących implementacji. Interfejs nadal nie ma stanu instancji. Od C# 11 interfejsy mogą mieć też static abstract members (generic math).",
+      "code": "public interface INotifier\n{\n    Task SendAsync(string message);\n\n    // nowa metoda nie psuje istniejących implementacji\n    Task SendManyAsync(IEnumerable<string> messages)\n        => Task.WhenAll(messages.Select(SendAsync));\n}",
+      "lang": "csharp",
+      "tip": "Metoda z domyślną implementacją jest dostępna tylko przez referencję typu interfejsu – na zmiennej typu klasy jej „nie widać”."
+    },
+    {
+      "id": "csharp-031",
+      "topic": "sealed i static",
+      "level": 1,
+      "q": "Co oznaczają modyfikatory sealed i static dla klasy?",
+      "a": "sealed zabrania dziedziczenia po klasie (a przy metodzie – dalszego override). Wyraża intencję, że klasa nie jest projektowana do rozszerzania, i pozwala JIT-owi na devirtualizację wywołań, więc daje też drobny zysk wydajności – wiele zespołów domyślnie pieczętuje klasy. Klasa static nie może mieć instancji ani dziedziczyć, zawiera tylko statyczne składowe – typowo helpery i extension methods. Stan statyczny jest współdzielony przez całą aplikację, więc musi być thread-safe i utrudnia testowanie.",
+      "code": "public sealed class PriceCalculator { /* ... */ }\n\npublic static class Guard\n{\n    public static T NotNull<T>(T? value, string name) where T : class\n        => value ?? throw new ArgumentNullException(name);\n}",
+      "lang": "csharp",
+      "tip": "Statyczny konstruktor wykonuje się raz, leniwie, w sposób thread-safe – na tym opiera się prosty wzorzec singletona, choć w aplikacjach z DI lepiej zarejestrować serwis jako Singleton."
+    },
+    {
+      "id": "csharp-032",
+      "topic": "Extension methods",
+      "level": 1,
+      "q": "Czym są extension methods i jak działają?",
+      "a": "To statyczne metody w statycznej klasie, których pierwszy parametr jest oznaczony this – dzięki temu wywołuje się je jak metody instancji rozszerzanego typu. To czysty cukier składniowy: kompilator zamienia wywołanie na zwykłe wywołanie statyczne, więc nie mają dostępu do prywatnych składowych. Metoda instancji o tej samej sygnaturze zawsze wygrywa. Cały LINQ to extension methods na IEnumerable<T>, a w ASP.NET Core konwencja AddXyz() na IServiceCollection.",
+      "code": "public static class StringExtensions\n{\n    public static string Truncate(this string value, int max)\n        => value.Length <= max ? value : value[..max] + \"…\";\n}\n\nvar title = \"Bardzo długi tytuł artykułu\".Truncate(10);",
+      "lang": "csharp",
+      "tip": "Można je wywołać na null (to zwykła metoda statyczna) – NullReferenceException poleci dopiero w środku, jeśli metoda nie sprawdza argumentu."
+    },
+    {
+      "id": "csharp-033",
+      "topic": "Extension members (C# 14)",
+      "level": 3,
+      "q": "Co nowego wnoszą extension members w C# 14?",
+      "a": "C# 14 (.NET 10) wprowadza bloki extension wewnątrz statycznej klasy, w których można deklarować nie tylko metody, ale też extension properties oraz statyczne składowe rozszerzające sam typ. Odbiorca (receiver) jest deklarowany raz dla całego bloku. Stare extension methods z this działają dalej i są z nowym zapisem zgodne, więc migracja nie jest konieczna.",
+      "code": "public static class EnumerableExtensions\n{\n    extension<T>(IEnumerable<T> source)\n    {\n        public bool IsEmpty => !source.Any();                 // extension property\n        public IEnumerable<T> WhereNotNull() => source.Where(x => x is not null);\n    }\n\n    extension<T>(IEnumerable<T>)\n    {\n        public static IEnumerable<T> Empty => [];             // static extension member\n    }\n}",
+      "lang": "csharp",
+      "tip": "Na rozmowie wystarczy wiedzieć, że to istnieje i co rozwiązuje (brak extension properties było wieloletnią prośbą). Nie wymyślaj szczegółów składni, których nie jesteś pewien."
+    },
+    {
+      "id": "csharp-034",
+      "topic": "Primary constructors",
+      "level": 2,
+      "q": "Jak działają primary constructors w klasach (C# 12) i czym różnią się od tych w recordach?",
+      "a": "W klasie i strukturze parametry primary constructora są dostępne w całym ciele typu – kompilator, jeśli trzeba, przechwytuje je do ukrytego pola. Nie są to jednak publiczne właściwości (w przeciwieństwie do recordów, gdzie z parametrów powstają właściwości init) i nie są readonly – można je nadpisać w metodzie. Świetnie skracają kod serwisów z DI. Pułapka: jeśli dodatkowo przypiszesz parametr do właściwości i używasz go też bezpośrednio, stan jest przechowywany podwójnie.",
+      "code": "public class OrderService(IOrderRepository repo, ILogger<OrderService> logger)\n{\n    public async Task<Order?> GetAsync(int id, CancellationToken ct)\n    {\n        logger.LogInformation(\"Loading order {Id}\", id);\n        return await repo.FindAsync(id, ct);\n    }\n}",
+      "lang": "csharp",
+      "tip": "Jeśli zależy ci na niemutowalności, przypisz parametr do pola: private readonly IOrderRepository _repo = repo;"
+    },
+    {
+      "id": "csharp-035",
+      "topic": "required i init",
+      "level": 2,
+      "q": "Do czego służą modyfikatory init i required?",
+      "a": "init (C# 9) to setter, który można wywołać tylko podczas inicjalizacji obiektu (konstruktor, object initializer, wyrażenie with) – potem właściwość jest tylko do odczytu. required (C# 11) wymusza ustawienie właściwości w object initializerze; brak przypisania to błąd kompilacji. Razem pozwalają tworzyć niemutowalne obiekty z czytelnym object initializerem zamiast długich konstruktorów. Konstruktor, który sam ustawia wszystkie wymagane właściwości, oznacza się [SetsRequiredMembers].",
+      "code": "public class CreateUserCommand\n{\n    public required string Email { get; init; }\n    public required string Name  { get; init; }\n    public string? Phone { get; init; }\n}\n\nvar cmd = new CreateUserCommand { Email = \"a@b.pl\", Name = \"Ala\" };\n// cmd.Email = \"x\";  // błąd – init-only",
+      "lang": "csharp",
+      "tip": "required to kontrola compile-time; deserializer System.Text.Json od .NET 7 też respektuje required i rzuci wyjątek, gdy pola brakuje w JSON-ie."
+    },
+    {
+      "id": "csharp-036",
+      "topic": "Equality",
+      "level": 2,
+      "q": "Czym różnią się ==, Equals i ReferenceEquals i dlaczego Equals trzeba nadpisywać razem z GetHashCode?",
+      "a": "Dla klas == domyślnie porównuje referencje, chyba że typ przeciąża operator (string, recordy). Equals jest wirtualny – domyślnie też referencyjny dla klas, a dla structów porównuje pola (przez refleksję, więc wolno). ReferenceEquals zawsze porównuje referencje. Kontrakt: obiekty równe według Equals muszą mieć ten sam GetHashCode – inaczej Dictionary i HashSet nie znajdą elementu, bo szukają najpierw po hashu. Hash powinien opierać się na niezmiennych polach.",
+      "code": "public sealed class Sku : IEquatable<Sku>\n{\n    public string Code { get; }\n    public Sku(string code) => Code = code;\n\n    public bool Equals(Sku? other) => other is not null && Code == other.Code;\n    public override bool Equals(object? obj) => Equals(obj as Sku);\n    public override int GetHashCode() => Code.GetHashCode();\n}",
+      "lang": "csharp",
+      "tip": "Najprostsza odpowiedź na „jak to zrobić dobrze” w nowym kodzie: użyj recordu – generuje Equals, GetHashCode, == i IEquatable<T> automatycznie."
+    },
+    {
+      "id": "csharp-037",
+      "topic": "Wyjątki – dobre praktyki",
+      "level": 1,
+      "q": "Czym różni się throw od throw ex i jakie są dobre praktyki obsługi wyjątków?",
+      "a": "throw; w bloku catch rzuca ponownie ten sam wyjątek z zachowanym stack trace. throw ex; resetuje stack trace do bieżącego miejsca, przez co tracimy informację, gdzie błąd powstał. Dobre praktyki: łap tylko wyjątki, które umiesz obsłużyć; nie używaj wyjątków do sterowania przepływem; opakowując wyjątek, przekazuj oryginał jako InnerException; ogólny catch (Exception) tylko na granicy (middleware, globalny handler). Filtry when pozwalają warunkowo łapać wyjątki bez rozwijania stosu.",
+      "code": "try\n{\n    await _client.SendAsync(request, ct);\n}\ncatch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)\n{\n    return null;\n}\ncatch (Exception ex)\n{\n    throw new PaymentException(\"Payment failed\", ex); // zachowany InnerException\n}",
+      "lang": "csharp",
+      "tip": "W ASP.NET Core globalną obsługę błędów robi się przez UseExceptionHandler + IExceptionHandler (.NET 8) i ProblemDetails, a nie try/catch w każdej akcji."
+    },
+    {
+      "id": "csharp-038",
+      "topic": ".NET vs .NET Framework",
+      "level": 1,
+      "q": "Czym różni się .NET (dawniej .NET Core) od .NET Framework?",
+      "a": ".NET Framework (ostatnia wersja 4.8.1) działa tylko na Windows, jest częścią systemu i dostaje już tylko poprawki bezpieczeństwa. .NET (Core, 5+) jest cross-platform, open source, modularny, znacznie wydajniejszy i wydawany co roku w listopadzie – wersje parzyste są LTS (8, 10), nieparzyste STS (9). Aplikację można wdrożyć razem z runtime (self-contained) albo jako Native AOT. .NET Standard służył do współdzielenia bibliotek między platformami – dziś nowe biblioteki zwykle celują po prostu w net8.0/net10.0.",
+      "code": "<PropertyGroup>\n  <TargetFramework>net10.0</TargetFramework>\n  <Nullable>enable</Nullable>\n  <ImplicitUsings>enable</ImplicitUsings>\n</PropertyGroup>",
+      "lang": "text",
+      "tip": "Pytanie o migrację z Frameworka: co nie istnieje w nowym .NET (WCF server, Web Forms, AppDomains, .NET Remoting) i jakie są zamienniki (CoreWCF/gRPC, Blazor/Razor Pages)."
+    },
+    {
+      "id": "csharp-039",
+      "topic": "CLR, JIT, AOT",
+      "level": 3,
+      "q": "Jak kod C# jest wykonywany – co robi CLR, JIT i czym jest Native AOT?",
+      "a": "Kompilator Roslyn kompiluje C# do IL (Intermediate Language) w assembly. W runtime CLR ładuje IL, a JIT kompiluje metody do kodu natywnego przy pierwszym wywołaniu. Tiered compilation najpierw szybko generuje mniej zoptymalizowany kod (tier 0), a gorące metody rekompiluje z optymalizacjami (tier 1), od .NET 8 domyślnie z Dynamic PGO wykorzystującym dane z runtime. ReadyToRun to prekompilacja skracająca start, ale z zachowanym JIT. Native AOT kompiluje całą aplikację do natywnej binarki bez JIT – szybki start i mniejsze zużycie pamięci (serverless, kontenery, CLI), kosztem ograniczeń: brak generowania kodu w runtime, problemy z refleksją i wymóg trimming-friendly kodu (np. source generatory dla System.Text.Json).",
+      "code": "<PropertyGroup>\n  <PublishAot>true</PublishAot>\n</PropertyGroup>\n<!-- dotnet publish -c Release -r linux-x64 -->",
+      "lang": "text",
+      "tip": "Plusem na rozmowie jest wiedza, że EF Core i część bibliotek mają ograniczone wsparcie AOT, a minimal APIs + System.Text.Json source generator są pod AOT przygotowane."
+    },
+    {
+      "id": "csharp-040",
+      "topic": "DI – lifetimes",
+      "level": 1,
+      "q": "Jakie są lifetimes w DI w ASP.NET Core i kiedy którego użyć?",
+      "a": "Transient – nowa instancja przy każdym rozwiązaniu zależności; dla lekkich, bezstanowych serwisów. Scoped – jedna instancja na scope, w ASP.NET Core na jedno żądanie HTTP; typowo DbContext (AddDbContext rejestruje go jako Scoped), unit of work, kontekst użytkownika. Singleton – jedna instancja na całą aplikację; dla bezstanowych lub thread-safe serwisów, cache, konfiguracji. Kontener sam wywołuje Dispose na utworzonych przez siebie obiektach IDisposable przy końcu scope'u (lub aplikacji dla singletonów).",
+      "code": "builder.Services.AddTransient<IEmailBuilder, EmailBuilder>();\nbuilder.Services.AddScoped<IOrderService, OrderService>();\nbuilder.Services.AddDbContext<AppDbContext>(o => o.UseSqlServer(connStr)); // Scoped\nbuilder.Services.AddSingleton<IClock, SystemClock>();",
+      "lang": "csharp",
+      "tip": "Od .NET 8 są też keyed services (AddKeyedSingleton i [FromKeyedServices]) – kiedy potrzebujesz kilku implementacji tego samego interfejsu."
+    },
+    {
+      "id": "csharp-041",
+      "topic": "Captive dependency",
+      "level": 3,
+      "q": "Czym jest captive dependency i jak sobie z nią radzić?",
+      "a": "To sytuacja, gdy serwis o dłuższym lifetime trzyma zależność o krótszym – np. singleton wstrzykuje w konstruktorze serwis Scoped (DbContext). Scoped zostaje „uwięziony” i żyje przez całą aplikację: DbContext jest współdzielony między żądaniami i wątkami (nie jest thread-safe), a jego change tracker rośnie bez końca. W środowisku Development ASP.NET Core włącza ValidateScopes i wykrywa to wyjątkiem InvalidOperationException. Rozwiązanie: w singletonie lub BackgroundService tworzyć scope przez IServiceScopeFactory albo użyć IDbContextFactory.",
+      "code": "public class CleanupWorker(IServiceScopeFactory scopeFactory) : BackgroundService\n{\n    protected override async Task ExecuteAsync(CancellationToken ct)\n    {\n        while (!ct.IsCancellationRequested)\n        {\n            using var scope = scopeFactory.CreateScope();\n            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();\n            await db.Sessions.Where(s => s.Expired).ExecuteDeleteAsync(ct);\n            await Task.Delay(TimeSpan.FromMinutes(5), ct);\n        }\n    }\n}",
+      "lang": "csharp",
+      "tip": "Transient wstrzyknięty do singletona też staje się de facto singletonem – to problem, gdy transient ma stan lub trzyma zasoby."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "csharp-q001",
+      "topic": "Typy wartościowe vs referencyjne",
+      "level": 1,
+      "q": "Co wypisze ten kod?",
+      "code": "struct Counter { public int Value; public void Inc() => Value++; }\n\nvar list = new List<Counter> { new Counter() };\nvar c = list[0];\nc.Inc();\nConsole.WriteLine(list[0].Value);",
+      "lang": "csharp",
+      "options": [
+        "1",
+        "0",
+        "Błąd kompilacji",
+        "NullReferenceException"
+      ],
+      "correct": 1,
+      "why": "list[0] zwraca kopię structa, więc c.Inc() zwiększa wartość w lokalnej kopii, a element listy pozostaje bez zmian. Gdyby Counter był klasą, wynik wynosiłby 1. Kod się kompiluje, a struct nie może być null."
+    },
+    {
+      "id": "csharp-q002",
+      "topic": "Closure",
+      "level": 2,
+      "q": "Co wypisze ten kod?",
+      "code": "var actions = new List<Action>();\nfor (int i = 0; i < 3; i++)\n    actions.Add(() => Console.Write(i));\n\nforeach (var a in actions) a();",
+      "lang": "csharp",
+      "options": [
+        "333",
+        "012",
+        "222",
+        "Kolejność jest niedeterministyczna"
+      ],
+      "correct": 0,
+      "why": "Lambdy przechwytują zmienną i, a nie jej wartość. W pętli for jest jedna zmienna na całą pętlę, więc po zakończeniu pętli ma wartość 3 i wszystkie lambdy ją wypisują. W foreach (od C# 5) każda iteracja ma osobną zmienną. Wywołania są sekwencyjne, więc nie ma tu niedeterminizmu."
+    },
+    {
+      "id": "csharp-q003",
+      "topic": "LINQ – deferred execution",
+      "level": 2,
+      "q": "Co wypisze ten kod?",
+      "code": "var numbers = new List<int> { 1, 2, 3 };\nvar query = numbers.Where(n => n > 1);\nnumbers.Add(4);\nConsole.WriteLine(query.Count());",
+      "lang": "csharp",
+      "options": [
+        "2",
+        "4",
+        "InvalidOperationException – kolekcja została zmodyfikowana",
+        "3"
+      ],
+      "correct": 3,
+      "why": "Where jest wykonywany leniwie – filtr działa dopiero przy Count(), czyli już po dodaniu 4. Elementy > 1 to 2, 3, 4. InvalidOperationException poleciałby tylko przy modyfikacji listy w trakcie enumeracji, a tu dodanie nastąpiło przed nią."
+    },
+    {
+      "id": "csharp-q004",
+      "topic": "string i StringBuilder",
+      "level": 1,
+      "q": "Co wypisze ten kod?",
+      "code": "string s = \"abc\";\ns.ToUpper();\ns.Replace(\"a\", \"x\");\nConsole.WriteLine(s);",
+      "lang": "csharp",
+      "options": [
+        "ABC",
+        "XBC",
+        "abc",
+        "xbc"
+      ],
+      "correct": 2,
+      "why": "string jest immutable – ToUpper i Replace zwracają nowe stringi, które tutaj są ignorowane. Zmienna s nadal wskazuje oryginalne \"abc\". Trzeba by napisać s = s.ToUpper();."
+    },
+    {
+      "id": "csharp-q005",
+      "topic": "Boxing",
+      "level": 2,
+      "q": "W której linii dochodzi do boxingu?",
+      "code": "int a = 5;\nvar b = a.ToString();            // 1\nIComparable c = a;               // 2\nvar list = new List<int> { a };  // 3\nlong d = a;                      // 4",
+      "lang": "csharp",
+      "options": [
+        "Linia 1",
+        "Linia 2",
+        "Linia 3",
+        "Linia 4"
+      ],
+      "correct": 1,
+      "why": "Przypisanie int do zmiennej typu interfejsu (IComparable) wymaga opakowania wartości w obiekt na heapie. int nadpisuje ToString, więc linia 1 nie boksuje. List<int> przechowuje inty bez boxingu dzięki generics. long d = a to zwykła niejawna konwersja liczbowa."
+    },
+    {
+      "id": "csharp-q006",
+      "topic": "Task vs ValueTask",
+      "level": 3,
+      "q": "Co jest nie tak w tym kodzie?",
+      "code": "ValueTask<int> vt = reader.ReadValueAsync();\nint a = await vt;\nint b = await vt;",
+      "lang": "csharp",
+      "options": [
+        "ValueTask można awaitować tylko raz – drugi await to niezdefiniowane zachowanie",
+        "Nic – ValueTask zachowuje się dokładnie jak Task",
+        "Nie skompiluje się – ValueTask nie może być przypisany do zmiennej",
+        "Druga linia zawsze rzuca InvalidOperationException"
+      ],
+      "correct": 0,
+      "why": "ValueTask może być wspierany przez poolowany IValueTaskSource, który po pierwszym await może zostać użyty ponownie przez inną operację. Drugi await może więc zwrócić zły wynik, rzucić wyjątek albo zadziałać – zachowanie jest niezdefiniowane, a nie gwarantowany wyjątek. Jeśli wynik jest potrzebny wielokrotnie, należy zapisać go w zmiennej albo użyć .AsTask()."
+    },
+    {
+      "id": "csharp-q007",
+      "topic": "async void",
+      "level": 2,
+      "q": "Co się stanie po uruchomieniu tego kodu?",
+      "code": "async void SaveAsync()\n{\n    await Task.Delay(10);\n    throw new InvalidOperationException();\n}\n\ntry { SaveAsync(); }\ncatch (Exception) { Console.WriteLine(\"złapany\"); }",
+      "lang": "csharp",
+      "options": [
+        "Wypisze „złapany”",
+        "Wyjątek zostanie po cichu zignorowany jak w nieobserwowanym Task",
+        "Błąd kompilacji – async void nie może rzucać wyjątków",
+        "Wyjątek nie zostanie złapany przez catch – trafi do SynchronizationContext lub puli wątków i zwykle zakończy proces"
+      ],
+      "correct": 3,
+      "why": "Wywołanie SaveAsync() wraca do wywołującego przy pierwszym await, więc blok try kończy się, zanim wyjątek zostanie rzucony. W async void nie ma Taska, w którym wyjątek mógłby zostać zapisany, więc jest zgłaszany bezpośrednio – w aplikacji konsolowej/serwerowej skutkuje to crashem procesu. Ciche ignorowanie dotyczy nieobserwowanych wyjątków w Task, nie async void."
+    },
+    {
+      "id": "csharp-q008",
+      "topic": "Deadlock przy .Result/.Wait()",
+      "level": 2,
+      "q": "Handler przycisku w aplikacji WPF wywołuje metodę async, która wewnętrznie robi await httpClient.GetStringAsync(url) (bez ConfigureAwait(false)). Co się stanie?",
+      "code": "private void LoadButton_Click(object sender, RoutedEventArgs e)\n{\n    var text = LoadAsync().Result;\n    Output.Text = text;\n}",
+      "lang": "csharp",
+      "options": [
+        "Zadziała, tylko UI zamrozi się na czas pobierania",
+        "Zawsze poleci AggregateException",
+        "Deadlock – wątek UI czeka na Result, a kontynuacja czeka na wątek UI",
+        "Błąd kompilacji – nie można użyć .Result w metodzie synchronicznej"
+      ],
+      "correct": 2,
+      "why": ".Result blokuje wątek UI. Po zakończeniu żądania HTTP kontynuacja metody async chce wrócić do przechwyconego SynchronizationContext WPF, czyli na ten sam zablokowany wątek – oba czekają na siebie. Gdyby wszystkie await w LoadAsync miały ConfigureAwait(false), skończyłoby się na zamrożeniu UI, ale poprawne rozwiązanie to async all the way."
+    },
+    {
+      "id": "csharp-q009",
+      "topic": "Wyjątki – dobre praktyki",
+      "level": 2,
+      "q": "Jaka jest różnica między throw; a throw ex; w tym kodzie?",
+      "code": "try\n{\n    Parse(input);\n}\ncatch (FormatException ex)\n{\n    _logger.LogWarning(ex, \"Invalid input\");\n    throw ex;   // vs throw;\n}",
+      "lang": "csharp",
+      "options": [
+        "Nie ma różnicy – oba rzucają ten sam obiekt wyjątku",
+        "throw ex resetuje stack trace do miejsca w catch, throw; zachowuje oryginalny",
+        "throw; łapie wyjątek ponownie w tym samym bloku catch",
+        "throw ex opakowuje wyjątek w nowy, ustawiając InnerException"
+      ],
+      "correct": 1,
+      "why": "Oba rzucają ten sam obiekt, ale throw ex traktuje go jak nowo rzucony i nadpisuje stack trace – tracimy informację o miejscu powstania błędu w Parse(). throw; zachowuje pełny stos. Nie powstaje żaden nowy wyjątek ani InnerException."
+    },
+    {
+      "id": "csharp-q010",
+      "topic": "Wyjątki – dobre praktyki",
+      "level": 3,
+      "q": "Jaka jest główna przewaga filtra when nad sprawdzeniem warunku wewnątrz catch i ponownym rzuceniem?",
+      "code": "try { await _client.GetAsync(url, ct); }\ncatch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)\n{\n    return null;\n}",
+      "lang": "csharp",
+      "options": [
+        "Filtr jest ewaluowany przed rozwinięciem stosu – gdy zwróci false, wyjątek w ogóle nie jest łapany, a stos pozostaje nienaruszony",
+        "Filtr when jest jedynym sposobem na złapanie wyjątku po StatusCode",
+        "Filtr sprawia, że wyjątek jest łapany szybciej, bo omija middleware",
+        "Filtr automatycznie loguje wyjątki, których nie złapał"
+      ],
+      "correct": 0,
+      "why": "Filtry wykonują się w pierwszej fazie obsługi wyjątku, zanim stos zostanie rozwinięty. Jeśli warunek jest false, wyjątek leci dalej, jakby catch nie istniał – zachowany jest pełny stan do debugowania i crash dumpów. catch + if + throw; też zadziała funkcjonalnie, ale stos zostaje już rozwinięty do tego miejsca. Filtry nie mają żadnego wbudowanego logowania (choć można wywołać w nich metodę logującą, która zwraca false)."
+    },
+    {
+      "id": "csharp-q011",
+      "topic": "Equality",
+      "level": 2,
+      "q": "Co wypisze ten kod?",
+      "code": "class Key\n{\n    public int Id { get; set; }\n    public override bool Equals(object? o) => o is Key k && k.Id == Id;\n    public override int GetHashCode() => Id.GetHashCode();\n}\n\nvar k = new Key { Id = 1 };\nvar dict = new Dictionary<Key, string> { [k] = \"a\" };\nk.Id = 2;\nConsole.WriteLine(dict.ContainsKey(k));",
+      "lang": "csharp",
+      "options": [
+        "True",
+        "KeyNotFoundException",
+        "Błąd kompilacji",
+        "False"
+      ],
+      "correct": 3,
+      "why": "Słownik zapamiętał hash klucza z chwili dodania (Id = 1). Po zmianie Id na 2 ContainsKey liczy nowy hash i szuka w innym buckecie, więc nie znajduje wpisu. Dlatego GetHashCode powinien opierać się na niezmiennych polach, a obiekty używane jako klucze nie powinny być mutowane. ContainsKey nigdy nie rzuca KeyNotFoundException – robi to dopiero indekser."
+    },
+    {
+      "id": "csharp-q012",
+      "topic": "struct / class / record",
+      "level": 1,
+      "q": "Co wypisze ten kod?",
+      "code": "record Point(int X, int Y);\n\nvar a = new Point(1, 2);\nvar b = new Point(1, 2);\nConsole.WriteLine($\"{a == b} {ReferenceEquals(a, b)}\");",
+      "lang": "csharp",
+      "options": [
+        "False False",
+        "True True",
+        "True False",
+        "False True"
+      ],
+      "correct": 2,
+      "why": "Record ma generowaną value equality – operator == porównuje wartości właściwości, więc a == b daje True. To jednak nadal dwie różne instancje typu referencyjnego, więc ReferenceEquals zwraca False."
+    },
+    {
+      "id": "csharp-q013",
+      "topic": "Captive dependency",
+      "level": 3,
+      "q": "ReportCache ma w konstruktorze parametr AppDbContext. Co się stanie przy uruchomieniu aplikacji w środowisku Development?",
+      "code": "builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(connStr));\nbuilder.Services.AddSingleton<ReportCache>();",
+      "lang": "csharp",
+      "options": [
+        "Zadziała poprawnie – kontener przy każdym użyciu podstawi nowy DbContext",
+        "InvalidOperationException – w Development włączona jest walidacja scope'ów, która wykrywa wstrzyknięcie serwisu Scoped do Singletona",
+        "Błąd kompilacji – kompilator sprawdza lifetimes w DI",
+        "DbContext zostanie automatycznie podniesiony do Singletona i będzie działać bezpiecznie"
+      ],
+      "correct": 1,
+      "why": "To klasyczna captive dependency. W Development WebApplicationBuilder włącza ValidateScopes (i ValidateOnBuild), więc kontener rzuca InvalidOperationException typu „Cannot consume scoped service ... from singleton”. W Production walidacja jest domyślnie wyłączona – aplikacja wystartuje, ale jeden DbContext będzie współdzielony przez wszystkie żądania, co prowadzi do błędów współbieżności. Kompilator nie wie nic o lifetimes."
+    },
+    {
+      "id": "csharp-q014",
+      "topic": "DI – lifetimes",
+      "level": 1,
+      "q": "Z jakim lifetime AddDbContext domyślnie rejestruje DbContext?",
+      "options": [
+        "Scoped",
+        "Singleton",
+        "Transient",
+        "Per-thread"
+      ],
+      "correct": 0,
+      "why": "Domyślnie DbContext jest Scoped – jedna instancja na żądanie HTTP, co pasuje do wzorca unit of work i do tego, że DbContext nie jest thread-safe. Singleton byłby współdzielony między równoległymi żądaniami. Transient jest możliwy przez parametr, ale nie jest domyślny. Lifetime per-thread nie istnieje we wbudowanym kontenerze."
+    },
+    {
+      "id": "csharp-q015",
+      "topic": "IEnumerable vs IQueryable",
+      "level": 2,
+      "q": "Jaki jest problem z tym zapytaniem EF Core?",
+      "code": "var users = db.Users\n    .AsEnumerable()\n    .Where(u => u.Email.EndsWith(\"@firma.pl\"))\n    .ToList();",
+      "lang": "csharp",
+      "options": [
+        "EndsWith nie jest wspierane i zapytanie rzuci wyjątek translacji",
+        "ToList() wykona zapytanie dwukrotnie",
+        "Nie ma problemu – EF Core zoptymalizuje AsEnumerable i przeniesie Where do SQL",
+        "AsEnumerable() przenosi wykonanie do pamięci – cała tabela Users zostanie pobrana z bazy, a filtr wykona się w aplikacji"
+      ],
+      "correct": 3,
+      "why": "Po AsEnumerable() kolejne operatory to Enumerable.Where z delegatem, a nie Queryable.Where z drzewem wyrażeń – EF wykona SELECT bez WHERE i zmaterializuje wszystkie wiersze. EF Core potrafi przetłumaczyć EndsWith na SQL (LIKE), więc wystarczy usunąć AsEnumerable(). ToList() enumeruje tylko raz."
+    },
+    {
+      "id": "csharp-q016",
+      "topic": "LINQ – deferred execution",
+      "level": 2,
+      "q": "Co wypisze ten kod?",
+      "code": "IEnumerable<int> GetNumbers()\n{\n    Console.Write(\"start \");\n    yield return 1;\n    yield return 2;\n}\n\nvar nums = GetNumbers();\nif (nums.Any()) Console.Write(nums.Count());",
+      "lang": "csharp",
+      "options": [
+        "start 2",
+        "2",
+        "start start 2",
+        "start 1 2"
+      ],
+      "correct": 2,
+      "why": "Metoda z yield wykonuje się od nowa przy każdej enumeracji. Any() rozpoczyna enumerację (wypisuje „start ”) i zatrzymuje się po pierwszym elemencie, a Count() enumeruje ponownie od początku – znów „start ” – i zwraca 2. To przykład problemu wielokrotnej enumeracji; rozwiązaniem jest ToList()."
+    },
+    {
+      "id": "csharp-q017",
+      "topic": "yield",
+      "level": 2,
+      "q": "Co się stanie po uruchomieniu tego kodu?",
+      "code": "IEnumerable<int> Range(int count)\n{\n    if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));\n    for (int i = 0; i < count; i++) yield return i;\n}\n\nvar r = Range(-1);            // linia A\nConsole.WriteLine(\"ok\");\nforeach (var x in r) { }      // linia B",
+      "lang": "csharp",
+      "options": [
+        "ArgumentOutOfRangeException w linii A, „ok” się nie wypisze",
+        "Wypisze „ok”, a ArgumentOutOfRangeException poleci dopiero w linii B",
+        "Wypisze „ok” i nic więcej – pusta sekwencja",
+        "Błąd kompilacji – w metodzie z yield nie można rzucać wyjątków"
+      ],
+      "correct": 1,
+      "why": "Całe ciało metody iteratora, łącznie z walidacją, wykonuje się dopiero przy pierwszym MoveNext(), czyli w foreach. Wywołanie Range(-1) tylko tworzy obiekt iteratora. Dlatego walidację argumentów wydziela się do zwykłej metody, która zwraca wynik prywatnego iteratora."
+    },
+    {
+      "id": "csharp-q018",
+      "topic": "Kowariancja i kontrawariancja",
+      "level": 3,
+      "q": "Która linia się skompiluje?",
+      "options": [
+        "IEnumerable<object> x = new List<string>();",
+        "List<object> x = new List<string>();",
+        "IList<object> x = new List<string>();",
+        "IEnumerable<object> x = new List<int>();"
+      ],
+      "correct": 0,
+      "why": "IEnumerable<out T> jest kowariantny, a string jest typem referencyjnym, więc konwersja jest dozwolona. List<T> i IList<T> są inwariantne, bo T występuje także na wejściu (Add) – pozwolenie na to umożliwiłoby dodanie np. inta do listy stringów. Wariancja nie działa dla typów wartościowych, więc List<int> nie da się potraktować jak IEnumerable<object>."
+    },
+    {
+      "id": "csharp-q019",
+      "topic": "Task.WhenAll i równoległość",
+      "level": 2,
+      "q": "Ile mniej więcej sekund wypisze ten kod?",
+      "code": "var sw = Stopwatch.StartNew();\nvar t1 = Task.Delay(1000);\nvar t2 = Task.Delay(1000);\nvar t3 = Task.Delay(1000);\nawait Task.WhenAll(t1, t2, t3);\nConsole.WriteLine(sw.Elapsed.TotalSeconds);",
+      "lang": "csharp",
+      "options": [
+        "Około 3",
+        "Około 0 – Task.Delay nie blokuje",
+        "Około 2",
+        "Około 1"
+      ],
+      "correct": 3,
+      "why": "Wszystkie trzy Task.Delay startują od razu w momencie wywołania (przed await), więc odliczają równolegle. WhenAll kończy się, gdy skończy się najdłuższe – po ok. 1 s. 3 sekundy wyszłyby, gdyby każdy Delay był awaitowany osobno, zaraz po utworzeniu. await czeka na zakończenie, więc wynik nie będzie bliski 0."
+    },
+    {
+      "id": "csharp-q020",
+      "topic": "lock i SemaphoreSlim",
+      "level": 2,
+      "q": "Co jest nie tak z tym kodem?",
+      "code": "private readonly object _sync = new();\n\npublic async Task UpdateAsync()\n{\n    lock (_sync)\n    {\n        await SaveAsync();\n    }\n}",
+      "lang": "csharp",
+      "options": [
+        "Nic – działa poprawnie",
+        "Skompiluje się, ale zawsze kończy się deadlockiem",
+        "Nie skompiluje się – await w bloku lock jest zabroniony; należy użyć SemaphoreSlim.WaitAsync",
+        "lock zostanie automatycznie zwolniony na czas await i ponownie zajęty"
+      ],
+      "correct": 2,
+      "why": "Kompilator zgłasza błąd CS1996: nie można użyć await w ciele instrukcji lock. Monitor jest przypisany do wątku, a kontynuacja po await może działać na innym wątku, więc zwolnienie locka byłoby niepoprawne. Do synchronizacji w kodzie async służy SemaphoreSlim(1, 1) z WaitAsync i Release w finally."
+    },
+    {
+      "id": "csharp-q021",
+      "topic": "ConcurrentDictionary",
+      "level": 3,
+      "q": "Kod jest wywoływany jednocześnie z wielu wątków dla tego samego klucza. Co jest gwarantowane?",
+      "code": "var cache = new ConcurrentDictionary<string, ExpensiveClient>();\n\n// wywoływane równolegle\nvar client = cache.GetOrAdd(\"api\", _ => new ExpensiveClient());",
+      "lang": "csharp",
+      "options": [
+        "Fabryka wykona się dokładnie raz, bo GetOrAdd jest atomowe",
+        "Wszystkie wątki dostaną tę samą instancję, ale konstruktor ExpensiveClient może wykonać się więcej niż raz",
+        "Różne wątki mogą dostać różne instancje ExpensiveClient",
+        "GetOrAdd rzuci wyjątek przy współbieżnym dodawaniu tego samego klucza"
+      ],
+      "correct": 1,
+      "why": "ConcurrentDictionary wywołuje fabrykę poza lockiem, więc kilka wątków może ją uruchomić równocześnie. Do słownika trafi tylko jedna wartość i to ona zostanie zwrócona wszystkim wątkom; pozostałe utworzone obiekty zostaną porzucone (bez Dispose). Gdy tworzenie jest kosztowne, stosuje się Lazy<T> jako wartość."
+    },
+    {
+      "id": "csharp-q022",
+      "topic": "Span<T> i Memory<T>",
+      "level": 3,
+      "q": "Dlaczego ten kod się nie skompiluje?",
+      "code": "public class Parser\n{\n    private Span<char> _buffer;\n\n    public Parser(char[] data) => _buffer = data;\n}",
+      "lang": "csharp",
+      "options": [
+        "Span<T> to ref struct – nie może być polem klasy; tu należy użyć Memory<T>",
+        "Span<T> wymaga bloku unsafe",
+        "Span<T> może przechowywać tylko bajty, nie znaki",
+        "Pole musi być readonly, bo Span jest niemutowalny"
+      ],
+      "correct": 0,
+      "why": "Span<T> jest ref structem, który może żyć tylko na stosie – nie może być polem klasy (ani zwykłego structa), nie może być boksowany ani przechowany przez await. Memory<T> nie ma tych ograniczeń i daje dostęp do Span przez właściwość .Span. Span jest typem bezpiecznym, nie wymaga unsafe, i jest generyczny dla dowolnego T."
+    },
+    {
+      "id": "csharp-q023",
+      "topic": "Garbage Collector",
+      "level": 2,
+      "q": "Która alokacja trafi na Large Object Heap?",
+      "options": [
+        "new byte[80_000]",
+        "new int[10_000]",
+        "new object[1_000]",
+        "new byte[100_000]"
+      ],
+      "correct": 3,
+      "why": "Na LOH trafiają obiekty o rozmiarze od 85 000 bajtów. byte[100_000] ma ok. 100 KB. byte[80_000] to 80 KB, int[10_000] to ok. 40 KB (4 bajty na element), a object[1_000] to ok. 8 KB referencji – wszystkie poniżej progu."
+    },
+    {
+      "id": "csharp-q024",
+      "topic": "IDisposable vs finalizer",
+      "level": 2,
+      "q": "Kiedy zostanie wywołane file.Dispose()?",
+      "code": "void Process()\n{\n    using var file = File.OpenRead(\"data.bin\");\n    Read(file);\n    Console.WriteLine(\"po odczycie\");\n    DoOtherWork();\n}",
+      "lang": "csharp",
+      "options": [
+        "Zaraz po Read(file), bo zmienna nie jest już używana",
+        "Gdy GC zbierze obiekt FileStream",
+        "Na końcu metody Process, po DoOtherWork()",
+        "Nigdy – using var wymaga jawnego wywołania Dispose"
+      ],
+      "correct": 2,
+      "why": "Deklaracja using var wywołuje Dispose na końcu otaczającego zakresu (tu: metody), w odwrotnej kolejności deklaracji. Kompilator nie analizuje, kiedy zmienna przestaje być używana. Dlatego przy using var plik pozostaje otwarty podczas DoOtherWork – jeśli to problem, lepiej użyć bloku using { }."
+    },
+    {
+      "id": "csharp-q025",
+      "topic": "Kolekcje – złożoność",
+      "level": 1,
+      "q": "Masz 100 000 identyfikatorów i musisz wielokrotnie sprawdzać, czy dany id do nich należy. Którą kolekcję wybrać?",
+      "options": [
+        "List<int> – Contains jest wystarczająco szybkie",
+        "HashSet<int> – Contains średnio O(1)",
+        "Posortowana List<int> z metodą Contains – O(log n)",
+        "int[] – tablica jest zawsze najszybsza"
+      ],
+      "correct": 1,
+      "why": "HashSet sprawdza przynależność w średnio stałym czasie. List.Contains i Array.Contains przeszukują liniowo O(n) – dla wielu sprawdzeń daje to O(n·m). Posortowanie listy nic nie zmienia dla Contains, który nie wie o sortowaniu – O(log n) dałby dopiero BinarySearch."
+    },
+    {
+      "id": "csharp-q026",
+      "topic": "Pattern matching",
+      "level": 2,
+      "q": "Co wypisze ten kod?",
+      "code": "static string Describe(object o) => o switch\n{\n    int n when n > 100          => \"duża\",\n    int                         => \"liczba\",\n    string { Length: > 3 }      => \"długi tekst\",\n    string                      => \"tekst\",\n    _                           => \"inne\"\n};\n\nConsole.WriteLine($\"{Describe(5)} {Describe(\"abc\")} {Describe(5.0)}\");",
+      "lang": "csharp",
+      "options": [
+        "liczba tekst inne",
+        "liczba długi tekst inne",
+        "liczba tekst liczba",
+        "duża tekst inne"
+      ],
+      "correct": 0,
+      "why": "5 to int, ale nie > 100, więc pasuje drugie ramię – „liczba”. „abc” ma długość 3, a warunek to > 3, więc pasuje dopiero ramię string – „tekst”. 5.0 to double, który nie pasuje ani do int, ani do string – „inne”."
+    },
+    {
+      "id": "csharp-q027",
+      "topic": "Nullable reference types",
+      "level": 2,
+      "q": "Co nullable reference types gwarantują w runtime?",
+      "options": [
+        "CLR rzuca NullReferenceException przy przypisaniu null do zmiennej typu string",
+        "Kompilator dodaje automatyczne null-checki do parametrów publicznych metod",
+        "string? to w runtime osobny typ, analogicznie do Nullable<int>",
+        "Nic – to wyłącznie analiza i ostrzeżenia kompilatora; null nadal może się pojawić"
+      ],
+      "correct": 3,
+      "why": "NRT to adnotacje i analiza przepływu w czasie kompilacji. W runtime string i string? to ten sam typ System.String (adnotacje są tylko metadanymi). null może przyjść z deserializacji, refleksji, kodu bez włączonego NRT albo przez operator !. Nullable<T> dotyczy tylko typów wartościowych."
+    },
+    {
+      "id": "csharp-q028",
+      "topic": "required i init",
+      "level": 1,
+      "q": "Co się stanie przy próbie skompilowania tego kodu?",
+      "code": "public class User\n{\n    public required string Email { get; init; }\n    public string? Name { get; set; }\n}\n\nvar u = new User { Name = \"Ala\" };",
+      "lang": "csharp",
+      "options": [
+        "Skompiluje się, Email będzie null",
+        "Skompiluje się, ale w runtime poleci ArgumentNullException",
+        "Błąd kompilacji – nie ustawiono wymaganej właściwości Email",
+        "Skompiluje się z ostrzeżeniem nullability"
+      ],
+      "correct": 2,
+      "why": "Modyfikator required wymusza ustawienie właściwości w object initializerze (lub użycie konstruktora z [SetsRequiredMembers]) – brak przypisania to błąd kompilacji CS9035, a nie ostrzeżenie. Żadna walidacja w runtime nie jest dodawana."
+    },
+    {
+      "id": "csharp-q029",
+      "topic": "CLR, JIT, AOT",
+      "level": 3,
+      "q": "Co jest typowym ograniczeniem aplikacji publikowanej jako Native AOT?",
+      "options": [
+        "async/await nie jest wspierane",
+        "Brak generowania kodu w runtime (np. Reflection.Emit) i dynamicznego ładowania assembly; refleksja wymaga ostrożności przez trimming",
+        "Nie można używać generics",
+        "Na serwerze musi być zainstalowany runtime .NET"
+      ],
+      "correct": 1,
+      "why": "Native AOT kompiluje wszystko z wyprzedzeniem i usuwa JIT, więc nie da się wygenerować i wykonać nowego kodu w runtime ani załadować dowolnej assembly. Trimming może usunąć typy używane tylko przez refleksję – stąd source generatory (np. System.Text.Json). async/await i generics działają normalnie. Binarka jest samodzielna – nie wymaga zainstalowanego runtime."
+    },
+    {
+      "id": "csharp-q030",
+      "topic": "Interfejs vs klasa abstrakcyjna",
+      "level": 2,
+      "q": "Co się stanie przy kompilacji?",
+      "code": "interface IGreeter\n{\n    string Greet() => \"Hello\";\n}\n\nclass Greeter : IGreeter { }\n\nvar g = new Greeter();\nConsole.WriteLine(g.Greet());",
+      "lang": "csharp",
+      "options": [
+        "Błąd kompilacji – Greeter nie ma metody Greet; domyślna implementacja jest dostępna tylko przez typ IGreeter",
+        "Wypisze „Hello”",
+        "Błąd kompilacji – Greeter nie implementuje wszystkich członków interfejsu",
+        "Wyjątek w runtime – brak implementacji metody"
+      ],
+      "correct": 0,
+      "why": "Default interface method nie jest dziedziczona przez klasę jako jej publiczna metoda – należy do interfejsu. Wywołanie przez zmienną typu Greeter nie kompiluje się. Zadziałałoby IGreeter g = new Greeter(); g.Greet();. Klasa poprawnie implementuje interfejs, bo metoda ma domyślne ciało."
+    },
+    {
+      "id": "csharp-q031",
+      "topic": "Equality",
+      "level": 2,
+      "q": "Co wypisze ten kod?",
+      "code": "string a = \"hello\";\nstring b = new string(\"hello\".ToCharArray());\nobject oa = a, ob = b;\n\nConsole.WriteLine($\"{a == b} {oa == ob} {oa.Equals(ob)}\");",
+      "lang": "csharp",
+      "options": [
+        "True True True",
+        "False False True",
+        "True False False",
+        "True False True"
+      ],
+      "correct": 3,
+      "why": "Dla zmiennych typu string operator == jest przeciążony i porównuje treść – True. Dla zmiennych typu object operator == jest wybierany w czasie kompilacji i porównuje referencje; b to nowy obiekt (nieinternowany), więc False. Equals jest wirtualny, więc wywoła String.Equals i porówna treść – True."
+    }
+  ]
+}

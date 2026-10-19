@@ -1,0 +1,82 @@
+@if (s(); as s) {
+  @if (card(); as c) {
+    <section class="view">
+      <div class="study-head">
+        <button class="btn ghost" style="min-height:40px;padding:8px 12px" (click)="quit()">✕ Zakończ</button>
+        <span class="muted num" style="font-size:.88rem">
+          @if (s.interview) { <span class="timer" [style.color]="elapsed() > 120 ? 'var(--bad)' : null">{{ timer() }}</span> · }
+          {{ s.index + 1 }} / {{ s.queue.length }}
+        </span>
+      </div>
+      <div class="progress"><span [style.width.%]="progressPct()"></span></div>
+
+      <article class="flash">
+        <div class="tags">
+          <app-cat-tag [cat]="c.cat" /><span class="tag">· {{ c.topic }}</span><app-level [level]="c.level" />
+          @if (isNewCard() && s.srs) { <span class="pill mid">nowa</span> }
+        </div>
+        <p class="q" [innerHTML]="c.q | rich"></p>
+
+        @if (!s.revealed && s.interview) {
+          <p class="muted" style="font-size:.92rem">
+            Odpowiedz na głos albo wpisz odpowiedź
+            @if (ai.available()) { (możesz dyktować z klawiatury telefonu). Claude ją oceni i powie, czego zabrakło }.
+            Potem porównaj ze wzorcem.
+          </p>
+          <textarea class="ans" placeholder="Twoja odpowiedź (opcjonalnie)" [value]="s.typed" (input)="session.setTyped($any($event.target).value)"></textarea>
+        }
+
+        @if (s.revealed) {
+          <div class="answer">
+            @if (s.interview && s.typed.trim()) {
+              <div class="stack" style="gap:6px"><p class="eyebrow">Twoja odpowiedź</p><p class="muted" style="white-space:pre-line">{{ s.typed }}</p></div>
+              @switch (grading()) {
+                @case ('busy') { <div class="ai wait"><span class="h">Ocena Claude'a</span><div class="md"><p>Claude ocenia…</p></div></div> }
+                @case ('error') { <div class="ai"><span class="h">Ocena Claude'a</span><p class="muted">{{ gradeError() }}</p></div> }
+                @case ('done') {
+                  @if (gradeResult(); as r) {
+                    <div class="ai">
+                      <span class="h">Ocena Claude'a</span>
+                      <div class="scorebox"><b>{{ r.score }}/10</b><span class="muted">{{ r.verdict }}</span></div>
+                      @if (r.good?.length) { <p><b style="color:var(--good)">Dobrze:</b></p><ul>@for (x of r.good; track $index) { <li [innerHTML]="x | rich"></li> }</ul> }
+                      @if (r.missing?.length) { <p><b style="color:var(--warn)">Zabrakło:</b></p><ul>@for (x of r.missing; track $index) { <li [innerHTML]="x | rich"></li> }</ul> }
+                      @if (r.wrong?.length) { <p><b style="color:var(--bad)">Błędy:</b></p><ul>@for (x of r.wrong; track $index) { <li [innerHTML]="x | rich"></li> }</ul> }
+                      @if (r.better) { <p><b>Lepsza wersja:</b> <span [innerHTML]="r.better | rich"></span></p> }
+                    </div>
+                  }
+                }
+              }
+              <p class="eyebrow">Wzorcowa odpowiedź</p>
+            }
+            <p style="white-space:pre-line" [innerHTML]="c.a | rich"></p>
+            <app-code [code]="c.code" [lang]="c.lang" />
+            @if (c.deep) {
+              <details class="deep" [open]="s.interview">
+                <summary>Pogłębienie (senior)</summary>
+                <div class="in"><p [innerHTML]="c.deep | rich"></p></div>
+              </details>
+            }
+            @if (c.tip) { <div class="tip"><b>Na rozmowie:</b> <span [innerHTML]="c.tip | rich"></span></div> }
+            <div class="minirow">
+              @if (hasSheet()) { <a class="linkbtn" [routerLink]="['/sciaga', c.cat, c.topic]">Ściąga: {{ c.topic }}</a> }
+              @if (ai.available() && !askOpen()) { <button class="linkbtn" (click)="askOpen.set(true)">Dopytaj Claude'a</button> }
+            </div>
+            @if (askOpen()) { <app-ask-claude [context]="askContext()" /> }
+          </div>
+        }
+      </article>
+
+      <div class="sticky-bottom">
+        @if (s.revealed) {
+          <div class="grades">
+            @for (x of grades; track x.g) {
+              <button [class]="'grade g' + x.g" (click)="grade(x.g)">{{ x.label }}<small>{{ interval(x.g) }}</small></button>
+            }
+          </div>
+        } @else {
+          <button class="btn primary block" (click)="reveal()">{{ s.interview ? 'Pokaż wzorcową odpowiedź' : 'Pokaż odpowiedź' }}</button>
+        }
+      </div>
+    </section>
+  }
+}

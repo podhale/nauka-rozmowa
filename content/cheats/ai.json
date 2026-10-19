@@ -1,0 +1,312 @@
+{
+  "cat": "ai",
+  "sheets": [
+    {
+      "topic": "Podstawy LLM",
+      "points": [
+        "LLM generuje tekst **autoregresywnie**: przewiduje rozkład kolejnego tokenu, wybiera jeden, dokleja i powtarza.",
+        "**Token** ≈ fragment słowa (ang. ~4 znaki); po polsku słowo zwykle zajmuje więcej tokenów.",
+        "**Context window** = system prompt + historia + dokumenty + odpowiedź; `max output tokens` to osobny limit.",
+        "API jest **bezstanowe** – pamięć czatu to aplikacja wysyłająca historię przy każdym wywołaniu.",
+        "**Temperature** / **top-p** sterują losowością; do ekstrakcji i kodu nisko; zmieniaj jeden z nich.",
+        "**Halucynacje** = pewny, ale fałszywy tekst; ograniczasz je źródłami w kontekście, zgodą na „nie wiem” i weryfikacją.",
+        "**Knowledge cutoff** – model nie zna nowszych faktów i wersji bibliotek, dopóki nie dostarczysz ich w kontekście.",
+        "Model ≠ aplikacja: ChatGPT/Claude app dodają system prompt, pamięć, wyszukiwanie, narzędzia i filtry."
+      ],
+      "pitfalls": [
+        "Zakładanie, że temperature 0 daje w pełni deterministyczny wynik.",
+        "Ucięty JSON przez zbyt niski limit tokenów wyjściowych.",
+        "Używanie aliasu „latest” zamiast przypiętej wersji modelu."
+      ],
+      "say": "LLM to model przewidujący kolejny token; jest bezstanowy, ma ograniczony kontekst i knowledge cutoff, więc aplikacja musi dostarczyć mu historię i aktualne dane, a wynik traktować jako niedeterministyczny i do weryfikacji."
+    },
+    {
+      "topic": "Prompt engineering",
+      "points": [
+        "Role wiadomości: **system/developer** (zasady), **user** (wejście), **assistant** (poprzednie odpowiedzi), wyniki narzędzi.",
+        "**Few-shot**: kilka różnorodnych przykładów wejście → wyjście pokazuje format i granice kategorii.",
+        "Dobry prompt: rola, cel, kontekst, format wyjścia, zachowanie w przypadkach brzegowych („jeśli brak danych…”).",
+        "Oddzielaj instrukcje od danych **delimiterami** (np. `<docs>…</docs>`) – pomaga modelowi, ale nie jest zabezpieczeniem.",
+        "**Structured output** z JSON schema (tryb ścisły) > JSON mode > prośba w prompcie; i tak waliduj w kodzie.",
+        "W schemacie: `enum` zamiast wolnego tekstu, pole na „brak danych”, opisy pól jako instrukcje.",
+        "**Chain of thought**: pomaga modelom bez wbudowanego rozumowania; modele reasoning rozumują same – ręczne „step by step” zwykle zbędne.",
+        "Prompt = kod: repo, wersjonowanie, review, ewaluacja przed wdrożeniem; statyczna część na początku (cache)."
+      ],
+      "pitfalls": [
+        "Traktowanie wypisanego rozumowania jako wiernego uzasadnienia decyzji.",
+        "Sekrety lub reguły autoryzacji w system prompcie.",
+        "Dopisywanie reguł „na szybko” bez ewaluacji – regresje w innych przypadkach."
+      ],
+      "say": "Prompt piszę jak specyfikację: rola, kontekst, format wyjścia wymuszony JSON schema i reguły na brak danych; trzymam go w repo, wersjonuję i każdą zmianę sprawdzam na zestawie ewaluacyjnym."
+    },
+    {
+      "topic": "Embeddingi i wyszukiwanie wektorowe",
+      "points": [
+        "**Embedding** = wektor liczb reprezentujący znaczenie; podobne znaczenie → bliskie wektory, nawet bez wspólnych słów.",
+        "Podobieństwo: **cosine**, dot product (dla znormalizowanych wektorów ten sam ranking), L2.",
+        "Pytanie i dokumenty osadzasz **tym samym modelem**; zmiana modelu = pełna reindeksacja.",
+        "Bazy wektorowe używają **ANN** (np. HNSW): przybliżone, szybkie; trade-off recall / latencja / RAM.",
+        "**pgvector** – wektory w Postgresie obok danych (`<=>` cosine distance, indeks `hnsw`); **Azure AI Search** – zarządzane, hybrid + semantic ranker; **Qdrant** – dedykowana baza z filtrami po payloadzie.",
+        "Embeddingi słabo łapią **dokładne identyfikatory** (kody błędów, SKU) – stąd **hybrid search** z BM25.",
+        "**RRF** łączy rankingi bez normalizacji wyników: suma `1/(k + pozycja)` z każdej listy.",
+        "Przechowuj tekst źródłowy, metadane (ACL, źródło, data) i wersję modelu przy każdym wektorze."
+      ],
+      "pitfalls": [
+        "Mieszanie wektorów z różnych modeli embeddingowych w jednym indeksie.",
+        "Filtrowanie (tenant/uprawnienia) dopiero po pobraniu top-k – za mało wyników.",
+        "Nowa baza wektorowa dla kilku tysięcy chunków, gdy wystarczy pgvector."
+      ],
+      "code": "SELECT id, content\nFROM chunks\nWHERE tenant_id = $2\nORDER BY embedding <=> $1   -- cosine distance\nLIMIT 5;",
+      "lang": "sql",
+      "say": "Embeddingi dają wyszukiwanie po znaczeniu, ale do identyfikatorów i nazw własnych łączę je z full-text w hybrid search; bazę wybieram pod istniejącą infrastrukturę – pgvector przy Postgresie, Azure AI Search w ekosystemie Azure."
+    },
+    {
+      "topic": "RAG",
+      "points": [
+        "**RAG** = retrieval + wklejenie fragmentów do promptu + generacja z cytatami; wiedza aktualizowana przez indeks, nie trening.",
+        "Indeksowanie (offline): ekstrakcja tekstu → **chunking** → embeddingi → zapis z metadanymi.",
+        "Zapytanie (online): (query rewriting) → hybrid search + filtry → **reranking** → prompt z groundingiem → odpowiedź + cytaty.",
+        "Chunking: podział po strukturze, overlap, prefiks z tytułem/nagłówkami, **small-to-big** (parent document).",
+        "**Reranker** (cross-encoder) ocenia parę pytanie–fragment: top 20–100 → 3–10 do promptu.",
+        "**Grounding**: odpowiadaj tylko ze źródeł, cytuj `[id]`, mów „nie wiem”; w aplikacji mapuj id na linki i odrzucaj nieistniejące.",
+        "Ewaluacja osobno: **retrieval** (recall@k, MRR) i **generacja** (faithfulness, answer relevance, poprawność cytatów).",
+        "Dodaj przypadki „no answer” – system ma odmówić, a nie zmyślić."
+      ],
+      "pitfalls": [
+        "Diagnozowanie złych odpowiedzi poprawianiem promptu, gdy retrieval nie znalazł dokumentu.",
+        "Ekstrakcja tekstu z PDF jako niewidoczne najsłabsze ogniwo.",
+        "Za dużo fragmentów w kontekście – drożej i więcej szumu."
+      ],
+      "say": "RAG daje modelowi właściwe fragmenty naszych dokumentów w momencie pytania; jakość zależy głównie od retrievalu, więc mierzę osobno retrieval i generację i stroję chunking, hybrid search i reranking na danych."
+    },
+    {
+      "topic": "Fine-tuning vs RAG vs prompt",
+      "points": [
+        "Kolejność: **prompt** (+ few-shot, structured output) → **RAG** dla wiedzy → porównanie modeli → **fine-tuning**.",
+        "**RAG** – wiedza: prywatne, duże, często zmieniane dane, cytaty, kontrola dostępu.",
+        "**Fine-tuning** – zachowanie: stały format/ton, wąskie zadanie na dużą skalę, tańszy mniejszy model (**distillation**).",
+        "Fine-tuning słabo i niekontrolowanie „wgrywa” fakty; nie daje cytatów; trzeba go powtarzać przy zmianach.",
+        "**LoRA/PEFT** – trening niewielkiej liczby dodatkowych wag zamiast całego modelu.",
+        "Koszty FT: dane (setki–tysiące dobrych przykładów), ewaluacja, hosting, ponowny trening przy wycofaniu modelu bazowego.",
+        "Podejścia się łączą: najczęstsza architektura produkcyjna to dobry prompt + RAG (+ narzędzia)."
+      ],
+      "pitfalls": [
+        "„Wytrenujmy model na dokumentacji, żeby ją znał”.",
+        "Fine-tuning bez ewaluacji porównawczej z baseline'em.",
+        "PII i dane bez licencji w zbiorze treningowym."
+      ],
+      "say": "Wiedzę dostarczam przez RAG lub narzędzia, a fine-tuning rozważam dopiero dla zachowania – formatu, stylu lub taniego wąskiego zadania na skali – i tylko gdy ewaluacja pokaże zysk nad promptem."
+    },
+    {
+      "topic": "Tool calling",
+      "points": [
+        "Aplikacja opisuje narzędzia (nazwa, opis, **JSON schema** parametrów); model zwraca żądanie wywołania z argumentami.",
+        "Model **niczego nie wykonuje** – kod aplikacji uruchamia funkcję i odsyła wynik; pętla do odpowiedzi tekstowej.",
+        "W M.E.AI: `AIFunctionFactory.Create(...)`, `ChatOptions.Tools`, pętlę obsługuje `UseFunctionInvocation()`.",
+        "`[Description]` na metodzie i parametrach = prompt dla modelu; jednoznaczne nazwy, rozsądna liczba narzędzi.",
+        "Argumenty modelu = **niezaufane wejście**: walidacja, autoryzacja na podstawie zalogowanego użytkownika, nie argumentu `userId`.",
+        "Limit iteracji, timeouty, błędy zwracane modelowi jako czytelny wynik.",
+        "Akcje z efektami ubocznymi: idempotencja, potwierdzenie przez człowieka.",
+        "Wyniki narzędzi trafiają do kontekstu: koszt tokenów i ryzyko pośredniego prompt injection – zwracaj tylko potrzebne pola."
+      ],
+      "pitfalls": [
+        "Brak middleware'u function invocation – dostajesz tylko żądanie wywołania.",
+        "Sprawdzanie uprawnień „w prompcie” zamiast w kodzie narzędzia."
+      ],
+      "code": "var client = new ChatClientBuilder(inner).UseFunctionInvocation().Build();\nvar opts = new ChatOptions { Tools = [AIFunctionFactory.Create(GetOrderStatus)] };\nvar r = await client.GetResponseAsync(\"Co z ZAM-123?\", opts);",
+      "lang": "csharp",
+      "say": "Tool calling to strukturalna prośba modelu o wywołanie funkcji, którą wykonuje i autoryzuje mój kod; argumenty waliduję jak dane z formularza, a akcje nieodwracalne wymagają potwierdzenia."
+    },
+    {
+      "topic": "Agenci",
+      "points": [
+        "**Agent** = LLM w pętli sam wybiera kolejne kroki i narzędzia; **workflow** = ścieżkę ustala programista.",
+        "Zaczynaj od najprostszego: pojedyncze wywołanie → workflow → agent tylko tam, gdzie się opłaca.",
+        "Wzorce pośrednie: prompt chaining, routing, równoległość, orchestrator–workers, evaluator–optimizer.",
+        "Błędy się kumulują: 95% na krok × 10 kroków ≈ 60% sukcesu całego zadania.",
+        "Ryzyko nr 1: **excessive agency** – szerokie uprawnienia + prompt injection = szkodliwe akcje.",
+        "Zabezpieczenia: least privilege, działanie w imieniu użytkownika, **human-in-the-loop** dla akcji nieodwracalnych, sandbox dla kodu.",
+        "Limity kroków i **budżetu tokenów**, pełny tracing każdego kroku, kill switch.",
+        "Niezaufane wejście + dostęp do danych wrażliwych + kanał wyjścia = przepis na eksfiltrację; przerwij jedno ogniwo."
+      ],
+      "pitfalls": [
+        "Agent tam, gdzie wystarczy deterministyczny workflow.",
+        "Konto serwisowe z pełnym dostępem dla narzędzi agenta.",
+        "Brak limitu iteracji – pętle i rachunek."
+      ],
+      "say": "Autonomię dokładam stopniowo: workflow tam, gdzie znam kroki, agent dla zadań otwartych – zawsze z minimalnymi uprawnieniami narzędzi, limitami budżetu, tracingiem i zatwierdzaniem akcji nieodwracalnych przez człowieka."
+    },
+    {
+      "topic": "MCP",
+      "points": [
+        "**MCP** (Model Context Protocol) – otwarty standard (Anthropic, 2024) łączenia aplikacji LLM z narzędziami i danymi.",
+        "Rozwiązuje problem N×M integracji: narzędzie raz jako **serwer MCP**, działa w wielu klientach.",
+        "Role: **host** (aplikacja z LLM) → **klient MCP** (połączenie) → **serwer MCP** (możliwości).",
+        "Protokół na **JSON-RPC 2.0**; transport **stdio** (lokalny proces) lub **Streamable HTTP** (zdalnie).",
+        "Prymitywy serwera: **tools** (akcje), **resources** (dane do odczytu), **prompts** (szablony).",
+        "Nie zastępuje tool callingu – standaryzuje odkrywanie i wywoływanie narzędzi między procesami.",
+        "Istnieje oficjalne **C# SDK** do serwerów i klientów MCP.",
+        "Bezpieczeństwo: tool poisoning, pośredni prompt injection w wynikach, zmiany po aktualizacji – zaufane źródła, przypięte wersje, minimalne tokeny."
+      ],
+      "pitfalls": [
+        "Instalowanie dowolnych serwerów MCP z pełnymi uprawnieniami do firmowych zasobów.",
+        "MCP tam, gdzie jedna zamknięta aplikacja potrzebuje dwóch narzędzi w procesie."
+      ],
+      "say": "MCP to standard, dzięki któremu narzędzie lub źródło danych wystawiam raz jako serwer i używam w wielu aplikacjach AI; serwery traktuję jak zależność od strony trzeciej – z przeglądem, przypiętą wersją i minimalnymi uprawnieniami."
+    },
+    {
+      "topic": "AI w .NET",
+      "points": [
+        "**Microsoft.Extensions.AI**: wspólne abstrakcje – `IChatClient` (`GetResponseAsync`, `GetStreamingResponseAsync`) i `IEmbeddingGenerator`.",
+        "Implementacje dostawców (OpenAI, Azure OpenAI, Ollama…) – podmiana modelu bez zmiany kodu, fake w testach.",
+        "**Pipeline middleware** przez `ChatClientBuilder`: `UseFunctionInvocation`, `UseOpenTelemetry`, `UseDistributedCache`, `UseLogging`; kolejność ma znaczenie.",
+        "Własny middleware: `DelegatingChatClient` – nadpisz obie ścieżki (zwykłą i streaming).",
+        "Rejestracja w DI: `builder.Services.AddChatClient(...)` zwraca builder pipeline'u.",
+        "**Azure OpenAI**: deploymenty (w kodzie nazwa deploymentu), Entra ID / managed identity, region, private endpoint, filtry treści.",
+        "**Semantic Kernel**: Kernel, pluginy z `[KernelFunction]`, szablony promptów, filtry; coraz mocniej opiera się na abstrakcjach M.E.AI.",
+        "Microsoft rozwija też **Microsoft Agent Framework** (następca łączący SK i AutoGen dla agentów) – szczegóły sprawdzaj w aktualnej dokumentacji."
+      ],
+      "pitfalls": [
+        "Klucz API w appsettings zamiast managed identity.",
+        "Nazwa modelu zamiast nazwy deploymentu w Azure OpenAI.",
+        "Ciężki framework agentowy do prostego czatu z RAG."
+      ],
+      "code": "builder.Services.AddChatClient(sp =>\n        new AzureOpenAIClient(new Uri(endpoint), new DefaultAzureCredential())\n            .GetChatClient(\"support-gpt\").AsIChatClient())\n    .UseFunctionInvocation()\n    .UseOpenTelemetry();",
+      "lang": "csharp",
+      "say": "W .NET programuję do IChatClient z Microsoft.Extensions.AI – to abstrakcja jak ILogger, z wymiennym dostawcą i pipeline'em middleware do tool callingu, telemetrii i cache; po framework agentowy sięgam, gdy potrzebuję orkiestracji."
+    },
+    {
+      "topic": "Streaming do Angulara",
+      "points": [
+        "Streaming skraca **time to first token** – użytkownik widzi odpowiedź po ułamku sekundy; koszt bez zmian.",
+        "Backend: **SSE** (`text/event-stream`, zdarzenia `data: …\\n\\n`, flush po każdym); w .NET 10 jest `TypedResults.ServerSentEvents`.",
+        "SSE jest jednokierunkowe i działa po zwykłym HTTP; WebSocket/SignalR, gdy potrzebna komunikacja dwukierunkowa.",
+        "Natywny `EventSource` = tylko GET, bez własnych nagłówków → do POST z promptem używa się `fetch` + `ReadableStream`.",
+        "Buforuj i dziel po pustej linii – chunk sieciowy nie kończy się na granicy zdarzenia.",
+        "Tekst dopisuj do **signal** przez `update` – działa także w aplikacji zoneless.",
+        "`AbortController` na froncie + `CancellationToken` w API = przerwanie generowania i koniec płacenia.",
+        "Markdown z modelu renderuj z **sanitizacją**; throttling przerysowania przy długich odpowiedziach."
+      ],
+      "pitfalls": [
+        "Reverse proxy lub kompresja buforują odpowiedź – stream przychodzi w jednym kawałku.",
+        "Błąd w trakcie streamu po wysłanym 200 – potrzebny osobny typ zdarzenia błędu.",
+        "Surowe `innerHTML` z wyjściem modelu (XSS, eksfiltracja przez obrazki)."
+      ],
+      "code": "for (let r = await reader.read(); !r.done; r = await reader.read()) {\n  buf += r.value;\n  const ev = buf.split('\\n\\n'); buf = ev.pop()!;\n  for (const e of ev) if (e.startsWith('data: '))\n    this.answer.update(a => a + JSON.parse(e.slice(6)).text);\n}",
+      "lang": "typescript",
+      "say": "Odpowiedź streamuję z ASP.NET Core przez SSE z flushowaniem i cancellation, a w Angularze czytam ją fetch-em jako ReadableStream i dopisuję do sygnału, z możliwością przerwania i bezpiecznym renderowaniem Markdownu."
+    },
+    {
+      "topic": "Bezpieczeństwo aplikacji LLM",
+      "points": [
+        "**Prompt injection** bezpośredni (użytkownik) i **pośredni** (instrukcje ukryte w dokumentach, mailach, stronach, wynikach narzędzi).",
+        "Nie da się go dziś całkowicie wyeliminować – projektuj tak, by **ograniczyć skutki**.",
+        "**OWASP Top 10 for LLM (2025)**: prompt injection, sensitive info disclosure, supply chain, data/model poisoning, improper output handling, excessive agency, system prompt leakage, vector/embedding weaknesses, misinformation, unbounded consumption.",
+        "Autoryzacja w **kodzie** (filtr w retrievalu, narzędzia w kontekście użytkownika), nigdy „w prompcie”.",
+        "Wyjście modelu = niezaufane: sanitizacja HTML/Markdown, parametryzowany SQL, brak eval/shell.",
+        "Kanały eksfiltracji: obrazki i linki z danymi w URL – CSP, allowlista domen.",
+        "**PII**: minimalizacja, redakcja, retencja, umowa z dostawcą (brak trenowania na danych), RODO.",
+        "**Human-in-the-loop** z pokazaniem dokładnych parametrów akcji; red teaming przed wdrożeniem."
+      ],
+      "pitfalls": [
+        "Sekrety w system prompcie z dopiskiem „nie ujawniaj”.",
+        "Model widzi dane, których użytkownik nie mógłby otworzyć.",
+        "Ufanie delimiterom lub filtrom jako jedynej ochronie."
+      ],
+      "say": "Zakładam, że prompt injection się uda, więc stosuję defense in depth: model widzi tylko dane dozwolone dla użytkownika, narzędzia mają minimalne uprawnienia, akcje nieodwracalne zatwierdza człowiek, a wyjście traktuję jak niezaufane dane."
+    },
+    {
+      "topic": "Koszty i wydajność",
+      "points": [
+        "Płacisz za tokeny wejścia i (zwykle droższe) wyjścia; modele reasoning dokładają tokeny rozumowania.",
+        "**Mniejszy model** do prostych zadań (routing, klasyfikacja, ekstrakcja), duży tylko tam, gdzie trzeba.",
+        "Mniej tokenów: krótszy prompt, mniej i trafniejszych chunków, przycinanie historii, limit odpowiedzi.",
+        "**Prompt caching**: stały prefiks (instrukcje, narzędzia, przykłady) na początku, zmienne na końcu.",
+        "Cache odpowiedzi dla powtarzalnych, nieosobistych zapytań; cache embeddingów.",
+        "**Batch API** – asynchronicznie, wyraźnie taniej; do nocnych jobów i ewaluacji.",
+        "Limity **RPM/TPM** → 429: backoff z jitterem, `Retry-After`, timeouty, circuit breaker (`Microsoft.Extensions.Http.Resilience`).",
+        "Własne limity i budżety per użytkownik/tenant, fallback na inny deployment/model; mierz koszt per funkcja."
+      ],
+      "pitfalls": [
+        "Timestamp lub id użytkownika na początku promptu – zero trafień w cache.",
+        "Natychmiastowe retry przy 429 – thundering herd.",
+        "Fallback na model, na którym prompt nie był testowany."
+      ],
+      "say": "Koszty kontroluję doborem modelu do zadania, ograniczaniem tokenów, prompt cachingiem i batch API, a odporność zapewniam backoffem, limitami per użytkownik i fallbackiem – wszystko oparte na pomiarze kosztu i latencji per funkcja."
+    },
+    {
+      "topic": "Ewaluacja i observability",
+      "points": [
+        "Kod wokół modelu testuj **unit testami z fake'iem `IChatClient`**; jakość modelu – **ewaluacją**.",
+        "**Golden dataset**: 30–100 realnych przypadków na start, każdy bug z produkcji = nowy przypadek.",
+        "Najpierw metryki deterministyczne (exact match, walidacja JSON, istniejące cytaty), potem **LLM-as-judge** z rubryką.",
+        "LLM-as-judge kalibruj na próbce ocenionej przez ludzi; biasy: długość, pozycja, własny styl.",
+        "Ewaluacja w **CI** przy zmianie promptu, modelu, chunkingu, top-k – progi regresji, porównanie z baseline.",
+        "Zestaw testów bezpieczeństwa: próby prompt injection i pytania spoza zakresu.",
+        "Telemetria per wywołanie: model+wersja, wersja promptu, tokeny, koszt, latencja/TTFT, narzędzia, id dokumentów – **OpenTelemetry GenAI**.",
+        "Treść promptów/odpowiedzi domyślnie **nie** logowana; jeśli tak – redakcja PII, krótka retencja, ograniczony dostęp."
+      ],
+      "pitfalls": [
+        "Testowanie dokładnego stringa odpowiedzi.",
+        "Pełne prompty z PII w logach na lata.",
+        "Ocenianie modelu tym samym modelem i promptem co aplikacja."
+      ],
+      "say": "Logikę wokół modelu testuję klasycznie z fake'iem, a jakość mierzę golden datasetem w CI z metrykami i LLM-as-judge; na produkcji zbieram metadane przez OpenTelemetry, a treść rozmów loguję tylko świadomie i z redakcją PII."
+    },
+    {
+      "topic": "AI-assisted development",
+      "points": [
+        "AI (Copilot, Claude Code, Cursor) = szybki, ale omylny współpracownik; **odpowiedzialność za kod jest Twoja**.",
+        "Czytaj i rozumiej każdy wygenerowany fragment przed commitem; zwykłe code review i testy.",
+        "Dawaj kontekst: konwencje projektu, pliki instrukcji dla agenta, istniejące wzorce; małe kroki.",
+        "Ryzyka: subtelne błędy bezpieczeństwa, przestarzałe/wymyślone API, **halucynowane pakiety (slopsquatting)**.",
+        "Weryfikuj każdy nowy pakiet: wydawca, popularność, licencja; SAST i skan zależności w CI.",
+        "Testy z AI często potwierdzają implementację zamiast wymagań – sprawdź, że test potrafi nie przejść.",
+        "Agenty w terminalu: branch, przegląd diffu, ograniczone komendy, brak sekretów produkcyjnych.",
+        "Polityka firmy: dozwolone narzędzia, jakie dane można wysyłać, ustawienia retencji i filtrów dopasowań do publicznego kodu."
+      ],
+      "pitfalls": [
+        "Instalacja pakietu tylko dlatego, że zaproponowało go AI.",
+        "Ogromne PR-y wygenerowane przez AI bez rzetelnego review.",
+        "Wklejanie sekretów lub kodu klienta do niezatwierdzonego narzędzia."
+      ],
+      "say": "Używam AI do przyspieszenia pracy, ale każdy fragment czytam, testuję i przepuszczam przez review oraz skanery w CI; nowe zależności weryfikuję ręcznie i trzymam się polityki firmy co do narzędzi i danych."
+    },
+    {
+      "topic": "Odpowiedzialne AI",
+      "points": [
+        "Zasady Microsoft: **fairness, reliability & safety, privacy & security, inclusiveness, transparency, accountability**.",
+        "Użytkownik wie, że rozmawia z AI i że odpowiedź może zawierać błędy (komunikat w UI, cytaty).",
+        "Decyzje o dużym wpływie na ludzi (rekrutacja, kredyt, zdrowie) – z nadzorem człowieka, nie w pełni automatycznie.",
+        "Testuj na różnych grupach użytkowników i językach; szukaj stronniczości w wynikach.",
+        "Prywatność: minimalizacja danych, zgody, retencja, prawo do usunięcia (RODO).",
+        "**EU AI Act** – podejście oparte na ryzyku; m.in. obowiązki przejrzystości, systemy do oceny kandydatów do pracy są wysokiego ryzyka.",
+        "Jasna odpowiedzialność: kto jest właścicielem systemu, jak zgłaszać problemy, jak go wyłączyć."
+      ],
+      "pitfalls": [
+        "Automatyczne decyzje o ludziach bez możliwości odwołania do człowieka.",
+        "Ukrywanie przed użytkownikiem, że treść wygenerowało AI."
+      ],
+      "say": "Odpowiedzialne AI to dla mnie konkretne praktyki: przejrzystość wobec użytkownika, człowiek przy decyzjach o dużym wpływie, testy pod kątem stronniczości, ochrona danych i jasno określony właściciel systemu – w UE dodatkowo zgodność z AI Act."
+    },
+    {
+      "topic": "System design: czatbot RAG",
+      "points": [
+        "Zacznij od wymagań: źródła, liczba użytkowników, **uprawnienia**, języki, aktualność, budżet.",
+        "**Ingestion** (worker): pobranie → ekstrakcja → chunking z metadanymi/ACL → embeddingi → Azure AI Search / pgvector; przyrostowo, z usuwaniem.",
+        "**API ASP.NET Core** z `IChatClient`: query rewriting → hybrid search + filtr ACL → reranking → prompt z groundingiem → SSE.",
+        "**Angular**: sygnały do renderowania streamu, cytaty jako linki, kciuk w górę/dół, przerwanie generowania.",
+        "**Security trimming** w zapytaniu do indeksu (grupy z tokena Entra ID), nie w prompcie i nie po top-k.",
+        "Multi-tenant: indeks per tenant (izolacja) vs wspólny z obowiązkowym `tenantId` (taniej, ryzyko błędu).",
+        "Synchronizuj też **zmiany uprawnień**; cache odpowiedzi uwzględniający uprawnienia; reindeksacja przy zmianie modelu przez alias.",
+        "MVP: jedno źródło, prosty chunking, pgvector; dalej reranker, hybryda – na podstawie ewaluacji i telemetrii."
+      ],
+      "pitfalls": [
+        "Filtrowanie uprawnień instrukcją w prompcie.",
+        "Brak query rewritingu – follow-upy typu „a na Macu?” nic nie znajdują.",
+        "Usunięty dokument zostaje w indeksie."
+      ],
+      "say": "Rozdzielam ingestion i zapytanie: worker indeksuje dokumenty z metadanymi uprawnień, API w ASP.NET Core robi hybrid search z filtrem ACL, reranking i ugruntowaną odpowiedź z cytatami streamowaną przez SSE do Angulara, a całość mierzę ewaluacją i telemetrią."
+    }
+  ]
+}

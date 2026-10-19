@@ -1,0 +1,762 @@
+{
+  "cat": "tsrx",
+  "name": "TypeScript i RxJS",
+  "cards": [
+    {
+      "id": "tsrx-001",
+      "topic": "type vs interface",
+      "level": 1,
+      "q": "Czym różni się type od interface w TypeScript i kiedy którego używasz?",
+      "a": "Oba opisują kształt obiektu i w większości przypadków są wymienne. interface można rozszerzać przez extends i podlega declaration merging (dwie deklaracje o tej samej nazwie łączą się), co przydaje się przy augmentacji bibliotek. type jest bardziej ogólny: union, intersection, tuple, mapped i conditional types, aliasy prymitywów – tego interface nie zrobi. W praktyce: interface dla kontraktów obiektowych i publicznych API, type dla unii i typów wyliczanych; ważniejsza jest spójność w projekcie niż sam wybór.",
+      "code": "interface User { id: number; name: string; }\ninterface Admin extends User { roles: string[]; }\n\ntype Status = 'active' | 'blocked';          // tylko type\ntype WithStatus = User & { status: Status };  // intersection",
+      "lang": "typescript",
+      "tip": "Follow-up: declaration merging – np. rozszerzanie interfejsu Window albo modułu biblioteki. Type alias się nie scala, druga deklaracja to błąd."
+    },
+    {
+      "id": "tsrx-002",
+      "topic": "Union i intersection",
+      "level": 1,
+      "q": "Co to jest union type i intersection type? Podaj przykład użycia.",
+      "a": "Union (A | B) oznacza wartość, która jest jednym z typów – zanim użyjesz właściwości specyficznej dla jednego wariantu, musisz zawęzić typ (narrowing). Intersection (A & B) to wartość spełniająca oba typy naraz, czyli ma wszystkie pola z A i z B – używa się jej do składania typów (mixiny, dokładanie pól). Intersection sprzecznych typów prymitywnych, np. string & number, daje never.",
+      "code": "type Id = string | number;\nfunction show(id: Id) {\n  return typeof id === 'string' ? id.toUpperCase() : id.toFixed(0);\n}\n\ntype Timestamped = { createdAt: Date };\ntype Order = { id: number } & Timestamped;",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-003",
+      "topic": "Narrowing i type guards",
+      "level": 2,
+      "q": "Jak działa narrowing w TypeScript i jak napisać własny type guard?",
+      "a": "Kompilator zawęża typ na podstawie analizy przepływu sterowania: typeof, instanceof, operator in, porównania z literałami, sprawdzenie null/undefined, truthiness. Gdy wbudowane sprawdzenia nie wystarczą, piszę funkcję z predykatem typu (x is T) – jeśli zwróci true, w danej gałęzi zmienna ma typ T. Trzeba uważać, bo kompilator wierzy predykatowi na słowo, więc błędna implementacja kłamie typom. Od TS 5.5 kompilator potrafi sam wywnioskować predykat z prostych funkcji, np. w filter.",
+      "code": "interface Cat { meow(): void }\ninterface Dog { bark(): void }\n\nfunction isCat(pet: Cat | Dog): pet is Cat {\n  return 'meow' in pet;\n}\n\nfunction speak(pet: Cat | Dog) {\n  if (isCat(pet)) pet.meow(); else pet.bark();\n}",
+      "lang": "typescript",
+      "tip": "Wspomnij też asercję (asserts x is T) – funkcja rzuca wyjątek zamiast zwracać boolean, a po jej wywołaniu typ jest zawężony."
+    },
+    {
+      "id": "tsrx-004",
+      "topic": "Discriminated unions",
+      "level": 2,
+      "q": "Czym jest discriminated union i jak zapewnić exhaustiveness check?",
+      "a": "To unia typów obiektowych, które mają wspólne pole-dyskryminator z typem literałowym (np. kind: 'loading' | 'success' | 'error'). Sprawdzenie tego pola w switch/if zawęża cały obiekt do konkretnego wariantu, więc mam dostęp tylko do pól, które w nim istnieją. Exhaustiveness check robię przypisując wartość do never w gałęzi default – gdy ktoś doda nowy wariant i go nie obsłuży, kompilacja się wywali. Świetnie modeluje stany UI i wyniki operacji zamiast wielu opcjonalnych pól.",
+      "code": "type State =\n  | { kind: 'loading' }\n  | { kind: 'success'; data: string[] }\n  | { kind: 'error'; message: string };\n\nfunction render(s: State): string {\n  switch (s.kind) {\n    case 'loading': return '...';\n    case 'success': return s.data.join(', ');\n    case 'error':   return s.message;\n    default: { const _exhaustive: never = s; return _exhaustive; }\n  }\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-005",
+      "topic": "Generics",
+      "level": 2,
+      "q": "Po co są generics i jak działają constraints (extends)?",
+      "a": "Generics pozwalają napisać funkcję lub typ, który zachowuje informację o typie wejścia zamiast spłaszczać go do any – np. identity<T>(x: T): T. Constraint T extends X ogranicza, jakie typy można podstawić, dzięki czemu wewnątrz mogę bezpiecznie używać właściwości X. Typowy wzorzec to K extends keyof T, który gwarantuje, że klucz istnieje w obiekcie, a typ zwracany to T[K]. Typy generyczne zwykle są inferowane z argumentów, więc rzadko trzeba je podawać jawnie.",
+      "code": "function getProp<T, K extends keyof T>(obj: T, key: K): T[K] {\n  return obj[key];\n}\n\nconst user = { id: 1, name: 'Ala' };\nconst n = getProp(user, 'name'); // string\n// getProp(user, 'age');         // błąd kompilacji",
+      "lang": "typescript",
+      "tip": "Dobrze wspomnieć o domyślnym typie generycznym (T = unknown) i o tym, że nadmiar generyków bez potrzeby to code smell."
+    },
+    {
+      "id": "tsrx-006",
+      "topic": "Utility types",
+      "level": 1,
+      "q": "Wymień najczęściej używane utility types i podaj, do czego służą.",
+      "a": "Partial<T> robi wszystkie pola opcjonalnymi (np. DTO do PATCH), Required<T> odwrotnie. Pick<T, K> wybiera pola, Omit<T, K> je usuwa (np. User bez password). Record<K, V> to obiekt-słownik o kluczach K. Readonly<T> blokuje przypisania. Dla funkcji: ReturnType<F>, Parameters<F>, a Awaited<T> rozpakowuje Promise. Do unii: Exclude, Extract i NonNullable. Dzięki nim wyprowadzam typy z jednego źródła prawdy zamiast je duplikować.",
+      "code": "interface User { id: number; name: string; password: string; }\n\ntype UserDto    = Omit<User, 'password'>;\ntype UserPatch  = Partial<Pick<User, 'name'>>;\ntype ById       = Record<number, UserDto>;\n\nasync function load() { return [] as User[]; }\ntype Loaded = Awaited<ReturnType<typeof load>>; // User[]",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-007",
+      "topic": "keyof, typeof, indexed access",
+      "level": 2,
+      "q": "Jak działają keyof, typeof (w pozycji typu) i indexed access types?",
+      "a": "typeof w pozycji typu pobiera typ istniejącej wartości – np. obiektu konfiguracyjnego albo funkcji. keyof T daje unię kluczy typu T jako literały. Indexed access T['pole'] lub T[K] pobiera typ właściwości; dla tablic T[number] daje typ elementu. Łącząc je z as const mogę z jednej stałej wyprowadzić unię dozwolonych wartości, więc dane i typy nie rozjeżdżają się.",
+      "code": "const config = { apiUrl: '/api', retries: 3 };\ntype Config = typeof config;        // { apiUrl: string; retries: number }\ntype ConfigKey = keyof Config;      // 'apiUrl' | 'retries'\ntype Retries = Config['retries'];   // number\n\nconst ROLES = ['admin', 'user'] as const;\ntype Role = (typeof ROLES)[number]; // 'admin' | 'user'",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-008",
+      "topic": "Mapped types",
+      "level": 3,
+      "q": "Czym są mapped types i jak samemu napisać odpowiednik Partial czy Readonly?",
+      "a": "Mapped type iteruje po kluczach innego typu: { [K in keyof T]: ... }. Modyfikatory ? i readonly można dodawać lub usuwać prefiksem + / -, np. -? zdejmuje opcjonalność (tak działa Required). Od TS 4.1 klucze można przemapować przez as, co pozwala zmieniać nazwy (template literal types) albo filtrować pola, zwracając never. Na tym zbudowana jest większość wbudowanych utility types.",
+      "code": "type MyPartial<T>  = { [K in keyof T]?: T[K] };\ntype Mutable<T>    = { -readonly [K in keyof T]: T[K] };\n\ntype Getters<T> = {\n  [K in keyof T as `get${Capitalize<string & K>}`]: () => T[K]\n};\ntype G = Getters<{ name: string }>; // { getName: () => string }",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-009",
+      "topic": "Conditional types i infer",
+      "level": 3,
+      "q": "Jak działają conditional types i słowo kluczowe infer?",
+      "a": "Składnia T extends U ? X : Y to if na poziomie typów. infer pozwala w tej gałęzi wyciągnąć fragment typu do nowej zmiennej, np. typ elementu tablicy albo wartość Promise – tak zaimplementowane są ReturnType czy Awaited. Ważny niuans: gdy T jest gołym parametrem typu, warunek jest distributive, czyli aplikowany osobno do każdego członu unii. Żeby to wyłączyć, opakowuje się obie strony w krotkę: [T] extends [U].",
+      "code": "type ElementOf<T> = T extends readonly (infer E)[] ? E : never;\ntype A = ElementOf<string[]>;           // string\n\ntype Unwrap<T> = T extends Promise<infer R> ? R : T;\ntype B = Unwrap<Promise<number>>;       // number\n\ntype IsString<T> = T extends string ? 'yes' : 'no';\ntype C = IsString<string | number>;     // 'yes' | 'no' (distributive)",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-010",
+      "topic": "any vs unknown vs never",
+      "level": 1,
+      "q": "Jaka jest różnica między any, unknown i never?",
+      "a": "any wyłącza sprawdzanie typów – można z nim zrobić wszystko i zaraża okoliczny kod. unknown też przyjmuje dowolną wartość, ale zanim cokolwiek z nią zrobisz, musisz zawęzić typ, więc to bezpieczna alternatywa dla danych z zewnątrz (JSON, catch, API). never to typ bez wartości: funkcja, która zawsze rzuca lub nigdy się nie kończy, gałąź niemożliwa po pełnym narrowingu, pusty człon unii. Zasada: zamiast any używaj unknown i waliduj.",
+      "code": "function parse(json: string): unknown { return JSON.parse(json); }\n\nconst v = parse('{\"a\":1}');\n// v.a;                      // błąd: v jest unknown\nif (typeof v === 'object' && v !== null && 'a' in v) { /* ok */ }\n\nfunction fail(msg: string): never { throw new Error(msg); }",
+      "lang": "typescript",
+      "tip": "W trybie strict (useUnknownInCatchVariables) zmienna w catch ma typ unknown, a nie any."
+    },
+    {
+      "id": "tsrx-011",
+      "topic": "Strict mode",
+      "level": 2,
+      "q": "Co włącza flaga strict w tsconfig i dlaczego warto ją mieć?",
+      "a": "strict to parasol nad kilkoma flagami: strictNullChecks (null i undefined nie są przypisywalne do innych typów), noImplicitAny, strictFunctionTypes, strictPropertyInitialization, strictBindCallApply, useUnknownInCatchVariables, alwaysStrict i noImplicitThis. Najważniejsza jest strictNullChecks – eliminuje całą klasę błędów typu „cannot read property of undefined”. Nowe projekty Angulara mają strict domyślnie włączony, także dla szablonów (strictTemplates). Przy migracji starego projektu włączam flagi stopniowo.",
+      "tip": "Dodatkowe, niewchodzące do strict flagi warte wspomnienia: noUncheckedIndexedAccess (arr[i] ma typ T | undefined) i exactOptionalPropertyTypes."
+    },
+    {
+      "id": "tsrx-012",
+      "topic": "enum vs union literal / as const",
+      "level": 2,
+      "q": "Enum czy union typów literałowych / obiekt as const – co wybierasz i dlaczego?",
+      "a": "Enum w TS generuje kod w runtime (obiekt, a numeryczne mają też reverse mapping), nie jest zgodny z trybem erasableSyntaxOnly i ma specyficzne zachowania, np. numeryczne enumy akceptują dowolne liczby w starszych wersjach. Union literałów ('a' | 'b') znika po kompilacji i działa naturalnie z narrowingiem. Gdy potrzebuję też wartości w runtime (np. do listy w dropdownie), robię obiekt lub tablicę as const i wyprowadzam z niej typ. Enum ma sens głównie w istniejących code base'ach lub gdy zespół tak woli – string enum jest wtedy bezpieczniejszy niż numeryczny.",
+      "code": "const Status = { Active: 'active', Blocked: 'blocked' } as const;\ntype Status = (typeof Status)[keyof typeof Status]; // 'active' | 'blocked'\n\nfunction setStatus(s: Status) { /* ... */ }\nsetStatus(Status.Active);\nsetStatus('blocked');   // też ok – to zwykły literał",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-013",
+      "topic": "satisfies",
+      "level": 2,
+      "q": "Do czego służy operator satisfies i czym różni się od adnotacji typu?",
+      "a": "satisfies (TS 4.9) sprawdza, że wyrażenie pasuje do typu, ale nie zmienia wywnioskowanego typu zmiennej. Przy adnotacji const x: Record<string, string> tracę informację o konkretnych kluczach i literałach; przy satisfies kompilator nadal zna dokładny kształt, więc mam autouzupełnianie i błąd przy literówce. Dobrze łączy się z as const, np. w konfiguracjach tras czy mapach kolorów.",
+      "code": "type Theme = Record<string, `#${string}`>;\n\nconst colors = {\n  primary: '#1976d2',\n  danger: '#d32f2f',\n} satisfies Theme;\n\ncolors.primary;   // ok, klucz znany\n// colors.secondary; // błąd – z adnotacją ': Theme' by przeszło",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-014",
+      "topic": "readonly",
+      "level": 2,
+      "q": "Jakie mechanizmy niemutowalności daje TypeScript i jakie mają ograniczenia?",
+      "a": "Modyfikator readonly na polu klasy lub interfejsu, Readonly<T> dla całego obiektu, ReadonlyArray<T> / readonly T[] dla tablic (bez push, splice) oraz as const, które robi wszystko readonly i zawęża do literałów. Ograniczenia: to wyłącznie sprawdzenie w czasie kompilacji, w runtime nic nie blokuje (do tego Object.freeze), i jest płytkie – Readonly<T> nie chroni zagnieżdżonych obiektów. W Angularze readonly przydaje się np. na polach z input() czy sygnałach, żeby nie nadpisać referencji.",
+      "code": "interface Point { readonly x: number; readonly y: number }\nconst p: Point = { x: 1, y: 2 };\n// p.x = 5;           // błąd kompilacji\n\nfunction sum(xs: readonly number[]) {\n  // xs.push(1);       // błąd – brak metod mutujących\n  return xs.reduce((a, b) => a + b, 0);\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-015",
+      "topic": "Structural typing",
+      "level": 2,
+      "q": "Co oznacza, że TypeScript ma structural typing? Jakie to ma konsekwencje?",
+      "a": "Zgodność typów zależy od kształtu, a nie od nazwy ani deklaracji – obiekt pasuje do interfejsu, jeśli ma wymagane pola o zgodnych typach, nawet jeśli nigdy go nie implementował. To wygodne (łatwe mocki w testach), ale dwa typy o tym samym kształcie, np. UserId i OrderId jako number, są wymienne. Gdy trzeba je rozróżnić, stosuje się branded types. Wyjątkiem jest excess property check: literał obiektu przypisany bezpośrednio z nadmiarowym polem daje błąd, ale ta sama wartość przez zmienną pośrednią już przejdzie.",
+      "code": "type UserId  = number & { readonly __brand: 'UserId' };\ntype OrderId = number & { readonly __brand: 'OrderId' };\n\nconst asUserId = (n: number) => n as UserId;\n\nfunction loadUser(id: UserId) { /* ... */ }\nloadUser(asUserId(5));\n// loadUser(5 as OrderId); // błąd – różne brandy",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-016",
+      "topic": "Event loop",
+      "level": 3,
+      "q": "Jak działa event loop w JavaScript? Czym różnią się microtasks od macrotasks?",
+      "a": "JS wykonuje kod na jednym wątku ze stosem wywołań. Gdy stos się opróżni, event loop najpierw opróżnia całą kolejkę microtasków (callbacki Promise .then/catch/finally, await, queueMicrotask, MutationObserver), a dopiero potem bierze jeden macrotask (setTimeout, setInterval, zdarzenia I/O i UI, MessageChannel) i po nim znów wszystkie microtaski; między nimi przeglądarka może renderować. Dlatego Promise.resolve().then(...) wykona się przed setTimeout(..., 0). Mikrotask, który w kółko dodaje mikrotaski, zagłodzi rendering.",
+      "code": "console.log('1');\nsetTimeout(() => console.log('2'), 0);\nPromise.resolve().then(() => console.log('3'));\nqueueMicrotask(() => console.log('4'));\nconsole.log('5');\n// 1, 5, 3, 4, 2",
+      "lang": "typescript",
+      "tip": "Powiązanie z Angularem: zone.js patchował te API, żeby wiedzieć, kiedy uruchomić change detection; w trybie zoneless tę rolę przejmują sygnały i jawne powiadomienia."
+    },
+    {
+      "id": "tsrx-017",
+      "topic": "Closures",
+      "level": 1,
+      "q": "Czym jest closure w JavaScript? Podaj praktyczny przykład.",
+      "a": "Closure to funkcja razem z referencją do zakresu leksykalnego, w którym została utworzona – ma dostęp do zmiennych zewnętrznej funkcji nawet po jej zakończeniu. Używa się tego do enkapsulacji stanu (prywatne zmienne, fabryki funkcji), w callbackach, debounce czy memoizacji. Klasyczna pułapka: pętla z var tworzy jedną wspólną zmienną dla wszystkich callbacków, a let tworzy nowe wiązanie w każdej iteracji. Closure trzyma referencję, więc może też przypadkiem utrzymywać w pamięci duże obiekty.",
+      "code": "function createCounter() {\n  let count = 0;\n  return {\n    inc: () => ++count,\n    get: () => count,\n  };\n}\nconst c = createCounter();\nc.inc(); c.inc();\nconsole.log(c.get()); // 2 – count niedostępny z zewnątrz",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-018",
+      "topic": "this",
+      "level": 2,
+      "q": "Od czego zależy wartość this w JavaScript i jak zachowują się arrow functions?",
+      "a": "Dla zwykłych funkcji this zależy od sposobu wywołania: obj.metoda() → obj; samodzielne wywołanie → undefined w strict mode (moduły i klasy są zawsze strict); new → nowy obiekt; call/apply/bind ustawiają this jawnie. Arrow function nie ma własnego this – bierze je leksykalnie z otaczającego zakresu. Typowy błąd: przekazanie metody klasy jako callbacku (setTimeout(this.save)) gubi kontekst; rozwiązania to arrow function, pole klasy będące arrow function albo bind.",
+      "code": "class Timer {\n  seconds = 0;\n  startBroken() { setInterval(function () { this.seconds++; }, 1000); } // this ≠ Timer (window w przeglądarce, Timeout w Node) → NaN\n  start()       { setInterval(() => this.seconds++, 1000); }            // ok\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-019",
+      "topic": "== vs ===",
+      "level": 1,
+      "q": "Czym różni się == od === w JavaScript?",
+      "a": "=== porównuje bez konwersji typów – wartość i typ muszą się zgadzać (dla obiektów: ta sama referencja). == stosuje koercję typów według dość zawiłych reguł, stąd 0 == '' czy '1' == 1 dają true. Jedyny powszechnie akceptowany przypadek użycia == to x == null, które łapie jednocześnie null i undefined. Poza tym zawsze ===; ESLint (eqeqeq) to wymusza. Uwaga: NaN nie jest równe niczemu, nawet sobie – do tego Number.isNaN lub Object.is.",
+      "code": "0 == '';            // true\n'1' == 1;           // true\nnull == undefined;  // true\nnull === undefined; // false\nNaN === NaN;        // false\nObject.is(NaN, NaN);// true",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-020",
+      "topic": "Promise vs async/await",
+      "level": 1,
+      "q": "Czym jest Promise i jak ma się do niego async/await? Jak zrównoleglić kilka wywołań?",
+      "a": "Promise reprezentuje wynik operacji asynchronicznej: pending, potem fulfilled albo rejected, i rozstrzyga się dokładnie raz. async/await to składnia nad Promise – funkcja async zawsze zwraca Promise, a await zawiesza jej wykonanie do rozstrzygnięcia, dzięki czemu błędy łapię zwykłym try/catch. Pułapka: await w pętli wykonuje wywołania sekwencyjnie; niezależne operacje odpalam razem przez Promise.all (odrzuca się przy pierwszym błędzie) albo Promise.allSettled (czeka na wszystkie i zwraca statusy).",
+      "code": "async function loadDashboard(api: Api) {\n  // równolegle, a nie await po kolei\n  const [user, orders] = await Promise.all([\n    api.getUser(),\n    api.getOrders(),\n  ]);\n  return { user, orders };\n}",
+      "lang": "typescript",
+      "tip": "Warto znać też Promise.race i Promise.any oraz to, że nieobsłużone odrzucenie Promise generuje unhandledrejection."
+    },
+    {
+      "id": "tsrx-021",
+      "topic": "var, let, const",
+      "level": 1,
+      "q": "Jakie są różnice między var, let i const?",
+      "a": "var ma zasięg funkcji, jest hoistowany z wartością undefined i można go redeklarować. let i const mają zasięg blokowy i też są hoistowane, ale do momentu deklaracji są w temporal dead zone – dostęp rzuca ReferenceError. const zabrania ponownego przypisania zmiennej, ale nie robi obiektu niemutowalnym – pola obiektu czy elementy tablicy nadal można zmieniać. Domyślnie używam const, let gdy wartość się zmienia, var praktycznie wcale.",
+      "code": "console.log(a); // undefined (hoisting var)\nvar a = 1;\n\n// console.log(b); // ReferenceError (TDZ)\nlet b = 2;\n\nconst cfg = { debug: false };\ncfg.debug = true;   // ok – mutacja obiektu\n// cfg = {};        // błąd – ponowne przypisanie",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-022",
+      "topic": "Observable vs Promise",
+      "level": 1,
+      "q": "Czym różni się Observable od Promise?",
+      "a": "Promise jest eager (startuje od razu przy utworzeniu), zwraca jedną wartość i nie da się go anulować. Observable jest lazy – nic się nie dzieje, dopóki ktoś nie zasubskrybuje – może emitować zero, jedną lub wiele wartości w czasie, kończy się complete albo error i można go anulować przez unsubscribe (np. HttpClient wtedy przerywa request). Do tego dochodzi bogaty zestaw operatorów do komponowania strumieni. Konwersja: from(promise) w jedną stronę, firstValueFrom/lastValueFrom w drugą (toPromise jest deprecated).",
+      "code": "import { firstValueFrom } from 'rxjs';\n\nconst user = await firstValueFrom(this.http.get<User>('/api/me'));",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-023",
+      "topic": "Cold vs hot",
+      "level": 2,
+      "q": "Co znaczy, że Observable jest cold, a co że jest hot?",
+      "a": "Cold Observable tworzy producenta przy każdej subskrypcji – każdy subskrybent dostaje własne, niezależne wykonanie od początku. Przykład: HttpClient.get – dwie subskrypcje to dwa requesty. Hot Observable ma współdzielonego producenta, który działa niezależnie od subskrybentów, a późny subskrybent widzi tylko kolejne wartości – np. fromEvent na DOM, Subject, strumień WebSocket. Cold zamienia się w hot (multicasting) przez share/shareReplay albo Subject.",
+      "code": "const req$ = this.http.get('/api/items');\nreq$.subscribe();\nreq$.subscribe();           // drugi request!\n\nconst shared$ = req$.pipe(shareReplay({ bufferSize: 1, refCount: true }));",
+      "lang": "typescript",
+      "tip": "Typowy błąd: kilka async pipe w szablonie na tym samym cold Observable z HTTP → kilka requestów."
+    },
+    {
+      "id": "tsrx-024",
+      "topic": "Subject, BehaviorSubject, ReplaySubject",
+      "level": 2,
+      "q": "Jakie są rodzaje Subjectów w RxJS i czym się różnią?",
+      "a": "Subject to jednocześnie Observable i Observer – multicastuje wartości do aktualnych subskrybentów, ale późny subskrybent nie dostaje nic z przeszłości. BehaviorSubject wymaga wartości początkowej, trzyma ostatnią wartość, oddaje ją od razu każdemu nowemu subskrybentowi i ma synchroniczne getValue() – klasyczny „store” stanu. ReplaySubject(n) odtwarza n ostatnich wartości (opcjonalnie w oknie czasowym), bez wartości startowej. AsyncSubject emituje tylko ostatnią wartość przy complete. Na zewnątrz serwisu wystawiam asObservable(), żeby nikt nie wołał next.",
+      "code": "@Injectable({ providedIn: 'root' })\nexport class CartService {\n  private readonly items$$ = new BehaviorSubject<Item[]>([]);\n  readonly items$ = this.items$$.asObservable();\n\n  add(item: Item) {\n    this.items$$.next([...this.items$$.value, item]);\n  }\n}",
+      "lang": "typescript",
+      "tip": "W nowym kodzie Angulara prosty lokalny stan częściej trzyma się w signal(); BehaviorSubject zostaje tam, gdzie stan jest częścią potoku RxJS."
+    },
+    {
+      "id": "tsrx-025",
+      "topic": "Operatory spłaszczające",
+      "level": 2,
+      "q": "Czym różnią się switchMap, mergeMap, concatMap i exhaustMap? Kiedy którego używasz?",
+      "a": "Wszystkie mapują wartość na wewnętrzny Observable i spłaszczają wynik, różnią się strategią, gdy przyjdzie nowa wartość, a poprzedni wewnętrzny strumień jeszcze trwa. switchMap anuluje poprzedni – typeahead, nawigacja, „interesuje mnie tylko najnowsze”. mergeMap uruchamia wszystkie równolegle (opcjonalny limit concurrency) – niezależne operacje, np. równoległe uploady, kolejność wyników nieistotna. concatMap kolejkuje i wykonuje po kolei – zapisy, które muszą zachować kolejność. exhaustMap ignoruje nowe wartości, dopóki trwa bieżąca – przycisk „Zapisz”/login, żeby podwójne kliknięcie nie wysłało dwóch requestów.",
+      "code": "search$.pipe(switchMap(q => this.api.search(q)));        // najnowsze\nfiles$.pipe(mergeMap(f => this.api.upload(f), 3));       // równolegle, max 3\nedits$.pipe(concatMap(e => this.api.save(e)));           // po kolei\nsaveClick$.pipe(exhaustMap(() => this.api.submit(form)));// ignoruj w trakcie",
+      "lang": "typescript",
+      "tip": "Pułapka: switchMap dla operacji zapisu (POST) może anulować request, który już dotarł do serwera – klient nie dostanie odpowiedzi, a zapis się wykona."
+    },
+    {
+      "id": "tsrx-026",
+      "topic": "map, filter, tap",
+      "level": 1,
+      "q": "Do czego służą operatory map, filter i tap?",
+      "a": "map transformuje każdą wartość (np. odpowiedź API na model widoku), filter przepuszcza tylko wartości spełniające predykat, a tap wykonuje efekt uboczny bez zmiany wartości – logowanie, ustawienie flagi loading, debugowanie. tap nie powinien zawierać logiki biznesowej ani subskrypcji innych strumieni. Wszystkie są pipeable operators używanymi w pipe(), a sam pipe niczego nie uruchamia – dopiero subskrypcja.",
+      "code": "this.http.get<UserDto[]>('/api/users').pipe(\n  tap(list => console.debug('loaded', list.length)),\n  map(list => list.filter(u => u.active)),\n  map(list => list.map(u => u.name)),\n);",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-027",
+      "topic": "Typeahead",
+      "level": 2,
+      "q": "Jak zbudować wyszukiwarkę z podpowiedziami (typeahead) w RxJS?",
+      "a": "Strumień zmian inputa przepuszczam przez debounceTime (np. 300 ms), żeby nie strzelać przy każdym znaku, distinctUntilChanged, żeby nie powtarzać zapytania dla tej samej frazy, często filter na minimalną długość, a potem switchMap do API – anuluje poprzedni request, więc stara, wolniejsza odpowiedź nie nadpisze nowszej (race condition). Błąd obsługuję catchError wewnątrz switchMap, żeby jeden nieudany request nie zabił całego strumienia.",
+      "code": "results$ = this.searchCtrl.valueChanges.pipe(\n  debounceTime(300),\n  map(q => q.trim()),\n  distinctUntilChanged(),\n  filter(q => q.length >= 2),\n  switchMap(q => this.api.search(q).pipe(\n    catchError(() => of([] as Product[])),\n  )),\n);",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-028",
+      "topic": "Łączenie strumieni",
+      "level": 3,
+      "q": "Czym różnią się combineLatest, forkJoin, withLatestFrom i zip?",
+      "a": "combineLatest emituje tablicę ostatnich wartości ze wszystkich źródeł przy każdej emisji któregokolwiek – ale dopiero gdy każde wyemitowało co najmniej raz; dobre do łączenia filtrów i stanu. forkJoin czeka, aż wszystkie źródła się zakończą, i emituje raz ostatnie wartości – odpowiednik Promise.all dla zapytań HTTP; jeśli któreś źródło nigdy się nie kończy, nie wyemituje nic. withLatestFrom to operator: główny strumień wyzwala emisję, a z drugiego dołącza tylko ostatnią wartość (np. klik + aktualny stan formularza). zip paruje wartości po indeksach (1. z 1., 2. z 2.) i jest używany rzadko.",
+      "code": "vm$ = combineLatest([this.filters$, this.page$]).pipe(\n  switchMap(([f, p]) => this.api.list(f, p)),\n);\n\nforkJoin({ user: this.api.user(), perms: this.api.perms() })\n  .subscribe(({ user, perms }) => { /* oba gotowe */ });\n\nsave$.pipe(withLatestFrom(this.form$)).subscribe(([, form]) => this.submit(form));",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-029",
+      "topic": "catchError i retry",
+      "level": 2,
+      "q": "Jak obsłużyć błąd i ponowić request w RxJS?",
+      "a": "catchError przechwytuje błąd i musi zwrócić nowy Observable – wartość zastępczą (of([])), EMPTY albo ponownie rzucony błąd (throwError(() => err)) po np. zalogowaniu. retry ponownie subskrybuje źródło po błędzie; w RxJS 7 przyjmuje konfigurację { count, delay }, gdzie delay może być funkcją, co pozwala zrobić exponential backoff i ponawiać tylko np. błędy 5xx. retry stawiam przed catchError, bo inaczej błąd zostanie przechwycony, zanim retry go zobaczy.",
+      "code": "this.http.get<Order[]>('/api/orders').pipe(\n  retry({\n    count: 3,\n    delay: (err, attempt) =>\n      err.status >= 500 ? timer(2 ** attempt * 500) : throwError(() => err),\n  }),\n  catchError(err => {\n    this.toast.error('Nie udało się pobrać zamówień');\n    return of([]);\n  }),\n);",
+      "lang": "typescript",
+      "tip": "Nie ponawiaj bezrefleksyjnie operacji nieidempotentnych (POST)."
+    },
+    {
+      "id": "tsrx-030",
+      "topic": "shareReplay",
+      "level": 3,
+      "q": "Jak działa shareReplay i do czego służy refCount?",
+      "a": "shareReplay multicastuje źródło przez ReplaySubject: pierwszy subskrybent uruchamia źródło, kolejni współdzielą wykonanie i dostają n ostatnich wartości – typowe cache'owanie odpowiedzi HTTP lub konfiguracji. Z refCount: false (domyślnie przy shareReplay(1)) wewnętrzna subskrypcja źródła zostaje nawet, gdy wszyscy się odsubskrybują – dla HTTP to nie problem (się kończy), ale dla nieskończonego źródła (interval, WebSocket) to wyciek. refCount: true odsubskrybowuje źródło, gdy licznik subskrybentów spadnie do zera. Uwaga: błąd nie jest cache'owany – po błędzie następna subskrypcja ponowi źródło.",
+      "code": "readonly config$ = this.http.get<Config>('/api/config').pipe(\n  shareReplay({ bufferSize: 1, refCount: true }),\n);",
+      "lang": "typescript",
+      "tip": "Alternatywa: share() z opcjami resetOnRefCountZero/resetOnComplete z RxJS 7 daje pełną kontrolę."
+    },
+    {
+      "id": "tsrx-031",
+      "topic": "Unsubscribe i wycieki",
+      "level": 2,
+      "q": "Kiedy trzeba się odsubskrybować w Angularze i jak to robić?",
+      "a": "Trzeba, gdy strumień nie kończy się sam: interval, valueChanges formularza, router events, Subjecty w serwisach, WebSocket – inaczej subskrypcja i komponent zostają w pamięci, a callback działa dalej po zniszczeniu widoku. HTTP z HttpClient kończy się po odpowiedzi, ale anulowanie przy zniszczeniu komponentu i tak bywa pożądane. Najlepiej w ogóle nie subskrybować ręcznie: async pipe albo toSignal sprzątają same. Gdy subskrybuję w kodzie, używam takeUntilDestroyed() z @angular/core/rxjs-interop – bez argumentu w injection context, poza nim z przekazanym DestroyRef.",
+      "code": "export class LiveComponent {\n  private destroyRef = inject(DestroyRef);\n  constructor() {\n    interval(1000).pipe(takeUntilDestroyed())  // injection context\n      .subscribe(n => this.tick.set(n));\n  }\n  ngOnInit() {\n    this.store.events$.pipe(takeUntilDestroyed(this.destroyRef))\n      .subscribe(e => this.handle(e));\n  }\n  tick = signal(0);\n}",
+      "lang": "typescript",
+      "tip": "takeUntilDestroyed (i takeUntil) powinien być ostatnim operatorem w pipe, inaczej operatory po nim, np. switchMap, mogą trzymać subskrypcję."
+    },
+    {
+      "id": "tsrx-032",
+      "topic": "Błędy w strumieniu",
+      "level": 3,
+      "q": "Co się dzieje ze strumieniem po błędzie i jak sprawić, żeby np. efekt kliknięcia „przeżył” błąd requestu?",
+      "a": "Zgodnie z kontraktem Observable error jest zdarzeniem terminalnym – po nim strumień nie emituje już nic, a subskrypcja się kończy. Jeśli catchError stoi na zewnętrznym strumieniu (po switchMap), zastąpi błąd wartością, ale cały potok i tak się zakończy – kolejne kliknięcia nie zadziałają. Rozwiązanie: catchError wewnątrz projekcji switchMap/concatMap, na wewnętrznym Observable, tak by błąd kończył tylko jeden request. Alternatywnie mapuję wyniki na obiekt stanu { data } / { error } i nigdy nie puszczam błędu do zewnętrznego strumienia.",
+      "code": "// źle: po pierwszym błędzie clicks$ przestaje działać\nclicks$.pipe(switchMap(() => this.api.load()), catchError(() => of(null)));\n\n// dobrze: błąd zamyka tylko wewnętrzny strumień\nclicks$.pipe(\n  switchMap(() => this.api.load().pipe(\n    map(data => ({ data })),\n    catchError(error => of({ error })),\n  )),\n);",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-033",
+      "topic": "Interop z sygnałami",
+      "level": 2,
+      "q": "Jak połączyć RxJS z sygnałami? Jak działają toSignal i toObservable?",
+      "a": "toSignal z @angular/core/rxjs-interop subskrybuje Observable od razu i wystawia ostatnią wartość jako sygnał; odsubskrybuje się automatycznie przy zniszczeniu kontekstu, więc musi być wywołany w injection context (albo z jawnym injectorem). Bez initialValue typ to Signal<T | undefined>; requireSync: true pozwala tego uniknąć dla źródeł emitujących synchronicznie, np. BehaviorSubject. Błąd ze strumienia jest rzucany przy odczycie sygnału. toObservable działa odwrotnie – emituje wartości sygnału, opierając się na effect, więc emisje są asynchroniczne i pośrednie zmiany w tym samym cyklu się zlewają.",
+      "code": "export class ProductsComponent {\n  private api = inject(ProductApi);\n  query = signal('');\n\n  products = toSignal(\n    toObservable(this.query).pipe(\n      debounceTime(300),\n      switchMap(q => this.api.search(q)),\n    ),\n    { initialValue: [] as Product[] },\n  );\n}",
+      "lang": "typescript",
+      "tip": "Do prostego pobierania danych sterowanego sygnałami można też użyć resource/rxResource lub httpResource – sprawdź ich status (stabilne vs eksperymentalne) w używanej wersji Angulara."
+    },
+    {
+      "id": "tsrx-034",
+      "topic": "Zagnieżdżone subskrypcje",
+      "level": 1,
+      "q": "Dlaczego zagnieżdżone subscribe uważa się za antywzorzec?",
+      "a": "Subscribe w subscribe tworzy niezależne subskrypcje, których nikt nie anuluje – jeśli zewnętrzny strumień wyemituje ponownie, stare wewnętrzne requesty dalej działają, mogą przyjść w złej kolejności i nadpisać nowsze dane. Do tego błędy trzeba obsługiwać w kilku miejscach, a kod jest trudny do czytania i testowania. Zamiast tego używam operatora spłaszczającego (switchMap, concatMap…) i jednej subskrypcji, najlepiej przez async pipe lub toSignal.",
+      "code": "// źle\nthis.route.paramMap.subscribe(p =>\n  this.api.get(p.get('id')!).subscribe(x => this.item = x));\n\n// dobrze\nitem = toSignal(this.route.paramMap.pipe(\n  switchMap(p => this.api.get(p.get('id')!)),\n));",
+      "lang": "typescript"
+    },
+    {
+      "id": "tsrx-035",
+      "topic": "Sygnały czy RxJS",
+      "level": 2,
+      "q": "Kiedy w nowoczesnym Angularze używasz sygnałów, a kiedy RxJS?",
+      "a": "Sygnały są do stanu synchronicznego: wartości odczytywanej w szablonie, wartości wyliczanych (computed) i reakcji na zmiany stanu – są proste, glitch-free i napędzają change detection, także w trybie zoneless. RxJS zostaje dla zdarzeń i asynchroniczności w czasie: debounce, anulowanie requestów, łączenie wielu źródeł, retry, WebSockety. Typowy podział: na brzegu (zdarzenia, HTTP) RxJS, a wynik trafia do sygnału przez toSignal i dalej do szablonu. Nie przepisuję na siłę potoków RxJS na effect – effect nie służy do propagowania stanu.",
+      "tip": "Dobrze wspomnieć, że HttpClient nadal zwraca Observable, a resource/httpResource są nowszą, sygnałową alternatywą do pobierania danych."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "tsrx-q001",
+      "topic": "Event loop",
+      "level": 2,
+      "q": "Co wypisze ten kod?",
+      "code": "console.log('A');\nsetTimeout(() => console.log('B'), 0);\nPromise.resolve().then(() => console.log('C'));\nconsole.log('D');",
+      "lang": "typescript",
+      "options": [
+        "A, D, C, B",
+        "A, B, C, D",
+        "A, D, B, C",
+        "A, C, D, B"
+      ],
+      "correct": 0,
+      "why": "Najpierw kod synchroniczny (A, D). Po opróżnieniu stosu wykonywane są wszystkie microtaski (callback Promise → C), a dopiero potem macrotask z setTimeout (B). setTimeout z 0 ms nie oznacza „natychmiast”, tylko „w kolejnym macrotasku”."
+    },
+    {
+      "id": "tsrx-q002",
+      "topic": "Closures",
+      "level": 1,
+      "q": "Co wypisze ten kod?",
+      "code": "for (var i = 0; i < 3; i++) {\n  setTimeout(() => console.log(i), 0);\n}",
+      "lang": "typescript",
+      "options": [
+        "0, 1, 2",
+        "0, 0, 0",
+        "undefined, undefined, undefined",
+        "3, 3, 3"
+      ],
+      "correct": 3,
+      "why": "var ma zasięg funkcji, więc wszystkie trzy closures współdzielą jedną zmienną i, która po zakończeniu pętli ma wartość 3. Z let każda iteracja dostałaby własne wiązanie i wynik byłby 0, 1, 2."
+    },
+    {
+      "id": "tsrx-q003",
+      "topic": "== vs ===",
+      "level": 1,
+      "q": "Które z wyrażeń zwraca false?",
+      "options": [
+        "null == undefined",
+        "0 == ''",
+        "null === undefined",
+        "'1' == 1"
+      ],
+      "correct": 2,
+      "why": "=== nie robi koercji, a null i undefined to różne typy, więc wynik to false. Pozostałe używają ==, które konwertuje typy: null == undefined jest specjalnie zdefiniowane jako true, a '' i '1' są zamieniane na liczby."
+    },
+    {
+      "id": "tsrx-q004",
+      "topic": "any vs unknown vs never",
+      "level": 1,
+      "q": "Co się stanie przy kompilacji tego kodu (strict)?",
+      "code": "const value: unknown = JSON.parse(input);\nconsole.log(value.toUpperCase());",
+      "lang": "typescript",
+      "options": [
+        "Kompiluje się, unknown działa jak any",
+        "Błąd przy value.toUpperCase(), bo nie można wywołać metody na unknown bez zawężenia typu",
+        "Błąd już przy JSON.parse, bo zwraca any i nie można go przypisać do unknown",
+        "Kompiluje się, ale TS automatycznie wstawi sprawdzenie typu w runtime"
+      ],
+      "correct": 1,
+      "why": "Do unknown można przypisać wszystko (także any z JSON.parse), ale żeby czegokolwiek użyć, trzeba zawęzić typ, np. typeof value === 'string'. TypeScript nigdy nie generuje sprawdzeń typów w runtime."
+    },
+    {
+      "id": "tsrx-q005",
+      "topic": "Discriminated unions",
+      "level": 2,
+      "q": "Do unii Shape dodano wariant { kind: 'triangle'; base: number; h: number }, ale nie zaktualizowano funkcji area. Co się stanie?",
+      "code": "function area(s: Shape): number {\n  switch (s.kind) {\n    case 'circle': return Math.PI * s.r ** 2;\n    case 'square': return s.a ** 2;\n    default: { const _x: never = s; return _x; }\n  }\n}",
+      "lang": "typescript",
+      "options": [
+        "Kompiluje się, a dla trójkąta funkcja zwróci undefined",
+        "Błąd kompilacji w gałęzi default, bo triangle nie jest przypisywalny do never",
+        "Błąd w runtime przy pierwszym wywołaniu dla trójkąta",
+        "Kompiluje się, TS automatycznie doda brakujący case"
+      ],
+      "correct": 1,
+      "why": "Po obsłużeniu circle i square zmienna s w default ma typ { kind: 'triangle' … }, a nie never, więc przypisanie do never jest błędem kompilacji. To jest właśnie exhaustiveness check – nowy wariant wymusza aktualizację wszystkich switchy."
+    },
+    {
+      "id": "tsrx-q006",
+      "topic": "Utility types",
+      "level": 1,
+      "q": "Mając interface User { id: number; email: string; password: string }, jaki jest typ Omit<User, 'password'>?",
+      "options": [
+        "{ id: number; email: string }",
+        "{ password: string }",
+        "{ id?: number; email?: string; password?: string }",
+        "{ id: number; email: string; password?: never }"
+      ],
+      "correct": 0,
+      "why": "Omit usuwa wskazane klucze i zostawia resztę bez zmian. { password: string } to wynik Pick<User, 'password'>, a wariant z samymi opcjonalnymi polami to Partial<User>."
+    },
+    {
+      "id": "tsrx-q007",
+      "topic": "keyof, typeof, indexed access",
+      "level": 2,
+      "q": "Jaki jest typ Perm?",
+      "code": "const PERMS = ['read', 'write', 'delete'] as const;\ntype Perm = (typeof PERMS)[number];",
+      "lang": "typescript",
+      "options": [
+        "string",
+        "string[]",
+        "readonly ['read', 'write', 'delete']",
+        "'read' | 'write' | 'delete'"
+      ],
+      "correct": 3,
+      "why": "as const zawęża tablicę do readonly krotki literałów, typeof pobiera jej typ, a indexed access [number] daje unię typów elementów. Bez as const elementy byłyby poszerzone do string i wynikiem byłby string."
+    },
+    {
+      "id": "tsrx-q008",
+      "topic": "satisfies",
+      "level": 2,
+      "q": "Co jest prawdą o tym kodzie?",
+      "code": "const routes = {\n  home: '/home',\n  about: '/about',\n} as const satisfies Record<string, string>;\n\nroutes.home;\nroutes.contact;",
+      "lang": "typescript",
+      "options": [
+        "routes ma typ Record<string, string>, więc routes.contact kompiluje się i ma typ string",
+        "satisfies rzutuje obiekt na Record<string, string> tak jak as",
+        "routes.home ma typ '/home' (literal) i odwołanie routes.contact jest błędem kompilacji",
+        "Kod się nie kompiluje, bo satisfies nie działa z as const"
+      ],
+      "correct": 2,
+      "why": "satisfies sprawdza zgodność z typem, ale zachowuje typ wywnioskowany z wyrażenia – tu dzięki as const są to literały i znany zestaw kluczy. Adnotacja ': Record<string, string>' poszerzyłaby typ i dopuściła dowolny klucz. as to asercja, która niczego nie sprawdza w ten sposób."
+    },
+    {
+      "id": "tsrx-q009",
+      "topic": "Structural typing",
+      "level": 3,
+      "q": "Które przypisanie spowoduje błąd kompilacji?",
+      "code": "interface Person { name: string }\n\nconst p1: Person = { name: 'Ola', age: 30 };   // (1)\n\nconst tmp = { name: 'Ola', age: 30 };\nconst p2: Person = tmp;                         // (2)",
+      "lang": "typescript",
+      "options": [
+        "Linia (2)",
+        "Żadna – TS jest strukturalny, nadmiarowe pola są zawsze dozwolone",
+        "Linia (1)",
+        "Obie"
+      ],
+      "correct": 2,
+      "why": "Excess property check działa tylko dla świeżego literału obiektu przypisanego bezpośrednio do typu – (1) ma nadmiarowe pole age i daje błąd. W (2) obiekt przychodzi przez zmienną o szerszym typie, a strukturalnie ma wymagane pole name, więc przypisanie jest poprawne."
+    },
+    {
+      "id": "tsrx-q010",
+      "topic": "Conditional types i infer",
+      "level": 3,
+      "q": "Jaki jest typ R?",
+      "code": "type Kind<T> = T extends string ? 's' : 'o';\ntype R = Kind<string | number>;",
+      "lang": "typescript",
+      "options": [
+        "'s'",
+        "'s' | 'o'",
+        "'o'",
+        "never"
+      ],
+      "correct": 1,
+      "why": "Conditional type z gołym parametrem T jest distributive: dla unii string | number warunek jest liczony osobno dla każdego członu (string → 's', number → 'o'), a wyniki są łączone w unię. Gdyby zapisać [T] extends [string], wynik byłby 'o'."
+    },
+    {
+      "id": "tsrx-q011",
+      "topic": "Conditional types i infer",
+      "level": 2,
+      "q": "Jaki jest typ X?",
+      "code": "type Unwrap<T> = T extends Promise<infer R> ? R : T;\ntype X = Unwrap<Promise<number[]>>;",
+      "lang": "typescript",
+      "options": [
+        "number[]",
+        "Promise<number[]>",
+        "number",
+        "unknown"
+      ],
+      "correct": 0,
+      "why": "Promise<number[]> pasuje do wzorca Promise<infer R>, więc R zostaje wywnioskowane jako number[]. Gdyby T nie było Promise, zwrócone zostałoby samo T. To uproszczona wersja wbudowanego Awaited."
+    },
+    {
+      "id": "tsrx-q012",
+      "topic": "this",
+      "level": 2,
+      "q": "Co się stanie po kliknięciu przycisku?",
+      "code": "class Counter {\n  count = 0;\n  increment() { this.count++; console.log(this.count); }\n  attach(btn: HTMLButtonElement) {\n    btn.addEventListener('click', this.increment);\n  }\n}",
+      "lang": "typescript",
+      "options": [
+        "Wypisze 1, bo this zawsze wskazuje na instancję klasy",
+        "Wypisze NaN – addEventListener wywołuje handler z this ustawionym na element przycisku, który nie ma pola count",
+        "Wypisze 1, ale tylko w trybie strict",
+        "TypeError – this jest undefined, bo metoda została przekazana jako zwykła funkcja bez kontekstu"
+      ],
+      "correct": 1,
+      "why": "Przekazanie this.increment jako callbacku odrywa metodę od instancji Counter. Przeglądarka wywołuje listener z this równym elementowi, do którego go podpięto (event.currentTarget), więc this.count to undefined na przycisku, undefined++ daje NaN i to zostanie wypisane – bez wyjątku. TypeError poleciałby, gdyby funkcję wywołano bez żadnego kontekstu (np. const f = c.increment; f(); – w klasie this === undefined, bo klasy są zawsze w strict mode). Naprawa: arrow function (() => this.increment()), pole klasy z arrow function lub bind."
+    },
+    {
+      "id": "tsrx-q013",
+      "topic": "Promise vs async/await",
+      "level": 1,
+      "q": "Jaki typ zwraca funkcja getAnswer?",
+      "code": "async function getAnswer() { return 42; }",
+      "lang": "typescript",
+      "options": [
+        "number",
+        "Promise<Promise<number>>",
+        "void",
+        "Promise<number>"
+      ],
+      "correct": 3,
+      "why": "Funkcja oznaczona async zawsze zwraca Promise, a zwrócona wartość staje się jego wartością rozstrzygnięcia. Promise nie są zagnieżdżane – zwrócenie Promise z funkcji async też da Promise<T>, a nie Promise<Promise<T>>."
+    },
+    {
+      "id": "tsrx-q014",
+      "topic": "var, let, const",
+      "level": 1,
+      "q": "Co się stanie przy wykonaniu tego kodu?",
+      "code": "const user = { role: 'user' };\nuser.role = 'admin';\nconsole.log(user.role);",
+      "lang": "typescript",
+      "options": [
+        "TypeError, bo const obiekt jest zamrożony",
+        "Błąd kompilacji TS, bo pola obiektu const są readonly",
+        "Wypisze 'admin' – const blokuje tylko ponowne przypisanie zmiennej, nie mutację obiektu",
+        "Wypisze 'user', bo przypisanie zostanie zignorowane"
+      ],
+      "correct": 2,
+      "why": "const dotyczy wiązania zmiennej, a nie zawartości obiektu – pola można dowolnie zmieniać. Żeby zablokować mutację, trzeba użyć Readonly/as const (kompilacja) albo Object.freeze (runtime)."
+    },
+    {
+      "id": "tsrx-q015",
+      "topic": "Promise vs async/await",
+      "level": 2,
+      "q": "Wywołujesz Promise.all([a(), b(), c()]), gdzie b() odrzuca się po 100 ms, a a() i c() kończą się po 1 s. Co się dzieje?",
+      "options": [
+        "Promise.all czeka 1 s i zwraca tablicę z błędem na pozycji b",
+        "Promise.all odrzuca się po ok. 100 ms błędem z b(); a() i c() nadal się wykonują, ale ich wyniki są ignorowane",
+        "a() i c() zostają automatycznie anulowane po błędzie b()",
+        "Promise.all rozstrzyga się pozytywnie wynikami a() i c()"
+      ],
+      "correct": 1,
+      "why": "Promise.all jest fail-fast: odrzuca się przy pierwszym odrzuceniu. Promise nie da się anulować, więc pozostałe operacje działają dalej. Jeśli potrzebujesz wyników wszystkich niezależnie od błędów, użyj Promise.allSettled."
+    },
+    {
+      "id": "tsrx-q016",
+      "topic": "Operatory spłaszczające",
+      "level": 2,
+      "q": "Pole wyszukiwania wysyła zapytanie do API przy każdej zmianie frazy. Odpowiedzi przychodzą w różnej kolejności i czasem stara odpowiedź nadpisuje wynik nowszej frazy. Którego operatora użyć?",
+      "options": [
+        "switchMap",
+        "mergeMap",
+        "concatMap",
+        "exhaustMap"
+      ],
+      "correct": 0,
+      "why": "switchMap anuluje poprzedni wewnętrzny Observable (HttpClient przerywa request), więc liczy się tylko odpowiedź dla najnowszej frazy. mergeMap powoduje opisany race condition, concatMap niepotrzebnie czeka na każdą starą odpowiedź, a exhaustMap ignorowałby nowe frazy w trakcie requestu."
+    },
+    {
+      "id": "tsrx-q017",
+      "topic": "Operatory spłaszczające",
+      "level": 2,
+      "q": "Użytkownik klika szybko kilka razy „Złóż zamówienie”. Chcesz, aby poszedł tylko jeden request, a kliknięcia w trakcie jego trwania zostały zignorowane. Który operator?",
+      "options": [
+        "exhaustMap",
+        "switchMap",
+        "mergeMap",
+        "concatMap"
+      ],
+      "correct": 0,
+      "why": "exhaustMap ignoruje nowe wartości źródła, dopóki aktywny jest wewnętrzny Observable. switchMap anulowałby request po stronie klienta (a zamówienie mogło już powstać), mergeMap wysłałby kilka zamówień, concatMap wysłałby je wszystkie po kolei."
+    },
+    {
+      "id": "tsrx-q018",
+      "topic": "Operatory spłaszczające",
+      "level": 2,
+      "q": "Edytor wysyła kolejne zmiany dokumentu jako osobne PATCH-e. Serwer musi otrzymać je w tej samej kolejności, w jakiej powstały, i żadna nie może zginąć. Który operator?",
+      "options": [
+        "switchMap",
+        "exhaustMap",
+        "mergeMap",
+        "concatMap"
+      ],
+      "correct": 3,
+      "why": "concatMap kolejkuje wartości i subskrybuje następny wewnętrzny Observable dopiero po zakończeniu poprzedniego, więc zachowuje kolejność i nie gubi zmian. switchMap i exhaustMap gubią wartości, mergeMap wysyła równolegle, więc kolejność dotarcia nie jest gwarantowana."
+    },
+    {
+      "id": "tsrx-q019",
+      "topic": "Łączenie strumieni",
+      "level": 3,
+      "q": "Co wyemituje ten kod?",
+      "code": "forkJoin([\n  this.http.get<Settings>('/api/settings'),\n  interval(1000),\n]).subscribe(v => console.log(v));",
+      "lang": "typescript",
+      "options": [
+        "[ustawienia, 0] po pierwszej sekundzie",
+        "Tablicę co sekundę z najnowszym licznikiem",
+        "Nic – forkJoin czeka na complete wszystkich źródeł, a interval nigdy się nie kończy",
+        "Błąd, bo forkJoin nie przyjmuje interval"
+      ],
+      "correct": 2,
+      "why": "forkJoin emituje dopiero, gdy każde źródło zakończy się (complete), i wtedy podaje ostatnie wartości. interval jest nieskończony, więc wynik nigdy nie nadejdzie. Do łączenia ostatnich wartości „na bieżąco” służy combineLatest, a do skończenia interval np. take(1)."
+    },
+    {
+      "id": "tsrx-q020",
+      "topic": "Łączenie strumieni",
+      "level": 2,
+      "q": "combineLatest([a$, b$]): a$ wyemitował 1, potem 2; b$ jeszcze nic nie wyemitował. Następnie b$ emituje 'x'. Co i kiedy wyemituje combineLatest?",
+      "options": [
+        "[1, undefined], [2, undefined], [2, 'x']",
+        "Dopiero po emisji b$: [2, 'x']",
+        "[1, 'x'] i [2, 'x']",
+        "Nic, dopóki oba strumienie się nie zakończą"
+      ],
+      "correct": 1,
+      "why": "combineLatest czeka, aż każde źródło wyemituje co najmniej raz, a potem przy każdej emisji podaje najnowsze wartości ze wszystkich. Wcześniejsze wartości a$ (1) są nadpisane przez ostatnią. Czekanie na zakończenie to zachowanie forkJoin."
+    },
+    {
+      "id": "tsrx-q021",
+      "topic": "Błędy w strumieniu",
+      "level": 3,
+      "q": "Pierwsze kliknięcie kończy się błędem 500 i pokazuje []. Co się dzieje przy kolejnych kliknięciach?",
+      "code": "this.reload$.pipe(\n  switchMap(() => this.api.load()),\n  catchError(() => of([])),\n).subscribe(items => this.items.set(items));",
+      "lang": "typescript",
+      "options": [
+        "Każde kliknięcie wysyła nowy request, bo catchError wznawia strumień",
+        "Nic – po błędzie zewnętrzny strumień się zakończył, catchError tylko zastąpił błąd wartością i complete",
+        "Każde kliknięcie emituje [] bez wysyłania requestu",
+        "Strumień rzuca nieobsłużony błąd przy kolejnym kliknięciu"
+      ],
+      "correct": 1,
+      "why": "Błąd z wewnętrznego Observable propaguje się przez switchMap do zewnętrznego strumienia i go kończy. catchError na zewnątrz zamienia go na of([]), które emituje i się kończy – razem z całą subskrypcją. catchError należy umieścić wewnątrz switchMap, na this.api.load()."
+    },
+    {
+      "id": "tsrx-q022",
+      "topic": "Subject, BehaviorSubject, ReplaySubject",
+      "level": 1,
+      "q": "Komponent subskrybuje strumień użytkownika już po tym, jak serwis wywołał next(user). Którego typu Subject użyć, żeby komponent od razu dostał aktualną wartość, a serwis miał wartość początkową null?",
+      "options": [
+        "BehaviorSubject<User | null>(null)",
+        "Subject<User | null>()",
+        "AsyncSubject<User | null>()",
+        "Observable.create z wartością null"
+      ],
+      "correct": 0,
+      "why": "BehaviorSubject przechowuje bieżącą wartość (wymaga początkowej) i oddaje ją każdemu nowemu subskrybentowi. Zwykły Subject nie pamięta przeszłości, AsyncSubject emituje dopiero przy complete, a Observable.create jest przestarzałe i nie daje współdzielonego stanu."
+    },
+    {
+      "id": "tsrx-q023",
+      "topic": "Subject, BehaviorSubject, ReplaySubject",
+      "level": 2,
+      "q": "Co wypisze subskrybent?",
+      "code": "const s = new ReplaySubject<number>(2);\ns.next(1); s.next(2); s.next(3); s.next(4);\ns.subscribe(v => console.log(v));\ns.next(5);",
+      "lang": "typescript",
+      "options": [
+        "5",
+        "1, 2, 3, 4, 5",
+        "4, 5",
+        "3, 4, 5"
+      ],
+      "correct": 3,
+      "why": "ReplaySubject(2) buforuje dwie ostatnie wartości: w momencie subskrypcji są to 3 i 4, które zostają odtworzone, a 5 przychodzi już na żywo."
+    },
+    {
+      "id": "tsrx-q024",
+      "topic": "shareReplay",
+      "level": 3,
+      "q": "Wszyscy subskrybenci price$ zostali zniszczeni (odsubskrybowali się). Co dzieje się z połączeniem WebSocket?",
+      "code": "readonly price$ = webSocket<Price>('wss://example.com/prices').pipe(\n  shareReplay(1),\n);",
+      "lang": "typescript",
+      "options": [
+        "Zostaje zamknięte, bo shareReplay zawsze odsubskrybowuje źródło przy zerze subskrybentów",
+        "Zostaje zamknięte po 1 sekundzie",
+        "Nadal działa – shareReplay(1) ma domyślnie refCount: false i trzyma subskrypcję źródła",
+        "Rzuca błąd przy kolejnej wartości, bo nie ma subskrybentów"
+      ],
+      "correct": 2,
+      "why": "Forma shareReplay(1) oznacza { bufferSize: 1, refCount: false } – wewnętrzna subskrypcja źródła nie jest zwalniana, więc nieskończone źródło działa dalej (wyciek). Dla takich strumieni używa się shareReplay({ bufferSize: 1, refCount: true })."
+    },
+    {
+      "id": "tsrx-q025",
+      "topic": "Cold vs hot",
+      "level": 2,
+      "q": "W szablonie są dwa bloki @if (user$ | async; as u) na tym samym user$ = this.http.get<User>('/api/me'). Ile requestów HTTP zostanie wysłanych?",
+      "options": [
+        "Jeden – Angular automatycznie cache'uje requesty GET",
+        "Jeden – async pipe współdzieli subskrypcje w ramach komponentu",
+        "Dwa – HttpClient zwraca cold Observable i każda subskrypcja to osobny request",
+        "Zero, dopóki nie wywołasz subscribe() w kodzie TS"
+      ],
+      "correct": 2,
+      "why": "Każdy async pipe tworzy własną subskrypcję, a cold Observable z HttpClient wykonuje request przy każdej subskrypcji. Rozwiązania: jeden @if z aliasem na wyższym poziomie, shareReplay albo toSignal i odczyt sygnału w obu miejscach."
+    },
+    {
+      "id": "tsrx-q026",
+      "topic": "Unsubscribe i wycieki",
+      "level": 2,
+      "q": "Co jest nie tak w tym kodzie?",
+      "code": "export class ClockComponent implements OnInit {\n  now = signal(new Date());\n  ngOnInit() {\n    interval(1000).pipe(takeUntilDestroyed())\n      .subscribe(() => this.now.set(new Date()));\n  }\n}",
+      "lang": "typescript",
+      "options": [
+        "Nic – takeUntilDestroyed działa w każdym miejscu komponentu",
+        "takeUntilDestroyed() bez argumentu wywołany w ngOnInit rzuci błąd, bo nie ma injection context – trzeba przekazać DestroyRef albo przenieść kod do konstruktora",
+        "interval nie wymaga odsubskrybowania, bo Angular robi to sam",
+        "takeUntilDestroyed musi być pierwszym operatorem w pipe"
+      ],
+      "correct": 1,
+      "why": "Wersja bez argumentu używa inject(DestroyRef), więc działa tylko w injection context (konstruktor, inicjalizatory pól). W ngOnInit trzeba przekazać zapisany wcześniej DestroyRef. interval jest nieskończony i bez odsubskrybowania wycieka, a takeUntilDestroyed powinien być raczej ostatni w pipe."
+    },
+    {
+      "id": "tsrx-q027",
+      "topic": "Interop z sygnałami",
+      "level": 2,
+      "q": "Jaki jest typ pola user?",
+      "code": "export class ProfileComponent {\n  private http = inject(HttpClient);\n  user = toSignal(this.http.get<User>('/api/me'));\n}",
+      "lang": "typescript",
+      "options": [
+        "Signal<User | undefined>",
+        "Signal<User>",
+        "Observable<User>",
+        "WritableSignal<User>"
+      ],
+      "correct": 0,
+      "why": "toSignal subskrybuje od razu, ale Observable z HTTP nie emituje synchronicznie, więc do pierwszej emisji sygnał ma wartość undefined – stąd typ Signal<User | undefined>. Żeby tego uniknąć, podaje się initialValue (wtedy typ uwzględnia jej typ) lub requireSync: true dla źródeł emitujących synchronicznie. toSignal zwraca sygnał tylko do odczytu."
+    },
+    {
+      "id": "tsrx-q028",
+      "topic": "Typeahead",
+      "level": 3,
+      "q": "Strumień filtrów emituje obiekty { q: string } tworzone na nowo przy każdej zmianie formularza. Mimo distinctUntilChanged() requesty idą także wtedy, gdy fraza się nie zmieniła. Dlaczego?",
+      "options": [
+        "distinctUntilChanged działa tylko z debounceTime ustawionym przed nim",
+        "distinctUntilChanged porównuje tylko z pierwszą wartością strumienia",
+        "distinctUntilChanged nie działa z obiektami i trzeba użyć filter",
+        "distinctUntilChanged domyślnie porównuje przez ===, a każdy obiekt to nowa referencja – trzeba podać komparator lub użyć distinctUntilKeyChanged('q')"
+      ],
+      "correct": 3,
+      "why": "Domyślny komparator to ścisła równość referencji, więc dwa różne obiekty z tą samą frazą są uznawane za różne. Rozwiązania: distinctUntilChanged((a, b) => a.q === b.q), distinctUntilKeyChanged('q') albo zmapowanie na samą frazę przed operatorem. Porównanie jest zawsze z poprzednią wartością, nie z pierwszą."
+    }
+  ]
+}

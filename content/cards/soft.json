@@ -1,0 +1,600 @@
+{
+  "cat": "soft",
+  "name": "Rozmowa HR i soft skills",
+  "cards": [
+    {
+      "id": "soft-001",
+      "topic": "Metoda STAR",
+      "level": 1,
+      "q": "Czym jest metoda STAR i jak jej używać przy pytaniach behawioralnych („opowiedz o sytuacji, kiedy…”)?",
+      "a": "STAR to szkielet odpowiedzi: Situation (kontekst w 1–2 zdaniach), Task (Twoje zadanie/cel), Action (co TY konkretnie zrobiłeś – to ma być ok. 50–60% odpowiedzi), Result (mierzalny efekt + czego się nauczyłeś). Mów w 1. osobie liczby pojedynczej, trzymaj się 1,5–2 minut i kończ wnioskiem. Rekruter sprawdza nie samą historię, tylko zachowanie: samodzielność, komunikację, sposób myślenia.\n\nPrzykład (do dopasowania): „(S) W projekcie e-commerce na .NET i Angularze lista zamówień ładowała się 8 sekund. (T) Dostałem zadanie, żeby zejść poniżej sekundy przed Black Friday. (A) Sprofilowałem zapytania w EF Core, znalazłem N+1 i brak indeksu, dodałem projekcję do DTO i paginację po stronie serwera, a na froncie wirtualny scroll. (R) Czas spadł do ok. 400 ms, a zespół dodał sprawdzanie zapytań do checklisty code review.”",
+      "tip": "Czerwone flagi: opowiadanie wyłącznie w „my” (nie wiadomo, co zrobiłeś Ty), 3 minuty kontekstu i jedno zdanie akcji, brak wyniku, historia wymyślona na poczekaniu (łatwo ją rozbić dopytaniami)."
+    },
+    {
+      "id": "soft-002",
+      "topic": "Metoda STAR",
+      "level": 2,
+      "q": "Jak przygotować się do pytań behawioralnych, żeby nie improwizować na rozmowie?",
+      "a": "Przygotuj „bank historii”: 5–7 prawdziwych sytuacji opisanych w STAR, z których każda pokrywa kilka pytań (np. trudny bug = presja + ownership + nauka). Typowy zestaw: sukces techniczny, porażka/błąd, konflikt lub różnica zdań, presja deadline'u, inicjatywa wykraczająca poza zadanie, pomoc innym/mentoring, nauka czegoś szybko. Do każdej zapisz liczby (czas, wydajność, liczba użytkowników, błędy) i jedną lekcję. Przećwicz na głos – z zegarkiem.\n\nPrzykład (do dopasowania): „Na pytanie o inicjatywę opowiadam, jak zauważyłem, że regresje w formularzach Angulara wracają po każdym release, napisałem pierwsze testy komponentów, przedstawiłem to na retro i od tamtej pory każdy bugfix w tym module ma test – liczba zgłoszeń z tego obszaru spadła mniej więcej o połowę.”",
+      "tip": "Czerwone flagi: ta sama historia na każde pytanie, historie sprzed 6 lat przy obecnym doświadczeniu, brak liczb („było szybciej”), odpowiedź „nie miałem takiej sytuacji” – lepiej znaleźć bliską analogię i to powiedzieć.",
+      "deep": "Na poziomie senior/lead bank historii powinien pokazywać skalę wpływu rosnącą z czasem: od własnego kodu, przez zespół, po decyzje dotyczące produktu lub organizacji. Dobrze mieć co najmniej jedną historię o świadomie podjętym ryzyku, jedną o decyzji, która okazała się zła (i jak ją odwróciłeś), oraz jedną o wpływie bez formalnej władzy (przekonanie innego zespołu). Przygotuj też „warstwę drugą”: rekruterzy seniorscy dopytują „co byś zrobił inaczej?”, „jakie były alternatywy?”, „kto się nie zgadzał?”. Jeśli na to nie masz odpowiedzi, historia wygląda na podkoloryzowaną. Zapisz w notatkach skróty historii (3–4 słowa kluczowe), nie pełne teksty – wyuczone na pamięć brzmią sztucznie. Przed każdą rozmową zmapuj historie na wartości firmy z ogłoszenia (np. ownership, customer focus) i wybierz, które opowiesz."
+    },
+    {
+      "id": "soft-003",
+      "topic": "Autoprezentacja i projekty z CV",
+      "level": 1,
+      "q": "„Opowiedz o sobie” – jak zbudować dobrą odpowiedź na start rozmowy?",
+      "a": "To pitch na 60–90 sekund, nie życiorys. Struktura teraźniejszość → przeszłość → przyszłość: kim jesteś teraz (rola, stack, domena), 1–2 najważniejsze osiągnięcia z liczbami, dlaczego szukasz i czemu właśnie ta rola do Ciebie pasuje. Dopasuj akcenty do ogłoszenia (jeśli szukają Angulara – zacznij od frontu). Zostaw „haczyki”, o które rozmówca dopyta.\n\nPrzykład (do dopasowania): „Od 3 lat jestem fullstack developerem w software housie – backend w .NET 8 (Web API, EF Core, SQL Server), frontend w Angularze. Ostatnio prowadziłem po stronie frontu migrację panelu klienta na standalone components i signals, co skróciło czas budowania i uprościło state management. Wcześniej pracowałem przy integracjach płatności. Szukam miejsca, gdzie będę miał większy wpływ na architekturę produktu, a Wasz projekt – SaaS z dużym frontendem – dokładnie tego dotyczy.”",
+      "tip": "Czerwone flagi: zaczynanie od studiów/dzieciństwa, czytanie CV punkt po punkcie, 5 minut monologu, prywatne szczegóły bez związku z pracą, narzekanie na obecnego pracodawcę już w pierwszej minucie."
+    },
+    {
+      "id": "soft-004",
+      "topic": "Autoprezentacja i projekty z CV",
+      "level": 2,
+      "q": "Jak opowiadać o projekcie z CV, żeby rekruter techniczny zobaczył Twoją rolę i poziom?",
+      "a": "Schemat: 1) cel biznesowy i skala (kto używa, ile ruchu/danych), 2) architektura w jednym zdaniu (np. Angular SPA + .NET Web API + SQL Server + kolejka), 3) Twoja rola i za co odpowiadałeś, 4) 1–2 trudne problemy i jak je rozwiązałeś, 5) wynik w liczbach, 6) co byś dziś zrobił inaczej. Odróżniaj „zespół zrobił” od „ja zrobiłem”. Bądź gotów narysować architekturę.\n\nPrzykład (do dopasowania): „To system rezerwacji dla sieci przychodni, ok. 20 tys. wizyt dziennie. Front w Angularze, backend modularny monolit w .NET z EF Core i Azure Service Bus do powiadomień. Byłem jednym z trzech backendowców, odpowiadałem za moduł grafików. Największy problem to podwójne rezerwacje przy równoległych żądaniach – rozwiązałem to optimistic concurrency z rowversion i retry po stronie klienta. Incydenty z duplikatami spadły do zera. Dziś wcześniej dodałbym testy integracyjne na Testcontainers.”",
+      "tip": "Czerwone flagi: lista technologii zamiast problemu, którego nie umiesz rozwinąć; przypisywanie sobie pracy zespołu; brak liczb; „nie pamiętam, jak to działało” przy projekcie wpisanym w CV; zdradzanie poufnych danych klienta (nazwy, kwoty).",
+      "deep": "Rekruter techniczny używa projektu z CV jako punktu wyjścia do „drill-down”: z każdego zdania pyta głębiej, aż trafi na granicę Twojej wiedzy. Dlatego mów tylko o tym, co umiesz rozwinąć co najmniej 2 poziomy w dół (np. „optimistic concurrency” → jak działa rowversion → co widzi użytkownik przy konflikcie). Na poziomie senior oczekuje się uzasadnienia decyzji: dlaczego monolit modularny, a nie mikroserwisy; dlaczego SQL, a nie NoSQL; jakie były koszty. Warto przygotować jeden diagram (C4 – poziom kontenerów) i umieć go narysować w 2 minuty na tablicy lub w Excalidraw. Liczby nie muszą być idealne, ale muszą być realistyczne i spójne – jeśli mówisz „10 tys. requestów na sekundę”, spodziewaj się pytania o infrastrukturę. Przy NDA mów ogólnie („duży klient z branży finansowej”) – to też sygnał profesjonalizmu."
+    },
+    {
+      "id": "soft-005",
+      "topic": "Autoprezentacja i projekty z CV",
+      "level": 3,
+      "q": "Jak pokazać wpływ (impact) swojej pracy, a nie tylko listę zadań?",
+      "a": "Przekładaj zadania na efekty: dla użytkownika, biznesu, zespołu. Formuła: „zrobiłem X, co spowodowało Y, zmierzone przez Z”. Na poziomie senior wpływ to też skala i dźwignia: decyzje, które przyspieszyły innych, standardy, wiedza, która została w zespole. Pokaż, że rozumiesz, po co biznes płacił za tę pracę.\n\nPrzykład (do dopasowania): „Zamiast ‘pisałem endpointy’: zaprojektowałem i wdrożyłem cache wyników wyszukiwania (Redis + HybridCache w .NET 9), co obniżyło p95 z 1,2 s do 180 ms i pozwoliło zrezygnować z jednej instancji bazy – oszczędność kilku tysięcy złotych miesięcznie. Dodatkowo opisałem wzorzec w ADR i dwa inne zespoły go przejęły.”",
+      "tip": "Czerwone flagi: liczby z sufitu, których nie umiesz wyjaśnić; wpływ bez kontekstu („przyspieszyłem o 90%” – czego? dla kogo?); pomijanie zespołu („wszystko zrobiłem sam”); tylko metryki techniczne bez przełożenia na biznes.",
+      "deep": "Senior/lead jest oceniany po tym, jak zmienia system, w którym pracuje, a nie tylko po własnym output. Kategorie wpływu, które warto pokryć historiami: techniczny (wydajność, niezawodność, koszt chmury), produktowy (konwersja, czas obsługi zgłoszenia), zespołowy (czas onboardingu, liczba incydentów, lead time), organizacyjny (standard przyjęty przez inne zespoły). Jeśli nie masz twardych danych, użyj proxy: liczba zgłoszeń supportu, czas review, czas wdrożenia. Pokaż też wpływ negatywny, któremu zapobiegłeś (np. wychwycenie problemu z RODO przed wdrożeniem) – to bywa najcenniejsze, a łatwo o tym zapomnieć. Przydatny nawyk: prowadź „brag document” – co miesiąc kilka punktów z liczbami; przed rozmową masz gotowy materiał. Unikaj przypisywania sobie całego sukcesu: dojrzałe „ja zaproponowałem i poprowadziłem, zespół wdrożył” brzmi lepiej niż „ja zrobiłem”."
+    },
+    {
+      "id": "soft-006",
+      "topic": "Autoprezentacja i projekty z CV",
+      "level": 1,
+      "q": "Jakie są Twoje mocne strony?",
+      "a": "Wybierz 2–3 mocne strony istotne dla tej roli i każdą podeprzyj krótkim dowodem (sytuacja + efekt). Unikaj ogólników typu „jestem pracowity” – lepiej konkret: „szybko debuguję problemy produkcyjne”, „dobrze tłumaczę techniczne rzeczy biznesowi”. Dopasuj do ogłoszenia.\n\nPrzykład (do dopasowania): „Moją mocną stroną jest diagnozowanie problemów na styku frontu i backendu – np. ostatnio znalazłem, że ‘losowe’ wylogowania w Angularze wynikały z różnicy czasu na serwerach przy walidacji JWT. Druga to komunikacja: regularnie prowadzę demo dla klienta i umiem powiedzieć, co jest ryzykiem, bez żargonu.”",
+      "tip": "Czerwone flagi: lista przymiotników bez przykładów, mocne strony niezwiązane z rolą, przesadna pewność siebie („jestem najlepszy w zespole”), fałszywa skromność („nie wiem, chyba nic szczególnego”)."
+    },
+    {
+      "id": "soft-007",
+      "topic": "Autoprezentacja i projekty z CV",
+      "level": 2,
+      "q": "Jakie są Twoje słabe strony?",
+      "a": "Podaj prawdziwą, ale nie dyskwalifikującą słabość, i pokaż, co z nią robisz (konkretne działania i postęp). Struktura: słabość → jak się objawiała → co zmieniłeś → efekt. Najlepiej coś, co jest „rozwojowe” dla Twojego poziomu.\n\nPrzykład (do dopasowania): „Długo za późno prosiłem o pomoc – potrafiłem siedzieć dzień nad problemem z konfiguracją, który kolega rozwiązałby w 15 minut. Wprowadziłem sobie zasadę: jeśli po godzinie nie mam postępu, opisuję problem na kanale zespołu z tym, co już sprawdziłem. Oszczędza mi to czas, a przy okazji takie opisy trafiają do naszego wiki.”",
+      "tip": "Czerwone flagi: „jestem perfekcjonistą / za dużo pracuję” (oklepane, brzmi jak unik), słabość krytyczna dla roli („nie lubię pisać kodu”), brak planu poprawy, odpowiedź „nie mam słabych stron”."
+    },
+    {
+      "id": "soft-008",
+      "topic": "Trudne sytuacje i porażki",
+      "level": 2,
+      "q": "Opowiedz o najtrudniejszym bugu lub problemie technicznym, który rozwiązałeś.",
+      "a": "Wybierz historię, w której widać metodę, a nie szczęście: objaw → hipotezy → jak zawężałeś (logi, metryki, reprodukcja, bisect) → przyczyna → poprawka → jak zapobiegłeś powtórce (test, monitoring, post-mortem). Rozmówca ocenia systematyczność, spokój i to, czy zostawiasz system w lepszym stanie.\n\nPrzykład (do dopasowania): „Raz na kilka dni API w .NET przestawało odpowiadać, restart pomagał. Z dumpu pamięci i metryk wyszło wyczerpanie puli wątków – w jednym miejscu ktoś wywoływał .Result na asynchronicznym kliencie HTTP, a pod większym ruchem wątki się blokowały. Przepisałem ścieżkę na async end-to-end, dodałem analyzer, który łapie sync-over-async, i alert na długość kolejki thread pool. Problem nie wrócił.”",
+      "tip": "Czerwone flagi: „najtrudniejszy był literówka w configu” (brak głębi), bug rozwiązany przypadkiem bez zrozumienia przyczyny, obwinianie innych, brak działań zapobiegawczych, historia, której szczegółów technicznych nie umiesz rozwinąć.",
+      "deep": "Na poziomie senior dobra historia o bugu pokazuje też zarządzanie sytuacją, nie tylko debugging: kto był informowany i jak często, czy zastosowano obejście (rollback, feature flag, skalowanie) zanim znaleziono przyczynę, jak priorytetyzowano mitigację vs root cause. Warto wspomnieć o narzędziach obserwowalności (structured logging, OpenTelemetry, korelacja żądań przez trace id, Application Insights / Grafana), bo to pokazuje dojrzałość produkcyjną. Dobrze, gdy historia kończy się zmianą systemową: test regresyjny, reguła w analizatorze, alert, zmiana w checkliście review, blameless post-mortem. Przygotuj odpowiedź na „co byś zrobił inaczej?” – np. wcześniejsze dodanie metryk albo szybszy rollback zamiast debugowania na produkcji. Unikaj bugów, które wynikły z Twojego rażącego zaniedbania bez wyciągniętych wniosków – takie lepiej opowiedzieć jako „porażkę” z lekcją."
+    },
+    {
+      "id": "soft-009",
+      "topic": "Trudne sytuacje i porażki",
+      "level": 2,
+      "q": "Opowiedz o porażce lub błędzie, który popełniłeś. Czego Cię nauczył?",
+      "a": "Wybierz prawdziwy błąd z realnym, ale nie katastrofalnym skutkiem. Weź odpowiedzialność bez samobiczowania, opisz jak naprawiłeś sytuację i – najważniejsze – co trwale zmieniłeś w swoim sposobie pracy. Proporcja: krótko o błędzie, dłużej o reakcji i lekcji.\n\nPrzykład (do dopasowania): „Wdrożyłem migrację EF Core, która na produkcyjnej tabeli z kilkoma milionami wierszy zablokowała ją na kilka minut – lokalnie na małej bazie wszystko działało. Zgłosiłem to od razu na kanale incydentów, pomogłem przy rollbacku, a potem przepisałem migrację na etapy (nowa kolumna, backfill w partiach, dopiero potem constraint). Od tamtej pory przy migracjach sprawdzam rozmiar tabel i generuję skrypt SQL do review.”",
+      "tip": "Czerwone flagi: „nie popełniam błędów”, ukryta przechwałka zamiast porażki, zrzucanie winy na zespół/klienta, błąd bez lekcji, błąd świadczący o braku etyki (np. ukrycie problemu)."
+    },
+    {
+      "id": "soft-010",
+      "topic": "Trudne sytuacje i porażki",
+      "level": 2,
+      "q": "Jak radzisz sobie z presją deadline'u? Opowiedz o sytuacji, gdy termin był zagrożony.",
+      "a": "Pokaż, że presja nie oznacza cichego nadgodzinowania, tylko zarządzanie: wczesne wykrycie ryzyka, komunikacja z PM/leadem z opcjami (zmniejszenie zakresu, przesunięcie terminu, dodatkowe ręce), świadome kompromisy jakościowe zapisane jako dług. Podkreśl transparentność i spokój.\n\nPrzykład (do dopasowania): „Tydzień przed demo okazało się, że integracja z zewnętrznym API płatności zajmie więcej, bo dokumentacja była nieaktualna. Od razu poinformowałem PM i zaproponowałem dwie opcje: demo na sandboxie z ograniczonym zakresem albo przesunięcie o tydzień. Wybraliśmy pierwszą, zrobiłem integrację za interfejsem z mockiem na demo, a pełne wdrożenie zamknęliśmy w następnym sprincie. Klient dostał działające demo, nikt nie był zaskoczony.”",
+      "tip": "Czerwone flagi: „pracowałem po nocach i daliśmy radę” jako jedyna strategia, informowanie o opóźnieniu w dniu terminu, wyłączanie testów „bo nie było czasu” bez planu powrotu, obwinianie PM."
+    },
+    {
+      "id": "soft-011",
+      "topic": "Trudne sytuacje i porażki",
+      "level": 2,
+      "q": "Jak priorytetyzujesz pracę, gdy masz kilka pilnych zadań od różnych osób?",
+      "a": "Pokaż kryteria i komunikację: wpływ biznesowy i pilność (np. incydent produkcyjny > blokada innych > zadania sprintu > nice-to-have), zależności, koszt opóźnienia. Gdy prośby się wykluczają, nie decyduj po cichu – eskaluj do osoby, która ustala priorytety (PO/lead), i jasno komunikuj, co odkładasz. Chroń zobowiązania sprintu.\n\nPrzykład (do dopasowania): „W jednym tygodniu miałem zadanie sprintowe, prośbę supportu o pilny raport i bug zgłoszony przez innego PM. Bug blokował fakturowanie, więc wziąłem go pierwszy i dałem znać na daily. Raport okazał się potrzebny dopiero w piątek, więc ustaliłem termin z supportem. O konflikcie priorytetów poinformowałem PO, który zdecydował, że zadanie sprintowe może przejść do kolejnego sprintu.”",
+      "tip": "Czerwone flagi: „robię wszystko naraz”, „robię to, co powie osoba, która głośniej krzyczy”, brak informowania innych o zmianie planu, branie na siebie wszystkiego bez sygnalizowania przeciążenia."
+    },
+    {
+      "id": "soft-012",
+      "topic": "Konflikty i feedback",
+      "level": 2,
+      "q": "Opowiedz o konflikcie w zespole i o tym, jak go rozwiązałeś.",
+      "a": "Wybierz konflikt merytoryczny (np. o podejście techniczne, podział pracy), nie personalną dramę. Pokaż: zrozumienie drugiej strony, rozmowę 1:1 zamiast publicznej wymiany zdań, oparcie decyzji na danych lub kryteriach, akceptację wyniku, dobre relacje po fakcie. Nie musisz „wygrać” – liczy się dojrzałość.\n\nPrzykład (do dopasowania): „Kolega z frontu chciał trzymać cały stan w NgRx Store, ja uważałem, że dla naszego modułu wystarczą serwisy z signals. Dyskusja w komentarzach PR robiła się nerwowa, więc zaproponowałem 30-minutowy call. Spisaliśmy kryteria – ilość współdzielonego stanu, potrzeba devtools, próg wejścia dla nowych osób – i zrobiliśmy mały spike obu wersji. Wyszło, że w tym module signals wystarczą, ale dla koszyka zostaliśmy przy Store. Spisaliśmy to w ADR i do dziś dobrze współpracujemy.”",
+      "tip": "Czerwone flagi: „nigdy nie miałem konfliktu”, opowieść, w której druga strona jest głupia/zła, rozwiązanie przez eskalację do szefa jako pierwszy krok, plotkowanie, historia bez rozwiązania.",
+      "deep": "Na poziomie mid/senior rekruter chce zobaczyć, że rozróżniasz konflikt o zadanie (zdrowy, prowadzi do lepszych decyzji) od konfliktu relacyjnego (szkodliwy) i umiesz przekształcać ten drugi w pierwszy. Przydatne techniki do wspomnienia: przeniesienie rozmowy z kanału asynchronicznego (komentarze w PR) na synchroniczny, ustalenie wspólnych kryteriów przed oceną rozwiązań, timeboxowany spike lub prototyp, zapisanie decyzji w ADR, by spór nie wracał. Dobrze pokazać, kiedy eskalacja jest właściwa: gdy decyzja wykracza poza kompetencje stron albo konflikt blokuje dostarczanie – wtedy eskalujesz razem, przedstawiając obie opcje. Warto też przyznać, jeśli ostatecznie racja była po drugiej stronie – to buduje wiarygodność."
+    },
+    {
+      "id": "soft-013",
+      "topic": "Konflikty i feedback",
+      "level": 3,
+      "q": "Nie zgadzasz się z decyzją technicznego leada lub architekta. Co robisz?",
+      "a": "Struktura „disagree and commit”: 1) upewnij się, że rozumiesz motywację decyzji (pytaj, nie atakuj), 2) przedstaw swoje zastrzeżenia prywatnie lub na właściwym forum, z argumentami i danymi (koszt, ryzyko, alternatywa), 3) jeśli decyzja zapada inaczej – wspierasz ją w pełni, 4) ustalasz, po czym poznacie, czy to działa (metryka, punkt kontrolny). Wyjątek: kwestie bezpieczeństwa, prawa, etyki – wtedy eskalujesz.\n\nPrzykład (do dopasowania): „Lead chciał wydzielić moduł powiadomień do osobnego mikroserwisu. Uważałem, że to za wcześnie – mały zespół, brak doświadczenia z rozproszonym tracingiem. Przygotowałem krótkie porównanie: koszt utrzymania, deployment, testy. Lead miał argument, którego nie znałem – inny zespół miał niedługo przejąć ten moduł. Ustaliliśmy kompromis: osobny projekt w tym samym repo z wyraźną granicą, wydzielenie gdy przejdzie do drugiego zespołu. Wsparłem to i sam przygotowałem kontrakty.”",
+      "tip": "Czerwone flagi: „robię po swojemu”, publiczne podważanie decyzji przy zespole/kliencie, bierna agresja („mówiłem, że tak będzie”), ślepe wykonywanie bez zgłoszenia ryzyka, eskalacja ponad głową leada bez rozmowy z nim.",
+      "deep": "Senior powinien pokazać, że rozumie asymetrię decyzji: decyzje odwracalne („two-way doors”) warto podejmować szybko i nie przeciągać sporu, nieodwracalne (wybór bazy, kontrakt publicznego API, model danych) zasługują na głębszą analizę i spisanie alternatyw. Dobra praktyka to ADR (Architecture Decision Record): kontekst, opcje, decyzja, konsekwencje – wtedy różnica zdań jest udokumentowana bez osobistych urazów, a za pół roku można wrócić do założeń. Pokaż, że po „commit” nie sabotujesz decyzji – to najczęstszy problem w zespołach, który rekruterzy próbują wykryć. Warto mieć historię, w której to Ty się myliłeś i lead miał rację – oraz taką, w której Twoja uwaga uratowała projekt, ale opowiedzianą bez triumfalizmu. Na stanowisku lead pytanie bywa odwrócone: jak reagujesz, gdy członek zespołu się z Tobą nie zgadza – odpowiedź powinna pokazywać, że zachęcasz do sprzeciwu i decyzja jest oparta na argumentach, a nie hierarchii."
+    },
+    {
+      "id": "soft-014",
+      "topic": "Konflikty i feedback",
+      "level": 3,
+      "q": "PM lub biznes naciska na funkcję w terminie, który wymaga obejścia jakości (np. bez testów, z obejściem bezpieczeństwa). Jak rozmawiasz?",
+      "a": "Mów językiem biznesu: nie „to brzydki kod”, tylko ryzyko (awaria, utrata danych, koszt poprawek, wpływ na kolejne terminy). Przedstaw opcje: mniejszy zakres w terminie (MVP), ten sam zakres później, świadomy dług z datą spłaty. Rozróżniaj: na skróty w testach czy refaktoringu można świadomie pójść, w bezpieczeństwie i danych osobowych – nie. Decyzję i ryzyko zapisz.\n\nPrzykład (do dopasowania): „PM chciał udostępnić eksport danych klientów w dwa dni, bez autoryzacji per rola. Wyjaśniłem, że to ryzyko wycieku danych osobowych, a nie kwestia estetyki kodu. Zaproponowałem, by w terminie eksport był dostępny tylko dla adminów (proste policy w ASP.NET Core), a pełne uprawnienia per rola w kolejnym sprincie. PM się zgodził, bo dostał demo dla klienta, a ryzyko zniknęło.”",
+      "tip": "Czerwone flagi: „mówię, że się nie da” bez alternatyw, ciche obniżanie jakości bez informowania nikogo, techniczny żargon zamiast ryzyka biznesowego, zgoda na obejście bezpieczeństwa/RODO „bo szef kazał”.",
+      "deep": "Dojrzała odpowiedź pokazuje, że jakość nie jest celem samym w sobie, tylko inwestycją, i że czasem szybkie dostarczenie słusznie wygrywa (walidacja hipotezy, demo dla inwestora, sezonowa kampania). Przydatne pojęcia: koszt opóźnienia (cost of delay) vs koszt ryzyka, iron triangle (zakres–czas–jakość/zasoby) – gdy czas i zasoby są stałe, negocjujesz zakres, nie jakość. Warto pokazać mechanizmy, które pozwalają iść szybko bezpiecznie: feature flags (wdrożenie ukryte, włączenie dla części użytkowników), dark launch, canary release, szybki rollback. Ustal granice nienegocjowalne (security, dane osobowe, zgodność prawna, integralność danych finansowych) i komunikuj je zawczasu, a nie w dniu sporu. Po fakcie: ticket na dług z właścicielem i terminem, a na retro omówienie, czemu doszło do presji – może problemem była zbyt późna estymacja lub brak discovery."
+    },
+    {
+      "id": "soft-015",
+      "topic": "Konflikty i feedback",
+      "level": 1,
+      "q": "Jak reagujesz, gdy dostajesz krytyczne uwagi w code review?",
+      "a": "Pokaż, że oddzielasz kod od siebie: dziękujesz, dopytujesz gdy coś niejasne, poprawiasz albo merytorycznie argumentujesz, jeśli się nie zgadzasz – i przenosisz dłuższą dyskusję na rozmowę. Code review to nauka i dbanie o wspólny kod, a nie ocena osoby. Dobrze dodać, czego się nauczyłeś z konkretnego review.\n\nPrzykład (do dopasowania): „Na początku pracy dostałem 20 komentarzy do PR z formularzem w Angularze – m.in. że subskrybuję ręcznie i nie odpinam subskrypcji. Było mi trochę głupio, ale poprosiłem autora o krótki call, pokazał mi takeUntilDestroyed i async pipe. Od tamtej pory sam zwracam na to uwagę w review innych.”",
+      "tip": "Czerwone flagi: defensywność („recenzent się czepia”), ignorowanie komentarzy, merge bez akceptacji, wieczne wojny o styl w komentarzach, brak przykładu nauki z review."
+    },
+    {
+      "id": "soft-016",
+      "topic": "Konflikty i feedback",
+      "level": 2,
+      "q": "Jak dajesz feedback w code review? Na co zwracasz uwagę?",
+      "a": "Priorytety: poprawność i bezpieczeństwo → architektura i czytelność → testy → wydajność tam, gdzie ma znaczenie → styl (najlepiej zautomatyzowany linterem/formatterem). Komentuj kod, nie osobę, pytaj zamiast rozkazywać („co myślisz o…?”), oznaczaj wagę (blocker vs nit), chwal dobre rozwiązania. Duże zastrzeżenia – rozmowa, nie 30 komentarzy.\n\nPrzykład (do dopasowania): „W review najpierw patrzę, czy zmiana robi to, co opisuje ticket, i czy nie otwiera dziury – np. czy endpoint w ASP.NET Core ma autoryzację i walidację. Potem struktura i testy. Drobiazgi oznaczam jako ‘nit’, żeby autor wiedział, że nie blokują. Jeśli PR ma 1500 linii, proszę o podział, zamiast udawać, że go przejrzałem.”",
+      "tip": "Czerwone flagi: review jako pokaz wyższości, blokowanie PR na tydzień, komentarze typu „źle” bez wyjaśnienia, akceptowanie wszystkiego bez czytania („LGTM” w 30 sekund), spory o styl, który powinien rozstrzygać formatter.",
+      "deep": "Na poziomie senior code review to narzędzie dzielenia się wiedzą i utrzymywania standardów, ale też wąskie gardło – warto mówić o czasie odpowiedzi (np. umowa zespołowa: pierwsze review w ciągu jednego dnia roboczego), małych PR-ach (łatwiej zrecenzować 200 linii niż 2000) i automatyzacji tego, co da się zautomatyzować (formatowanie, analizatory Roslyn, ESLint, testy w CI). Przy juniorach senior często zmienia tryb: mniej poprawiania, więcej pytań naprowadzających i pair review. Konwencje typu Conventional Comments (praise, suggestion, issue, nitpick, question) zmniejszają nieporozumienia w komunikacji pisemnej. Warto też umieć powiedzieć, kiedy review nie wystarcza i potrzebny jest wcześniejszy design review – duże zmiany architektoniczne nie powinny być po raz pierwszy omawiane w PR."
+    },
+    {
+      "id": "soft-017",
+      "topic": "Konflikty i feedback",
+      "level": 3,
+      "q": "Jak przekazujesz trudny feedback członkowi zespołu (np. powtarzające się problemy z jakością lub terminowością)?",
+      "a": "Prywatnie, szybko i konkretnie. Model SBI: Situation (kiedy/gdzie), Behavior (obserwowalne zachowanie, bez ocen charakteru), Impact (skutek dla zespołu/produktu). Potem pytanie o perspektywę drugiej strony, wspólne ustalenie kolejnych kroków i termin powrotu do tematu. Bez kanapki z fałszywych pochwał, ale z życzliwością.\n\nPrzykład (do dopasowania): „Kolega dwa sprinty z rzędu oddawał PR-y bez testów w ostatni dzień. Na 1:1 powiedziałem: ‘W ostatnich dwóch sprintach PR do modułu faktur przyszły w czwartek po południu bez testów; przez to review robiliśmy w pośpiechu i do produkcji poszedł bug z VAT-em.’ Zapytałem, co się dzieje – okazało się, że utknął na konfiguracji Testcontainers i wstydził się zapytać. Ustaliliśmy pair programming na jeden dzień i mniejsze PR-y. Po miesiącu problem zniknął.”",
+      "tip": "Czerwone flagi: feedback publicznie lub na czacie zespołowym, czekanie z uwagami do oceny rocznej, ocenianie osoby („jesteś niedbały”), brak ustalonych kolejnych kroków, unikanie tematu „żeby nie psuć atmosfery”.",
+      "deep": "Senior/lead powinien pokazać, że feedback jest procesem, a nie jednorazową rozmową: regularne 1:1, notatki z ustaleń, powrót do tematu po uzgodnionym czasie, docenianie poprawy. Ważne jest szukanie przyczyny zanim założysz złą wolę – za problemami z jakością często stoją niejasne wymagania, przeciążenie, brak wiedzy, sprawy osobiste albo zła organizacja pracy. Pokaż rozróżnienie: problem umiejętności (rozwiązanie: nauka, pairing, mentoring) vs problem motywacji/zaangażowania (rozwiązanie: rozmowa o oczekiwaniach i konsekwencjach). Jeśli nie jesteś formalnym przełożonym, właściwa ścieżka to najpierw rozmowa bezpośrednia, a gdy nie pomaga – zaangażowanie managera, transparentnie wobec tej osoby. Feedback pozytywny jest równie ważny i powinien być równie konkretny („test, który dopisałeś do mappera, złapał regresję przy upgrade'ie”). Przy rozmowie na stanowisko lead dobrze wspomnieć, że dokumentujesz ustalenia, bo czasem sprawa kończy się formalnym planem naprawczym."
+    },
+    {
+      "id": "soft-018",
+      "topic": "Motywacja i rozwój",
+      "level": 1,
+      "q": "Dlaczego chcesz zmienić pracę?",
+      "a": "Mów o tym, do czego dążysz, a nie przed czym uciekasz. Uczciwy, pozytywny powód (rozwój, technologia, skala, domena, wpływ) połączony z tym, co oferuje ta firma. Jeśli powodem są pieniądze lub złe zarządzanie – możesz to zasygnalizować neutralnie, bez krytyki.\n\nPrzykład (do dopasowania): „W obecnej firmie nauczyłem się dużo o .NET i pracy z klientem, ale projekty są krótkie i rzadko widzę, jak system żyje na produkcji. Chcę pracować przy własnym produkcie, gdzie mogę wziąć odpowiedzialność za funkcję od pomysłu po monitoring – i to jest główny powód, dla którego aplikuję do Was.”",
+      "tip": "Czerwone flagi: obgadywanie szefa/zespołu, „tylko pieniądze”, „nudzę się” bez wskazania, czego szukasz, powód, który dotyczy też nowej firmy (np. „nie chcę pracować w Scrumie”, a oni pracują), częste zmiany bez spójnej narracji."
+    },
+    {
+      "id": "soft-019",
+      "topic": "Motywacja i rozwój",
+      "level": 1,
+      "q": "Gdzie widzisz się za 3–5 lat?",
+      "a": "Pokaż kierunek, nie sztywny plan: jaki typ odpowiedzialności chcesz rozwijać (głębia techniczna, architektura, prowadzenie zespołu), i powiąż to z możliwościami w firmie. Rekruter sprawdza ambicję, realizm i czy zostaniesz na dłużej.\n\nPrzykład (do dopasowania): „Chcę rosnąć w stronę seniora full-stack, który odpowiada za architekturę większego modułu – zarówno w .NET, jak i w Angularze – i pomaga juniorom. Na razie bardziej ciągnie mnie ścieżka techniczna niż managerska. Widzę, że macie ścieżkę staff engineera, więc to dobrze się układa.”",
+      "tip": "Czerwone flagi: „na Twoim miejscu” / „we własnej firmie”, „nie wiem”, plan zupełnie oderwany od roli (np. „chcę przejść do data science” na stanowisku Angular dev), zbyt szczegółowy plan awansów w nierealnym tempie."
+    },
+    {
+      "id": "soft-020",
+      "topic": "Motywacja i rozwój",
+      "level": 1,
+      "q": "Jak uczysz się nowych technologii? Jak jesteś na bieżąco?",
+      "a": "Pokaż system i praktykę, a nie listę kursów: źródła (dokumentacja, release notes, blogi zespołów .NET i Angulara, konferencje), nauka przez budowanie (mały projekt, spike w pracy), dzielenie się wiedzą (prezentacja, wpis w wiki). Podaj świeży konkretny przykład z ostatnich miesięcy.\n\nPrzykład (do dopasowania): „Śledzę oficjalne blogi .NET i Angulara oraz release notes. Gdy wychodzi coś istotnego, robię mały projekt – np. przy signals przepisałem domową aplikację z RxJS-owego stanu na signal/computed i httpResource, żeby poczuć, gdzie to się sprawdza, a gdzie nie. Potem zrobiłem w zespole 20-minutową prezentację z wnioskami.”",
+      "tip": "Czerwone flagi: „uczę się w pracy, jak trzeba”, wymienianie tylko certyfikatów i kursów bez praktyki, brak znajomości ostatnich wersji frameworków, w których deklarujesz doświadczenie, podążanie za każdym hype'em bez krytycyzmu."
+    },
+    {
+      "id": "soft-021",
+      "topic": "Motywacja i rozwój",
+      "level": 2,
+      "q": "Dlaczego chcesz pracować właśnie u nas?",
+      "a": "Przygotuj się: produkt, klienci, stack, blog techniczny, wystąpienia, opinie. Połącz 2–3 konkretne rzeczy z firmy z Twoim doświadczeniem i celami. Pokaż, że to świadomy wybór, a nie 50. wysłane CV.\n\nPrzykład (do dopasowania): „Po pierwsze, produkt – system dla logistyki, a ja ostatnie dwa lata pracowałem przy integracjach z przewoźnikami. Po drugie, czytałem Wasz wpis o migracji frontendu na zoneless Angular i podoba mi się, że dbacie o aktualność stacku. Po trzecie, macie własny produkt i zespół, który sam utrzymuje to, co pisze – tego szukam.”",
+      "tip": "Czerwone flagi: ogólniki („jesteście dużą, stabilną firmą”), brak wiedzy, czym firma się zajmuje, odpowiedź tylko o benefitach, mylenie firmy z inną."
+    },
+    {
+      "id": "soft-022",
+      "topic": "Scrum, Kanban i organizacja pracy",
+      "level": 1,
+      "q": "Jak wygląda Twoja praca w Scrumie? Jakie ceremonie znasz i jaka jest Twoja rola w nich?",
+      "a": "Wymień ceremonie i ich cel: sprint planning (co i jak zrobimy), daily (synchronizacja i blokery, 15 min), sprint review (demo i feedback interesariuszy), retrospektywa (usprawnianie procesu), plus refinement backlogu. Role: Product Owner, Scrum Master, Developers. Pokaż, że rozumiesz po co, a nie tylko że chodzisz na spotkania – i że aktywnie uczestniczysz.\n\nPrzykład (do dopasowania): „Pracujemy w dwutygodniowych sprintach. Na refinementach dopytuję o kryteria akceptacji i zgłaszam ryzyka techniczne – np. że zmiana w modelu wymaga migracji danych. Na daily mówię o blokerach, nie raportuję każdej godziny. Na retro zaproponowałem kiedyś Definition of Done z testami i review – przyjęło się.”",
+      "tip": "Czerwone flagi: „daily to strata czasu” bez propozycji lepszego rozwiązania, nieznajomość celu retrospektywy, mylenie sprint review z retro, postawa „ja tylko koduję, reszta mnie nie interesuje”."
+    },
+    {
+      "id": "soft-023",
+      "topic": "Scrum, Kanban i organizacja pracy",
+      "level": 2,
+      "q": "Jak estymujesz zadania? Co robisz, gdy widzisz, że nie zdążysz?",
+      "a": "Estymacja to prognoza, nie obietnica: dzielisz zadanie na mniejsze części, porównujesz do podobnych wykonanych wcześniej (story pointy jako złożoność + niepewność, np. planning poker), uwzględniasz testy, review, wdrożenie i niewiadome (spike, gdy niepewność jest duża). Gdy widzisz poślizg – informujesz od razu, z przyczyną i opcjami.\n\nPrzykład (do dopasowania): „Zadanie ‘eksport do PDF’ wyceniliśmy na 5 punktów. Drugiego dnia okazało się, że biblioteka nie wspiera polskich znaków w potrzebnym foncie. Napisałem na daily i do PO: obecna estymacja jest nieaktualna, mam dwie opcje – inna biblioteka (+2 dni) albo generowanie po stronie przeglądarki z ograniczeniami. PO wybrał pierwszą, przesunęliśmy mniej ważne zadanie.”",
+      "tip": "Czerwone flagi: „nie estymuję, bo i tak się nie da”, zaniżanie estymat, żeby się przypodobać, informowanie o poślizgu w ostatnim dniu sprintu, przeliczanie story pointów 1:1 na godziny jako dogmat.",
+      "deep": "Senior powinien znać ograniczenia estymacji i alternatywy: w Kanbanie zamiast estymat często mierzy się przepływ (cycle time, throughput, WIP limits) i prognozuje statystycznie, np. na podstawie historii („85% zadań tej wielkości zamykamy w 4 dni”). Podejście #NoEstimates nie oznacza braku planowania, tylko dzielenie pracy na podobnie małe kawałki i liczenie ich. Duże inicjatywy warto estymować przedziałem (najlepszy/najgorszy przypadek) i komunikować poziom pewności, a niepewność redukować spike'ami timeboxowanymi z góry. Ważne zjawiska: planning fallacy (systematyczne niedoszacowanie), anchoring przy planning pokerze (dlatego karty odkrywa się jednocześnie), nacisk na estymaty jako narzędzie rozliczania – wtedy zespoły zaczynają je zawyżać i tracą wartość. Lead powinien chronić estymaty przed traktowaniem ich jako zobowiązań i pokazywać biznesowi prognozy oparte na danych."
+    },
+    {
+      "id": "soft-024",
+      "topic": "Scrum, Kanban i organizacja pracy",
+      "level": 2,
+      "q": "Scrum czy Kanban – jaka jest różnica i kiedy co się sprawdza?",
+      "a": "Scrum: stałe iteracje (sprinty), zobowiązanie na sprint, role i ceremonie, dobre dla rozwoju produktu z przewidywalnym rytmem. Kanban: ciągły przepływ, limity pracy w toku (WIP), wizualizacja tablicy, metryki przepływu – dobre dla utrzymania, supportu, zespołów z dużą liczbą nieprzewidywalnych zgłoszeń. W praktyce wiele zespołów stosuje hybrydę. Pokaż, że dobierasz proces do pracy, a nie odwrotnie.\n\nPrzykład (do dopasowania): „W poprzednim projekcie robiliśmy Scrum przy budowie nowych modułów, ale po wdrożeniu połowa pracy to były zgłoszenia od klientów. Sprinty ciągle się rozjeżdżały, więc przeszliśmy na Kanban z limitem WIP 2 na osobę i cotygodniowym przeglądem priorytetów. Czas od zgłoszenia do wdrożenia skrócił się, a zespół był mniej sfrustrowany.”",
+      "tip": "Czerwone flagi: „Kanban to brak procesu”, dogmatyzm („tylko Scrum ma sens”), nieznajomość pojęcia WIP limit, brak przykładu z własnego doświadczenia."
+    },
+    {
+      "id": "soft-025",
+      "topic": "Scrum, Kanban i organizacja pracy",
+      "level": 2,
+      "q": "Jak pracujesz zdalnie? Jak dbasz o komunikację i samodzielność?",
+      "a": "Pokaż nawyki: komunikacja asynchroniczna z kontekstem (pełne pytanie, co sprawdziłeś, link), widoczność pracy (statusy w tickecie, draft PR wcześnie), dostępność w ustalonych godzinach, kamera na spotkaniach, inicjatywa w kontaktach (krótki call zamiast 40 wiadomości). Do tego organizacja dnia i granice między pracą a domem.\n\nPrzykład (do dopasowania): „Od dwóch lat pracuję w pełni zdalnie. Otwieram draft PR już pierwszego dnia zadania, więc zespół widzi postęp. Pytania na Slacku piszę tak, żeby dało się odpowiedzieć bez dopytywania – co robię, co nie działa, co sprawdziłem. Gdy wątek ma więcej niż kilka wiadomości, proponuję 10-minutowy call, a wnioski wrzucam z powrotem do wątku.”",
+      "tip": "Czerwone flagi: „zdalnie jest super, bo nikt nie patrzy”, znikanie na pół dnia bez informacji, pisanie „hej” i czekanie na odpowiedź bez treści pytania, brak doświadczenia z narzędziami współpracy, przy pracy hybrydowej – niechęć do jakichkolwiek spotkań na miejscu, jeśli są wymagane."
+    },
+    {
+      "id": "soft-026",
+      "topic": "Dług techniczny",
+      "level": 2,
+      "q": "Czym jest dług techniczny i jak radzisz sobie z nim na co dzień?",
+      "a": "Dług techniczny to koszt przyszłych zmian wynikający z dzisiejszych skrótów lub przestarzałych decyzji – jak odsetki: spowalnia każdą kolejną funkcję. Bywa świadomy (szybkie MVP) i nieświadomy (brak wiedzy, starzenie się technologii). Na co dzień: zasada skauta (zostaw kod trochę lepszym), zapisywanie długu w backlogu z opisem kosztu, stały procent capacity sprintu na spłatę, refaktoryzacja przy okazji zmian w danym miejscu.\n\nPrzykład (do dopasowania): „W naszym projekcie mieliśmy moduł zamówień na starym AngularJS-owym stylu z ręcznym DOM. Zamiast przepisywać wszystko, ustaliliśmy, że każda zmiana w tym module zaczyna się od wydzielenia jednego komponentu do nowoczesnego Angulara z testem. Po kilku miesiącach większość modułu była zmigrowana bez osobnego projektu migracyjnego.”",
+      "tip": "Czerwone flagi: „każdy cudzy kod to dług”, propozycja przepisania wszystkiego od zera, ukryty refaktoring bez wiedzy zespołu wpychany do niezwiązanych PR-ów, traktowanie długu jako wyłącznie problemu technicznego, bez wpływu na biznes."
+    },
+    {
+      "id": "soft-027",
+      "topic": "Dług techniczny",
+      "level": 3,
+      "q": "Jak przekonać biznes (PO, managera), żeby przeznaczył czas na spłatę długu technicznego?",
+      "a": "Przetłumacz dług na język biznesu: czas dostarczania funkcji, liczbę incydentów, koszt utrzymania, ryzyko (bezpieczeństwo, koniec wsparcia wersji). Pokaż dane, zaproponuj konkretny, ograniczony zakres z mierzalnym efektem i najlepiej połącz spłatę z funkcją, której biznes potrzebuje. Nie proś o „trzy miesiące na refaktoring”.\n\nPrzykład (do dopasowania): „Pokazałem PO, że w ostatnim kwartale 40% czasu na zmiany w module rozliczeń zajęło ręczne testowanie i poprawki regresji, a .NET 6, na którym stał, nie ma już wsparcia. Zaproponowałem: przy najbliższej funkcji (nowe stawki VAT) migracja modułu do .NET 10 LTS i testy integracyjne, +5 dni do estymaty. Po wdrożeniu kolejne zmiany w module szły wyraźnie szybciej, co pokazałem na review.”",
+      "tip": "Czerwone flagi: argumenty typu „kod jest brzydki”, „nowy framework jest fajniejszy”, żądanie zamrożenia funkcji na długi czas, brak metryk przed i po, obrażanie się na biznes, gdy powie „nie teraz”.",
+      "deep": "Skuteczne podejście seniora: prowadzić rejestr długu (co, gdzie, koszt odsetek, ryzyko, szacowany koszt spłaty) i priorytetyzować go jak każdy inny backlog – po stosunku wartości do kosztu. Metryki, które przekonują biznes: lead time i cycle time dla zmian w danym obszarze, change failure rate i MTTR (metryki DORA), liczba incydentów i zgłoszeń supportu, czas onboardingu nowych osób, koszt infrastruktury. Ryzyka z twardymi datami są najmocniejsze: koniec wsparcia (np. .NET 8 i .NET 9 kończą wsparcie w listopadzie 2026, wersje Angulara mają ograniczone okno LTS), podatności w zależnościach, wymagania audytu. Modele finansowania spłaty: stały budżet (np. 15–20% capacity), spłata „przy okazji” w obszarach, które i tak zmieniamy (największy zwrot, bo te miejsca są najczęściej dotykane), dedykowane inicjatywy dla dużych pozycji z wyraźnym celem. Kiedy NIE spłacać: kod, który się nie zmienia i działa, moduł przeznaczony do wygaszenia. Po spłacie wróć z wynikiem – to buduje zaufanie przy kolejnych prośbach."
+    },
+    {
+      "id": "soft-028",
+      "topic": "Rola seniora i leadership",
+      "level": 3,
+      "q": "Jak podchodzisz do mentoringu juniorów? Opowiedz o konkretnym przykładzie.",
+      "a": "Pokaż świadome podejście: diagnoza poziomu i celów osoby, dobór zadań z rosnącą trudnością, pytania naprowadzające zamiast gotowych rozwiązań, pair programming, regularny feedback, stopniowe oddawanie odpowiedzialności. Sukces mentora mierzy się samodzielnością mentee.\n\nPrzykład (do dopasowania): „Junior w naszym zespole bał się backendu. Ustaliliśmy cel na kwartał: samodzielnie dowieźć prosty endpoint z walidacją i testem. Zaczęliśmy od pair programmingu, gdzie on pisał, ja pytałem. Potem dostawał zadania z rosnącym zakresem, a review robiłem z komentarzami w formie pytań. Raz w tygodniu 30 minut 1:1. Po trzech miesiącach sam zaprojektował i wdrożył moduł notyfikacji, a teraz pomaga kolejnej nowej osobie.”",
+      "tip": "Czerwone flagi: „mówię mu, jak ma to zrobić” / przejmowanie klawiatury, brak cierpliwości, mentoring tylko „jak ktoś zapyta”, brak mierzalnego efektu, traktowanie juniorów jako obciążenia.",
+      "deep": "Na poziomie senior/lead mentoring to inwestycja w skalowanie zespołu – Twoja wiedza w głowach innych podnosi bus factor (zespół nie zależy od jednej osoby) i usuwa wąskie gardła na Tobie. Warto rozróżniać tryby: mentoring (dzielenie się doświadczeniem), coaching (pytania pomagające samodzielnie dojść do rozwiązania), sponsoring (dawanie widoczności i szans, np. oddanie prezentacji na demo). Dobre praktyki: onboarding z checklistą i „buddy”, pierwsze zadanie dowiezione do produkcji w pierwszym tygodniu, dokumentowanie odpowiedzi na powtarzające się pytania, ustalenie, kiedy pytać (np. po 30–60 minutach samodzielnych prób). Trade-off: mentoring kosztuje Twój czas i krótkoterminowo spowalnia zespół – trzeba to uwzględniać w planowaniu sprintu, a nie robić „po godzinach”. Pokaż, że dostosowujesz styl do osoby (ktoś potrzebuje struktury, ktoś autonomii) i że umiesz zauważyć, gdy problemem nie jest wiedza, tylko pewność siebie albo przeciążenie."
+    },
+    {
+      "id": "soft-029",
+      "topic": "Rola seniora i leadership",
+      "level": 3,
+      "q": "Opowiedz o ważnej decyzji technicznej, którą podjąłeś lub współpodjąłeś. Jakie były trade-offy?",
+      "a": "Struktura: kontekst i ograniczenia (zespół, czas, skala, budżet) → rozważane opcje (minimum 2) → kryteria oceny → decyzja i świadomie zaakceptowane koszty → jak zweryfikowałeś decyzję po czasie. Senior pokazuje, że nie ma rozwiązań idealnych, są dopasowane do kontekstu.\n\nPrzykład (do dopasowania): „Mieliśmy wybrać sposób komunikacji panelu Angular z backendem przy nowym module raportów: REST, GraphQL albo SignalR do live update. Kryteria: doświadczenie zespołu, cache'owanie, liczba ekranów z danymi na żywo. Wybraliśmy REST + SignalR tylko dla jednego dashboardu, bo GraphQL dawał elastyczność, której nie potrzebowaliśmy, a zwiększał złożoność cache'u i autoryzacji. Zaakceptowaliśmy, że kilka endpointów będzie zwracało więcej danych niż trzeba. Po pół roku decyzja się bronić – zapisaliśmy ją w ADR razem z warunkiem, przy którym wrócimy do GraphQL.”",
+      "tip": "Czerwone flagi: tylko jedna opcja („wybraliśmy X, bo jest najlepszy”), decyzja na podstawie hype'u lub CV-driven development, brak świadomości kosztów, brak weryfikacji po wdrożeniu, przypisywanie sobie decyzji zespołowej.",
+      "deep": "Rekruter seniorski szuka tu sposobu myślenia: czy rozpoznajesz, które decyzje są odwracalne (można podjąć szybko) a które kosztowne do zmiany (model danych, granice serwisów, publiczne API, wybór bazy); czy znasz koszty całkowite (nie tylko implementacji, ale też utrzymania, monitoringu, wiedzy w zespole, rekrutacji); czy umiesz zbierać input od innych bez paraliżu decyzyjnego. Przydatne narzędzia do wspomnienia: ADR, spike/proof of concept z timeboxem, macierz decyzyjna z wagami kryteriów, przegląd po wdrożeniu. Klasyczne pary trade-offów do omówienia: monolit modularny vs mikroserwisy (prostota i spójność vs niezależne wdrożenia i skalowanie, koszt operacyjny), spójność vs dostępność, build vs buy, nowy framework vs stabilny znany. Dobrze mieć też historię decyzji, która okazała się błędna: jak to wykryłeś (metryki, feedback), jak ograniczyłeś straty i co zmieniłeś w procesie podejmowania decyzji. Na pytanie „co byś zrobił inaczej?” odpowiedz konkretnie – brak odpowiedzi sugeruje brak refleksji."
+    },
+    {
+      "id": "soft-030",
+      "topic": "Rola seniora i leadership",
+      "level": 3,
+      "q": "Czym jest dla Ciebie ownership? Opowiedz o incydencie produkcyjnym lub dyżurze on-call.",
+      "a": "Ownership to odpowiedzialność za efekt, a nie za ticket: dowieziona funkcja ma działać na produkcji, być monitorowana i utrzymywalna. Przy incydencie: najpierw przywróć działanie (rollback, feature flag, skalowanie), komunikuj status w ustalonym kanale, potem szukaj przyczyny, na końcu blameless post-mortem z akcjami.\n\nPrzykład (do dopasowania): „Podczas mojego dyżuru o 22 alert pokazał wzrost błędów 500 po wieczornym deployu. Sprawdziłem w Application Insights, że błędy dotyczą jednego endpointu z nową walidacją. Zrobiłem rollback (5 minut), napisałem status na kanale incydentów i do supportu. Rano znaleźliśmy przyczynę – nowy wymagany parametr, którego starsza wersja aplikacji mobilnej nie wysyłała. Na post-mortem ustaliliśmy testy kontraktowe i zasadę zmian wstecznie kompatybilnych w API.”",
+      "tip": "Czerwone flagi: „to nie mój kod”, debugowanie na produkcji przez godzinę zamiast rollbacku, brak komunikacji w trakcie incydentu, szukanie winnych na post-mortem, niechęć do jakiegokolwiek on-call przy roli, która go wymaga (lepiej dopytać o zasady i wynagrodzenie dyżurów).",
+      "deep": "Senior powinien znać podstawy incident management: role (incident commander koordynuje, nie debuguje; osoba od komunikacji; osoby techniczne), poziomy ważności (SEV1–SEV3) i ich procedury, priorytet mitigacji przed root cause, regularne aktualizacje statusu nawet bez postępu. Metryki: MTTD (czas wykrycia), MTTR (czas przywrócenia), liczba incydentów powtarzalnych. Blameless post-mortem: oś czasu, przyczyny (często kilka, unikaj jednej „human error”), co zadziałało, co nie, akcje z właścicielami i terminami – i faktyczne ich wykonanie. Ownership to też praca prewencyjna: SLO i alerty na objawy widoczne dla użytkownika (latencja, error rate), a nie tylko CPU; runbooki; feature flags i bezpieczne wdrożenia (canary, blue-green). Przy pytaniu o on-call warto dopytać pracodawcę: jak często, ile alertów tygodniowo, czy dyżury są płatne, czy zespół utrzymuje własny kod („you build it, you run it”) – zdrowe podejście, ale tylko z dobrą obserwowalnością i rozsądnym obciążeniem."
+    },
+    {
+      "id": "soft-031",
+      "topic": "Wynagrodzenie i oferta",
+      "level": 2,
+      "q": "Jakie są Twoje oczekiwania finansowe? Jak rozmawiać o wynagrodzeniu?",
+      "a": "Przygotuj się wcześniej: sprawdź widełki w ogłoszeniu (w wielu ogłoszeniach IT w Polsce są podawane) i raporty płacowe, ustal swoje minimum i cel. Podawaj przedział lub konkretną kwotę z uzasadnieniem, zawsze precyzując: brutto czy netto, UoP czy B2B (netto + VAT), miesięcznie. Pytaj o cały pakiet: premie, benefity, budżet szkoleniowy, sprzęt, dni wolne przy B2B.\n\nPrzykład (do dopasowania): „Biorąc pod uwagę zakres roli – fullstack .NET/Angular z odpowiedzialnością za moduł – i moje doświadczenie, oczekuję X–Y zł brutto miesięcznie na umowie o pracę. Jeśli współpraca byłaby na B2B, przeliczyłbym to odpowiednio. Jestem otwarty na rozmowę o całym pakiecie.”",
+      "tip": "Czerwone flagi: „ile dacie” bez żadnej kwoty, kwota bez określenia formy i brutto/netto, kłamanie o obecnej pensji, przyjęcie oferty od ręki pod presją, negocjowanie agresywnie lub ultimatum bez innej oferty w ręku.",
+      "deep": "Dobre praktyki negocjacyjne: pierwszą kwotę podaj na podstawie danych rynkowych, a nie obecnej pensji (pytanie „ile teraz zarabiasz?” można grzecznie przekierować na oczekiwania). Podawaj przedział, którego dolna granica jest akceptowalna – firmy zwykle celują w dolną część. Negocjuj po otrzymaniu oferty, gdy firma już chce Cię zatrudnić – wtedy masz największą siłę; wcześniej rozmawiaj o widełkach. Jeśli kwota jest poniżej oczekiwań, zapytaj o elementy elastyczne: termin przeglądu wynagrodzenia (np. po okresie próbnym), premia, wyższy poziom stanowiska, dodatkowe dni wolne, budżet szkoleniowy. Konkurencyjna oferta to legitymny argument, ale tylko prawdziwa. Zawsze proś o ofertę na piśmie (kwota, forma umowy, okres wypowiedzenia, benefity). To nie jest porada prawna ani podatkowa – szczegóły warunków umowy warto skonsultować z księgowym lub prawnikiem."
+    },
+    {
+      "id": "soft-032",
+      "topic": "Wynagrodzenie i oferta",
+      "level": 2,
+      "q": "B2B czy umowa o pracę? Jak o tym rozmawiać z pracodawcą (ogólnie)?",
+      "a": "Pokaż, że rozumiesz różnice na poziomie ogólnym i porównujesz oferty uczciwie: UoP daje ochronę kodeksu pracy (płatny urlop, chorobowe, okres wypowiedzenia, ograniczenia czasu pracy), B2B to współpraca firm – zwykle wyższa kwota na fakturze, ale własne koszty, składki i ryzyko, a płatne dni wolne czy wypowiedzenie zależą od umowy. Dopytaj o konkretne warunki zamiast zakładać.\n\nPrzykład (do dopasowania): „Jestem otwarty na obie formy. Przy B2B chciałbym poznać warunki: czy są płatne dni wolne, jaki okres wypowiedzenia, czy jest ubezpieczenie medyczne i kto pokrywa sprzęt. Wtedy będę mógł porównać ofertę z UoP. Szczegóły podatkowe skonsultuję z księgowym.”",
+      "tip": "Czerwone flagi: porównywanie samych kwot bez uwzględnienia kosztów i braku płatnego urlopu, deklaracja „mi wszystko jedno” bez znajomości różnic, udzielanie lub oczekiwanie porad podatkowych na rozmowie, zgadzanie się na B2B z zapisami, które w praktyce wyglądają jak etat, bez zastanowienia się nad tym."
+    },
+    {
+      "id": "soft-033",
+      "topic": "Przebieg rekrutacji i pytania do pracodawcy",
+      "level": 1,
+      "q": "Jakie pytania warto zadać pracodawcy na koniec rozmowy?",
+      "a": "Zawsze miej 3–5 pytań – to pokazuje zainteresowanie i pomaga Ci ocenić firmę. Dobre tematy: jak wygląda typowy dzień/sprint, skład zespołu, proces wdrażania na produkcję i code review, testy i CI/CD, jak wygląda onboarding, co będzie moim pierwszym zadaniem, największe wyzwanie zespołu na najbliższy rok, jak mierzony jest sukces w tej roli, dalsze etapy rekrutacji. Dopasuj pytania do rozmówcy (HR – kultura, proces; tech lead – technologia, dług; manager – oczekiwania).\n\nPrzykład (do dopasowania): „Jak wygląda droga zmiany od PR do produkcji i jak często wdrażacie? Jakie jest największe wyzwanie techniczne zespołu na najbliższe pół roku? Po czym poznacie po trzech miesiącach, że to była dobra decyzja, żeby mnie zatrudnić?”",
+      "tip": "Czerwone flagi: „nie mam pytań”, pytania tylko o urlop i home office na pierwszej rozmowie, pytania, na które odpowiedź jest na pierwszej stronie strony firmy, zadawanie pytań technicznych HR-owcowi, który nie może na nie odpowiedzieć."
+    },
+    {
+      "id": "soft-034",
+      "topic": "Przebieg rekrutacji i pytania do pracodawcy",
+      "level": 2,
+      "q": "Czym różni się rozmowa z HR od rozmowy z tech leadem lub CTO? Jak się do nich przygotować?",
+      "a": "HR (screening): dopasowanie do roli i kultury, motywacja, komunikacja, oczekiwania finansowe, dostępność – mów prosto, bez żargonu, przygotuj pitch i widełki. Tech lead/zespół: głębia techniczna, projekty z CV, sposób rozwiązywania problemów, współpraca – bądź konkretny, mów o trade-offach. CTO/manager: dopasowanie do kierunku firmy, wpływ biznesowy, samodzielność, myślenie produktowe – łącz technologię z celami biznesu.\n\nPrzykład (do dopasowania): „O tej samej migracji na signals HR-owi powiem: ‘uprościłem kod, dzięki czemu nowe osoby szybciej się wdrażają’, tech leadowi – jak rozwiązaliśmy współistnienie RxJS i signals przez toSignal/toObservable, a CTO – że skróciło to czas dostarczania zmian w panelu i ułatwiło przejście na zoneless.”",
+      "tip": "Czerwone flagi: techniczny słowotok na rozmowie z HR, lekceważenie HR („to tylko formalność”), na rozmowie z CTO brak powiązania techniki z biznesem, różne wersje faktów (np. kwot lub dat) u różnych rozmówców."
+    },
+    {
+      "id": "soft-035",
+      "topic": "Zadania techniczne i live coding",
+      "level": 1,
+      "q": "Co robisz, gdy na rozmowie nie znasz odpowiedzi na pytanie?",
+      "a": "Przyznaj się uczciwie, ale nie kończ na „nie wiem”. Powiedz, co wiesz z pokrewnego obszaru, jak byś rozumował lub sprawdził odpowiedź (dokumentacja, eksperyment), i ewentualnie zaproponuj hipotezę wyraźnie oznaczoną jako przypuszczenie. Rekruter ocenia sposób myślenia i szczerość bardziej niż encyklopedyczną wiedzę.\n\nPrzykład (do dopasowania): „Nie pracowałem z gRPC w .NET, więc nie powiem z doświadczenia, jak wygląda tam obsługa błędów. Wiem, że opiera się na HTTP/2 i kontraktach w Protobuf, więc zakładam, że błędy są zwracane jako kody statusu gRPC, a nie HTTP – sprawdziłbym to w dokumentacji Microsoftu. Mogę za to opowiedzieć, jak rozwiązałem obsługę błędów w REST przez ProblemDetails.”",
+      "tip": "Czerwone flagi: zmyślanie z pewną miną (rekruter zwykle to wychwyci i dopyta), ciche zamarcie, panika i utrata pewności w dalszej części rozmowy, odpowiedź „to nieistotne w praktyce”."
+    },
+    {
+      "id": "soft-036",
+      "topic": "Zadania techniczne i live coding",
+      "level": 2,
+      "q": "Jak zachowujesz się podczas live codingu?",
+      "a": "Myśl na głos: powtórz zadanie własnymi słowami, dopytaj o wymagania i edge case'y, zaproponuj podejście przed pisaniem, zacznij od prostego działającego rozwiązania, potem optymalizuj. Testuj na przykładach (puste dane, null, duże wejście). Jeśli utkniesz – powiedz, w którym miejscu, i przyjmuj podpowiedzi. Komunikacja jest oceniana równie mocno jak kod.\n\nPrzykład (do dopasowania): „Zadanie: endpoint zwracający najczęściej kupowane produkty. Najpierw dopytałbym: z jakiego okresu, ile wyników, co przy remisie. Potem: ‘Zacznę od prostego zapytania LINQ z GroupBy i OrderByDescending, a potem pogadajmy o indeksie i cache'u, jeśli dane są duże’. Po napisaniu sprawdzam na przykładzie pustej listy zamówień.”",
+      "tip": "Czerwone flagi: pisanie w ciszy przez 20 minut, rzucanie się na kod bez zrozumienia zadania, ignorowanie podpowiedzi rekrutera, kłótnia o sens zadania, korzystanie z AI/pomocy bez zgody, gdy zasady tego zabraniają.",
+      "deep": "Na live codingu na wyższe stanowiska często nie chodzi o algorytm, tylko o realistyczne zadanie: refaktoring fragmentu kodu, code review przygotowanego PR, naprawa buga, rozbudowa małego API lub komponentu. Rekruter sprawdza, czy pytasz o kontekst biznesowy, czy piszesz czytelnie (nazwy, małe metody), czy myślisz o testowalności i obsłudze błędów, czy umiesz świadomie zrezygnować z perfekcji na rzecz działania w czasie. Dobra technika: na początku ustal z rozmówcą plan i to, co pominiesz („walidację zrobię uproszczoną, powiem, jak bym ją rozbudował”). Coraz więcej firm ma jasne zasady co do użycia AI w trakcie zadania – zapytaj na początku, a jeśli jest dozwolone, pokaż, że weryfikujesz wygenerowany kod, a nie ślepo go wklejasz. Jeśli zabraknie czasu, opowiedz, co byś dokończył i jak – to też jest oceniane."
+    },
+    {
+      "id": "soft-037",
+      "topic": "Zadania techniczne i live coding",
+      "level": 2,
+      "q": "Dostałeś zadanie domowe (home assignment). Jak się do niego zabrać i co rekruter w nim sprawdza?",
+      "a": "Sprawdza się: czy spełniasz wymagania, jakość i czytelność kodu, struktura projektu, testy, obsługa błędów, umiejętność wyboru zakresu. Dobre praktyki: przeczytaj wymagania dwa razy i dopytaj o niejasności, trzymaj się sugerowanego czasu, dołącz README (jak uruchomić, założenia, decyzje i trade-offy, co byś dodał mając więcej czasu), commituj w logicznych krokach. Bądź gotów to obronić i rozwinąć na kolejnym etapie.\n\nPrzykład (do dopasowania): „W zadaniu z API w .NET i listą w Angularze zrobiłem prosty podział na warstwy, walidację, testy jednostkowe logiki i jeden test integracyjny przez WebApplicationFactory. W README opisałem, że świadomie użyłem bazy in-memory zamiast SQL Servera, żeby uruchomienie było jednym poleceniem, i że w produkcji dodałbym paginację i autoryzację.”",
+      "tip": "Czerwone flagi: przerost formy (mikroserwisy i CQRS w zadaniu na 4 godziny), brak testów i README, projekt, który się nie uruchamia, kod skopiowany lub wygenerowany, którego nie umiesz wyjaśnić, oddanie po terminie bez informacji."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "soft-q001",
+      "topic": "Metoda STAR",
+      "level": 1,
+      "q": "Rekruter pyta: „Opowiedz o sytuacji, w której musiałeś szybko nauczyć się nowej technologii”. Która odpowiedź wypadnie najlepiej?",
+      "options": [
+        "„W projekcie trzeba było użyć SignalR, którego nie znałem. W tydzień zrobiłem mały prototyp, przeczytałem dokumentację i wdrożyłem powiadomienia na żywo – czas reakcji obsługi na zgłoszenia spadł o połowę.”",
+        "„Zawsze szybko się uczę, to moja mocna strona. Technologie to tylko narzędzia.”",
+        "„W naszym zespole często uczymy się nowych rzeczy, zespół świetnie sobie z tym radzi.”",
+        "„Ogólnie robię kursy online, mam kilka certyfikatów, mogę je pokazać.”"
+      ],
+      "correct": 0,
+      "why": "Odpowiedź A ma pełną strukturę STAR: konkretną sytuację, działanie kandydata i mierzalny wynik. B to deklaracja bez dowodu, C opowiada o zespole (nie wiadomo, co zrobił kandydat), D nie odpowiada na pytanie o konkretną sytuację."
+    },
+    {
+      "id": "soft-q002",
+      "topic": "Autoprezentacja i projekty z CV",
+      "level": 1,
+      "q": "Na początku rozmowy na stanowisko Angular developera pada: „Proszę opowiedzieć o sobie”. Który start jest najlepszy?",
+      "options": [
+        "„Urodziłem się w Nowym Targu, w liceum interesowałem się matematyką, potem poszedłem na informatykę…”",
+        "„Od trzech lat buduję frontend w Angularze, ostatnio prowadziłem migrację panelu na standalone components i signals. Wcześniej pracowałem też z .NET po stronie API. Szukam roli, w której będę miał większy wpływ na architekturę frontu – stąd moja aplikacja.”",
+        "„Wszystko jest w CV, które Pan/Pani ma przed sobą.”",
+        "„Jestem pracowity, ambitny, komunikatywny i lubię wyzwania.”"
+      ],
+      "correct": 1,
+      "why": "B to dobry pitch: teraźniejszość (rola, stack), osiągnięcie, powód aplikowania dopasowany do stanowiska. A zaczyna od życiorysu bez związku z rolą, C odrzuca okazję do autoprezentacji, D to lista przymiotników bez dowodów."
+    },
+    {
+      "id": "soft-q003",
+      "topic": "Motywacja i rozwój",
+      "level": 1,
+      "q": "„Dlaczego odchodzi Pan z obecnej firmy?” – obecny szef faktycznie słabo zarządza zespołem. Co najlepiej powiedzieć?",
+      "options": [
+        "„Szef nie ma pojęcia o zarządzaniu, wszyscy stamtąd uciekają.”",
+        "„Wolałbym o tym nie mówić.”",
+        "„Szukam zespołu z bardziej uporządkowanym procesem i jasnymi priorytetami, gdzie mogę wziąć odpowiedzialność za moduł od początku do końca. Z tego, co mówiliście o Waszym procesie, to dokładnie to.”",
+        "„Głównie chodzi o pieniądze, nic więcej.”"
+      ],
+      "correct": 2,
+      "why": "C mówi uczciwie o potrzebie (proces, priorytety), ale bez krytyki osób i łączy to z ofertą firmy. A obgaduje byłego szefa – rekruter pomyśli, że o nich będziesz mówić tak samo. B wygląda na ukrywanie czegoś, D sugeruje, że odejdziesz przy pierwszej lepszej ofercie."
+    },
+    {
+      "id": "soft-q004",
+      "topic": "Zadania techniczne i live coding",
+      "level": 1,
+      "q": "Rekruter pyta o szczegół, którego nie znasz: jak działa `ConfigureAwait(false)` w ASP.NET Core. Która reakcja jest najlepsza?",
+      "options": [
+        "Odpowiadasz pewnie wymyśloną wersją, żeby nie stracić punktów.",
+        "„Nie wiem” – i czekasz na następne pytanie.",
+        "„To pytanie akademickie, w praktyce nikt tego nie używa.”",
+        "„Nie jestem pewien szczegółów. Wiem, że w starym ASP.NET i aplikacjach UI chodziło o SynchronizationContext i deadlocki; o ile wiem, ASP.NET Core go nie ma, więc tam ma to mniejsze znaczenie niż w bibliotekach – ale to bym zweryfikował w dokumentacji.”"
+      ],
+      "correct": 3,
+      "why": "D pokazuje uczciwość, rozumowanie z pokrewnej wiedzy i deklarację weryfikacji – to rekruterzy cenią najbardziej. A ryzykuje utratę wiarygodności przy dopytaniu, B nie daje żadnej informacji o sposobie myślenia, C jest lekceważące i merytorycznie wątpliwe."
+    },
+    {
+      "id": "soft-q005",
+      "topic": "Przebieg rekrutacji i pytania do pracodawcy",
+      "level": 1,
+      "q": "Koniec rozmowy z tech leadem: „Czy ma Pan do nas jakieś pytania?”. Które pytanie zrobi najlepsze wrażenie?",
+      "options": [
+        "„Ile dni urlopu przysługuje i czy można pracować w 100% zdalnie?”",
+        "„Jak wygląda droga zmiany od PR do produkcji i jakie jest największe wyzwanie techniczne zespołu na najbliższe pół roku?”",
+        "„Nie, wszystko było jasne.”",
+        "„Czym zajmuje się Wasza firma?”"
+      ],
+      "correct": 1,
+      "why": "B pokazuje zainteresowanie pracą i pomaga ocenić dojrzałość procesu (CI/CD, review) oraz wyzwania. A jest legitymne, ale lepiej je zadać HR lub na etapie oferty. C to stracona okazja, D pokazuje brak przygotowania."
+    },
+    {
+      "id": "soft-q006",
+      "topic": "Konflikty i feedback",
+      "level": 2,
+      "q": "Opowiadasz o konflikcie w zespole. Która puenta historii wypadnie najlepiej?",
+      "options": [
+        "„Ustaliliśmy wspólne kryteria, zrobiliśmy krótki spike obu podejść i wybraliśmy rozwiązanie na podstawie wyników. Zapisaliśmy decyzję w ADR i nadal dobrze współpracujemy.”",
+        "„Ostatecznie poszedłem do managera i on przyznał mi rację.”",
+        "„Kolega w końcu zrozumiał, że nie ma racji.”",
+        "„Od tamtej pory unikam pracy z tą osobą.”"
+      ],
+      "correct": 0,
+      "why": "A pokazuje dojrzałe rozwiązanie oparte na danych, zapisanie decyzji i zachowanie relacji. B sugeruje eskalację jako pierwszy krok i myślenie w kategoriach wygranej, C – postawę „ja mam rację”, D – konflikt nierozwiązany i przeniesiony na relacje."
+    },
+    {
+      "id": "soft-q007",
+      "topic": "Trudne sytuacje i porażki",
+      "level": 2,
+      "q": "Pytanie: „Opowiedz o swojej porażce”. Która odpowiedź jest najlepsza?",
+      "options": [
+        "„Moją porażką jest to, że za bardzo angażuję się w pracę.”",
+        "„Wdrożyłem migrację bazy, która zablokowała dużą tabelę na produkcji. Od razu to zgłosiłem, pomogłem przy rollbacku, przepisałem migrację na etapy, a od tamtej pory sprawdzam rozmiar tabel i generuję skrypt SQL do review.”",
+        "„Projekt się nie udał, bo klient ciągle zmieniał wymagania, a PM tego nie pilnował.”",
+        "„Nie przypominam sobie poważnej porażki.”"
+      ],
+      "correct": 1,
+      "why": "B: prawdziwy błąd, wzięcie odpowiedzialności, szybka reakcja i trwała zmiana nawyku. A to ukryta przechwałka, C zrzuca winę na innych, D wygląda na brak refleksji lub nieszczerość."
+    },
+    {
+      "id": "soft-q008",
+      "topic": "Trudne sytuacje i porażki",
+      "level": 2,
+      "q": "Jest środa, demo w piątek. Widzisz, że nie zdążysz z całą funkcją. Co robisz?",
+      "options": [
+        "Pracujesz do późna i nikomu nie mówisz – może się uda.",
+        "Mówisz na demo w piątek, że nie zdążyłeś.",
+        "Wyłączasz testy w CI, żeby szybciej mergować.",
+        "Od razu informujesz PM/leada, podajesz przyczynę i opcje: okrojony zakres na demo albo przesunięcie terminu."
+      ],
+      "correct": 3,
+      "why": "D: wczesna, transparentna komunikacja z opcjami pozwala biznesowi podjąć decyzję. A ukrywa ryzyko, B informuje za późno, gdy nie ma już pola manewru, C obniża jakość bez decyzji i zgody zespołu."
+    },
+    {
+      "id": "soft-q009",
+      "topic": "Scrum, Kanban i organizacja pracy",
+      "level": 2,
+      "q": "Na retrospektywie zespół narzeka, że sprinty ciągle się „rozjeżdżają” przez pilne zgłoszenia od klientów. Która propozycja jest najbardziej dojrzała?",
+      "options": [
+        "„Ignorujmy zgłoszenia do końca sprintu, sprint jest święty.”",
+        "„Zrezygnujmy z jakiegokolwiek planowania.”",
+        "„Zarezerwujmy stały procent capacity na nieplanowane zgłoszenia albo rozważmy Kanban z limitem WIP dla utrzymania, i po dwóch sprintach sprawdźmy, czy pomogło.”",
+        "„Niech PM sam to rozwiąże, to nie problem developerów.”"
+      ],
+      "correct": 2,
+      "why": "C proponuje konkretne, mierzalne usprawnienie i jego weryfikację – o to chodzi w retro. A ignoruje realne potrzeby klientów, B wylewa dziecko z kąpielą, D zrzuca odpowiedzialność za proces, który dotyczy całego zespołu."
+    },
+    {
+      "id": "soft-q010",
+      "topic": "Konflikty i feedback",
+      "level": 2,
+      "q": "W code review widzisz, że kolega w komponencie Angulara ręcznie subskrybuje Observable i nigdy nie odpina subskrypcji. Który komentarz jest najlepszy?",
+      "options": [
+        "„Tu subskrypcja nie jest odpinana, więc przy każdym wejściu na widok zostaje kolejna – może wyciekać pamięć i dublować requesty. Co myślisz o async pipe albo toSignal() / takeUntilDestroyed()?”",
+        "„Źle.”",
+        "Nic nie piszesz, poprawiasz to sam w kolejnym PR.",
+        "„Juniorskie podejście, przeczytaj dokumentację.”"
+      ],
+      "correct": 0,
+      "why": "A wskazuje problem, jego skutek i proponuje rozwiązanie w formie pytania – merytorycznie i z szacunkiem. B nic nie wyjaśnia, C omija komunikację i odbiera koledze szansę nauki, D ocenia osobę zamiast kodu."
+    },
+    {
+      "id": "soft-q011",
+      "topic": "Wynagrodzenie i oferta",
+      "level": 2,
+      "q": "Rekruterka pyta o oczekiwania finansowe. Która odpowiedź jest najlepsza?",
+      "options": [
+        "„Ile możecie zaproponować?”",
+        "„Tyle co teraz plus trochę.”",
+        "„15 tysięcy.” – bez dalszych informacji.",
+        "„Na podstawie zakresu roli i stawek rynkowych oczekuję X–Y zł brutto miesięcznie na UoP; przy B2B przeliczyłbym to netto na fakturze. Chętnie porozmawiam też o całym pakiecie.”"
+      ],
+      "correct": 3,
+      "why": "D podaje przedział uzasadniony rynkiem i doprecyzowuje formę umowy oraz brutto/netto. A unika odpowiedzi i oddaje inicjatywę, B wiąże oczekiwania z obecną (może zaniżoną) pensją, C jest niejednoznaczne – nie wiadomo, czy to brutto, netto, UoP czy B2B."
+    },
+    {
+      "id": "soft-q012",
+      "topic": "Zadania techniczne i live coding",
+      "level": 2,
+      "q": "Live coding: dostajesz zadanie napisania endpointu zwracającego top 10 produktów. Co robisz w pierwszej minucie?",
+      "options": [
+        "Od razu piszesz kod w milczeniu, żeby zdążyć.",
+        "Mówisz, że w pracy używasz gotowych bibliotek i takich rzeczy się nie pisze.",
+        "Powtarzasz zadanie własnymi słowami, dopytujesz o okres, kryterium „top” i remisy, a potem mówisz, jakie podejście zastosujesz.",
+        "Pytasz, czy możesz to zrobić w domu i odesłać."
+      ],
+      "correct": 2,
+      "why": "C pokazuje zrozumienie wymagań, edge case'y i komunikację – to kluczowe na live codingu. A ryzykuje rozwiązanie złego problemu i nie daje wglądu w myślenie, B podważa sens zadania, D unika oceny w zaplanowanej formie."
+    },
+    {
+      "id": "soft-q013",
+      "topic": "Motywacja i rozwój",
+      "level": 2,
+      "q": "Pytanie: „Jaka jest Pana największa słabość?”. Która odpowiedź wypadnie najlepiej?",
+      "options": [
+        "„Jestem perfekcjonistą.”",
+        "„Nie lubię testować i unikam pisania testów.”",
+        "„Za późno prosiłem o pomoc, gdy utknąłem. Wprowadziłem zasadę: po godzinie bez postępu opisuję problem na kanale zespołu z tym, co sprawdziłem – oszczędza to czas i zostawia ślad w wiki.”",
+        "„Nie widzę u siebie słabych stron.”"
+      ],
+      "correct": 2,
+      "why": "C to prawdziwa, nie dyskwalifikująca słabość z konkretnym planem poprawy i efektem. A jest oklepane i brzmi jak unik, B to słabość krytyczna dla roli bez planu, D sugeruje brak samoświadomości."
+    },
+    {
+      "id": "soft-q014",
+      "topic": "Dług techniczny",
+      "level": 2,
+      "q": "Chcesz przekonać PO do refaktoringu modułu płatności. Który argument zadziała najlepiej?",
+      "options": [
+        "„Kod jest brzydki i nikt nie chce go dotykać.”",
+        "„W ostatnim kwartale każda zmiana w tym module trwała średnio 3 razy dłużej niż gdzie indziej i spowodowała 4 incydenty. Proponuję przy najbliższej funkcji płatności dodać 4 dni na testy i wydzielenie logiki.”",
+        "„Potrzebujemy dwóch miesięcy przerwy w funkcjach na przepisanie wszystkiego od zera.”",
+        "„Nowa wersja frameworka jest dużo fajniejsza, warto przejść.”"
+      ],
+      "correct": 1,
+      "why": "B przekłada dług na koszt i ryzyko biznesowe, opiera się na danych i proponuje ograniczony zakres powiązany z funkcją. A i D to argumenty estetyczne/technologiczne bez wartości dla biznesu, C to ryzykowne „big bang rewrite”, które rzadko dostaje zgodę."
+    },
+    {
+      "id": "soft-q015",
+      "topic": "Przebieg rekrutacji i pytania do pracodawcy",
+      "level": 2,
+      "q": "Rozmawiasz z CTO o projekcie, w którym zoptymalizowałeś zapytania w EF Core. Jak najlepiej to przedstawić?",
+      "options": [
+        "Szczegółowo opisujesz każdą zmianę w LINQ i wygenerowany SQL.",
+        "Mówisz tylko „poprawiłem wydajność”.",
+        "Opowiadasz, że to był nudny ticket z backlogu.",
+        "„Raport dla klientów ładował się 12 sekund i był najczęstszą skargą w supporcie. Po usunięciu N+1 i dodaniu indeksów spadł do 0,8 s, zgłoszenia na ten temat praktycznie zniknęły. Chętnie opowiem o szczegółach technicznych.”"
+      ],
+      "correct": 3,
+      "why": "D łączy pracę techniczną z efektem biznesowym (skargi, czas) i zostawia możliwość zejścia w szczegóły – to język rozmowy z CTO. A to poziom dla tech leada, B jest zbyt ogólne, C umniejsza własną pracę."
+    },
+    {
+      "id": "soft-q016",
+      "topic": "Konflikty i feedback",
+      "level": 3,
+      "q": "Tech lead zdecydował o podejściu, z którym się nie zgadzasz; przedstawiłeś argumenty, ale decyzja się nie zmieniła. Kwestia nie dotyczy bezpieczeństwa ani prawa. Co robisz?",
+      "options": [
+        "Wspierasz decyzję w pełni, ustalasz z leadem metrykę lub punkt kontrolny, po którym ocenicie efekt, i zapisujecie to w ADR.",
+        "Implementujesz po swojemu, bo i tak wyjdzie, że miałeś rację.",
+        "Piszesz do CTO z pominięciem leada.",
+        "Wdrażasz, ale na każdym daily przypominasz, że to zły pomysł."
+      ],
+      "correct": 0,
+      "why": "A to „disagree and commit”: zastrzeżenia zgłoszone, decyzja wspierana, a weryfikacja oparta na danych. B łamie ustalenia zespołu, C niszczy zaufanie (eskalacja ponad głową bez rozmowy i bez zagrożenia, które by to uzasadniało), D to bierna agresja sabotująca decyzję."
+    },
+    {
+      "id": "soft-q017",
+      "topic": "Rola seniora i leadership",
+      "level": 3,
+      "q": "Junior od dwóch dni utknął na zadaniu i nie prosi o pomoc. Jak najlepiej zareagować jako senior?",
+      "options": [
+        "Przejmujesz zadanie i robisz je sam, żeby sprint się nie opóźnił.",
+        "Czekasz – musi nauczyć się samodzielności.",
+        "Proponujesz krótki pair programming, w którym on prowadzi, a Ty pytasz naprowadzająco; potem ustalacie zasadę, po jakim czasie prosi o pomoc.",
+        "Zgłaszasz managerowi, że junior sobie nie radzi."
+      ],
+      "correct": 2,
+      "why": "C rozwiązuje problem, uczy i zapobiega powtórce – to istota mentoringu. A rozwiązuje zadanie, ale odbiera szansę nauki i buduje zależność od Ciebie, B marnuje czas i zostawia osobę z problemem, D przeskakuje rozmowę bezpośrednią i może zniszczyć zaufanie."
+    },
+    {
+      "id": "soft-q018",
+      "topic": "Rola seniora i leadership",
+      "level": 3,
+      "q": "Dyżur on-call, 23:00: po wieczornym deployu error rate na API wzrósł z 0,1% do 15%. Co robisz najpierw?",
+      "options": [
+        "Debugujesz na produkcji, aż znajdziesz przyczynę – rollback to porażka.",
+        "Robisz rollback lub wyłączasz feature flag, informujesz o incydencie na ustalonym kanale, a analizę przyczyny i post-mortem robicie później.",
+        "Piszesz do autora zmiany i czekasz na jego odpowiedź.",
+        "Wyłączasz alert, bo to pewnie chwilowe."
+      ],
+      "correct": 1,
+      "why": "B: priorytetem jest przywrócenie działania (mitigacja przed root cause) i komunikacja. A wydłuża wpływ na użytkowników, C uzależnia naprawę od jednej osoby, D ignoruje sygnał, który jest wyraźnie związany z deployem."
+    },
+    {
+      "id": "soft-q019",
+      "topic": "Autoprezentacja i projekty z CV",
+      "level": 3,
+      "q": "Na rozmowie na seniora pada: „Jaki był Twój największy wpływ w ostatniej firmie?”. Która odpowiedź najlepiej pokazuje poziom senior?",
+      "options": [
+        "„Zamknąłem najwięcej ticketów w zespole przez cały rok.”",
+        "„Napisałem bardzo dużo kodu w module zamówień.”",
+        "„Byłem najdłużej w projekcie, więc wszyscy pytali mnie o wszystko.”",
+        "„Zaproponowałem i wdrożyłem wspólny wzorzec cache'owania z metrykami; p95 spadło z 1,2 s do 180 ms, zrezygnowaliśmy z jednej instancji bazy, a dwa inne zespoły przejęły rozwiązanie na podstawie ADR, który napisałem.”"
+      ],
+      "correct": 3,
+      "why": "D pokazuje mierzalny wpływ techniczny i biznesowy oraz efekt dźwigni (adopcja przez inne zespoły). A i B mierzą output, nie outcome, C opisuje bycie wąskim gardłem (niski bus factor – wiedza skupiona w jednej osobie), a nie wpływ."
+    },
+    {
+      "id": "soft-q020",
+      "topic": "Dług techniczny",
+      "level": 3,
+      "q": "PM chce w dwa dni udostępnić eksport danych osobowych klientów bez kontroli uprawnień per rola, „bo klient czeka”. Co jako senior proponujesz?",
+      "options": [
+        "Robisz eksport tylko dla roli admin w terminie (prosta policy), a pełne uprawnienia per rola w kolejnym sprincie – i wyjaśniasz ryzyko wycieku danych w języku biznesu.",
+        "Odmawiasz i mówisz, że się nie da.",
+        "Robisz bez autoryzacji, bo to decyzja PM.",
+        "Robisz bez autoryzacji, ale dodajesz TODO w kodzie."
+      ],
+      "correct": 0,
+      "why": "A dostarcza wartość w terminie, nie idąc na kompromis w bezpieczeństwie danych osobowych – negocjujesz zakres, nie bezpieczeństwo. B blokuje bez alternatywy, C i D przenoszą realne ryzyko prawne i wizerunkowe na firmę, a TODO nie jest planem."
+    }
+  ]
+}

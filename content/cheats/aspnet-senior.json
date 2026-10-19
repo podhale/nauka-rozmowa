@@ -1,0 +1,93 @@
+{
+  "cat": "aspnet",
+  "sheets": [
+    {
+      "topic": "Długie operacje",
+      "points": [
+        "Nie trzymaj requestu przez minuty – timeouty gatewayów i LB, zablokowane zasoby.",
+        "**202 Accepted** + `Location: /api/operations/{id}` + `Retry-After`; klient odpytuje status.",
+        "Zasób operacji: `pending/running/succeeded/failed`, postęp, błąd jako ProblemDetails; po sukcesie link do wyniku lub 303.",
+        "Zlecenie zapisuj **trwale** (tabela zadań, broker); worker = BackgroundService z własnym scope.",
+        "Wiele instancji: blokowanie zadań (`FOR UPDATE SKIP LOCKED`, lease) i idempotentne przetwarzanie.",
+        "Alternatywy dla pollingu: SignalR, webhook; dla harmonogramów Hangfire/Quartz.NET."
+      ],
+      "pitfalls": [
+        "Fire-and-forget `Task.Run` w endpoincie: zdisposowany scoped DbContext, utrata pracy przy deployu.",
+        "Channel w pamięci jako jedyny magazyn zleceń krytycznych."
+      ],
+      "code": "return Results.Accepted($\"/api/operations/{id}\", new { id, status = \"pending\" });",
+      "lang": "csharp",
+      "say": "Długie operacje robię asynchronicznie: 202 Accepted z zasobem statusu, trwałe zlecenie i worker w tle, a klient odpytuje lub dostaje powiadomienie."
+    },
+    {
+      "topic": "Outbox",
+      "points": [
+        "Problem **dual write**: zapis do bazy + publikacja do brokera bez wspólnej transakcji.",
+        "Outbox: wiadomość zapisana w tabeli **w tej samej transakcji** co zmiana biznesowa.",
+        "Relay (BackgroundService lub CDC, np. Debezium) publikuje i oznacza `ProcessedAt`.",
+        "Gwarancja **at-least-once** → konsumenci idempotentni (inbox z `MessageId`).",
+        "Kolejność per agregat: sekwencja + partycjonowanie po kluczu agregatu.",
+        "Gotowce: MassTransit, NServiceBus, Wolverine; tabelę trzeba czyścić."
+      ],
+      "pitfalls": [
+        "Publikacja do brokera wewnątrz transakcji bazy – broker nie uczestniczy w rollbacku.",
+        "Zakładanie exactly-once i brak deduplikacji po stronie konsumenta."
+      ],
+      "code": "db.Orders.Add(order);\ndb.Outbox.Add(OutboxMessage.From(new OrderPlaced(order.Id)));\nawait db.SaveChangesAsync(ct); // jedna transakcja",
+      "lang": "csharp",
+      "say": "Outbox rozwiązuje dual write: event zapisuję atomowo razem z danymi, a osobny relay publikuje go z gwarancją at-least-once, więc konsumenci muszą być idempotentni."
+    },
+    {
+      "topic": "Graceful shutdown",
+      "points": [
+        "SIGTERM → Kestrel nie przyjmuje nowych połączeń, kończy trwające żądania, `stoppingToken` anulowany.",
+        "`HostOptions.ShutdownTimeout` – domyślnie 30 s; po nim host przestaje czekać.",
+        "K8s usuwa pod z endpointów **asynchronicznie** → **preStop sleep** 5–10 s.",
+        "`terminationGracePeriodSeconds` (domyślnie 30 s) liczy się łącznie z preStop – musi być > preStop + shutdown.",
+        "`IHostApplicationLifetime.ApplicationStopping` – np. przełącz readiness na unhealthy.",
+        "ENTRYPOINT w exec form, żeby proces .NET dostał SIGTERM."
+      ],
+      "pitfalls": [
+        "BackgroundService ignorujący `stoppingToken` – SIGKILL w połowie pracy.",
+        "Długie połączenia (WebSocket/SignalR) trzymające shutdown do limitu."
+      ],
+      "code": "lifecycle:\n  preStop:\n    exec: { command: [\"sleep\", \"10\"] }\nterminationGracePeriodSeconds: 40",
+      "lang": "text",
+      "say": "Graceful shutdown w Kubernetesie to preStop sleep na propagację endpointów, ShutdownTimeout mieszczący się w terminationGracePeriodSeconds i workery respektujące stoppingToken."
+    },
+    {
+      "topic": "Observability",
+      "points": [
+        "Trzy sygnały: **trace'y, metryki, logi** – jeden standard: OpenTelemetry + OTLP.",
+        "W .NET: `ActivitySource`/`Activity` = tracer/span, `Meter`/`Counter`/`Histogram` = metryki.",
+        "W3C `traceparent` propagowany automatycznie przez HttpClient i ASP.NET Core; logi dostają TraceId/SpanId.",
+        "Brokery: kontekst trzeba wstrzyknąć do nagłówków wiadomości (`Propagators.DefaultTextMapPropagator`).",
+        "Sampling: head-based (procent) vs tail-based w Collectorze (zachowaj błędy i wolne).",
+        "Kardynalność metryk: route template, nie pełny URL ani userId w tagach."
+      ],
+      "pitfalls": [
+        "Dane wrażliwe (tokeny, PESEL) w atrybutach spanów i logach.",
+        "Brak propagacji kontekstu przez kolejki – trace'y urywają się na brokerze."
+      ],
+      "code": "builder.Services.AddOpenTelemetry()\n    .WithTracing(t => t.AddAspNetCoreInstrumentation()\n        .AddHttpClientInstrumentation().AddOtlpExporter())\n    .WithMetrics(m => m.AddAspNetCoreInstrumentation().AddOtlpExporter());",
+      "lang": "csharp",
+      "say": "Observability opieram na OpenTelemetry: trace'y, metryki i logi skorelowane przez W3C TraceContext, eksport przez OTLP do Collectora, a w kodzie tylko natywne Activity i Meter."
+    },
+    {
+      "topic": "Multi-tenancy",
+      "points": [
+        "Modele: **baza per tenant** (izolacja, drogo), schemat per tenant, **wspólna baza + TenantId** (tanio, dyscyplina).",
+        "Tenant z zaufanego źródła (claim w tokenie), udostępniony przez scoped `ITenantContext`.",
+        "EF Core: `HasQueryFilter(e => e.TenantId == tenant.TenantId)` + automatyczne ustawianie TenantId przy zapisie.",
+        "Druga linia obrony: **Row-Level Security** w bazie (filtry EF nie chronią surowego SQL).",
+        "Klucze cache, joby w tle, logi i eksporty muszą znać tenanta.",
+        "Noisy neighbour: limity i kwoty per tenant, duzi klienci na dedykowanej infrastrukturze."
+      ],
+      "pitfalls": [
+        "`IgnoreQueryFilters()` lub surowy SQL bez warunku na tenanta – wyciek między klientami.",
+        "Tenant odczytywany z nagłówka/parametru podanego przez klienta bez weryfikacji."
+      ],
+      "say": "Przy wspólnej bazie izolację tenantów wymuszam warstwowo: tenant z tokena, global query filters w EF Core i RLS w bazie, plus testy, że tenant A nie widzi danych B."
+    }
+  ]
+}

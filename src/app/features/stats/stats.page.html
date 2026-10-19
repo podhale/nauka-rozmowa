@@ -1,0 +1,89 @@
+<section class="view">
+  <h1>Postęp</h1>
+  <div class="kv">
+    <div><b>{{ seen().length }}</b><span>kart poznanych z {{ content.cards().length }}</span></div>
+    <div><b style="color:var(--good)">{{ mastered() }}</b><span>opanowanych</span></div>
+    <div><b>{{ accuracy() }}</b><span>trafność w testach</span></div>
+  </div>
+
+  <div class="card stack">
+    <h3>Gotowość wg poziomu</h3>
+    @for (x of byLevel(); track x.l) {
+      <div>
+        <div class="row" style="justify-content:space-between"><app-level [level]="x.l" /><span class="num muted" style="font-size:.85rem">{{ x.m }}/{{ x.n }} opanowanych</span></div>
+        <div class="bar"><span class="m" [style.width.%]="x.pct"></span></div>
+      </div>
+    }
+  </div>
+
+  <div class="card stack">
+    <div class="row" style="justify-content:space-between">
+      <h3>Ostatnie 10 tygodni</h3>
+      <span class="muted" style="font-size:.85rem">{{ store.streak() }} {{ store.streak() | plural: 'dzień' : 'dni' : 'dni' }} z rzędu</span>
+    </div>
+    <div class="heat">@for (d of heat(); track d.key) { <i [class]="d.cls" [title]="d.key + ': ' + d.v"></i> }</div>
+  </div>
+
+  <div class="card stack">
+    <h3>Najsłabsze tematy</h3>
+    @if (weak().length) {
+      <div class="list">
+        @for (w of weak(); track w.cat + w.topic) {
+          <div class="li" style="flex-direction:row;justify-content:space-between;align-items:center;gap:10px">
+            <span style="min-width:0"><app-cat-tag [cat]="w.cat" /><br /><b>{{ w.topic }}</b></span>
+            <span class="row" style="gap:6px;flex-wrap:nowrap">
+              <a class="btn" style="min-height:40px;padding:8px 10px" [routerLink]="['/sciaga', w.cat, w.topic]">Ściąga</a>
+              <button class="btn" style="min-height:40px;padding:8px 10px" (click)="practice(w.cat, w.topic)">Ćwicz</button>
+            </span>
+          </div>
+        }
+      </div>
+    } @else {
+      <p class="muted">Pojawią się tu, gdy ocenisz kilka kart jako „nie wiem” lub pomylisz się w teście.</p>
+    }
+  </div>
+
+  <div class="card stack">
+    <h3>Ostatnie sesje</h3>
+    @for (h of history(); track h.t) {
+      <div class="li" style="flex-direction:row;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:10px 0">
+        <span><b>{{ modeLabel[h.mode] }}</b> <span class="muted" style="font-size:.85rem">{{ h.t | date: 'd MMM, HH:mm' }}</span></span>
+        <span class="num">{{ h.ok }}/{{ h.n }}</span>
+      </div>
+    } @empty {
+      <p class="muted">Jeszcze nic. Zacznij od zakładki Dziś.</p>
+    }
+  </div>
+
+  <div class="card stack">
+    <h3>Ustawienia</h3>
+    <p class="eyebrow">Nowe karty dziennie</p>
+    <div class="seg">
+      @for (n of newPerDayOptions; track n) { <button [attr.aria-pressed]="store.settings().newPerDay === n" (click)="store.setNewPerDay(n)">{{ n }}</button> }
+    </div>
+    <p class="eyebrow" style="margin-top:6px">Poziom pytań</p>
+    <div class="chips">
+      @for (x of levels; track x.l) { <button class="chip" [attr.aria-pressed]="store.levels().has(x.l)" (click)="toggleLevel(x.l)">{{ x.label }}</button> }
+    </div>
+    <p class="eyebrow" style="margin-top:6px">Wygląd</p>
+    <div class="seg">
+      @for (x of themes; track x.t) { <button [attr.aria-pressed]="ui.theme() === x.t" (click)="ui.setTheme(x.t)">{{ x.label }}</button> }
+    </div>
+    <div style="margin-top:8px">
+      @if (confirmReset()) {
+        <div class="confirm">
+          <span>Na pewno usunąć cały postęp?</span>
+          <button class="btn" style="color:var(--bad);border-color:var(--bad)" (click)="reset()">Tak, wyzeruj</button>
+          <button class="btn ghost" (click)="confirmReset.set(false)">Anuluj</button>
+        </div>
+      } @else {
+        <button class="btn ghost" style="color:var(--bad)" (click)="confirmReset.set(true)">Wyzeruj postęp</button>
+      }
+    </div>
+  </div>
+
+  <p class="muted" style="font-size:.8rem">
+    {{ sync.status() === 'local' ? 'Postęp jest zapisany na tym urządzeniu.' : 'Postęp synchronizuje się z Twoim kontem, więc telefon i komputer widzą to samo.' }}
+    Baza: {{ content.cards().length }} kart, {{ content.quiz().length }} pytań testowych, {{ content.cheatCount() }} ściąg.
+  </p>
+</section>

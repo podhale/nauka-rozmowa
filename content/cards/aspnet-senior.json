@@ -1,0 +1,322 @@
+{
+  "cat": "aspnet",
+  "name": "ASP.NET Core Web API",
+  "cards": [
+    {
+      "id": "aspnet-s001",
+      "topic": "Performance",
+      "level": 3,
+      "q": "API skaluje się poziomo, ale przy pewnym ruchu przestaje przyspieszać, a w logach pojawiają się timeouty przy pobieraniu połączenia z puli. Jak do tego podchodzisz?",
+      "a": "To wyczerpanie puli połączeń do bazy: domyślny Max Pool Size w SqlClient i Npgsql to 100 na connection string i proces, więc każde żądanie, które trzyma połączenie zbyt długo, blokuje inne. Szukam przyczyn trzymania połączeń: długie transakcje, wolne zapytania, wywołania HTTP wewnątrz otwartej transakcji, brak Dispose (DbContext poza scope), strumieniowanie wyników przy wolnym konsumencie. Najpierw skracam czas trzymania połączenia, dopiero potem rozważam zmianę rozmiaru puli.",
+      "tip": "Wspomnij prawo Little'a i sumowanie pul po instancjach – to odróżnia seniora od 'zwiększmy Max Pool Size'.",
+      "deep": "Liczba połączeń po stronie bazy to suma po wszystkich instancjach: 20 podów × pula 100 = do 2000 połączeń, co potrafi przekroczyć max_connections bazy (PostgreSQL ma domyślnie 100) – przy skalowaniu poziomym często potrzebny jest PgBouncer albo ograniczenie puli per instancja. Zwiększanie puli przy wolnej bazie tylko przenosi kolejkę do bazy i pogarsza latencję wszystkich. Prawo Little'a pomaga oszacować: potrzebne połączenia ≈ RPS × średni czas trzymania połączenia. DbContext pooling (AddDbContextPool) zmniejsza koszt tworzenia kontekstu, ale nie zmienia puli połączeń ADO.NET. Metryki do obserwacji: liczba aktywnych/bezczynnych połączeń (Npgsql i SqlClient publikują metryki), czas oczekiwania na połączenie, latencja zapytań. W testach obciążeniowych warto sprawdzić zachowanie po przekroczeniu limitu – lepiej szybko odrzucić (load shedding, 503) niż kolejkować wszystko."
+    },
+    {
+      "id": "aspnet-s002",
+      "topic": "HttpClient",
+      "level": 3,
+      "q": "Socket exhaustion i stary DNS – jakie dwa problemy z HttpClient rozwiązuje IHttpClientFactory i jak można go nadal użyć źle?",
+      "a": "new HttpClient() per wywołanie tworzy nowy handler i nowe połączenia; zamknięte sockety wiszą w TIME_WAIT, co pod obciążeniem wyczerpuje porty (socket exhaustion). Z kolei jeden statyczny HttpClient na zawsze trzyma połączenia, więc nie widzi zmian DNS (np. przełączenia blue-green). IHttpClientFactory pooluje handlery i rotuje je co HandlerLifetime (domyślnie 2 minuty), rozwiązując oba problemy. Alternatywą bez fabryki jest statyczny HttpClient z SocketsHttpHandler i ustawionym PooledConnectionLifetime.",
+      "code": "// poza fabryką: jeden współdzielony klient z rotacją połączeń\nprivate static readonly HttpClient Client = new(new SocketsHttpHandler\n{\n    PooledConnectionLifetime = TimeSpan.FromMinutes(2),\n    MaxConnectionsPerServer = 50\n});",
+      "lang": "csharp",
+      "deep": "Typowy błąd: typed client (AddHttpClient<T>) wstrzyknięty do singletona – singleton przechwytuje jedną instancję HttpClient, więc handler nigdy nie jest rotowany i wraca problem DNS. Typed clienty są transient i powinny być konsumowane przez serwisy transient/scoped, a w singletonie lepiej wstrzyknąć IHttpClientFactory i tworzyć klienta per operację lub użyć SocketsHttpHandler z PooledConnectionLifetime. Disposowanie HttpClient z fabryki jest bezpieczne – nie zamyka poolowanego handlera. MaxConnectionsPerServer domyślnie nie ma limitu dla HTTP/1.1 w SocketsHttpHandler, więc przy wolnym downstreamie możesz otworzyć tysiące połączeń – czasem warto go ograniczyć, traktując to jak bulkhead. Dla HTTP/2 wiele żądań idzie jednym połączeniem; EnableMultipleHttp2Connections pozwala otworzyć kolejne, gdy limit strumieni się wyczerpie. Timeout HttpClient.Timeout (domyślnie 100 s) jest zwykle za długi dla API – ustawiam timeouty przez pipeline resilience."
+    },
+    {
+      "id": "aspnet-s003",
+      "topic": "Odporność",
+      "level": 3,
+      "q": "Jak projektujesz retry, żeby nie pogorszyć awarii (retry storm)? Jaką rolę mają jitter, budżet retry i bulkhead?",
+      "a": "Retry ma sens tylko dla błędów przejściowych (timeouty, 5xx typu 503, 429 z Retry-After) i operacji idempotentnych. Używam exponential backoff z jitterem, żeby tysiące klientów nie ponawiały w tych samych momentach, oraz małej liczby prób. Retry robię w jednej warstwie – najlepiej najbliżej klienta – bo retry w każdej warstwie mnoży ruch wykładniczo. Bulkhead (ograniczenie współbieżności do zależności) i circuit breaker chronią przed tym, żeby jedna wolna zależność zjadła wszystkie wątki i połączenia.",
+      "code": "builder.Services.AddHttpClient<StockClient>()\n    .AddResilienceHandler(\"stock\", p => p\n        .AddTimeout(TimeSpan.FromSeconds(5))                 // całkowity\n        .AddRetry(new HttpRetryStrategyOptions\n        {\n            MaxRetryAttempts = 2,\n            BackoffType = DelayBackoffType.Exponential,\n            UseJitter = true\n        })\n        .AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions())\n        .AddTimeout(TimeSpan.FromSeconds(1)));               // per próba",
+      "lang": "csharp",
+      "deep": "Przy trzech warstwach z 3 ponowieniami (4 próby) każda baza dostaje do 4^3 = 64 żądań na jedno żądanie użytkownika – dokładnie wtedy, gdy jest przeciążona. Retry budget (np. retry maks. 10–20% ruchu) albo token bucket na ponowienia ogranicza ten efekt. Circuit breaker po przekroczeniu progu błędów odrzuca wywołania natychmiast, dając zależności czas na odzyskanie, a w stanie half-open przepuszcza próbne żądania. Bulkhead w Polly v8 realizuje się strategią concurrency limiter (rate limiter), a standardowy handler w Microsoft.Extensions.Http.Resilience ma go wbudowanego. Kolejność w pipeline ma znaczenie: całkowity timeout na zewnątrz, potem retry, circuit breaker i timeout pojedynczej próby na końcu. Trzeba też respektować Retry-After i nie ponawiać 4xx poza 408/429. Hedging (równoległe zapasowe żądanie po progu latencji) to alternatywa dla retry przy operacjach tylko do odczytu, ale zwiększa obciążenie."
+    },
+    {
+      "id": "aspnet-s004",
+      "topic": "Odporność",
+      "level": 3,
+      "q": "Jak zarządzasz timeoutami end-to-end w łańcuchu wywołań (gateway → API → zależności)?",
+      "a": "Każda warstwa musi mieć timeout krótszy niż warstwa nad nią, inaczej klient się poddaje, a backend dalej pracuje na nikomu niepotrzebnym żądaniu. W ASP.NET Core przekazuję HttpContext.RequestAborted (parametr CancellationToken) do wszystkich wywołań I/O, a od .NET 8 mogę ustawić limit czasu na endpoint przez middleware request timeouts (AddRequestTimeouts + WithRequestTimeout). Wywołania wychodzące mają własny timeout per próba i całkowity w pipeline resilience. Dzięki temu po przekroczeniu budżetu praca jest przerywana w całym łańcuchu.",
+      "code": "builder.Services.AddRequestTimeouts(o =>\n    o.AddPolicy(\"fast\", TimeSpan.FromSeconds(2)));\napp.UseRequestTimeouts();\n\napp.MapGet(\"/api/quotes/{id}\", async (int id, QuoteService s, CancellationToken ct)\n        => await s.GetAsync(id, ct))\n   .WithRequestTimeout(\"fast\");",
+      "lang": "csharp",
+      "deep": "Idea deadline propagation: zamiast stałych timeoutów w każdej warstwie przekazuje się pozostały budżet czasu (gRPC robi to natywnie przez deadline; w HTTP można własnym nagłówkiem). Typowy błąd: gateway ma 30 s, API 60 s, HttpClient 100 s – po timeoucie gatewaya API nadal trzyma połączenia i wątki, co pod obciążeniem kumuluje się w kaskadową awarię. Request timeouts middleware nie zatrzymuje kodu siłą – anuluje RequestAborted, więc kod musi respektować token; nie działa też, gdy podpięty jest debugger. Zapytania do bazy też potrzebują limitu (CommandTimeout, token przekazany do EF Core). Anulowanie należy odróżnić od błędu w logach i metrykach – OperationCanceledException z powodu rozłączenia klienta to nie 500. Przy operacjach z efektami ubocznymi (płatności) przerwanie w połowie wymaga idempotencji lub kompensacji."
+    },
+    {
+      "id": "aspnet-s005",
+      "topic": "Idempotencja",
+      "level": 3,
+      "q": "Jak zaimplementować Idempotency-Key, żeby był poprawny także przy równoległych duplikatach i awariach w połowie operacji?",
+      "a": "Klucz zapisuję atomowo z unikalnym indeksem (np. tabela IdempotencyKeys z kluczem + identyfikatorem klienta) w stanie 'in progress' zanim wykonam operację; drugie równoległe żądanie dostaje konflikt na indeksie i zwraca 409 (lub czeka/ponawia), zamiast wykonywać operację drugi raz. Po zakończeniu zapisuję status i treść odpowiedzi, a kolejne powtórki dostają tę samą odpowiedź. Zapis klucza, efekt biznesowy i zapisana odpowiedź powinny być w jednej transakcji tej samej bazy. Sprawdzam też hash body – ten sam klucz z innym payloadem to błąd 422.",
+      "code": "CREATE TABLE idempotency_keys (\n    client_id   text        NOT NULL,\n    key         text        NOT NULL,\n    request_hash bytea      NOT NULL,\n    status      text        NOT NULL,   -- in_progress | completed\n    response    jsonb       NULL,\n    locked_until timestamptz NOT NULL,\n    PRIMARY KEY (client_id, key)\n);",
+      "lang": "sql",
+      "deep": "Jeśli operacja wywołuje zewnętrzny system (bramkę płatności), lokalna transakcja nie obejmie efektu – wtedy przekazuję idempotency key dalej do dostawcy (Stripe i podobne go wspierają) albo używam outboxa. Stan 'in progress' potrzebuje timeoutu/lease: jeśli proces padł w połowie, po upływie czasu klucz można przejąć, inaczej klient zostanie z wiecznym 409. Klucz musi być powiązany z tożsamością klienta, inaczej jeden klient mógłby odczytać zapisaną odpowiedź innego. Przechowywanie odpowiedzi z danymi wrażliwymi wymaga TTL (np. 24 h) i czyszczenia. Redis z SET NX jest szybszy, ale bez transakcji z bazą biznesową otwiera okno niespójności; do płatności wolę bazę. Implementuję to jako endpoint filter lub middleware, żeby nie powielać logiki, ale tylko dla endpointów, które tego wymagają."
+    },
+    {
+      "id": "aspnet-s006",
+      "topic": "Długie operacje",
+      "level": 3,
+      "q": "Endpoint generuje raport przez kilka minut. Jak to zaprojektować w REST API?",
+      "a": "Nie trzymam requestu otwartego przez minuty (timeouty gatewayów, load balancerów, zablokowane zasoby). Endpoint przyjmuje zlecenie, zapisuje je trwale i zwraca 202 Accepted z nagłówkiem Location wskazującym zasób statusu, np. /api/operations/{id}. Pracę wykonuje worker (BackgroundService czytający z trwałej kolejki lub tabeli). Klient odpytuje status (z Retry-After), a po zakończeniu dostaje wynik lub link do zasobu; alternatywnie wynik jest wypychany przez SignalR lub webhook.",
+      "code": "app.MapPost(\"/api/reports\", async (ReportRequest req, JobStore jobs, CancellationToken ct) =>\n{\n    var id = await jobs.EnqueueAsync(req, ct);   // trwały zapis\n    return Results.Accepted($\"/api/operations/{id}\", new { id, status = \"pending\" });\n});\n\napp.MapGet(\"/api/operations/{id:guid}\", async (Guid id, JobStore jobs, CancellationToken ct) =>\n    await jobs.GetAsync(id, ct) is { } op ? Results.Ok(op) : Results.NotFound());",
+      "lang": "csharp",
+      "deep": "Kluczowe jest to, gdzie żyje zlecenie: kolejka w pamięci (Channel) ginie przy restarcie lub deployu i nie skaluje się na wiele instancji, więc do ważnych operacji używam bazy (tabela zadań) albo brokera. Task.Run/fire-and-forget w endpoincie to antywzorzec: brak kontroli przy shutdownie, użycie scoped DbContext po zakończeniu requestu (ObjectDisposedException), brak ponowień. Zasób operacji ma stan (pending/running/succeeded/failed), postęp i błąd w formacie ProblemDetails; po sukcesie może zwrócić 303 See Other do wyniku albo 200 z linkiem. Zlecenie powinno być idempotentne (Idempotency-Key), bo klient po timeoucie ponowi POST. Worker musi obsłużyć wielokrotne dostarczenie i blokowanie zadań między instancjami (np. SELECT ... FOR UPDATE SKIP LOCKED albo lease). Dla zaplanowanych i rozbudowanych zadań warto rozważyć gotowe narzędzia (Hangfire, Quartz.NET) zamiast własnego schedulera."
+    },
+    {
+      "id": "aspnet-s007",
+      "topic": "Outbox",
+      "level": 3,
+      "q": "Na czym polega wzorzec Transactional Outbox i jaki problem rozwiązuje?",
+      "a": "Problem dual write: zapisuję zamówienie w bazie i publikuję event do brokera – te dwie operacje nie są w jednej transakcji, więc awaria między nimi daje zamówienie bez eventu albo event bez zamówienia. Outbox zapisuje wiadomość do tabeli outbox w tej samej transakcji co zmiana biznesowa, a osobny proces (relay) odczytuje nieopublikowane wiadomości i wysyła je do brokera, oznaczając jako wysłane. Gwarancja to at-least-once – konsument musi być idempotentny (np. inbox z identyfikatorem wiadomości).",
+      "code": "await using var tx = await db.Database.BeginTransactionAsync(ct);\ndb.Orders.Add(order);\ndb.Outbox.Add(OutboxMessage.From(new OrderPlaced(order.Id), Guid.NewGuid()));\nawait db.SaveChangesAsync(ct);\nawait tx.CommitAsync(ct);\n// osobny OutboxRelay (BackgroundService) publikuje i oznacza ProcessedAt",
+      "lang": "csharp",
+      "deep": "Relay może publikować duplikaty (padł po wysłaniu, przed oznaczeniem), stąd idempotentni konsumenci i stabilne MessageId. Kolejność: przy wielu instancjach relay kolejność globalna nie jest gwarantowana; jeśli jest potrzebna per agregat, publikuje się w kolejności sekwencji i partycjonuje po kluczu agregatu. Odpytywanie tabeli co sekundę jest proste, ale dodaje opóźnienie i obciążenie; alternatywą jest CDC (np. Debezium czytający WAL/transaction log). Tabelę trzeba czyścić, inaczej rośnie bez końca. Gotowe implementacje: MassTransit (transactional outbox z EF Core), NServiceBus, Wolverine – zwykle lepsze niż własny kod. Outbox nie jest potrzebny, gdy nie ma drugiego systemu do spójnego zapisu, ani gdy event można bezpiecznie odtworzyć z danych. Wzorzec lustrzany po stronie odbiorcy to inbox – zapis przetworzonych MessageId w tej samej transakcji co efekt."
+    },
+    {
+      "id": "aspnet-s008",
+      "topic": "Caching",
+      "level": 3,
+      "q": "Jak chronisz się przed cache stampede i niespójnością przy rozproszonym cache (Redis)?",
+      "a": "Stampede to sytuacja, gdy popularny klucz wygasa i setki równoległych żądań jednocześnie liczą wartość, dobijając bazę. Środki: request coalescing (tylko jedno wywołanie fabryki per klucz w procesie – robi to HybridCache), losowy jitter TTL, żeby klucze nie wygasały jednocześnie, odświeżanie wartości przed wygaśnięciem (w tle lub probabilistycznie) i serwowanie lekko przeterminowanej wartości podczas odświeżania. Spójność: cache-aside z unieważnianiem po zapisie (usuń klucz po commit) i rozsądnym TTL jako siatka bezpieczeństwa.",
+      "code": "var options = new HybridCacheEntryOptions\n{\n    Expiration = TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(Random.Shared.Next(0, 60)),\n    LocalCacheExpiration = TimeSpan.FromSeconds(30)\n};\nvar dto = await cache.GetOrCreateAsync($\"product:{id}\",\n    async t => await repo.GetAsync(id, t), options, tags: [\"products\"], cancellationToken: ct);",
+      "lang": "csharp",
+      "deep": "Coalescing w HybridCache działa per proces – przy 20 instancjach nadal może być 20 równoległych przeliczeń; jeśli to za dużo, potrzebny jest rozproszony lock (z timeoutem i fallbackiem) albo wstępne podgrzewanie cache przez worker. IMemoryCache.GetOrCreateAsync NIE blokuje – fabryka może wykonać się wiele razy równolegle. Negative caching (cache'owanie 'nie znaleziono' na krótko) chroni przed atakiem/ruchem po nieistniejących kluczach. Przy L1 w pamięci + L2 w Redis unieważnienie musi dotrzeć do wszystkich instancji (pub/sub, krótki TTL L1, tagi w HybridCache). Race condition: odczyt starej wartości z bazy i zapis do cache po unieważnieniu przez zapis – stąd krótki TTL i ewentualnie wersjonowanie kluczy. Redis to też zależność: timeouty na cache muszą być krótkie, a jego awaria powinna degradować do bazy (z ochroną przed przeciążeniem), nie kłaść API. Klucze w multi-tenant zawsze zawierają tenant/użytkownika, jeśli dane są per użytkownik."
+    },
+    {
+      "id": "aspnet-s009",
+      "topic": "Rate limiting",
+      "level": 3,
+      "q": "Wbudowany rate limiter działa w pamięci. Jak zrobić rate limiting dla API działającego na wielu instancjach?",
+      "a": "Middleware Microsoft.AspNetCore.RateLimiting liczy limity per instancja, więc przy N podach realny limit to N razy konfiguracja, a load balancer bez sticky sessions rozkłada ruch nierówno. Opcje: limit globalny na brzegu (API gateway, ingress, Azure API Management, Cloudflare), rozproszony licznik w Redis (atomowe skrypty Lua, gotowe biblioteki dla System.Threading.RateLimiting) albo świadome podzielenie limitu przez liczbę instancji. Partycjonuję po tożsamości (userId, API key, tenant), a IP traktuję jako fallback dla anonimowych.",
+      "code": "builder.Services.AddRateLimiter(o =>\n{\n    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;\n    o.AddPolicy(\"per-user\", ctx => RateLimitPartition.GetTokenBucketLimiter(\n        ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? \"anon\",\n        _ => new TokenBucketRateLimiterOptions\n        {\n            TokenLimit = 100, TokensPerPeriod = 50,\n            ReplenishmentPeriod = TimeSpan.FromSeconds(10), QueueLimit = 0\n        }));\n});",
+      "lang": "csharp",
+      "deep": "Rozproszony limiter w Redis dodaje roundtrip do każdego żądania i staje się zależnością krytyczną – trzeba zdecydować fail-open (przepuszczamy, gdy Redis padnie) lub fail-closed; dla ochrony przed nadużyciem zwykle fail-open z limitem lokalnym jako zabezpieczeniem. Lokalny limiter nadal ma sens jako ochrona instancji (concurrency limiter, load shedding), niezależnie od limitu biznesowego per klient. Za reverse proxy adres IP klienta pochodzi z X-Forwarded-For – bez poprawnie skonfigurowanego ForwardedHeaders (KnownProxies/KnownNetworks) albo wszyscy mają IP proxy, albo atakujący podrobi nagłówek. Odpowiedź powinna mieć 429 i Retry-After, a klienci powinni go respektować. Algorytmy: fixed window (prosty, skoki na granicy okna), sliding window, token bucket (pozwala na krótkie bursty), concurrency. Limity per plan klienta (tier) rozwiązuje się partycją z różnymi opcjami dla każdej grupy."
+    },
+    {
+      "id": "aspnet-s010",
+      "topic": "Graceful shutdown",
+      "level": 3,
+      "q": "Jak zapewnić graceful shutdown ASP.NET Core w Kubernetesie, żeby rolling deploy nie generował błędów 5xx?",
+      "a": "Po SIGTERM host zaczyna zatrzymanie: Kestrel przestaje przyjmować nowe połączenia, czeka na zakończenie trwających żądań, a BackgroundService dostają anulowany stoppingToken – wszystko w limicie HostOptions.ShutdownTimeout (domyślnie 30 s). Problem w Kubernetesie: usunięcie poda z endpointów Service/ingressu jest asynchroniczne względem SIGTERM, więc przez kilka sekund ruch nadal trafia do zamykającego się poda. Dlatego dodaję preStop z krótkim sleepem (np. 5–10 s), a terminationGracePeriodSeconds ustawiam większy niż preStop + ShutdownTimeout.",
+      "code": "builder.Services.Configure<HostOptions>(o =>\n    o.ShutdownTimeout = TimeSpan.FromSeconds(20));\n\n// deployment.yaml (fragment):\n// terminationGracePeriodSeconds: 40\n// lifecycle:\n//   preStop:\n//     exec: { command: [\"sleep\", \"10\"] }",
+      "lang": "csharp",
+      "tip": "W nowszych wersjach Kubernetes jest też natywna akcja preStop 'sleep' bez potrzeby binarki sleep w obrazie – warto sprawdzić wersję klastra.",
+      "deep": "Kolejność w Kubernetesie: pod oznaczony jako Terminating → równolegle preStop hook i usuwanie z endpointów → po preStop SIGTERM → po terminationGracePeriodSeconds (domyślnie 30 s, liczone od początku, łącznie z preStop) SIGKILL. Jeśli preStop zjada 10 s z 30, aplikacji zostaje 20 s, a ShutdownTimeout 30 s nigdy się nie wypełni. BackgroundService musi faktycznie respektować stoppingToken i kończyć przetwarzanie bieżącego elementu; praca z kolejki w pamięci zginie, więc ważne zadania muszą być w trwałym magazynie. IHostApplicationLifetime.ApplicationStopping pozwala zareagować wcześniej (np. przełączyć readiness na 'unhealthy'). Długie połączenia (WebSocket/SignalR, streaming) trzeba świadomie zamknąć, bo inaczej trzymają shutdown do limitu. W obrazach kontenerów proces .NET musi być PID 1 lub dostać sygnał (exec form w ENTRYPOINT), inaczej SIGTERM nie dociera i pod zawsze jest zabijany SIGKILL-em."
+    },
+    {
+      "id": "aspnet-s011",
+      "topic": "Health checks",
+      "level": 3,
+      "q": "Jak zaprojektować startup, liveness i readiness probes dla API z ciężkim startem i wieloma zależnościami?",
+      "a": "Startup probe chroni wolno startującą aplikację (migracje, rozgrzewanie cache) przed zabiciem przez liveness, zanim w ogóle wystartuje. Liveness sprawdza tylko, czy proces jest zdrowy i odpowiada – bez zależności zewnętrznych, bo awaria bazy nie zostanie naprawiona restartem poda. Readiness mówi, czy pod może przyjmować ruch: tu sprawdzam krytyczne zależności i stan rozgrzania, a w czasie shutdownu zwracam 'not ready'. Rozdzielam checki tagami i mapuję osobne endpointy.",
+      "code": "builder.Services.AddHealthChecks()\n    .AddCheck(\"self\", () => HealthCheckResult.Healthy(), tags: [\"live\"])\n    .AddCheck<WarmupHealthCheck>(\"warmup\", tags: [\"ready\", \"startup\"])\n    .AddNpgSql(connString, tags: [\"ready\"]);\n\napp.MapHealthChecks(\"/health/live\",    new() { Predicate = r => r.Tags.Contains(\"live\") });\napp.MapHealthChecks(\"/health/ready\",   new() { Predicate = r => r.Tags.Contains(\"ready\") });\napp.MapHealthChecks(\"/health/startup\", new() { Predicate = r => r.Tags.Contains(\"startup\") });",
+      "lang": "csharp",
+      "deep": "Pułapka kaskadowa: jeśli readiness wszystkich podów zależy od tej samej bazy, jej chwilowa awaria wyjmuje z ruchu całe API i klient dostaje błąd z ingressu zamiast sensownego 503 z API (np. z cache lub trybu degradacji). Dlatego w readiness umieszczam tylko zależności, bez których pod naprawdę nie może nic zrobić, i dodaję histerezę (failureThreshold). Checki muszą być tanie i mieć timeout – probe co kilka sekund z wielu podów nie może dobijać bazy; pomaga cache'owanie wyniku (IHealthCheckPublisher). Endpointy health nie powinny być publicznie dostępne z pełnymi szczegółami (ujawniają topologię) – szczegółowy raport tylko wewnętrznie. Migracje bazy przy starcie każdego poda to ryzyko wyścigów; lepiej osobny Job/initContainer. Rozgrzewanie (warmup) można zgłaszać przez check, który zwraca Unhealthy, dopóki IHostedService nie zakończy przygotowań."
+    },
+    {
+      "id": "aspnet-s012",
+      "topic": "Observability",
+      "level": 3,
+      "q": "Jak wdrażasz observability w ASP.NET Core (OpenTelemetry) i jak korelujesz logi, metryki i trace'y między serwisami?",
+      "a": "Używam OpenTelemetry jako jednego standardu dla trzech sygnałów: trace'y (instrumentacja ASP.NET Core, HttpClient, EF Core, własne ActivitySource), metryki (wbudowane metryki ASP.NET Core i runtime plus własne przez Meter) i logi z ILogger eksportowane przez OTLP do backendu (np. Grafana stack, Azure Monitor, Jaeger, Seq). Korelacja działa przez kontekst W3C Trace Context: nagłówek traceparent jest automatycznie propagowany przez HttpClient i odczytywany przez ASP.NET Core, a logi zapisane w trakcie żądania dostają TraceId i SpanId. Dzięki temu z błędu w logu przechodzę do pełnego trace'a przez wszystkie serwisy.",
+      "code": "builder.Services.AddOpenTelemetry()\n    .ConfigureResource(r => r.AddService(\"orders-api\"))\n    .WithTracing(t => t\n        .AddAspNetCoreInstrumentation()\n        .AddHttpClientInstrumentation()\n        .AddSource(\"Orders\")\n        .AddOtlpExporter())\n    .WithMetrics(m => m\n        .AddAspNetCoreInstrumentation()\n        .AddRuntimeInstrumentation()\n        .AddOtlpExporter());\nbuilder.Logging.AddOpenTelemetry(l => l.AddOtlpExporter());",
+      "lang": "csharp",
+      "deep": "W .NET API OpenTelemetry mapuje się na wbudowane typy: Activity/ActivitySource to span/tracer, Meter/Counter/Histogram to metryki – nie trzeba zależności od SDK w kodzie domenowym. Przez brokery wiadomości kontekst nie przechodzi sam, jeśli biblioteka tego nie wspiera – trzeba wstrzyknąć traceparent do nagłówków wiadomości (Propagators.DefaultTextMapPropagator) i odtworzyć go w konsumencie. Sampling: przy dużym ruchu head-based sampling (np. 10%) ogranicza koszty, a tail-based w OpenTelemetry Collector pozwala zachować wszystkie trace'y z błędami i wolne. Kardynalność metryk: tagi typu userId czy pełny URL eksplodują liczbę serii – używam route template. Wrażliwe dane nie mogą trafić do atrybutów spanów ani logów (tokeny, PESEL, query string z sekretami). Collector jako pośrednik pozwala zmieniać backend bez zmian w aplikacji. Aspire dashboard daje ten sam model lokalnie w dev."
+    },
+    {
+      "id": "aspnet-s013",
+      "topic": "Wersjonowanie",
+      "level": 3,
+      "q": "Co jest breaking change w REST API i jak wprowadzasz zmiany bez łamania klientów?",
+      "a": "Breaking change to każda zmiana, która może zepsuć istniejącego klienta: usunięcie lub zmiana nazwy pola, zmiana typu lub formatu, nowe wymagane pole w żądaniu, zaostrzenie walidacji, zmiana kodów statusu lub semantyki, zmiana URL-a, a często także dodanie nowej wartości enuma. Bezpieczne zwykle są: nowe opcjonalne pola w odpowiedzi, nowe endpointy, nowe opcjonalne parametry. Stosuję ewolucję zamiast nowych wersji tam, gdzie się da (expand–contract: dodaj nowe, migruj klientów, usuń stare), a nową wersję API tylko przy prawdziwym breaking change. Stare wersje oznaczam jako deprecated z datą wyłączenia.",
+      "tip": "Pytanie 'czy dodanie wartości enuma to breaking change?' pada często – odpowiedź: dla wielu klientów tak.",
+      "deep": "Dodanie wartości enuma psuje klientów, którzy mapują enumy ściśle (np. wygenerowani klienci, switch bez default) – stąd zasada tolerant reader po stronie klienta i dokumentowanie, że enum może się rozszerzać. Zmiana z 200 na 201 lub z 404 na 204 też łamie kontrakt, choć 'nie zmienia danych'. Deprecation sygnalizuje się nagłówkami Deprecation (RFC 9745) i Sunset (RFC 8594) oraz w OpenAPI (deprecated: true); Asp.Versioning potrafi raportować wspierane i przestarzałe wersje w nagłówkach. Utrzymywanie wielu wersji kosztuje – każda wersja to kod, testy i wektory ataku, więc ustalam politykę (np. N-1, 6–12 miesięcy). Breaking changes wykrywam automatycznie: porównanie dokumentu OpenAPI z poprzednim w CI (np. oasdiff) i testy kontraktowe. Telemetria per wersja i per klient pozwala wiedzieć, kogo trzeba zmigrować przed wyłączeniem."
+    },
+    {
+      "id": "aspnet-s014",
+      "topic": "Multi-tenancy",
+      "level": 3,
+      "q": "Jak projektujesz API multi-tenant: izolacja danych, rozpoznawanie tenanta, typowe ryzyka?",
+      "a": "Modele izolacji: baza per tenant (najsilniejsza izolacja, łatwy backup i usuwanie danych, drogie przy tysiącach tenantów), schemat per tenant, albo wspólna baza z kolumną TenantId (najtańsza, ale wymaga dyscypliny). Tenanta rozpoznaję z zaufanego źródła – claimu w tokenie, a nie z parametru podanego przez klienta – i udostępniam przez scoped ITenantContext. Przy wspólnej bazie stosuję global query filters w EF Core na TenantId i ustawiam TenantId automatycznie przy zapisie, a dla krytycznych danych dodatkowo Row-Level Security w bazie.",
+      "code": "public sealed class AppDbContext(DbContextOptions<AppDbContext> o, ITenantContext tenant)\n    : DbContext(o)\n{\n    public DbSet<Invoice> Invoices => Set<Invoice>();\n\n    protected override void OnModelCreating(ModelBuilder b) =>\n        b.Entity<Invoice>().HasQueryFilter(i => i.TenantId == tenant.TenantId);\n}",
+      "lang": "csharp",
+      "deep": "Największe ryzyko to wyciek danych między tenantami: zapomniany filtr w surowym SQL, IgnoreQueryFilters, cache z kluczem bez tenanta, joby w tle bez kontekstu tenanta, logi i eksporty. Global query filter w EF Core działa tylko przez DbContext i nie chroni przed zapytaniami SQL pisanymi ręcznie – RLS w PostgreSQL/SQL Server to druga linia obrony. W EF Core 10 można definiować nazwane filtry, co ułatwia wyłączanie tylko jednego z nich. Noisy neighbour: jeden duży tenant może zjeść zasoby – rate limiting i kwoty per tenant, a największych klientów można przenieść do dedykowanej infrastruktury (model hybrydowy). Migracje schematu przy bazie per tenant muszą działać na setkach baz – potrzebny jest proces orkiestrujący i tolerancja na wersje mieszane. Testy automatyczne powinny sprawdzać izolację (użytkownik tenanta A nie widzi zasobu tenanta B nawet po ID) – to w praktyce IDOR między tenantami."
+    },
+    {
+      "id": "aspnet-s015",
+      "topic": "Minimal APIs",
+      "level": 2,
+      "q": "Jak organizujesz duży projekt na Minimal APIs, żeby Program.cs nie miał tysięcy linii?",
+      "a": "Grupuję endpointy per funkcjonalność (vertical slice): każdy moduł ma metodę rozszerzającą MapXxxEndpoints(this IEndpointRouteBuilder) rejestrującą route group z wspólnymi ustawieniami (prefiks, autoryzacja, tagi OpenAPI, filtry), a handlery są osobnymi statycznymi metodami lub klasami, nie lambdami w Program.cs. Program.cs tylko woła app.MapOrders(), app.MapCustomers(). Logikę trzymam w serwisach lub handlerach, endpoint jest cienką warstwą mapującą HTTP. Rejestrację DI też grupuję per moduł (AddOrdersModule).",
+      "code": "public static class OrdersEndpoints\n{\n    public static IEndpointRouteBuilder MapOrders(this IEndpointRouteBuilder app)\n    {\n        var g = app.MapGroup(\"/api/orders\").WithTags(\"Orders\").RequireAuthorization();\n        g.MapGet(\"/{id:int}\", GetById);\n        g.MapPost(\"/\", Create).AddEndpointFilter<ValidationFilter<CreateOrder>>();\n        return app;\n    }\n\n    static async Task<Results<Ok<OrderDto>, NotFound>> GetById(int id, IOrderService s, CancellationToken ct)\n        => await s.FindAsync(id, ct) is { } o ? TypedResults.Ok(o) : TypedResults.NotFound();\n\n    static Task<Created<OrderDto>> Create(CreateOrder cmd, IOrderService s, CancellationToken ct) => s.CreateAsync(cmd, ct);\n}",
+      "lang": "csharp",
+      "deep": "Popularny wariant to interfejs IEndpoint z metodą MapEndpoint i automatyczne skanowanie assembly – wygodne, ale skanowanie refleksją nie jest zgodne z AOT; jawne wywołania są przejrzystsze i działają z Request Delegate Generator. Handlery jako statyczne metody z TypedResults (Results<Ok<T>, NotFound>) dają typowane odpowiedzi w OpenAPI i łatwe testy jednostkowe. Walidację i cross-cutting concerns realizuję przez endpoint filters na poziomie grupy. Biblioteki takie jak Carter czy FastEndpoints porządkują strukturę, ale dodają zależność i własne konwencje. Przy dużych zespołach struktura per feature ogranicza konflikty w merge'ach i ułatwia późniejsze wydzielenie modułu (modular monolith)."
+    },
+    {
+      "id": "aspnet-s016",
+      "topic": "Obsługa błędów",
+      "level": 2,
+      "q": "Jak projektujesz kontrakt błędów API, żeby klienci mogli go obsługiwać programowo?",
+      "a": "Wszystkie błędy zwracam w jednym formacie – ProblemDetails (RFC 9457, application/problem+json) – z poprawnym kodem statusu, stabilnym polem type (URI identyfikujące rodzaj błędu) lub własnym kodem błędu w rozszerzeniach, czytelnym title/detail i traceId do korelacji z logami. Błędy walidacji mają słownik errors per pole (ValidationProblemDetails). Klient ma polegać na statusie i kodzie błędu, nie na treści komunikatu. Szczegóły wyjątków (stack trace, SQL) nigdy nie trafiają do odpowiedzi na produkcji.",
+      "code": "builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>\n{\n    ctx.ProblemDetails.Extensions.TryAdd(\"traceId\", Activity.Current?.TraceId.ToString());\n});\n\nreturn TypedResults.Problem(statusCode: 409, title: \"Insufficient stock\",\n    type: \"https://errors.example.com/order/insufficient-stock\",\n    extensions: new Dictionary<string, object?> { [\"code\"] = \"order.insufficient_stock\" });",
+      "lang": "csharp",
+      "deep": "Stabilny kod błędu (np. 'order.insufficient_stock') pozwala frontendowi tłumaczyć komunikaty i reagować na konkretny przypadek bez parsowania tekstu; zmiana kodu to breaking change. Rozróżniam błędy klienta (4xx – nie ponawiaj bez zmiany) i serwera (5xx – można ponowić), bo od tego zależą polityki retry klientów. AddProblemDetails + IExceptionHandler + UseStatusCodePages dają spójny format także dla 404 z routingu i 401/403 z autoryzacji. Dla błędów biznesowych lepiej zwracać Result i mapować go na ProblemDetails w endpointach niż rzucać wyjątki. Kontrakt błędów dokumentuję w OpenAPI (ProducesProblem) i pokrywam testami kontraktowymi. Komunikaty błędów nie mogą ujawniać istnienia zasobów, do których użytkownik nie ma dostępu (stąd czasem 404 zamiast 403)."
+    },
+    {
+      "id": "aspnet-s017",
+      "topic": "Testowanie",
+      "level": 3,
+      "q": "Czym są testy kontraktowe i jak chronisz API przed przypadkowym złamaniem kontraktu z klientami?",
+      "a": "Test kontraktowy sprawdza, czy dostawca API spełnia oczekiwania konsumentów, bez stawiania całego systemu end-to-end. W consumer-driven contract testing (np. Pact/PactNet) konsument zapisuje w testach, jakich żądań i odpowiedzi oczekuje, a dostawca w swoim CI weryfikuje te kontrakty na prawdziwej aplikacji (zwykle w WebApplicationFactory). Lżejsza alternatywa to traktowanie dokumentu OpenAPI jako kontraktu: generowanie go w buildzie, snapshot w repozytorium i automatyczne wykrywanie breaking changes w PR (np. oasdiff).",
+      "tip": "Dobrze dodać, że generowanie klienta Angular z OpenAPI plus build frontu w CI to tani 'test kontraktowy' w jednym repo.",
+      "deep": "Pact sprawdza tylko to, czego konsumenci faktycznie używają – dostawca może swobodnie zmieniać resztę, a wie, kogo złamie zmiana; wymaga jednak brokera kontraktów, dyscypliny w zespołach i stanów (provider states) do przygotowania danych. Snapshot OpenAPI łapie zmiany schematu, ale nie semantyki (np. inny kod statusu w danym przypadku biznesowym) – do tego potrzebne są testy integracyjne. Snapshot testing odpowiedzi (np. Verify) wychwytuje przypadkowe zmiany serializacji, jak inna wielkość liter albo format daty. Testy kontraktowe mają największą wartość, gdy konsumenci są w innych zespołach lub poza firmą; przy jednym zespole i monorepo z generowanym klientem TypeScript często wystarczy kompilacja frontu na nowym kontrakcie. Ważne, by kontrakt obejmował też błędy (ProblemDetails), nie tylko ścieżkę szczęśliwą."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "aspnet-sq001",
+      "topic": "Performance",
+      "level": 3,
+      "q": "Pod obciążeniem API zaczyna rzucać 'Timeout expired. The timeout period elapsed prior to obtaining a connection from the pool'. Baza ma niskie CPU. W kodzie znajdujesz fragment poniżej. Co jest główną przyczyną?",
+      "code": "await using var tx = await db.Database.BeginTransactionAsync(ct);\nvar order = await db.Orders.FindAsync([id], ct);\nvar fraud = await fraudClient.CheckAsync(order!, ct);   // 1-3 s\norder!.Status = fraud.Ok ? Status.Approved : Status.Rejected;\nawait db.SaveChangesAsync(ct);\nawait tx.CommitAsync(ct);",
+      "lang": "csharp",
+      "options": [
+        "Za mała wartość CommandTimeout",
+        "Brak AsNoTracking w zapytaniu",
+        "Wywołanie zewnętrznego API wewnątrz otwartej transakcji trzyma połączenie z puli przez czas odpowiedzi dostawcy",
+        "Użycie BeginTransactionAsync zamiast BeginTransaction"
+      ],
+      "correct": 2,
+      "why": "Otwarta transakcja trzyma połączenie, a wywołanie HTTP do wolnego dostawcy wydłuża ten czas do sekund. Przy ruchu RPS × czas trzymania szybko przekracza Max Pool Size (domyślnie 100), więc kolejne żądania czekają na połączenie, choć baza nic nie robi. Rozwiązanie: wywołanie zewnętrzne przed/po transakcji, outbox lub saga. CommandTimeout dotyczy wykonania zapytania, a AsNoTracking i wybór async/sync transakcji nie zmieniają czasu trzymania połączenia."
+    },
+    {
+      "id": "aspnet-sq002",
+      "topic": "HttpClient",
+      "level": 3,
+      "q": "Po przełączeniu usługi downstream na nowe adresy IP (zmiana rekordu DNS) jedna instancja API przez wiele godzin łączy się ze starymi adresami. Klient jest zarejestrowany przez AddHttpClient<PricingClient>(). Co jest najbardziej prawdopodobną przyczyną?",
+      "options": [
+        "IHttpClientFactory cache'uje DNS na 24 godziny",
+        "PricingClient jest wstrzykiwany do serwisu zarejestrowanego jako singleton, więc trzyma jedną instancję HttpClient z handlerem, który nigdy nie jest rotowany",
+        "Typed clienty nie wspierają HTTP/2",
+        "Brakuje wywołania Dispose() na HttpClient po każdym żądaniu"
+      ],
+      "correct": 1,
+      "why": "Fabryka rotuje handlery co HandlerLifetime (domyślnie 2 min), ale tylko dla nowo tworzonych klientów. Typed client przechwycony przez singleton żyje tyle co aplikacja, a jego handler trzyma stare połączenia – zmiany DNS nie są widoczne. Fabryka nie ma własnego 24-godzinnego cache DNS, HTTP/2 nie ma tu znaczenia, a Dispose klienta z fabryki nie wpływa na poolowany handler. Rozwiązanie: konsument transient/scoped, IHttpClientFactory w singletonie lub SocketsHttpHandler z PooledConnectionLifetime."
+    },
+    {
+      "id": "aspnet-sq003",
+      "topic": "Odporność",
+      "level": 3,
+      "q": "Żądanie przechodzi przez gateway → API A → API B → bazę. Każda z trzech warstw HTTP ma retry z MaxRetryAttempts = 3 (czyli do 4 prób). Baza zaczyna odpowiadać timeoutami. Ile maksymalnie zapytań może dotrzeć do bazy z jednego żądania użytkownika?",
+      "options": [
+        "4",
+        "12",
+        "27",
+        "64"
+      ],
+      "correct": 3,
+      "why": "Każda warstwa wykonuje do 4 prób, a każda próba wyższej warstwy uruchamia pełny cykl prób niższej: 4 × 4 × 4 = 64. To klasyczny retry storm – ruch rośnie wykładniczo dokładnie wtedy, gdy zależność jest przeciążona. 12 to błędne dodawanie, 27 to 3^3 (pomylenie liczby ponowień z liczbą prób). Rozwiązanie: retry tylko w jednej warstwie, retry budget, circuit breaker i spójne timeouty."
+    },
+    {
+      "id": "aspnet-sq004",
+      "topic": "Outbox",
+      "level": 2,
+      "q": "Co jest problemem w tym kodzie w kontekście spójności danych?",
+      "code": "db.Orders.Add(order);\nawait db.SaveChangesAsync(ct);\nawait bus.PublishAsync(new OrderPlaced(order.Id), ct);\nreturn TypedResults.Created($\"/api/orders/{order.Id}\", order.ToDto());",
+      "lang": "csharp",
+      "options": [
+        "Zapis do bazy i publikacja do brokera nie są atomowe – awaria po commit da zamówienie bez eventu (dual write); rozwiązaniem jest transactional outbox",
+        "SaveChangesAsync powinien być wywołany po PublishAsync",
+        "PublishAsync nie przyjmuje CancellationToken",
+        "Brak await przed PublishAsync"
+      ],
+      "correct": 0,
+      "why": "Baza i broker to dwa systemy bez wspólnej transakcji. Jeśli proces padnie lub broker będzie niedostępny po SaveChangesAsync, zamówienie istnieje, a event nie zostanie nigdy wysłany. Odwrócenie kolejności daje odwrotny problem (event bez zamówienia). Outbox zapisuje wiadomość w tej samej transakcji co zamówienie, a relay publikuje ją później z gwarancją at-least-once. Pozostałe opcje nie dotyczą spójności (await jest obecny)."
+    },
+    {
+      "id": "aspnet-sq005",
+      "topic": "Caching",
+      "level": 3,
+      "q": "Klucz 'homepage' w IMemoryCache (TTL 60 s) jest czytany ok. 2000 razy na sekundę przez GetOrCreateAsync, a jego wyliczenie to ciężkie zapytanie trwające 800 ms. Co się dzieje co minutę?",
+      "options": [
+        "Fabryka wykona się dokładnie raz – IMemoryCache blokuje równoległe wywołania dla tego samego klucza",
+        "IMemoryCache zwraca null, dopóki wartość nie zostanie przeliczona",
+        "Wiele żądań w oknie ~800 ms wykona fabrykę równolegle (cache stampede), dobijając bazę setkami identycznych zapytań",
+        "Wartość jest automatycznie odświeżana w tle przed wygaśnięciem"
+      ],
+      "correct": 2,
+      "why": "IMemoryCache.GetOrCreateAsync nie ma request coalescing – każde żądanie, które trafi na brak wartości, wywoła fabrykę. Przy 2000 RPS i 800 ms wyliczenia to setki równoległych ciężkich zapytań. IMemoryCache nie zwraca null w tym scenariuszu i nie odświeża wartości w tle. Rozwiązania: HybridCache (coalescing w procesie), odświeżanie w tle przez worker, jitter TTL, serwowanie przeterminowanej wartości podczas przeliczania."
+    },
+    {
+      "id": "aspnet-sq006",
+      "topic": "Rate limiting",
+      "level": 2,
+      "q": "API działa na 4 replikach za load balancerem round-robin. Skonfigurowano wbudowany rate limiter: fixed window 100 żądań/min per użytkownik. Ile żądań na minutę realnie może wykonać jeden użytkownik, zanim dostanie 429?",
+      "options": [
+        "Do ok. 400 – każda replika liczy limit niezależnie w swojej pamięci",
+        "Dokładnie 100 – limiter synchronizuje liczniki przez load balancer",
+        "25 – limit jest dzielony automatycznie przez liczbę replik",
+        "Brak limitu – rate limiter nie działa przy wielu replikach"
+      ],
+      "correct": 0,
+      "why": "Middleware rate limiting w ASP.NET Core trzyma liczniki w pamięci procesu. Przy 4 replikach i równym rozkładzie użytkownik może wykonać ok. 4 × 100 żądań. Nie ma automatycznej synchronizacji ani dzielenia limitu. Do twardego limitu globalnego potrzebny jest limiter na brzegu (gateway) albo rozproszony licznik (np. Redis)."
+    },
+    {
+      "id": "aspnet-sq007",
+      "topic": "Graceful shutdown",
+      "level": 3,
+      "q": "Podczas każdego rolling deployu w Kubernetesie klienci przez kilka sekund dostają 502/connection refused, mimo że aplikacja poprawnie obsługuje SIGTERM i kończy trwające żądania. Co najczęściej pomaga?",
+      "options": [
+        "Wydłużenie liveness probe",
+        "Ustawienie HostOptions.ShutdownTimeout na 0, żeby pod zamykał się szybciej",
+        "Wyłączenie readiness probe",
+        "Dodanie preStop hooka z krótkim sleepem, bo usunięcie poda z endpointów Service/ingressu następuje asynchronicznie i ruch jeszcze przez chwilę trafia do zamykanego poda"
+      ],
+      "correct": 3,
+      "why": "Po rozpoczęciu terminacji Kubernetes równolegle wysyła sygnały do poda i aktualizuje endpointy; ingress i kube-proxy dowiadują się o tym z opóźnieniem. Jeśli aplikacja od razu przestaje przyjmować połączenia, część ruchu trafia w zamknięty socket. preStop sleep opóźnia SIGTERM, dając czas na wyjęcie poda z ruchu (terminationGracePeriodSeconds musi to uwzględniać). Zerowy ShutdownTimeout ucina trwające żądania, a zmiany probe'ów nie rozwiązują wyścigu."
+    },
+    {
+      "id": "aspnet-sq008",
+      "topic": "Długie operacje",
+      "level": 2,
+      "q": "Co jest najpoważniejszym problemem tego endpointu?",
+      "code": "app.MapPost(\"/api/reports\", (ReportRequest req, AppDbContext db) =>\n{\n    _ = Task.Run(async () =>\n    {\n        var data = await db.Sales.Where(s => s.Year == req.Year).ToListAsync();\n        await ReportGenerator.SaveAsync(data);\n    });\n    return Results.Accepted();\n});",
+      "lang": "csharp",
+      "options": [
+        "202 Accepted nie może mieć body",
+        "Fire-and-forget używa scoped DbContext po zakończeniu requestu (ObjectDisposedException), a praca ginie przy restarcie i nie ma ponowień ani śledzenia statusu",
+        "Task.Run tworzy nowy wątek systemowy, co wyczerpuje pamięć",
+        "Brakuje ConfigureAwait(false) wewnątrz Task.Run"
+      ],
+      "correct": 1,
+      "why": "DbContext jest scoped – po zwróceniu odpowiedzi scope requestu zostaje zdisposowany, a zadanie w tle nadal z niego korzysta. Dodatkowo praca nie jest nigdzie zapisana, więc deploy lub crash ją gubi, nie ma retry, a klient nie ma jak sprawdzić statusu. Poprawnie: trwałe zlecenie (tabela/kolejka) + worker z własnym scope (IServiceScopeFactory) + endpoint statusu. 202 może mieć body, Task.Run używa wątków puli, a ConfigureAwait(false) nie ma tu znaczenia."
+    },
+    {
+      "id": "aspnet-sq009",
+      "topic": "Observability",
+      "level": 3,
+      "q": "Trace'y HTTP między API Orders i API Billing łączą się poprawnie, ale przetwarzanie wiadomości z RabbitMQ w Billing zawsze startuje jako nowy, osobny trace. Co jest najbardziej prawdopodobną przyczyną?",
+      "options": [
+        "OpenTelemetry nie wspiera aplikacji konsolowych",
+        "Billing ma inny service.name niż Orders",
+        "Kontekst (traceparent) nie jest propagowany w nagłówkach wiadomości – trzeba go wstrzyknąć przy publikacji i odtworzyć w konsumencie, chyba że klient brokera ma gotową instrumentację",
+        "Brakuje AddAspNetCoreInstrumentation w Billing"
+      ],
+      "correct": 2,
+      "why": "HttpClient i ASP.NET Core automatycznie propagują W3C traceparent, ale dla brokerów kontekst trzeba przenieść w nagłówkach wiadomości (np. przez Propagators.DefaultTextMapPropagator.Inject/Extract) albo użyć biblioteki z gotową instrumentacją. Różne service.name to norma przy rozproszonych trace'ach. Instrumentacja ASP.NET Core dotyczy żądań HTTP, a nie konsumentów kolejki. OpenTelemetry działa w każdej aplikacji .NET."
+    },
+    {
+      "id": "aspnet-sq010",
+      "topic": "Wersjonowanie",
+      "level": 2,
+      "q": "Która zmiana w istniejącej wersji publicznego API jest zazwyczaj bezpieczna (non-breaking)?",
+      "options": [
+        "Dodanie nowego, opcjonalnego pola w odpowiedzi JSON",
+        "Zmiana pola 'price' z liczby na string z walutą",
+        "Uczynienie wymaganym dotychczas opcjonalnego pola w żądaniu",
+        "Zmiana kodu odpowiedzi z 200 na 201 przy tworzeniu zasobu"
+      ],
+      "correct": 0,
+      "why": "Nowe opcjonalne pole w odpowiedzi jest ignorowane przez klientów stosujących tolerant reader (domyślne zachowanie większości deserializerów). Zmiana typu pola psuje deserializację, nowe wymagane pole w żądaniu odrzuca dotychczasowe żądania, a zmiana kodu statusu łamie klientów sprawdzających konkretny kod. Uwaga: klienci z bardzo ścisłą deserializacją mogą mieć problem nawet z nowym polem – dlatego tolerant reader warto zapisać w kontrakcie."
+    }
+  ]
+}

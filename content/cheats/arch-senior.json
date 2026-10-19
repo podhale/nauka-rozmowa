@@ -1,0 +1,135 @@
+{
+  "cat": "arch",
+  "sheets": [
+    {
+      "topic": "System design",
+      "points": [
+        "Etapy: **wymagania → estymacje → API → model danych → diagram → pogłębienie wąskich gardeł → trade-offy i awarie**.",
+        "Wymagania niefunkcjonalne: skala, read:write, latency (p99), dostępność, spójność, retencja.",
+        "Doba ≈ 100 tys. s: 1 mln/dzień ≈ 12/s; szczyt zwykle 2–5× średniej.",
+        "Storage = liczba obiektów × rozmiar × retencja × replikacja.",
+        "Zacznij od najprostszego działającego projektu i ewoluuj go pod konkretne wąskie gardła.",
+        "Prawo Little’a: równoległość = przepustowość × czas obsługi (1000 RPS × 0,2 s = 200 w toku).",
+        "Na koniec: podsumowanie, ryzyka, co w następnej iteracji."
+      ],
+      "pitfalls": [
+        "Skok do technologii (Kafka, Cassandra, K8s) przed ustaleniem wymagań.",
+        "Brak rozróżnienia średniej i szczytu oraz odczytów i zapisów."
+      ],
+      "code": "10 mln DAU × 20 req = 200 mln/dzień ≈ 2 000 RPS, szczyt ×3 ≈ 6 000 RPS\n20 mln zapisów × 1 KB × 365 ≈ 7,3 TB/rok",
+      "lang": "text",
+      "say": "Zanim cokolwiek narysuję, ustalam wymagania i skalę, liczę rząd wielkości ruchu i danych, a każdą decyzję architektoniczną uzasadniam tymi liczbami."
+    },
+    {
+      "topic": "Event-driven",
+      "points": [
+        "**Event notification** (tylko Id, odbiorca dopytuje) vs **event-carried state transfer** (zdarzenie niesie dane, odbiorca ma kopię).",
+        "**Event sourcing** to sposób przechowywania stanu (append-only zdarzenia + projekcje), nie mechanizm integracji.",
+        "EDA nie implikuje event sourcingu.",
+        "Integration events = publiczny kontrakt: wersjonowanie, zmiany addytywne; oddziel je od domain events.",
+        "Kolejność gwarantowana zwykle tylko w partycji/kluczu – konsument toleruje zdarzenia nie po kolei (wersja agregatu).",
+        "Event sourcing ma sens dla ledgerów, księgowości, domen z audytem regulacyjnym; stosuj selektywnie, w jednym bounded contexcie.",
+        "Koszty ES: upcasting starych zdarzeń, snapshoty, odbudowa projekcji, RODO (crypto-shredding).",
+        "Correlation id + distributed tracing przez broker – inaczej przepływów nie da się debugować."
+      ],
+      "pitfalls": [
+        "Event sourcing dla zwykłego CRUD tylko po to, żeby mieć historię zmian – wystarczy audyt lub temporal tables.",
+        "Zdarzenia będące ukrytymi komendami do jednego odbiorcy."
+      ],
+      "say": "Zdarzeń używam do rozluźnienia sprzężenia między serwisami, ale event sourcing traktuję jako osobną, kosztowną decyzję – tylko tam, gdzie historia zdarzeń jest istotą domeny."
+    },
+    {
+      "topic": "Spójność danych",
+      "points": [
+        "Saga = lokalne transakcje + **kompensacje** (nowe operacje biznesowe, nie rollback).",
+        "**Choreografia** dla 2–3 kroków; **orkiestracja** (state machine: MassTransit, NServiceBus, Durable Functions, Temporal) dla długich procesów z timeoutami.",
+        "Kroki nieodwracalne na końcu sagi; wcześniej rezerwacje (semantic lock, status Pending).",
+        "Exactly-once delivery to mit; osiąga się **at-least-once + idempotencja**.",
+        "Idempotency-Key: INSERT z unikalnym indeksem **przed** wykonaniem, hash payloadu (inny payload → 422), w trakcie → 409, TTL.",
+        "Kafka EOS działa tylko w obrębie Kafki; efekt w zewnętrznej bazie i tak wymaga idempotencji.",
+        "2PC: blokady, koordynator jako SPOF, brak wsparcia w chmurze; w .NET MSDTC tylko na Windows (od .NET 7).",
+        "CAP przy partycji, PACELC na co dzień: latency vs spójność."
+      ],
+      "pitfalls": [
+        "Check-then-act przy kluczu idempotencji – dwa równoległe requesty przechodzą oba.",
+        "Brak obsługi nieudanej kompensacji (retry + stan „wymaga interwencji”)."
+      ],
+      "code": "INSERT INTO IdempotencyKeys(ClientId, [Key], RequestHash, CreatedAt)\nVALUES (@c, @k, @h, SYSUTCDATETIME());   -- PK (ClientId, Key)\n-- duplikat → zwróć zapisaną odpowiedź albo 409, jeśli w trakcie",
+      "lang": "sql",
+      "say": "Silna spójność wewnątrz agregatu i serwisu, eventual consistency między nimi – outbox, sagi z kompensacjami i idempotentni konsumenci zamiast transakcji rozproszonych."
+    },
+    {
+      "topic": "Decyzje i dług techniczny",
+      "points": [
+        "ADR: **kontekst → rozważane opcje → decyzja → konsekwencje** (także negatywne), numerowany, w repo jako Markdown.",
+        "Statusy: proposed, accepted, deprecated, superseded by ADR-xxx; ADR się nie edytuje, tylko zastępuje nowym.",
+        "ADR dla decyzji drogich do odwrócenia; proposed jako pull request = narzędzie do konsensusu.",
+        "Szablony: format Michaela Nygarda, MADR; warto dopisać warunki ponownej oceny.",
+        "Dług techniczny opisuj skutkami: lead time, incydenty, godziny on-call, ryzyko bezpieczeństwa.",
+        "Priorytet wg „odsetek”: hotspoty (częste zmiany × złożoność), nie wg brzydoty kodu.",
+        "Spłata ciągła: stała część pojemności + przy pracy w obszarze; nie licz na „sprint refaktoryzacji”.",
+        "Kwadrant Fowlera: rozważny/lekkomyślny × świadomy/nieświadomy."
+      ],
+      "pitfalls": [
+        "Big bang rewrite jako sposób spłaty długu.",
+        "Argumentowanie „kod jest brzydki” zamiast kosztu dla biznesu."
+      ],
+      "say": "Decyzje architektoniczne zapisuję jako ADR z kontekstem i konsekwencjami, a dług techniczny przedstawiam biznesowi jako koszt i ryzyko w obszarach, które często zmieniamy, ze stałym budżetem na spłatę."
+    },
+    {
+      "topic": "Niezawodność",
+      "points": [
+        "**SLI** = mierzony wskaźnik (odsetek udanych requestów < 300 ms); **SLO** = cel (99,9%/30 dni); **SLA** = umowa z karami.",
+        "Error budget 99,9% ≈ 43 min/30 dni; 99,95% ≈ 22 min; 99,99% ≈ 4,3 min.",
+        "Alerty na **burn rate**, a nie na chwilowe progi; error budget policy uzgodniona z biznesem z góry.",
+        "Backpressure: ograniczone kolejki (`Channel.CreateBounded`, `FullMode = Wait`), limity współbieżności, rate limiter ASP.NET Core.",
+        "Load shedding: odrzucaj tanio i wcześnie (429/503 + Retry-After), z priorytetami ruchu.",
+        "Klient: retry z exponential backoff + jitter, limit prób, circuit breaker (`Microsoft.Extensions.Http.Resilience`).",
+        "Feature flags oddzielają deploy od release: release toggles, kill switch, eksperymenty, uprawnienia (`Microsoft.FeatureManagement`, OpenFeature).",
+        "Flagi: właściciel i data usunięcia, wartość domyślna przy niedostępności serwisu flag, wartość flagi w telemetrii."
+      ],
+      "pitfalls": [
+        "Kolejka bez limitu – przeciążenie przesunięte w pamięć i timeouty.",
+        "Retry storm po awarii zależności.",
+        "Dług flag: setki martwych przełączników i nieprzetestowane kombinacje."
+      ],
+      "code": "builder.Services.AddRateLimiter(o =>\n{\n    o.RejectionStatusCode = 429;\n    o.AddConcurrencyLimiter(\"api\", l => { l.PermitLimit = 200; l.QueueLimit = 50; });\n});\nbuilder.Services.AddHttpClient<PaymentsClient>().AddStandardResilienceHandler();",
+      "lang": "csharp",
+      "say": "SLO definiuję z perspektywy użytkownika, a error budget decyduje, czy przyspieszamy wdrożenia, czy stabilizujemy; przed przeciążeniem chronię się limitami i szybkim odrzucaniem, a ryzyko wdrożeń zmniejszam feature flagami."
+    },
+    {
+      "topic": "Multi-tenancy",
+      "points": [
+        "Modele izolacji: **silo** (dedykowane zasoby), **pool** (wspólne z TenantId), **bridge/hybryda** – dobierane per warstwa.",
+        "Decydują: regulacje i data residency, koszt jednostkowy tenanta, liczba tenantów.",
+        "Tenant rozpoznany na wejściu (subdomena, claim) i propagowany do bazy, cache, kolejek, logów i metryk.",
+        "Tenant w **każdym kluczu**: cache, partycja kolejki, telemetria.",
+        "Noisy neighbor: rate limity i quoty per tenant, osobne kolejki/workery dla dużych klientów.",
+        "Cykl życia tenanta (onboarding, migracja, eksport, usunięcie danych) projektuj od początku.",
+        "Różnicowanie funkcji przez konfigurację i flagi per tenant, nie osobne wdrożenia."
+      ],
+      "pitfalls": [
+        "Klucz cache bez tenanta – wyciek danych między klientami.",
+        "Osobne wdrożenia/forki kodu per klient."
+      ],
+      "say": "Model izolacji dobieram do wymagań i kosztów, często hybrydowo, a kontekst tenanta jest częścią każdego klucza – w bazie, cache, kolejce i telemetrii."
+    },
+    {
+      "topic": "Rola seniora",
+      "points": [
+        "Review: poprawność, edge case’y, granice i API, bezpieczeństwo, wydajność, testowalność, spójność z architekturą.",
+        "Styl i formatowanie zostawiam analizatorom i formatterowi w CI.",
+        "Komentarze jako pytania/sugestie z uzasadnieniem; oznaczam wagę (blokujące vs nit).",
+        "Małe PR-y, opis „dlaczego”, review projektu przed implementacją dużych funkcji.",
+        "Szybka odpowiedź na review to metryka przepływu zespołu.",
+        "Nie być jedynym recenzentem – uczę innych, powtarzające się uwagi zamieniam w reguły lintera.",
+        "Mentoring: prowadzenie do rozwiązania pytaniami, stopniowa odpowiedzialność, regularny, konkretny feedback."
+      ],
+      "pitfalls": [
+        "Blokowanie merge z powodu osobistych preferencji.",
+        "Senior jako bottleneck i jedyny właściciel wiedzy (bus factor)."
+      ],
+      "say": "Code review traktuję jako dzielenie się wiedzą: skupiam się na projekcie, poprawności i ryzyku, styl automatyzuję, a w mentoringu pomagam ludziom dojść do rozwiązania i stopniowo oddaję im odpowiedzialność."
+    }
+  ]
+}

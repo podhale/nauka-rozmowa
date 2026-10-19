@@ -1,0 +1,1000 @@
+{
+ "cat": "sql",
+ "name": "SQL i bazy danych",
+ "cards": [
+  {
+   "id": "sql-001",
+   "topic": "Podstawy SELECT",
+   "level": 1,
+   "q": "Dlaczego aliasu kolumny z SELECT nie można użyć w WHERE, ale można w ORDER BY? Jak to obejść?",
+   "a": "Logiczna kolejność przetwarzania to: FROM/JOIN → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → TOP/OFFSET. WHERE jest oceniany przed SELECT, więc alias jeszcze nie istnieje; ORDER BY działa po SELECT, więc alias już widzi. Obejście: powtórzyć wyrażenie, opakować zapytanie w CTE/derived table albo nazwać wyrażenie przez CROSS APPLY (VALUES ...). To kolejność logiczna – fizycznie optymalizator może wykonać operacje inaczej, byle wynik był ten sam.",
+   "code": "SELECT o.Id, x.Gross\nFROM Orders o\nCROSS APPLY (VALUES (o.Net * 1.23)) AS x(Gross)\nWHERE x.Gross > 1000\nORDER BY x.Gross DESC;",
+   "lang": "sql",
+   "tip": "Ta sama reguła tłumaczy, czemu funkcji okna nie użyjesz w WHERE – są liczone na etapie SELECT."
+  },
+  {
+   "id": "sql-002",
+   "topic": "Podstawy SELECT",
+   "level": 1,
+   "q": "UNION vs UNION ALL – czym się różnią i którego używać domyślnie? Co robią INTERSECT i EXCEPT?",
+   "a": "UNION skleja wyniki i usuwa duplikaty, co wymaga sortowania lub hashowania – dodatkowy koszt CPU i pamięci. UNION ALL skleja bez deduplikacji. Domyślnie używam UNION ALL, chyba że naprawdę potrzebuję unikalności – często zbiory są rozłączne z definicji i UNION tylko marnuje zasoby. INTERSECT zwraca wiersze wspólne, EXCEPT – wiersze z pierwszego zbioru, których nie ma w drugim (oba deduplikują). Wszystkie wymagają tej samej liczby kolumn o zgodnych typach, a nazwy kolumn pochodzą z pierwszego zapytania.",
+   "code": "SELECT Email, 'customer' AS Source FROM Customers\nUNION ALL\nSELECT Email, 'newsletter' FROM NewsletterSubscribers;\n\nSELECT Email FROM Customers\nEXCEPT\nSELECT Email FROM Unsubscribed;",
+   "lang": "sql",
+   "tip": "INTERSECT/EXCEPT traktują NULL-e jako równe sobie (w przeciwieństwie do =), co bywa wygodne przy porównywaniu dwóch zbiorów danych."
+  },
+  {
+   "id": "sql-003",
+   "topic": "NULL",
+   "level": 1,
+   "q": "Co to jest logika trójwartościowa w SQL i dlaczego WHERE Col = NULL nic nie zwraca?",
+   "a": "NULL oznacza „wartość nieznana”, więc porównanie z NULL (=, <>, <) daje UNKNOWN, a nie TRUE/FALSE. WHERE, ON i HAVING przepuszczają tylko wiersze, dla których warunek jest TRUE – UNKNOWN odpada tak samo jak FALSE. Dlatego używa się IS NULL / IS NOT NULL. Uwaga na negację: NOT UNKNOWN to dalej UNKNOWN, więc WHERE Status <> 'Closed' pominie wiersze ze Status = NULL. CHECK constraint działa odwrotnie – odrzuca tylko FALSE, więc NULL go przechodzi.",
+   "code": "SELECT * FROM Tasks WHERE Status <> 'Closed' OR Status IS NULL;\n\n-- SQL Server 2022+ / PostgreSQL: porównanie NULL-safe\nSELECT * FROM Tasks WHERE Status IS DISTINCT FROM 'Closed';",
+   "lang": "sql",
+   "tip": "IS [NOT] DISTINCT FROM jest w PostgreSQL od dawna, w SQL Server od wersji 2022."
+  },
+  {
+   "id": "sql-004",
+   "topic": "Agregacja",
+   "level": 1,
+   "q": "Jakie są zasady GROUP BY i czym różnią się COUNT(*), COUNT(kolumna) i COUNT(DISTINCT kolumna)?",
+   "a": "Po GROUP BY każdy wiersz wyniku to jedna grupa, więc w SELECT mogą być tylko kolumny z GROUP BY albo agregaty – inaczej SQL Server zgłasza błąd (MySQL w starych trybach to przepuszczał i zwracał przypadkową wartość). COUNT(*) liczy wiersze, COUNT(kol) – wiersze z wartością NOT NULL, COUNT(DISTINCT kol) – unikalne wartości bez NULL. Pozostałe agregaty (SUM, AVG, MIN, MAX) też ignorują NULL, a na pustym zbiorze SUM zwraca NULL, nie 0.",
+   "code": "SELECT CustomerId,\n       COUNT(*)                 AS Orders,\n       COUNT(CouponCode)        AS WithCoupon,\n       COUNT(DISTINCT ShipCity) AS Cities\nFROM Orders\nGROUP BY CustomerId\nHAVING COUNT(*) >= 5;",
+   "lang": "sql",
+   "tip": "PostgreSQL pozwala w SELECT na kolumny zależne funkcyjnie od PK z GROUP BY (GROUP BY c.Id, a w SELECT c.Name); SQL Server nie."
+  },
+  {
+   "id": "sql-005",
+   "topic": "Funkcje okna",
+   "level": 1,
+   "q": "Czym są funkcje okna i czym różnią się od GROUP BY?",
+   "a": "Funkcja okna liczy wartość na zbiorze wierszy powiązanych z bieżącym (oknie), ale – w przeciwieństwie do GROUP BY – nie zwija wierszy: każdy wiersz zostaje i dostaje obok wynik. OVER() definiuje okno: PARTITION BY dzieli na grupy, ORDER BY ustala kolejność w partycji (wymagane dla rankingów i LAG/LEAD), opcjonalna ramka (ROWS/RANGE) zawęża zakres. Dzięki temu w jednym przebiegu masz np. pensję pracownika i średnią jego działu, bez self-joina czy podzapytania.",
+   "code": "SELECT Name, DeptId, Salary,\n       AVG(Salary) OVER (PARTITION BY DeptId) AS DeptAvg,\n       Salary * 100.0 / SUM(Salary) OVER ()   AS PctOfTotal,\n       LAG(Salary) OVER (PARTITION BY DeptId ORDER BY HiredAt) AS PrevHireSalary\nFROM Employees;",
+   "lang": "sql",
+   "tip": "Funkcje okna są liczone po WHERE/GROUP BY/HAVING, więc widzą już przefiltrowane wiersze."
+  },
+  {
+   "id": "sql-006",
+   "topic": "Funkcje okna",
+   "level": 1,
+   "q": "ROW_NUMBER, RANK i DENSE_RANK – czym się różnią przy remisach?",
+   "a": "Wszystkie numerują wiersze według ORDER BY w OVER. ROW_NUMBER daje zawsze unikalne kolejne numery – przy remisie kolejność jest niedeterministyczna, więc dodaję tie-breaker (np. Id). RANK daje remisom ten sam numer i zostawia lukę (1, 2, 2, 4), DENSE_RANK – ten sam numer bez luk (1, 2, 2, 3). ROW_NUMBER do deduplikacji i „top 1 per grupa”, DENSE_RANK do „n-tej najwyższej wartości”, RANK do rankingów w stylu sportowym.",
+   "code": "SELECT Name, Score,\n  ROW_NUMBER() OVER (ORDER BY Score DESC, Id) AS RowNum, -- 1,2,3,4\n  RANK()       OVER (ORDER BY Score DESC)     AS Rnk,    -- 1,2,2,4\n  DENSE_RANK() OVER (ORDER BY Score DESC)     AS DRnk    -- 1,2,2,3\nFROM Players;",
+   "lang": "sql",
+   "tip": "NTILE(n) dzieli wiersze na n kubełków (kwartyle, decyle) – czasem pada jako follow-up."
+  },
+  {
+   "id": "sql-007",
+   "topic": "Zadania z rozmów",
+   "level": 1,
+   "q": "Jak znaleźć n-tą najwyższą pensję (np. drugą)?",
+   "a": "Najczytelniej przez DENSE_RANK: numeruję pensje malejąco i biorę rangę n – remisy są obsłużone poprawnie (dwie osoby z najwyższą pensją nie „zajmują” drugiego miejsca). Alternatywy: OFFSET n-1 ROWS FETCH NEXT 1 ROW ONLY na SELECT DISTINCT Salary albo klasyczne MAX(Salary) WHERE Salary < (SELECT MAX(Salary) ...) – działa tylko dla n = 2. Warto dopytać, czy chodzi o n-tą unikalną wartość, czy n-tego pracownika, i co zwrócić, gdy takiej wartości nie ma.",
+   "code": "WITH r AS (\n  SELECT Name, Salary,\n         DENSE_RANK() OVER (ORDER BY Salary DESC) AS rnk\n  FROM Employees\n)\nSELECT Name, Salary FROM r WHERE rnk = 2;",
+   "lang": "sql",
+   "tip": "Wersja per dział: dodaj PARTITION BY DeptId – i masz od razu „top N per grupa”."
+  },
+  {
+   "id": "sql-008",
+   "topic": "DDL i constrainty",
+   "level": 1,
+   "q": "Jakie znasz constrainty i co gwarantuje każdy z nich?",
+   "a": "PRIMARY KEY – unikalny i NOT NULL identyfikator wiersza (w SQL Server domyślnie tworzy clustered index). FOREIGN KEY – wartość musi istnieć w tabeli nadrzędnej lub być NULL; można dodać ON DELETE CASCADE / SET NULL. UNIQUE – brak duplikatów (tworzy unikalny indeks). CHECK – warunek na wartościach wiersza, np. Price > 0. DEFAULT – wartość wstawiana, gdy kolumnę pominięto w INSERT. NOT NULL – wymusza obecność wartości. Constrainty to ostatnia linia obrony integralności: walidacja w aplikacji jej nie zastąpi, bo do bazy pisze nie tylko jedna aplikacja, a równoległe żądania potrafią obejść sprawdzenia w kodzie.",
+   "code": "CREATE TABLE Products (\n  Id         int IDENTITY CONSTRAINT PK_Products PRIMARY KEY,\n  Sku        varchar(20) NOT NULL CONSTRAINT UQ_Products_Sku UNIQUE,\n  Price      decimal(10,2) NOT NULL CONSTRAINT CK_Products_Price CHECK (Price > 0),\n  CategoryId int NOT NULL CONSTRAINT FK_Products_Categories\n             REFERENCES Categories(Id),\n  CreatedAt  datetime2 NOT NULL CONSTRAINT DF_Products_CreatedAt\n             DEFAULT SYSUTCDATETIME()\n);",
+   "lang": "sql",
+   "tip": "Nazywaj constrainty jawnie (PK_, FK_, CK_, UQ_, DF_) – automatyczne nazwy z losowym sufiksem utrudniają migracje między środowiskami."
+  },
+  {
+   "id": "sql-009",
+   "topic": "Typy danych",
+   "level": 1,
+   "q": "varchar czy nvarchar w SQL Server?",
+   "a": "varchar przechowuje znaki w stronie kodowej collation (zwykle 1 bajt na znak), nvarchar – w UTF-16 (2 bajty na większość znaków, 4 dla par surogatów, np. emoji). Dla danych od użytkowników z polskimi znakami czy innymi alfabetami bezpiecznie jest nvarchar – w varchar znaki spoza strony kodowej (np. ł, ż przy Latin1) zostaną utracone lub zamienione na '?'. varchar ma sens dla danych ASCII z definicji: kody, SKU, identyfikatory. Od SQL Server 2019 varchar może też używać collation UTF-8 (*_UTF8). Literały Unicode zapisuję z prefiksem N'...'.",
+   "code": "DECLARE @a varchar(20)  = 'Zażółć';   -- przy collation Latin1: utrata ż/ł/ć\nDECLARE @b nvarchar(20) = N'Zażółć';  -- OK\nSELECT DATALENGTH(@b);                -- 12 bajtów (6 znaków x 2)",
+   "lang": "sql",
+   "tip": "Równie ważne jak wybór typu: parametr z aplikacji musi mieć ten sam typ co kolumna – inaczej implicit conversion i index scan."
+  },
+  {
+   "id": "sql-010",
+   "topic": "Indeksy",
+   "level": 1,
+   "q": "Jak działa indeks B-tree i dlaczego przyspiesza wyszukiwanie?",
+   "a": "Indeks to zbalansowane drzewo (B+tree): korzeń i poziomy pośrednie zawierają klucze-przewodniki, a liście – posortowane klucze ze wskaźnikami do wierszy (albo same wiersze w indeksie clustered). Wyszukanie wartości to zejście od korzenia do liścia – O(log n), w praktyce 3–4 odczyty stron 8 KB nawet dla milionów wierszy, zamiast czytania całej tabeli. Liście są posortowane i połączone w listę, więc indeks obsługuje też zakresy (BETWEEN, >, LIKE 'abc%') i ORDER BY bez sortowania. Koszt: miejsce oraz wolniejsze INSERT/UPDATE/DELETE, bo każdy indeks trzeba aktualizować.",
+   "code": "CREATE INDEX IX_Customers_LastName ON Customers (LastName);\n\n-- seek: zejście po drzewie + odczyt zakresu liści\nSELECT Id, LastName FROM Customers WHERE LastName LIKE 'Kow%';",
+   "lang": "sql",
+   "tip": "Indeks hash (np. w PostgreSQL czy In-Memory OLTP) obsługuje tylko równość – nie zakresy ani sortowanie."
+  },
+  {
+   "id": "sql-011",
+   "topic": "Transakcje i izolacja",
+   "level": 1,
+   "q": "Co oznacza ACID i jak baza to zapewnia?",
+   "a": "Atomicity – transakcja wykonuje się w całości albo wcale. Consistency – po transakcji spełnione są wszystkie reguły (constrainty, FK). Isolation – równoległe transakcje nie widzą nawzajem swoich niezatwierdzonych zmian w niekontrolowany sposób; stopień zależy od poziomu izolacji. Durability – po COMMIT dane przetrwają awarię. Technicznie SQL Server zapisuje zmiany najpierw do transaction logu (write-ahead logging), a COMMIT czeka na utrwalenie logu na dysku; po awarii recovery odtwarza zatwierdzone i wycofuje niezatwierdzone transakcje. Izolację zapewniają blokady i/lub wersjonowanie wierszy.",
+   "code": "SET XACT_ABORT ON;\nBEGIN TRAN;\n  UPDATE Accounts SET Balance -= 100 WHERE Id = 1;\n  UPDATE Accounts SET Balance += 100 WHERE Id = 2;\nCOMMIT;",
+   "lang": "sql",
+   "tip": "„C” w ACID to coś innego niż „C” w CAP (tam: każdy węzeł widzi ten sam stan) – częsta pułapka przy pytaniach o NoSQL."
+  },
+  {
+   "id": "sql-012",
+   "topic": "Obiekty programowalne",
+   "level": 1,
+   "q": "Czym jest widok (view) i czy przechowuje dane?",
+   "a": "Widok to zapisane zapytanie SELECT, z którego korzysta się jak z tabeli. Zwykły widok nie przechowuje danych – optymalizator rozwija jego definicję w zapytaniu (inlining), więc nie jest ani szybszy, ani wolniejszy niż ten sam SELECT. Zastosowania: uproszczenie złożonych joinów, warstwa abstrakcji nad schematem, bezpieczeństwo (prawa do widoku zamiast do tabel). Wyjątek to indexed view w SQL Server (materialized view w PostgreSQL) – wynik jest fizycznie zapisany, co przyspiesza agregacje kosztem zapisów.",
+   "code": "CREATE VIEW dbo.vActiveCustomers\nAS\nSELECT Id, Name, Email\nFROM dbo.Customers\nWHERE IsActive = 1;",
+   "lang": "sql",
+   "tip": "Widoki zagnieżdżone w widokach to klasyczne źródło fatalnych planów – optymalizator dostaje gigantyczne zapytanie z niepotrzebnymi joinami."
+  },
+  {
+   "id": "sql-013",
+   "topic": "Bezpieczeństwo",
+   "level": 1,
+   "q": "Czym jest SQL injection i jak się przed nim bronić?",
+   "a": "SQL injection to wstrzyknięcie kodu SQL przez dane wejściowe, gdy zapytanie jest sklejane ze stringów – np. ' OR 1=1 -- w polu loginu. Obrona: zawsze parametry (SqlParameter, Dapper, EF Core LINQ albo FromSql z interpolacją), bo wartość jest przesyłana osobno i nigdy nie jest interpretowana jako kod. Dynamiczny SQL w procedurach – przez sp_executesql z parametrami, a nazwy tabel/kolumn, których nie da się sparametryzować, przez whitelistę i QUOTENAME. Dodatkowo least privilege: konto aplikacji bez praw do DDL i bez roli sysadmin/db_owner.",
+   "code": "-- @table wcześniej sprawdzone z whitelistą\nDECLARE @sql nvarchar(max) =\n  N'SELECT Id, Name FROM dbo.' + QUOTENAME(@table) + N' WHERE Name = @name';\nEXEC sp_executesql @sql, N'@name nvarchar(100)', @name = @name;",
+   "lang": "sql",
+   "tip": "Ręczne escapowanie apostrofów to nie ochrona. Parametryzacja daje też bonus: reużycie planów zamiast kompilacji każdego wariantu zapytania."
+  },
+  {
+   "id": "sql-014",
+   "topic": "JOIN",
+   "level": 2,
+   "q": "Jak znaleźć klientów bez zamówień? Porównaj NOT EXISTS, NOT IN i LEFT JOIN … IS NULL.",
+   "a": "To anti-join. NOT EXISTS jest najbezpieczniejsze: semantycznie jasne i odporne na NULL. NOT IN zawodzi, gdy podzapytanie zwróci choćby jeden NULL – x NOT IN (1, NULL) to x <> 1 AND x <> NULL, czyli UNKNOWN, więc wynik jest pusty. LEFT JOIN … WHERE o.Id IS NULL działa poprawnie, ale wymaga sprawdzania kolumny NOT NULL z prawej strony i bywa mniej czytelny. W SQL Server NOT EXISTS zwykle kompiluje się do operatora Left Anti Semi Join.",
+   "code": "SELECT c.Id, c.Name\nFROM Customers c\nWHERE NOT EXISTS (\n  SELECT 1 FROM Orders o WHERE o.CustomerId = c.Id\n);",
+   "lang": "sql",
+   "tip": "Podchwytliwe pytanie: „NOT IN zwraca 0 wierszy, a wiem, że są klienci bez zamówień” – odpowiedź: NULL w Orders.CustomerId.",
+   "deep": "Optymalizator SQL Server zamienia NOT EXISTS na Left Anti Semi Join (Nested Loops, Merge lub Hash) – zatrzymuje się na pierwszym dopasowaniu, więc nie mnoży wierszy. Dla NOT IN po kolumnie nullable plan jest wyraźnie bardziej złożony: optymalizator musi dodatkowo sprawdzić, czy podzapytanie zawiera NULL (często widać dodatkowy skan i Row Count Spool), bo od tego zależy semantyka. Jeśli kolumna jest NOT NULL, NOT IN i NOT EXISTS dają zwykle identyczny plan. LEFT JOIN + IS NULL bywa realizowany jako pełny join z filtrem po nim, czyli produkuje wiersze, które potem wyrzuca. EXCEPT też realizuje anti-join, ale deduplikuje wynik i porównuje całe wiersze. W PostgreSQL NOT IN z podzapytaniem nie jest zamieniany na anti-join – dostajesz hashed subplan, a gdy wynik nie mieści się w work_mem, plan per wiersz, co bywa katastrofalne; tam NOT EXISTS to reguła. Na rozmowie warto pokazać, że to nie kwestia gustu, tylko poprawności przy NULL."
+  },
+  {
+   "id": "sql-015",
+   "topic": "NULL",
+   "level": 2,
+   "q": "ISNULL vs COALESCE oraz jak NULL wpływa na agregaty?",
+   "a": "COALESCE(a, b, c) to standard SQL – zwraca pierwszy nie-NULL z dowolnej liczby argumentów, a typ wyniku wynika z precedencji typów wszystkich argumentów. ISNULL(a, b) to T-SQL – tylko dwa argumenty, typ wyniku = typ pierwszego (ISNULL(@varchar5, 'długi tekst') obetnie do 5 znaków). Agregaty ignorują NULL: AVG(Rating) to średnia tylko z ocenionych wierszy – jeśli brak oceny ma znaczyć 0, trzeba AVG(COALESCE(Rating, 0)). Uwaga też na AVG z kolumny int – wynik jest int (obcięty), więc mnożę przez 1.0.",
+   "code": "SELECT AVG(Rating)                    AS AvgRated,  -- tylko NOT NULL, wynik int!\n       AVG(COALESCE(Rating, 0) * 1.0) AS AvgAll,\n       SUM(Amount)                    AS MaybeNull, -- NULL na pustym zbiorze\n       COALESCE(SUM(Amount), 0)       AS Total,\n       SUM(Amount) / NULLIF(COUNT(*), 0) AS SafeDiv\nFROM Reviews;",
+   "lang": "sql",
+   "tip": "NULLIF(x, 0) to klasyk na uniknięcie dzielenia przez zero: Total / NULLIF(Count, 0).",
+   "deep": "COALESCE w SQL Server jest przepisywany na CASE WHEN a IS NOT NULL THEN a ELSE b END, więc pierwszy argument może zostać obliczony dwa razy – jeśli to podzapytanie, plan zawiera je dwukrotnie, a przy funkcji niedeterministycznej wynik bywa zaskakujący. ISNULL oblicza argument raz. Różnią się też nullowalnością wyniku: ISNULL(col, 0) w computed column lub SELECT INTO daje kolumnę NOT NULL, COALESCE – nullowalną, co ma znaczenie np. przy persisted computed column użytej w kluczu. Obie funkcje owinięte wokół kolumny w WHERE psują SARGability – zamiast WHERE ISNULL(DeletedAt, '9999-12-31') > @now lepiej (DeletedAt IS NULL OR DeletedAt > @now). W PostgreSQL nie ma ISNULL – jest COALESCE i NULLIF, a agregaty zachowują się tak samo."
+  },
+  {
+   "id": "sql-016",
+   "topic": "CTE",
+   "level": 2,
+   "q": "Czym jest CTE i czy jest materializowane? CTE vs podzapytanie vs tabela tymczasowa.",
+   "a": "CTE (WITH nazwa AS (...)) to nazwane wyrażenie tabelaryczne istniejące tylko w obrębie jednej instrukcji. Poprawia czytelność, pozwala odwołać się do wyniku kilka razy i umożliwia rekurencję. W SQL Server CTE nie jest materializowane – działa jak „widok inline”: optymalizator wkleja definicję w miejsce użycia, więc dwa odwołania = dwa wykonania. Tabela tymczasowa (#temp) faktycznie zapisuje wynik w tempdb, ma statystyki i może mieć indeksy – lepsza, gdy wynik pośredni jest drogi i używany wielokrotnie.",
+   "code": "WITH Recent AS (\n  SELECT CustomerId, SUM(Total) AS Spent\n  FROM Orders\n  WHERE CreatedAt >= DATEADD(day, -30, SYSUTCDATETIME())\n  GROUP BY CustomerId\n)\nSELECT c.Name, r.Spent\nFROM Recent r\nJOIN Customers c ON c.Id = r.CustomerId\nWHERE r.Spent > 1000;",
+   "lang": "sql",
+   "tip": "Średnik przed WITH w T-SQL (;WITH) jest potrzebny, gdy poprzednia instrukcja nie była nim zakończona – stąd ten zwyczaj w starym kodzie.",
+   "deep": "W PostgreSQL do wersji 11 CTE było zawsze materializowane („optimization fence”) – predykaty z zewnątrz nie przechodziły do środka, co bywało zarówno pułapką wydajnościową, jak i celowym trikiem. Od PostgreSQL 12 nierekurencyjne CTE bez efektów ubocznych, użyte raz, są inline'owane; można to wymusić słowami MATERIALIZED / NOT MATERIALIZED. SQL Server nie ma takiej składni – jeśli chcesz materializacji, użyj #temp. Samo CTE nie przyspiesza zapytania – to narzędzie czytelności; plan jest taki sam jak dla równoważnego podzapytania. W SQL Server można wykonać UPDATE/DELETE przez CTE odwołujące się do jednej tabeli (klasyk przy usuwaniu duplikatów), a PostgreSQL ma data-modifying CTE (WITH d AS (DELETE ... RETURNING *) INSERT ...), przydatne np. do przenoszenia wierszy do archiwum w jednej instrukcji."
+  },
+  {
+   "id": "sql-017",
+   "topic": "CTE",
+   "level": 2,
+   "q": "Jak działa rekurencyjne CTE? Pokaż pobranie hierarchii podwładnych.",
+   "a": "Rekurencyjne CTE składa się z części kotwicy (anchor) – punktu startowego, np. wybranego managera – oraz części rekurencyjnej połączonej przez UNION ALL, która dołącza do CTE kolejne poziomy. Silnik wykonuje część rekurencyjną, dopóki zwraca nowe wiersze. Zastosowania: drzewa kategorii, struktura organizacyjna, BOM, generowanie sekwencji dat. W SQL Server domyślny limit to 100 poziomów (OPTION (MAXRECURSION n), 0 = bez limitu); w PostgreSQL wymagane jest WITH RECURSIVE.",
+   "code": "WITH Sub AS (\n  SELECT Id, ManagerId, Name, 0 AS Lvl\n  FROM Employees WHERE Id = @bossId          -- anchor\n  UNION ALL\n  SELECT e.Id, e.ManagerId, e.Name, s.Lvl + 1\n  FROM Employees e\n  JOIN Sub s ON e.ManagerId = s.Id           -- część rekurencyjna\n)\nSELECT * FROM Sub\nOPTION (MAXRECURSION 1000);",
+   "lang": "sql",
+   "tip": "Cykl w danych (A→B→A) = nieskończona rekurencja przerwana błędem limitu. Zabezpieczenie: kolumna ze ścieżką i warunek, że Id jeszcze w niej nie wystąpiło (PostgreSQL 14+ ma klauzulę CYCLE)."
+  },
+  {
+   "id": "sql-018",
+   "topic": "Zadania z rozmów",
+   "level": 2,
+   "q": "Jak znaleźć i usunąć duplikaty, zostawiając jeden rekord?",
+   "a": "Najpierw definicja duplikatu – zestaw kolumn, np. Email. Znajdowanie: GROUP BY Email HAVING COUNT(*) > 1. Usuwanie: ROW_NUMBER() OVER (PARTITION BY Email ORDER BY ...) w CTE i DELETE wierszy z numerem > 1 – ORDER BY decyduje, który rekord zostaje (najstarszy, najnowszy). W SQL Server można usuwać bezpośrednio przez CTE. Po sprzątnięciu dodaję UNIQUE constraint lub indeks, inaczej duplikaty wrócą.",
+   "code": "WITH d AS (\n  SELECT Id, ROW_NUMBER() OVER (\n           PARTITION BY Email ORDER BY CreatedAt, Id) AS rn\n  FROM Customers\n)\nDELETE FROM d WHERE rn > 1;\n\nALTER TABLE Customers ADD CONSTRAINT UQ_Customers_Email UNIQUE (Email);",
+   "lang": "sql",
+   "tip": "Na dużych tabelach usuwaj w paczkach (DELETE TOP (5000) w pętli), żeby nie rozdmuchać logu i nie eskalować blokad. W PostgreSQL: DELETE ... USING albo po ctid."
+  },
+  {
+   "id": "sql-019",
+   "topic": "Zadania z rozmów",
+   "level": 2,
+   "q": "Jak pobrać top N rekordów w każdej grupie (np. 3 ostatnie zamówienia każdego klienta)?",
+   "a": "Standardowo: ROW_NUMBER() OVER (PARTITION BY CustomerId ORDER BY CreatedAt DESC) w CTE, a potem WHERE rn <= 3. Alternatywa w SQL Server: CROSS APPLY z TOP (3) … ORDER BY do tabeli klientów (w PostgreSQL to JOIN LATERAL). Gdy chcę też klientów bez zamówień – OUTER APPLY / LEFT JOIN LATERAL. Wybór zależy od rozkładu danych: ROW_NUMBER czyta wszystkie zamówienia, APPLY robi seek per klient.",
+   "code": "SELECT c.Id, c.Name, o.Id AS OrderId, o.CreatedAt\nFROM Customers c\nCROSS APPLY (\n  SELECT TOP (3) Id, CreatedAt\n  FROM Orders\n  WHERE CustomerId = c.Id\n  ORDER BY CreatedAt DESC\n) o;",
+   "lang": "sql",
+   "tip": "Dla N = 1 w PostgreSQL: SELECT DISTINCT ON (CustomerId) * FROM Orders ORDER BY CustomerId, CreatedAt DESC.",
+   "deep": "Kluczowy jest indeks POC (Partition, Order, Covering): (CustomerId, CreatedAt DESC) INCLUDE (kolumny z SELECT). Z nim wariant ROW_NUMBER czyta indeks po kolei bez sortowania, a APPLY robi tani seek + TOP. Reguła kciuka: mało grup i dużo wierszy w grupie → APPLY wygrywa (N seeków po kilka wierszy zamiast skanu milionów); dużo grup z kilkoma wierszami każda → ROW_NUMBER ze skanem jest tańszy niż miliony seeków. Bez indeksu oba warianty kończą się sortem całej tabeli, często ze spillem do tempdb. Wersja z RANK/DENSE_RANK zamiast ROW_NUMBER zwraca remisy, więc wierszy może być więcej niż N – trzeba ustalić z biznesem, co dzieje się przy remisie. Do ORDER BY w ROW_NUMBER dodaj unikalny tie-breaker, inaczej wynik może się różnić między wykonaniami."
+  },
+  {
+   "id": "sql-020",
+   "topic": "DDL i constrainty",
+   "level": 2,
+   "q": "Jakie są typowe pułapki constraintów: NULL w UNIQUE, indeksy na FK, constrainty WITH NOCHECK?",
+   "a": "UNIQUE w SQL Server traktuje NULL jak wartość – dopuszczalny jest tylko jeden NULL; w PostgreSQL NULL-e są domyślnie różne, więc może ich być wiele (od PG 15 można to zmienić przez NULLS NOT DISTINCT). Obejście w SQL Server: unikalny filtered index WHERE Col IS NOT NULL. Druga pułapka: ani SQL Server, ani PostgreSQL nie tworzą automatycznie indeksu na kolumnie FK – bez niego joiny i DELETE rodzica (sprawdzanie dzieci) skanują tabelę podrzędną. Trzecia: constraint dodany WITH NOCHECK albo wyłączony na czas ładowania danych staje się „untrusted”.",
+   "code": "CREATE UNIQUE INDEX UX_Users_Pesel\n  ON Users (Pesel) WHERE Pesel IS NOT NULL;\n\nCREATE INDEX IX_Orders_CustomerId ON Orders (CustomerId);\n\n-- przywrócenie zaufania po bulk load:\nALTER TABLE Orders WITH CHECK CHECK CONSTRAINT FK_Orders_Customers;",
+   "lang": "sql",
+   "tip": "Szybki audyt starej bazy: SELECT name FROM sys.foreign_keys WHERE is_not_trusted = 1.",
+   "deep": "Untrusted constraint (is_not_trusted = 1 w sys.foreign_keys / sys.check_constraints) nadal blokuje nowe złe dane, ale optymalizator nie może na nim polegać. Traci się wtedy optymalizacje typu join elimination (pominięcie joina do tabeli nadrzędnej, gdy zaufany FK NOT NULL gwarantuje istnienie wiersza, a nie pobierasz z niej kolumn) oraz eliminację gałęzi na podstawie CHECK, ważną w partitioned views. Brak indeksu na FK boli podwójnie przy ON DELETE CASCADE: kaskada skanuje i blokuje tabelę dziecka, co przy ruchu kończy się blokowaniem i deadlockami. Constrainty mają koszt przy zapisie (sprawdzenie FK to dodatkowy seek do rodzica), ale niemal zawsze się opłacają; wyjątkiem bywają hurtownie danych, gdzie integralność zapewnia proces ETL. Na pytanie „czy FK spowalnia” dobra odpowiedź: minimalnie przy zapisach, a często przyspiesza odczyty dzięki dodatkowej wiedzy optymalizatora."
+  },
+  {
+   "id": "sql-021",
+   "topic": "Typy danych",
+   "level": 2,
+   "q": "datetime, datetime2, datetimeoffset, date – którego typu używać?",
+   "a": "datetime to typ legacy: zakres od 1753 roku, dokładność ~3,33 ms (wartości zaokrąglane do .000/.003/.007), 8 bajtów. datetime2 ma zakres 0001–9999, precyzję do 100 ns i zajmuje 6–8 bajtów – to domyślny wybór dla nowych kolumn. datetimeoffset to datetime2 plus offset (np. +02:00) – zachowuje informację, jaki był lokalny czas zdarzenia. date/time, gdy potrzebna jest tylko jedna część. Zasada: znaczniki czasu zapisuję w UTC (datetime2 + SYSUTCDATETIME()) albo jako datetimeoffset, a konwersję na strefę użytkownika robię na brzegu systemu.",
+   "code": "CREATE TABLE Events (\n  Id         bigint IDENTITY PRIMARY KEY,\n  OccurredAt datetimeoffset(3) NOT NULL,\n  CreatedAt  datetime2(3) NOT NULL DEFAULT SYSUTCDATETIME(),\n  EventDate  date NOT NULL\n);\n\nSELECT OccurredAt AT TIME ZONE 'Central European Standard Time' FROM Events;",
+   "lang": "sql",
+   "tip": "Zakresy dat pisz półotwarte: CreatedAt >= '2025-01-01' AND CreatedAt < '2025-02-01'. BETWEEN z '2025-01-31 23:59:59.999' na datetime zaokrągli się do następnego dnia.",
+   "deep": "Offset to nie strefa czasowa: +01:00 nie mówi, czy to Warszawa zimą, czy Lagos, więc dla zdarzeń przyszłych (spotkanie o 10:00 czasu warszawskiego za pół roku) zapisuje się czas lokalny + identyfikator strefy (Europe/Warsaw), bo reguły DST mogą się zmienić. Konwersje w T-SQL robi AT TIME ZONE z nazwami stref Windows. W PostgreSQL timestamptz mimo nazwy nie przechowuje offsetu – normalizuje do UTC i konwertuje według ustawienia TimeZone sesji; timestamp bez tz to czas „ścienny”. EF Core mapuje DateTime na datetime2, DateTimeOffset na datetimeoffset, a DateOnly/TimeOnly na date/time (dla SQL Server od EF Core 8). Precyzja ma znaczenie przy porównaniach: wartość z .NET (100 ns) zapisana do datetime2(3) zostanie zaokrąglona, więc test „zapisz i porównaj” potrafi nie przejść. Dla kwot pamiętaj analogicznie: decimal, nie float."
+  },
+  {
+   "id": "sql-022",
+   "topic": "Normalizacja",
+   "level": 2,
+   "q": "Czym jest BCNF i jakie anomalie usuwa normalizacja?",
+   "a": "Normalizacja usuwa redundancję, a z nią trzy anomalie: aktualizacji (zmiana jednej informacji w wielu wierszach), wstawiania (nie da się zapisać faktu bez innego faktu) i usuwania (usunięcie wiersza kasuje przy okazji inną informację). BCNF (Boyce–Codd) to zaostrzona 3NF: każdy determinant zależności funkcyjnej musi być kluczem kandydującym. 3NF dopuszcza wyjątek, gdy zależna kolumna należy do klucza kandydującego – BCNF nie. W praktyce tabele w 3NF prawie zawsze są w BCNF; różnica wychodzi przy nakładających się kluczach złożonych.",
+   "code": "-- Zajecia(Student, Przedmiot, Prowadzacy)\n-- klucz: (Student, Przedmiot); zależność: Prowadzacy -> Przedmiot\n-- 3NF: tak (Przedmiot należy do klucza), BCNF: nie\n-- Rozkład do BCNF:\n--   Prowadzacy(Prowadzacy PK, Przedmiot)\n--   Zapisy(Student, Prowadzacy) PK (Student, Prowadzacy)",
+   "lang": "sql",
+   "tip": "Formułka: „klucz, cały klucz i nic poza kluczem” to 1NF/2NF/3NF; BCNF = każdy determinant jest kluczem.",
+   "deep": "W przykładzie każdy prowadzący uczy jednego przedmiotu, a student na danym przedmiocie ma jednego prowadzącego. Klucze kandydujące to (Student, Przedmiot) i (Student, Prowadzący). Zależność Prowadzący → Przedmiot narusza BCNF, bo Prowadzący nie jest kluczem – zmiana przedmiotu prowadzącego wymaga update'u wielu wierszy. Rozkład do BCNF usuwa redundancję, ale gubi zależność (Student, Przedmiot) → Prowadzący: nie da się jej już wymusić zwykłym kluczem, tylko np. triggerem lub w aplikacji. To klasyczny trade-off: dekompozycja do 3NF zawsze może zachować zależności, do BCNF – nie zawsze. Wyższe postacie (4NF – zależności wielowartościowe, 5NF) pojawiają się na rozmowach rzadko; ważniejsze jest umieć powiedzieć, kiedy denormalizacja jest świadomą decyzją (read modele, raporty, cache) i jak utrzymać spójność kopii (indexed view, computed column, zdarzenia)."
+  },
+  {
+   "id": "sql-023",
+   "topic": "Indeksy",
+   "level": 2,
+   "q": "Jak dobrać kolejność kolumn w indeksie złożonym?",
+   "a": "Indeks (A, B, C) jest posortowany najpierw po A, w jego obrębie po B, potem po C – jak książka telefoniczna. Seek jest możliwy dla predykatów na lewym prefiksie: A, A+B, A+B+C; samo B lub C nie da seeka. Zasada: najpierw kolumny porównywane równością, potem jedna kolumna zakresowa lub sortowania – po pierwszym zakresie kolejne kolumny nie zawężają już seeka (stają się residual predicate). Kolejność warunków w WHERE nie ma znaczenia, liczy się kolejność w definicji indeksu.",
+   "code": "-- WHERE TenantId = @t AND Status = @s AND CreatedAt >= @from\n-- ORDER BY CreatedAt\nCREATE INDEX IX_Orders_Tenant_Status_Created\n  ON Orders (TenantId, Status, CreatedAt)\n  INCLUDE (Total);",
+   "lang": "sql",
+   "tip": "Podpowiedzi brakujących indeksów (sys.dm_db_missing_index_details, plany) bywają cenne, ale ślepe tworzenie wszystkich prowadzi do duplikatów – zawsze konsoliduj.",
+   "deep": "Mit „najbardziej selektywna kolumna pierwsza” to półprawda: dla równości na obu kolumnach seek na (A, B) i (B, A) czyta dokładnie te same wiersze. Kolejność decyduje o tym, które INNE zapytania skorzystają z indeksu (lewy prefiks), czy ORDER BY obejdzie się bez sortowania i czy zakres jest na końcu. Kolumna zakresowa w środku – (CreatedAt, Status) – oznacza, że Status jest sprawdzany na każdym wierszu z zakresu dat zamiast zawężać seek. IN na kolumnie wiodącej daje kilka seeków (Status IN ('A','B') = dwa seeki), ale SQL Server nie ma prawdziwego index skip scan; PostgreSQL dodał skip scan dla B-tree w wersji 18. Koszt każdego indeksu to zapis: tabela z 10 indeksami nieklastrowanymi to 11 struktur do aktualizacji przy INSERT, więc lepiej mieć kilka dobrze zaprojektowanych indeksów złożonych niż po jednym na kolumnę – SQL Server rzadko łączy indeksy (index intersection)."
+  },
+  {
+   "id": "sql-024",
+   "topic": "Indeksy",
+   "level": 2,
+   "q": "Co to jest SARGability i jakie konstrukcje ją psują?",
+   "a": "SARGable (Search ARGument-able) to predykat, który pozwala użyć index seek – kolumna musi być „goła” po jednej stronie porównania. Psują to: funkcje na kolumnie (YEAR(OrderDate) = 2025, UPPER(Email) = ...), arytmetyka na kolumnie (Price * 1.23 > 100), LIKE z wiodącym % ('%kowalski'), implicit conversion kolumny (np. varchar porównywany z nvarchar), a często też OR między różnymi kolumnami. Rozwiązanie: przenieść przekształcenie na stronę stałej/parametru, użyć zakresu zamiast funkcji albo dodać computed column z indeksem.",
+   "code": "-- źle: funkcja na kolumnie => scan\nWHERE YEAR(OrderDate) = 2025\n-- dobrze: zakres => seek\nWHERE OrderDate >= '2025-01-01' AND OrderDate < '2026-01-01'",
+   "lang": "sql",
+   "tip": "W planie szukaj ostrzeżenia CONVERT_IMPLICIT na operatorze SELECT – to najczęstszy niewidoczny zabójca seeków przy parametrach z .NET.",
+   "deep": "Są wyjątki: CAST(datetimeCol AS date) = @d jest w SQL Server SARGable (optymalizator ma specjalną regułę i robi dynamic seek), ale ta sama technika z innymi funkcjami nie działa. Implicit conversion zależy od precedencji typów: przy porównaniu kolumny varchar z parametrem nvarchar konwertowana jest kolumna (nvarchar ma wyższą precedencję) – przy collation SQL_* kończy się to skanem, przy collation Windows optymalizator potrafi jeszcze zrobić seek zakresowy, ale z gorszą estymacją. Dla wyszukiwania po fragmencie tekstu ('%abc%') indeks B-tree nie pomoże – potrzebny full-text search, trigramy (pg_trgm w PostgreSQL) albo zewnętrzny silnik. Porównania bez rozróżniania wielkości liter zwykle załatwia collation CI, więc UPPER() jest zbędny. Persisted computed column z indeksem (albo indeks na wyrażeniu w PostgreSQL) to sposób na „zindeksowanie funkcji”, gdy nie da się przepisać zapytania."
+  },
+  {
+   "id": "sql-025",
+   "topic": "Plany wykonania",
+   "level": 2,
+   "q": "Czym są statystyki i co się dzieje, gdy są nieaktualne?",
+   "a": "Statystyki to histogram rozkładu wartości (do 200 kroków) plus gęstość dla kolumny lub prefiksu indeksu. Optymalizator na ich podstawie szacuje liczbę wierszy (cardinality estimation), a od tego zależy cały plan: seek czy scan, Nested Loops czy Hash Join, ile pamięci przyznać na sort. Nieaktualne statystyki = złe estymacje = zły plan, np. Nested Loops na milionie wierszy albo sort wylewający się do tempdb. W planie widać to jako dużą rozbieżność Estimated vs Actual Number of Rows.",
+   "code": "SELECT s.name, sp.last_updated, sp.rows, sp.modification_counter\nFROM sys.stats s\nCROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp\nWHERE s.object_id = OBJECT_ID('dbo.Orders');\n\nUPDATE STATISTICS dbo.Orders WITH FULLSCAN;",
+   "lang": "sql",
+   "tip": "Pierwsze pytania przy „nagle zwolniło”: czy zmienił się plan (Query Store) i czy estymacje odbiegają od rzeczywistości.",
+   "deep": "Auto update statistics odpala się po przekroczeniu progu zmian – historycznie 20% wierszy + 500, od SQL Server 2016 (compat level 130+) dynamicznie ok. SQRT(1000 * n), więc duże tabele aktualizują się częściej. Klasyczny problem to „ascending key”: nowe wiersze (dzisiejsze daty) są poza histogramem, a optymalizator szacuje dla nich bardzo mało wierszy; nowszy cardinality estimator (2014+) radzi sobie lepiej, ale nie idealnie. Auto update używa próbkowania, które przy nierównych rozkładach bywa za małe – stąd nocny job z FULLSCAN lub większym samplem dla kluczowych tabel. Aktualizacja statystyk unieważnia zależne plany, więc „naprawienie” zapytania przez UPDATE STATISTICS czasem w rzeczywistości tylko wymusza rekompilację i maskuje parameter sniffing. Zmienne tabelaryczne i multi-statement TVF nie mają statystyk kolumn – stąd ich słynne zaniżone estymacje. W PostgreSQL odpowiednikiem jest ANALYZE (uruchamiany przez autovacuum), a statystyki wielokolumnowe tworzy się przez CREATE STATISTICS."
+  },
+  {
+   "id": "sql-026",
+   "topic": "Transakcje i izolacja",
+   "level": 2,
+   "q": "Optymistyczna vs pesymistyczna kontrola współbieżności na poziomie SQL – jak to zaimplementować?",
+   "a": "Pesymistyczna: zakładam konflikt, więc blokuję wiersz przy odczycie do końca transakcji – w SQL Server SELECT ... WITH (UPDLOCK, ROWLOCK), w PostgreSQL SELECT ... FOR UPDATE; inni piszący czekają. Optymistyczna: nie blokuję, tylko przy zapisie sprawdzam, czy wiersz się nie zmienił – kolumna rowversion (lub numer wersji) w WHERE UPDATE-u; 0 zmienionych wierszy = konflikt do obsłużenia (retry, komunikat). Optymistyczna pasuje do aplikacji webowych (rzadkie konflikty, edycja trwająca minuty), pesymistyczna do krótkich, gorących sekcji z częstymi konfliktami, np. rezerwacji ostatniego miejsca.",
+   "code": "-- optymistycznie\nUPDATE Products SET Price = @price\nWHERE Id = @id AND RowVer = @rowVer;      -- kolumna rowversion\nIF @@ROWCOUNT = 0 THROW 50001, 'Concurrency conflict', 1;\n\n-- pesymistycznie (wewnątrz transakcji)\nSELECT Stock FROM Products WITH (UPDLOCK, ROWLOCK) WHERE Id = @id;\n\n-- często najlepiej: atomowy warunkowy UPDATE\nUPDATE Products SET Stock = Stock - 1 WHERE Id = @id AND Stock > 0;",
+   "lang": "sql",
+   "tip": "Atomowy warunkowy UPDATE to często najlepsza odpowiedź na „jak nie sprzedać więcej sztuk, niż jest w magazynie”.",
+   "deep": "Pesymistyczne blokowanie trzyma blokady do końca transakcji, więc nie może obejmować czasu „myślenia” użytkownika ani wywołań HTTP – inaczej skalowalność spada do zera, a ryzyko deadlocków rośnie. UPDLOCK jest kompatybilny ze zwykłymi odczytami (S), ale nie z innym UPDLOCK – dzięki temu dwie sesje robiące „przeczytaj, potem zaktualizuj” serializują się zamiast wpadać w deadlock konwersji S→X. Atomowy UPDATE z warunkiem łączy odczyt i zapis w jednej instrukcji, a @@ROWCOUNT mówi, czy się udało – bez osobnej blokady i bez okna na wyścig. rowversion w SQL Server zmienia się automatycznie przy każdej modyfikacji wiersza (8 bajtów, unikalne w bazie); w PostgreSQL EF Core/Npgsql używa do tego systemowej kolumny xmin. Przy wysokiej konkurencji o ten sam wiersz strategia optymistyczna degraduje się w burzę retry – wtedy lepsza kolejka, sekcja pesymistyczna albo przeprojektowanie (np. rozbicie licznika)."
+  },
+  {
+   "id": "sql-027",
+   "topic": "Obiekty programowalne",
+   "level": 2,
+   "q": "Jak działają triggery w SQL Server i dlaczego warto ich używać ostrożnie?",
+   "a": "Trigger DML (AFTER albo INSTEAD OF) uruchamia się automatycznie przy INSERT/UPDATE/DELETE, w tej samej transakcji co instrukcja, i ma dostęp do pseudo-tabel inserted i deleted. Kluczowe: odpala się raz na instrukcję, nie na wiersz – musi obsługiwać wiele wierszy naraz. Ostrożnie, bo logika jest ukryta (nie widać jej w kodzie aplikacji), wydłuża transakcję i czas trzymania blokad, może kaskadować (trigger wywołuje trigger) i utrudnia debugowanie. Rozsądne zastosowania: audyt, utrzymanie denormalizowanych danych, reguły niewyrażalne constraintem.",
+   "code": "CREATE TRIGGER trg_Products_PriceAudit ON Products\nAFTER UPDATE\nAS\nBEGIN\n  SET NOCOUNT ON;\n  INSERT INTO ProductAudit (ProductId, OldPrice, NewPrice, ChangedAt)\n  SELECT d.Id, d.Price, i.Price, SYSUTCDATETIME()\n  FROM inserted i\n  JOIN deleted d ON d.Id = i.Id\n  WHERE i.Price <> d.Price;\nEND;",
+   "lang": "sql",
+   "tip": "W EF Core (7+) tabele z triggerami trzeba zadeklarować przez HasTrigger – wspomnienie o tym pokazuje doświadczenie produkcyjne.",
+   "deep": "Błąd numer jeden to SELECT @id = Id FROM inserted – przy operacji na wielu wierszach trigger przetworzy tylko jeden, przypadkowy. Triggery działają wewnątrz transakcji wywołującej, więc błąd w triggerze wycofuje cały INSERT aplikacji, a wolna logika (np. wywołanie linked servera) bezpośrednio wydłuża blokady. Dla historii zmian lepszą alternatywą są temporal tables, a dla integracji z innymi systemami – Change Data Capture / Change Tracking albo outbox w aplikacji. EF Core od wersji 7 używa przy zapisie klauzuli OUTPUT bez INTO, która jest niedozwolona na tabelach z włączonymi triggerami – stąd konieczność konfiguracji HasTrigger, po której EF wraca do starszej strategii. Nested i recursive triggers są konfigurowalne, ale kaskady triggerów to przepis na trudne do zrozumienia efekty uboczne. W PostgreSQL triggery mogą być FOR EACH ROW lub FOR EACH STATEMENT i zawsze wywołują funkcję."
+  },
+  {
+   "id": "sql-028",
+   "topic": "Temporal i JSON",
+   "level": 2,
+   "q": "Czym są temporal tables w SQL Server i kiedy ich użyć?",
+   "a": "System-versioned temporal table to tabela, dla której SQL Server automatycznie utrzymuje historię: każda modyfikacja i usunięcie przenosi poprzednią wersję wiersza do tabeli historii z okresem ważności (ValidFrom, ValidTo w UTC). Stan z przeszłości odczytuje się przez FOR SYSTEM_TIME AS OF / BETWEEN / ALL. Zastosowania: audyt, odtworzenie danych po błędnym UPDATE, raporty „jak było na dzień X”, slowly changing dimensions. Działa bez zmian w aplikacji, a EF Core wspiera je natywnie (IsTemporal, TemporalAsOf).",
+   "code": "CREATE TABLE Prices (\n  ProductId int PRIMARY KEY,\n  Price     decimal(10,2) NOT NULL,\n  ValidFrom datetime2 GENERATED ALWAYS AS ROW START,\n  ValidTo   datetime2 GENERATED ALWAYS AS ROW END,\n  PERIOD FOR SYSTEM_TIME (ValidFrom, ValidTo)\n) WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = dbo.PricesHistory));\n\nSELECT * FROM Prices FOR SYSTEM_TIME AS OF '2025-06-01T00:00:00';",
+   "lang": "sql",
+   "tip": "Dobry argument przy pytaniu o audyt i soft delete – mniej kodu niż własne tabele *_History i triggery.",
+   "deep": "Historia rośnie bez ograniczeń – trzeba ustawić HISTORY_RETENTION_PERIOD lub archiwizację, a tabela historii zasługuje na sensowny indeks lub columnstore. Znacznik czasu wiersza to czas rozpoczęcia transakcji, nie moment wykonania UPDATE, co przy długich transakcjach daje zaskakujące okresy. Temporal table nie zapisuje, KTO dokonał zmiany – jeśli to potrzebne, dodaj kolumnę ModifiedBy wypełnianą przez aplikację lub z SESSION_CONTEXT. Proste zmiany schematu (np. dodanie kolumny) propagują się do tabeli historii automatycznie, bardziej złożone wymagają wyłączenia SYSTEM_VERSIONING. PostgreSQL nie ma wbudowanego odpowiednika – używa się rozszerzeń lub triggerów. To nie jest event sourcing: masz kolejne stany, a nie intencje zmian."
+  },
+  {
+   "id": "sql-029",
+   "topic": "Temporal i JSON",
+   "level": 2,
+   "q": "Jak pracować z JSON w SQL Server i kiedy to dobry pomysł?",
+   "a": "Kluczowe funkcje: JSON_VALUE (wyciąga skalar), JSON_QUERY (obiekt/tablicę), OPENJSON (rozbija JSON na wiersze – np. do przekazania listy id jednym parametrem), FOR JSON PATH (buduje JSON z wyniku), JSON_MODIFY i ISJSON. Historycznie JSON trzymano w nvarchar(max); SQL Server 2025 i Azure SQL mają natywny typ json. JSON w kolumnie sprawdza się dla danych o zmiennym schemacie (atrybuty produktów, ustawienia, payloady integracji), ale nie zastępuje modelowania relacyjnego dla danych, po których filtrujesz i joinujesz.",
+   "code": "SELECT Id, JSON_VALUE(Attributes, '$.color') AS Color\nFROM Products\nWHERE JSON_VALUE(Attributes, '$.size') = 'XL';\n\n-- lista id z aplikacji jako jeden parametr\nSELECT p.*\nFROM Products p\nJOIN OPENJSON(@idsJson) WITH (Id int '$') j ON j.Id = p.Id;",
+   "lang": "sql",
+   "tip": "Na starszych wersjach: nvarchar(max) + CHECK (ISJSON(Col) = 1), żeby nie przyjmować śmieci.",
+   "deep": "Aby filtrować po polu JSON wydajnie, w SQL Server dodaje się computed column = JSON_VALUE(...) i indeks na niej – optymalizator dopasuje wyrażenie w WHERE do indeksu. PostgreSQL ma tu przewagę: jsonb z indeksem GIN obsługuje zapytania o zawieranie (@>) po dowolnych kluczach. JSON_VALUE w domyślnym trybie lax zwraca NULL zamiast błędu przy złej ścieżce albo gdy wartość jest obiektem lub przekracza 4000 znaków – literówka w ścieżce cicho psuje filtr; tryb strict rzuca błąd. EF Core 8 zaczął tłumaczyć kolekcje prymitywów (np. ids.Contains(x)) przez OPENJSON z jednym parametrem, a ToJson() mapuje owned types na kolumny JSON. Pułapka projektowa: JSON omija constrainty, typy i FK – walidacja przechodzi do aplikacji, a zmiana „schematu” wymaga migracji danych wewnątrz dokumentów."
+  },
+  {
+   "id": "sql-030",
+   "topic": "Skalowanie i HA",
+   "level": 2,
+   "q": "Jakie są rodzaje backupów w SQL Server i co oznaczają RPO i RTO?",
+   "a": "RPO (Recovery Point Objective) – ile danych możemy stracić (np. 15 minut), RTO (Recovery Time Objective) – jak długo może trwać przywracanie. Backup full kopiuje całą bazę, differential – zmiany od ostatniego full, log backup – fragment transaction logu od poprzedniego log backupu. W modelu FULL recovery log backupy co 5–15 min dają RPO rzędu minut i point-in-time restore (STOPAT); w SIMPLE wracasz tylko do momentu full/diff. RTO zależy od rozmiaru bazy i liczby plików do odtworzenia – stąd full + diff, żeby nie odtwarzać setek logów.",
+   "code": "BACKUP DATABASE Shop TO DISK = N'X:\\bak\\Shop_full.bak'\n  WITH COMPRESSION, CHECKSUM;\nBACKUP LOG Shop TO DISK = N'X:\\bak\\Shop_log_1215.trn'\n  WITH COMPRESSION, CHECKSUM;\n-- restore: full -> diff -> logi WITH NORECOVERY,\n-- ostatni log WITH STOPAT = '...', RECOVERY",
+   "lang": "sql",
+   "tip": "Na pytanie „jak zaprojektujesz backup” zacznij od RPO/RTO – wymagania określa biznes, technologia jest pochodną.",
+   "deep": "Backup, którego nie odtworzyłeś testowo, nie istnieje – regularny restore na innym serwerze plus DBCC CHECKDB to część procedury, a CHECKSUM wykrywa uszkodzone strony już przy backupie. W FULL recovery bez log backupów transaction log rośnie bez końca – klasyczny incydent „zapełniony dysk”. HA (Always On Availability Groups, failover cluster) i backup to różne rzeczy: replika natychmiast powieli DROP TABLE czy błędny UPDATE, więc nie chroni przed błędem ludzkim. RPO≈0 wymaga synchronicznej repliki (koszt: latencja każdego commita), RTO w sekundach – automatycznego failoveru. W Azure SQL backupy i point-in-time restore są zarządzane (retencja konfigurowalna, typowo 7–35 dni), ale awaria regionu wymaga geo-replikacji lub failover groups. W PostgreSQL odpowiednikiem jest base backup + archiwizacja WAL (np. pgBackRest) z PITR."
+  },
+  {
+   "id": "sql-031",
+   "topic": "SQL vs NoSQL",
+   "level": 2,
+   "q": "Jakie są rodzaje baz NoSQL i kiedy użyć każdego z nich?",
+   "a": "Key-value (Redis, DynamoDB w prostym użyciu) – dostęp po kluczu w milisekundach lub szybciej: cache, sesje, liczniki, rate limiting. Dokumentowe (MongoDB, Cosmos DB) – agregaty jako dokumenty JSON z elastycznym schematem, dobre, gdy czytasz całość naraz (katalog produktów, profile, CMS). Wide-column (Cassandra) – ogromne wolumeny zapisów i szeregi czasowe z zapytaniami znanymi z góry. Grafowe (Neo4j) – gdy sednem są wielopoziomowe relacje (rekomendacje, sieci powiązań). Relacyjna baza zostaje domyślnym wyborem dla danych transakcyjnych z wieloma relacjami, zapytaniami ad hoc i silną spójnością.",
+   "tip": "„Eventual consistency” trzeba umieć przełożyć na UX: użytkownik dodał komentarz i po odświeżeniu go nie widzi – co z tym robisz?",
+   "deep": "W NoSQL modeluje się pod zapytania, a nie pod dane: denormalizujesz i duplikujesz, bo joinów nie ma lub są drogie, a klucz partycji determinuje skalowalność (zły klucz = hot partition). CAP: przy partycji sieciowej system rozproszony musi wybrać spójność (odrzucić część żądań) albo dostępność (odpowiadać, ryzykując nieaktualne dane); bez partycji wybór nie zachodzi, dlatego dokładniejszy jest PACELC – nawet bez awarii wybierasz między latencją a spójnością. Wiele baz pozwala stroić spójność per zapytanie (Cosmos DB: pięć poziomów od strong do eventual; Cassandra: ONE/QUORUM/ALL). Granice się zacierają: PostgreSQL z jsonb obsłuży wiele przypadków „dokumentowych”, a MongoDB ma transakcje wielodokumentowe. Na rozmowie najlepiej argumentować wzorcami dostępu, skalą i wymaganiami spójności; częsty wybór to polyglot persistence – SQL jako źródło prawdy plus Redis czy Elasticsearch jako wyspecjalizowane widoki."
+  },
+  {
+   "id": "sql-032",
+   "topic": "Plany wykonania",
+   "level": 3,
+   "q": "Jakie są fizyczne algorytmy joinów (Nested Loops, Merge, Hash) i kiedy optymalizator wybiera każdy?",
+   "a": "Nested Loops: dla każdego wiersza z wejścia zewnętrznego szuka dopasowań w wewnętrznym – świetny, gdy jedno wejście jest małe, a drugie ma indeks na kluczu joina. Merge Join: oba wejścia posortowane po kluczu joina (np. z indeksów) – czyta je równolegle jednym przebiegiem, efektywny dla dużych posortowanych zbiorów. Hash Join: buduje tablicę hash z mniejszego wejścia i sonduje ją drugim – dobry dla dużych, nieposortowanych zbiorów bez użytecznych indeksów, ale potrzebuje pamięci (memory grant). Wybór zależy od estymacji liczby wierszy, więc złe statystyki = zły algorytm.",
+   "code": "SET STATISTICS IO, TIME ON;   -- SQL Server: odczyty stron i czasy\n\n-- PostgreSQL:\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT c.name, o.total\nFROM customers c\nJOIN orders o ON o.customer_id = c.id\nWHERE c.country = 'PL';",
+   "lang": "sql",
+   "tip": "Patrz na grubość strzałek i rozjazd Estimated vs Actual przy operatorze joina – to zwykle wskazuje źródło problemu.",
+   "deep": "Koszty: Nested Loops ~ O(N · log M) przy seekach, Merge ~ O(N + M) dla posortowanych wejść (plus koszt sortu, jeśli nie są), Hash ~ O(N + M), ale z pamięcią proporcjonalną do wejścia build. Klasyczne patologie: Nested Loops wybrany dla estymacji 1 wiersza, a faktycznie przyszło 500 tys. – miliony seeków i key lookupów; Hash Join ze zbyt małym memory grantem wylewa się do tempdb (ostrzeżenie spill w planie), a ze zbyt dużym – zabiera pamięć innym zapytaniom (oczekiwania RESOURCE_SEMAPHORE). Merge Join many-to-many tworzy worktable w tempdb. SQL Server 2017+ ma Adaptive Join w batch mode, który w runtime wybiera między Hash a Nested Loops według progu wierszy, a memory grant feedback koryguje granty między wykonaniami. Hinty typu OPTION (HASH JOIN) to ostateczność – lepiej poprawić statystyki, indeksy lub zapis zapytania. PostgreSQL ma te same trzy algorytmy, widoczne w EXPLAIN ANALYZE jako Nested Loop, Merge Join i Hash Join."
+  },
+  {
+   "id": "sql-033",
+   "topic": "CTE",
+   "level": 3,
+   "q": "Tabela tymczasowa (#temp) vs zmienna tabelaryczna (@table) vs CTE – kiedy co?",
+   "a": "CTE to tylko nazwane zapytanie bez materializacji – do czytelności i rekurencji. #temp to prawdziwa tabela w tempdb: ma statystyki, może mieć indeksy, uczestniczy w transakcjach i powoduje rekompilacje przy zmianach liczby wierszy – dobra dla dużych wyników pośrednich czytanych lub joinowanych wielokrotnie. @table też żyje w tempdb (to mit, że „w pamięci”), ale nie ma statystyk kolumn i nie jest wycofywana przez ROLLBACK – dobra dla małych zbiorów (dziesiątki–setki wierszy) i jako parametr (TVP).",
+   "code": "CREATE TABLE #Spent (CustomerId int PRIMARY KEY, Spent decimal(18,2));\nINSERT INTO #Spent (CustomerId, Spent)\nSELECT CustomerId, SUM(Total) FROM Orders GROUP BY CustomerId;\n\nDECLARE @Ids TABLE (Id int PRIMARY KEY);\nINSERT INTO @Ids VALUES (1), (2), (3);",
+   "lang": "sql",
+   "tip": "Zdanie, które robi wrażenie: „@table też ląduje w tempdb – różnica to statystyki, transakcyjność i rekompilacje, a nie miejsce przechowywania”.",
+   "deep": "Historycznie optymalizator zakładał, że @table ma 1 wiersz, co przy tysiącach wierszy dawało katastrofalne Nested Loops; SQL Server 2019 (compat 150) wprowadził table variable deferred compilation – kardynalność jest brana z pierwszej kompilacji, ale nadal bez histogramu, a kolejne wywołania z inną liczbą wierszy dziedziczą plan. #temp ma swoje koszty: rekompilacje (próg zmian dla tabel tymczasowych jest niski) i rywalizację o metadane tempdb przy bardzo częstym tworzeniu (SQL Server 2019 dodał memory-optimized tempdb metadata, a procedury cache'ują definicje #temp). Rozbicie monstrualnego zapytania z kilkunastoma joinami na kroki z #temp to sprawdzona technika: optymalizator dostaje mniejsze problemy i prawdziwe statystyki pośrednie. To, że zmienna tabelaryczna przetrwa ROLLBACK, bywa wykorzystywane do zachowania logu błędów w CATCH. Dla list parametrów z .NET lepsze są TVP lub JSON/STRING_SPLIT niż sklejanie IN (...)."
+  },
+  {
+   "id": "sql-034",
+   "topic": "Funkcje okna",
+   "level": 3,
+   "q": "Czym są ramki okna (ROWS vs RANGE) i jaka jest domyślna ramka?",
+   "a": "Ramka określa, które wiersze partycji wchodzą do agregatu okienkowego dla bieżącego wiersza, np. ROWS BETWEEN 6 PRECEDING AND CURRENT ROW (średnia krocząca z 7 wierszy). ROWS liczy fizyczne wiersze, RANGE – wiersze o wartościach klucza sortowania w zakresie, więc remisy w ORDER BY trafiają do ramki razem. Gdy podasz ORDER BY bez ramki, domyślna jest RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW – dlatego suma narastająca przy zduplikowanych datach daje ten sam wynik dla wszystkich remisów, a LAST_VALUE zwraca bieżący wiersz zamiast ostatniego w partycji.",
+   "code": "SELECT OrderDate, Amount,\n  SUM(Amount) OVER (ORDER BY OrderDate, Id\n                    ROWS UNBOUNDED PRECEDING) AS RunningTotal,\n  AVG(Amount) OVER (ORDER BY OrderDate, Id\n                    ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS Avg7,\n  LAST_VALUE(Amount) OVER (ORDER BY OrderDate, Id\n    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS LastAmt\nFROM Sales;",
+   "lang": "sql",
+   "tip": "FIRST_VALUE działa „intuicyjnie” z domyślną ramką, LAST_VALUE – nie. To ulubione pytanie podchwytliwe.",
+   "deep": "Poza poprawnością jest różnica wydajności: w SQL Server w row mode ramka RANGE (czyli także domyślna!) używa Window Spool na dysku (worktable w tempdb), a ROWS – spoola w pamięci; na milionach wierszy różnica bywa wielokrotna i widać ją w STATISTICS IO jako odczyty Worktable. W batch mode (columnstore, a od 2019 batch mode on rowstore) operator Window Aggregate liczy to wydajnie niezależnie od ramki. Dlatego przy running total zawsze piszę jawnie ROWS UNBOUNDED PRECEDING i dodaję unikalny tie-breaker do ORDER BY, żeby wynik był deterministyczny. SQL Server obsługuje RANGE tylko z UNBOUNDED i CURRENT ROW; PostgreSQL 11+ pozwala na RANGE z offsetem (np. RANGE BETWEEN INTERVAL '7 days' PRECEDING AND CURRENT ROW – okno czasowe niezależne od liczby wierszy) oraz tryb GROUPS. Średnia krocząca „ostatnie 7 dni” na danych z lukami w datach wymaga więc w SQL Server tabeli kalendarza lub self-joina, bo ROWS liczy wiersze, a nie dni."
+  },
+  {
+   "id": "sql-035",
+   "topic": "Zadania z rozmów",
+   "level": 3,
+   "q": "Jak rozwiązać problem „gaps and islands” – znaleźć luki w sekwencji i ciągłe zakresy?",
+   "a": "Luki: porównuję każdą wartość z następną przez LEAD – jeśli różnica > 1, między nimi jest luka (od cur+1 do next-1). Wyspy (ciągłe zakresy): wartość minus ROW_NUMBER() jest stała w obrębie ciągłego zakresu, więc grupuję po tej różnicy i biorę MIN/MAX. To samo działa dla dat (DATEADD(day, -ROW_NUMBER() ..., d)) – np. najdłuższa seria dni logowania czy okresy ciągłej aktywności subskrypcji.",
+   "code": "-- luki\nSELECT Id + 1 AS GapFrom, NextId - 1 AS GapTo\nFROM (SELECT Id, LEAD(Id) OVER (ORDER BY Id) AS NextId FROM Invoices) t\nWHERE NextId - Id > 1;\n\n-- wyspy\nSELECT MIN(Id) AS IslandFrom, MAX(Id) AS IslandTo\nFROM (SELECT Id, Id - ROW_NUMBER() OVER (ORDER BY Id) AS grp\n      FROM Invoices) t\nGROUP BY grp;",
+   "lang": "sql",
+   "tip": "Zadanie praktyczne często brzmi: „pokaż okresy, w których czujnik raportował bez przerwy” – to wyspy na datach.",
+   "deep": "Przy zduplikowanych wartościach trzeba użyć DENSE_RANK zamiast ROW_NUMBER (albo najpierw zdeduplikować), inaczej grupy się rozjadą. Dla przedziałów nachodzących na siebie (rezerwacje Start–End) stosuje się inny wzorzec: flaga „nowa wyspa” = Start > MAX(End) z wcześniejszych wierszy (MAX OVER z ramką ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), a potem suma narastająca flag jako identyfikator grupy. Obie wersje to jeden lub dwa przebiegi z sortem – O(n log n), bez kursorów i self-joinów, które dawały O(n²); z indeksem na kolumnie sortowania sort znika. Luki w IDENTITY to normalne zjawisko (rollback, restart serwera z cache identity, usunięcia) – jeśli biznes wymaga ciągłej numeracji faktur, nie opieraj jej na IDENTITY ani SEQUENCE, tylko na liczniku aktualizowanym w tej samej transakcji."
+  },
+  {
+   "id": "sql-036",
+   "topic": "DDL i constrainty",
+   "level": 3,
+   "q": "Klucz naturalny czy surogatowy? INT IDENTITY czy GUID jako klucz klastrowany?",
+   "a": "Klucz surogatowy (IDENTITY, SEQUENCE, GUID) jest stabilny i wąski; naturalny (PESEL, e-mail, NIP) ma znaczenie biznesowe, ale potrafi się zmienić i bywa szeroki – zwykle surogat jest PK, a naturalnego pilnuje UNIQUE. int/bigint IDENTITY jako clustered key jest wąski (4/8 B) i rosnący (wstawki na końcu, brak page splitów), ale id znamy dopiero po zapisie, a kolejne wartości zdradzają liczbę rekordów. GUID można wygenerować w aplikacji i w systemach rozproszonych, ale losowy NEWID() jako klucz klastrowany powoduje wstawki w losowe miejsca drzewa: page splity, fragmentację i 16 B kopiowane do każdego indeksu nieklastrowanego.",
+   "code": "CREATE TABLE Orders (\n  Id        uniqueidentifier NOT NULL\n            CONSTRAINT DF_Orders_Id DEFAULT NEWSEQUENTIALID(),\n  CreatedAt datetime2 NOT NULL,\n  CONSTRAINT PK_Orders PRIMARY KEY CLUSTERED (Id)\n);",
+   "lang": "sql",
+   "tip": "Odpowiedź seniorska to nie „GUID jest zły”, tylko: ile insertów, czy id jest potrzebne przed zapisem, czy system jest rozproszony i jak zmitygować fragmentację.",
+   "deep": "Klucz klastrowany jest dołączany do każdego indeksu nieklastrowanego jako lokalizator wiersza, więc jego szerokość mnoży się przez liczbę indeksów. Losowe GUID-y bolą głównie przy dużym wolumenie insertów i tabeli większej niż pamięć – przy małych tabelach na SSD efekt bywa przeceniany. Rozwiązania: NEWSEQUENTIALID() (rosnący tylko do restartu serwera), sekwencyjne GUID-y z aplikacji (EF Core dla kluczy Guid na SQL Server domyślnie generuje je po stronie klienta generatorem dopasowanym do porządku SQL Server), albo PK nieklastrowany na GUID + clustered index na bigint IDENTITY. UUIDv7 (.NET 9+: Guid.CreateVersion7()) jest uporządkowany czasowo i świetnie działa w PostgreSQL, ale SQL Server sortuje uniqueidentifier w nietypowej kolejności bajtów (najpierw ostatnie 6 bajtów), więc tam UUIDv7 nie daje rosnącego klucza. Z drugiej strony idealnie rosnący klucz przy bardzo wielu równoległych insertach tworzy hot spot na ostatniej stronie (oczekiwania PAGELATCH_EX) – SQL Server 2019 ma na to opcję indeksu OPTIMIZE_FOR_SEQUENTIAL_KEY."
+  },
+  {
+   "id": "sql-037",
+   "topic": "Indeksy",
+   "level": 3,
+   "q": "Czym jest filtered index i jakie ma pułapki?",
+   "a": "Filtered index (w PostgreSQL: partial index) zawiera tylko wiersze spełniające WHERE z definicji, np. oczekujące zamówienia albo nieusunięte rekordy przy soft delete. Jest mniejszy, tańszy w utrzymaniu, ma dokładniejsze statystyki dla swojego podzbioru i może wymuszać unikalność warunkowo (np. unikalny e-mail tylko wśród nieusuniętych). Idealny, gdy zapytania niemal zawsze dotyczą małego, dobrze zdefiniowanego podzbioru dużej tabeli.",
+   "code": "CREATE INDEX IX_Orders_Pending\n  ON Orders (CreatedAt) INCLUDE (CustomerId, Total)\n  WHERE Status = 'Pending';\n\nCREATE UNIQUE INDEX UX_Users_Email_Active\n  ON Users (Email) WHERE IsDeleted = 0;",
+   "lang": "sql",
+   "tip": "Przy soft delete to najlepsza odpowiedź na „jak zapewnić unikalność e-maila, skoro usunięci użytkownicy zostają w tabeli”.",
+   "deep": "Największa pułapka w SQL Server: optymalizator musi już w czasie kompilacji wiedzieć, że predykat zapytania zawiera się w filtrze. WHERE Status = @status w sparametryzowanym, cache'owanym planie nie użyje indeksu, bo plan musi być poprawny dla każdej wartości @status – potrzebny literał, OPTION (RECOMPILE) albo osobne zapytanie dla tego przypadku. Kolumnę z filtra często warto mieć też w kluczu lub INCLUDE, żeby uniknąć key lookupów. Indeksy filtrowane wymagają określonych opcji SET (m.in. ANSI_NULLS, QUOTED_IDENTIFIER ON) – sesja z innymi ustawieniami (stare skrypty, niektóre narzędzia) dostanie błąd przy INSERT/UPDATE na tej tabeli. Predykat filtra może zawierać tylko proste porównania (bez funkcji, LIKE czy OR). Statystyki filtrowane aktualizują się według progu liczonego dla całej tabeli, więc bywają nieświeże. PostgreSQL ma partial indexes z mniejszą liczbą ograniczeń (np. predykat może używać funkcji IMMUTABLE)."
+  },
+  {
+   "id": "sql-038",
+   "topic": "Indeksy",
+   "level": 3,
+   "q": "Czym jest fragmentacja indeksu i jak podchodzisz do utrzymania indeksów?",
+   "a": "Fragmentacja logiczna to rozjazd kolejności stron w liściach indeksu względem kolejności fizycznej – powstaje głównie przez page splity, gdy insert lub update trafia do pełnej strony. Do tego dochodzi niska gęstość stron (puste miejsce), która marnuje pamięć bufora i I/O. Narzędzia: sys.dm_db_index_physical_stats, ALTER INDEX ... REORGANIZE (online, lekkie, kompaktuje liście) i REBUILD (przebudowa od zera, przy okazji statystyki z FULLSCAN; ONLINE = ON w Enterprise/Azure). FILLFACTOR zostawia wolne miejsce na stronach, ograniczając splity kosztem większego indeksu.",
+   "code": "SELECT i.name, ps.avg_fragmentation_in_percent,\n       ps.avg_page_space_used_in_percent, ps.page_count\nFROM sys.dm_db_index_physical_stats(\n       DB_ID(), OBJECT_ID('dbo.Orders'), NULL, NULL, 'SAMPLED') ps\nJOIN sys.indexes i\n  ON i.object_id = ps.object_id AND i.index_id = ps.index_id;\n\nALTER INDEX IX_Orders_CustomerId ON dbo.Orders REBUILD WITH (ONLINE = ON);",
+   "lang": "sql",
+   "tip": "Dobra odpowiedź zawiera „to zależy od storage” i wspomina statystyki – pokazuje, że nie powtarzasz mitów sprzed 20 lat.",
+   "deep": "Stare progi „5–30% reorganize, powyżej rebuild” pochodzą z czasów dysków talerzowych, gdzie fragmentacja psuła odczyty sekwencyjne. Na SSD i SAN sama kolejność stron ma znacznie mniejsze znaczenie; liczy się gęstość stron (ile danych mieści się w buforze) i świeże statystyki. Wiele zespołów robi więc rzadszy rebuild i częstszą aktualizację statystyk – „rebuild pomógł” bywa w istocie zasługą odświeżonych statystyk i rekompilacji planów. Rebuild generuje dużo logu (ważne przy AG i log shippingu), a bez ONLINE blokuje tabelę; od SQL Server 2017 jest RESUMABLE = ON dla dużych indeksów. Globalne obniżanie FILLFACTOR to antywzorzec – ma sens tylko dla indeksów z losowymi insertami (np. GUID). Standardem jest IndexOptimize Oli Hallengrena z progami i pomijaniem małych indeksów (poniżej ~1000 stron). W PostgreSQL odpowiednikiem problemu jest bloat przez MVCC – obsługiwany przez VACUUM, a przebudowa przez REINDEX CONCURRENTLY."
+  },
+  {
+   "id": "sql-039",
+   "topic": "Plany wykonania",
+   "level": 3,
+   "q": "Czym jest parameter sniffing, jak go rozpoznać i jak naprawić?",
+   "a": "SQL Server kompiluje plan sparametryzowanego zapytania lub procedury przy pierwszym wykonaniu, optymalizując go pod wartości parametrów z tego wywołania, i cache'uje go dla kolejnych. Zwykle to zaleta (brak kompilacji), ale przy nierównym rozkładzie danych plan dobry dla małego klienta (seek + Nested Loops) jest fatalny dla klienta z milionem zamówień – lub odwrotnie. Objawy: to samo zapytanie raz szybkie, raz wolne; „naprawia się” po rekompilacji lub restarcie; duży rozjazd estymacji. Diagnoza: Query Store (kilka planów jednego zapytania, regresje) i porównanie ParameterCompiledValue z ParameterRuntimeValue w planie.",
+   "code": "-- opcje naprawy (każda ma koszt):\nSELECT Id, Total FROM Orders WHERE CustomerId = @cid\nOPTION (RECOMPILE);                        -- plan per wykonanie\n\nSELECT Id, Total FROM Orders WHERE CustomerId = @cid\nOPTION (OPTIMIZE FOR (@cid UNKNOWN));      -- plan pod średnią gęstość\n\nEXEC sys.sp_query_store_force_plan @query_id = 42, @plan_id = 7;",
+   "lang": "sql",
+   "tip": "Klasyk: „w SSMS zapytanie trwa 50 ms, z aplikacji 30 s”. Różne opcje SET (ARITHABORT) = osobne wpisy w cache = różne plany. To sniffing, nie sieć.",
+   "deep": "Każde rozwiązanie to kompromis. OPTION (RECOMPILE) daje plan optymalny dla bieżących wartości, ale kosztuje CPU kompilacji przy każdym wykonaniu – w porządku dla rzadkich raportów, zabójcze dla zapytań wykonywanych tysiące razy na sekundę. OPTIMIZE FOR UNKNOWN (lub przepisanie parametru do zmiennej lokalnej) daje plan „średni” – przewidywalny, ale rzadko najlepszy. Wymuszenie planu w Query Store jest szybkie operacyjnie, ale zamraża plan, który może się zestarzeć wraz z danymi. SQL Server 2022 wprowadził Parameter Sensitive Plan optimization (compat 160): kilka wariantów planu jednego zapytania zależnie od kardynalności parametru. Architektonicznie pomaga rozdzielenie ścieżek (osobne zapytania dla „dużych” i „małych” klientów) i indeksy, które czynią plan mniej wrażliwym. Restart, DBCC FREEPROCCACHE czy sp_recompile „naprawiają” problem tylko do następnego niefortunnego pierwszego wywołania – to diagnostyka, nie leczenie. Problem dotyczy też EF Core i Dappera, bo sparametryzowane zapytania są cache'owane tak samo jak procedury."
+  },
+  {
+   "id": "sql-040",
+   "topic": "Transakcje i izolacja",
+   "level": 3,
+   "q": "Czym różni się RCSI od SNAPSHOT isolation i kiedy je włączyć?",
+   "a": "Oba opierają się na wersjonowaniu wierszy: zamiast blokować czytelników, SQL Server trzyma poprzednie wersje zmienianych wierszy (version store w tempdb, a przy ADR – w bazie), a odczyt dostaje ostatnią zatwierdzoną wersję. RCSI (READ_COMMITTED_SNAPSHOT ON) zmienia zachowanie domyślnego READ COMMITTED: spójność na poziomie instrukcji. SNAPSHOT to osobny poziom, który transakcja musi jawnie wybrać: spójność na poziomie całej transakcji, a przy próbie aktualizacji wiersza zmienionego przez kogoś innego od jej startu – błąd update conflict (3960) i konieczność ponowienia. Efekt: czytelnicy nie blokują piszących i odwrotnie, co eliminuje większość blokowania i deadlocków reader–writer.",
+   "code": "ALTER DATABASE Shop SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;\nALTER DATABASE Shop SET ALLOW_SNAPSHOT_ISOLATION ON;\n\nSET TRANSACTION ISOLATION LEVEL SNAPSHOT;\nBEGIN TRAN;\n  SELECT SUM(Balance) FROM Accounts;   -- spójny obraz z początku transakcji\n  SELECT COUNT(*) FROM Transfers;      -- ten sam moment w czasie\nCOMMIT;",
+   "lang": "sql",
+   "tip": "NOLOCK to nie alternatywa dla RCSI: NOLOCK czyta brudne dane i może pominąć lub podwójnie policzyć wiersze; RCSI daje spójne, zatwierdzone dane bez blokowania.",
+   "deep": "RCSI jest domyślnie włączone w Azure SQL Database, a podobnie (MVCC) działa READ COMMITTED w PostgreSQL i Oracle, więc dla wielu aplikacji to rozsądny default. Koszty: 14 bajtów narzutu na wiersz po pierwszej modyfikacji, ruch w version store, a długie transakcje blokują czyszczenie wersji i wydłużają łańcuchy, które muszą przechodzić czytelnicy. Najważniejsza pułapka semantyczna: kod, który polegał na blokowaniu przy odczycie, przestaje być poprawny – np. „SELECT stanu, a potem UPDATE, jeśli > 0” pod RCSI przeczyta ostatnią zatwierdzoną wartość, podczas gdy inna transakcja właśnie ją zmienia; potrzebny jest UPDLOCK albo atomowy warunkowy UPDATE. Pod SNAPSHOT możliwa jest anomalia write skew (dwie transakcje czytają ten sam stan i aktualizują różne wiersze, łamiąc wspólny niezmiennik) – chroni przed nią dopiero SERIALIZABLE (w PostgreSQL realizowane jako SSI). Włączenie RCSI wymaga chwilowo wyłącznego dostępu do bazy i testów regresji pod kątem powyższych wzorców."
+  },
+  {
+   "id": "sql-041",
+   "topic": "Blokady i deadlocki",
+   "level": 3,
+   "q": "Jakie są tryby i granulacja blokad w SQL Server i czym jest lock escalation?",
+   "a": "Podstawowe tryby: S (shared, odczyt), X (exclusive, zapis), U (update – „zamierzam zmienić”, chroni przed deadlockiem konwersji) oraz intent locks IS/IX na wyższych poziomach (strona, tabela), które sygnalizują blokady niżej i pozwalają szybko wykryć konflikt. Granulacja: wiersz (KEY/RID), strona, partycja, tabela – drobniejsza daje większą współbieżność, ale zużywa więcej pamięci. Lock escalation: gdy jedna instrukcja zbierze ok. 5000 blokad na jednym obiekcie (lub pamięć blokad jest pod presją), SQL Server zamienia je na blokadę całej tabeli – i nagle wszyscy inni czekają.",
+   "code": "-- kto kogo blokuje w tej chwili\nSELECT r.session_id, r.blocking_session_id, r.wait_type,\n       r.wait_time, t.text\nFROM sys.dm_exec_requests r\nCROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t\nWHERE r.blocking_session_id <> 0;",
+   "lang": "sql",
+   "tip": "Head blocker to sesja na początku łańcucha blokad – często „sleeping” z otwartą transakcją, której aplikacja nie zamknęła.",
+   "deep": "Eskalacja idzie z wiersza lub strony od razu do tabeli (albo partycji, jeśli tabela ma LOCK_ESCALATION = AUTO i jest partycjonowana) – nigdy wiersz→strona. Typowy scenariusz: nocny DELETE milionów starych rekordów eskaluje do blokady tabeli i zatrzymuje ruch produkcyjny. Rozwiązanie: paczki poniżej progu (DELETE TOP (4000) w pętli, każda w osobnej transakcji), co dodatkowo ogranicza rozrost logu. Wyłączenie eskalacji (SET (LOCK_ESCALATION = DISABLE)) jest możliwe, ale ryzykowne dla pamięci. Blokady X są trzymane do końca transakcji na każdym poziomie izolacji, S – zależnie od poziomu (w READ COMMITTED zwalniane zaraz po odczycie, w REPEATABLE READ i SERIALIZABLE do końca; SERIALIZABLE dodaje key-range locks). Diagnostyka: sys.dm_tran_locks, sp_WhoIsActive, blocked process report w Extended Events, a deadlocki – z sesji system_health (xml_deadlock_report). Długie blokowanie prawie zawsze ma źródło w długiej transakcji albo w braku indeksu, przez który UPDATE skanuje i blokuje więcej wierszy, niż musi."
+  },
+  {
+   "id": "sql-042",
+   "topic": "Obiekty programowalne",
+   "level": 3,
+   "q": "Funkcja skalarna vs inline TVF vs multi-statement TVF – jak wpływają na wydajność?",
+   "a": "Scalar UDF zwraca jedną wartość; historycznie była wykonywana wiersz po wierszu, blokowała równoległość planu i była „czarną skrzynką” dla optymalizatora. Inline table-valued function (RETURNS TABLE AS RETURN SELECT ...) to w praktyce sparametryzowany widok – optymalizator wkleja jej treść w zapytanie, więc jest tak wydajna jak ręcznie napisany SQL. Multi-statement TVF (RETURNS @t TABLE ... BEGIN ... END) wypełnia zmienną tabelaryczną – brak statystyk, słabe estymacje, brak inliningu. Domyślnie wybieram inline TVF.",
+   "code": "CREATE FUNCTION dbo.fn_CustomerOrders (@customerId int)\nRETURNS TABLE\nAS RETURN\n  SELECT Id, CreatedAt, Total\n  FROM dbo.Orders\n  WHERE CustomerId = @customerId;\nGO\nSELECT c.Name, o.Total\nFROM Customers c\nCROSS APPLY dbo.fn_CustomerOrders(c.Id) o;",
+   "lang": "sql",
+   "tip": "Funkcja skalarna na kolumnie w WHERE to podwójny problem: brak SARGability i wykonanie per wiersz.",
+   "deep": "SQL Server 2019 (compat 150) wprowadził Scalar UDF Inlining – automatyczne przepisanie wielu funkcji skalarnych na wyrażenia relacyjne, co potrafi przyspieszyć zapytania o rzędy wielkości. Ma jednak listę wyłączeń (m.in. funkcje wywołujące zależne od czasu GETDATE(), pętle WHILE) – sprawdzasz kolumnę is_inlineable w sys.sql_modules. Scalar UDF użyta w computed column lub CHECK constraint potrafi wymusić plan seryjny dla zapytań dotykających tabeli, nawet gdy kolumny nie odczytujesz. Multi-statement TVF od SQL Server 2017 korzysta z interleaved execution (najpierw wykonanie, potem optymalizacja reszty na prawdziwej liczbie wierszy), ale to tylko częściowa poprawa. Funkcje nie mogą modyfikować danych ani mieć efektów ubocznych – do tego służą procedury składowane. Przy pomiarach nie ufaj SET STATISTICS IO dla scalar UDF – odczyty wewnątrz funkcji nie są tam pokazywane; lepsze są Extended Events lub sys.dm_exec_function_stats."
+  },
+  {
+   "id": "sql-043",
+   "topic": "MERGE i upsert",
+   "level": 3,
+   "q": "Jak bezpiecznie zrobić upsert w SQL Server? Czy MERGE wystarczy?",
+   "a": "MERGE łączy INSERT/UPDATE/DELETE w jednej instrukcji na podstawie dopasowania źródła do celu – wygodny przy synchronizacji całych zbiorów (np. z tabeli staging). Ale MERGE nie jest sam w sobie odporny na współbieżność: dwie sesje mogą jednocześnie nie znaleźć wiersza i obie spróbować INSERT – naruszenie PK lub duplikat. Potrzebny jest hint HOLDLOCK (SERIALIZABLE) na celu. Dla pojedynczego upserta wielu ekspertów woli prostszy wzorzec: UPDATE z UPDLOCK, SERIALIZABLE, a gdy @@ROWCOUNT = 0 – INSERT, w jednej transakcji.",
+   "code": "SET XACT_ABORT ON;\nBEGIN TRAN;\n  UPDATE dbo.Stock WITH (UPDLOCK, SERIALIZABLE)\n  SET Qty = @qty\n  WHERE ProductId = @id;\n\n  IF @@ROWCOUNT = 0\n    INSERT dbo.Stock (ProductId, Qty) VALUES (@id, @qty);\nCOMMIT;",
+   "lang": "sql",
+   "tip": "Jeśli rekruter pyta o MERGE, wspomnij o HOLDLOCK – to sygnał, że rozumiesz race condition, a nie tylko składnię.",
+   "deep": "Bez SERIALIZABLE/HOLDLOCK UPDATE, który nie znalazł wiersza, nie zostawia żadnej blokady – „luka” jest otwarta dla konkurencyjnego INSERT. HOLDLOCK zakłada key-range lock na brakujący klucz, co serializuje upserty tego samego klucza (ale przy upsertach zakresowych może zwiększyć ryzyko deadlocków). MERGE ma też historię błędów (m.in. w połączeniu z filtered indexami, indexed views czy triggerami) – część naprawiono, ale wielu DBA zaleca ostrożność i testy. Plusy MERGE: klauzula OUTPUT z $action i obsługa WHEN NOT MATCHED BY SOURCE (usuwanie nadmiarowych wierszy) w jednym przebiegu. Alternatywa „INSERT i przy błędzie 2627/2601 zrób UPDATE” sprawdza się przy rzadkich konfliktach. W PostgreSQL problem rozwiązuje atomowe INSERT ... ON CONFLICT (key) DO UPDATE – bezpieczne współbieżnie bez dodatkowych hintów; PostgreSQL 15+ ma też MERGE, ale on nie daje takich gwarancji jak ON CONFLICT i może zgłosić naruszenie unikalności."
+  },
+  {
+   "id": "sql-044",
+   "topic": "Skalowanie i HA",
+   "level": 3,
+   "q": "Na czym polega partycjonowanie tabel w SQL Server i kiedy ma sens?",
+   "a": "Partycjonowanie dzieli tabelę i jej indeksy na partycje według kolumny klucza (zwykle daty) – partition function definiuje granice, partition scheme mapuje partycje na filegroupy. Logicznie to nadal jedna tabela. Główne korzyści są operacyjne: natychmiastowe usuwanie lub archiwizacja starych danych przez SWITCH albo TRUNCATE TABLE ... WITH (PARTITIONS (...)) zamiast milionów DELETE, utrzymanie indeksów per partycja, różny storage dla danych gorących i zimnych. Wydajność zapytań poprawia się tylko wtedy, gdy zapytanie filtruje po kluczu partycji (partition elimination).",
+   "code": "CREATE PARTITION FUNCTION pfMonthly (date)\n  AS RANGE RIGHT FOR VALUES ('2026-01-01', '2026-02-01', '2026-03-01');\nCREATE PARTITION SCHEME psMonthly\n  AS PARTITION pfMonthly ALL TO ([PRIMARY]);\n\nCREATE TABLE Events (\n  Id        bigint NOT NULL,\n  EventDate date NOT NULL,\n  Payload   nvarchar(400),\n  CONSTRAINT PK_Events PRIMARY KEY (EventDate, Id)\n) ON psMonthly (EventDate);",
+   "lang": "sql",
+   "tip": "Na pytanie „tabela ma 500 mln wierszy – partycjonować?” najpierw dopytaj o wzorce zapytań i retencję. Partycjonowanie rozwiązuje problemy utrzymania, nie SELECT-ów.",
+   "deep": "Partycjonowanie nie jest sposobem na przyspieszenie zapytań OLTP – dobrze zaindeksowane zapytanie po CustomerId na tabeli niepartycjonowanej robi seek w jednym B-tree, a na partycjonowanej (bez klucza partycji w WHERE) musi zrobić seek w każdej partycji. Klucz partycji musi być częścią klucza klastrowanego i każdego wyrównanego (aligned) indeksu unikalnego, co zmienia projekt PK. Wzorzec sliding window: co miesiąc SPLIT nowej granicy na pustej partycji i SWITCH najstarszej do tabeli archiwalnej – operacje na metadanych, natychmiastowe, o ile dotyczą pustych partycji (SPLIT/MERGE na partycjach z danymi fizycznie przenosi wiersze). Indeksy niewyrównane (non-aligned) blokują SWITCH. LOCK_ESCALATION = AUTO pozwala eskalować do partycji zamiast do tabeli. Od SQL Server 2016 SP1 partycjonowanie jest dostępne także w Standard Edition. PostgreSQL ma deklaratywne partycjonowanie (RANGE/LIST/HASH) z podobnym pruningiem; sharding, czyli podział między serwery, to osobny temat (np. Citus albo podział w aplikacji)."
+  },
+  {
+   "id": "sql-045",
+   "topic": "Skalowanie i HA",
+   "level": 3,
+   "q": "Jak działają read replicas (np. Always On readable secondary) i na co uważać, kierując do nich ruch?",
+   "a": "Replika odczytowa dostaje strumień zmian (transaction log) z primary i go odtwarza, więc można na niej uruchamiać raporty i zapytania tylko do odczytu, odciążając główny serwer. W SQL Server Always On Availability Groups kierujesz ruch przez listener z ApplicationIntent=ReadOnly w connection stringu (read-only routing); w Azure SQL – podobnie, przez read scale-out. W aplikacji .NET zwykle są dwa connection stringi lub dwa DbContexty: do zapisu i do odczytu. Kluczowa pułapka: przy replikacji asynchronicznej jest opóźnienie (replication lag) – właśnie zapisane dane mogą jeszcze nie być widoczne na replice.",
+   "code": "Server=tcp:ag-listener,1433;Database=Shop;\nApplicationIntent=ReadOnly;MultiSubnetFailover=True;\nEncrypt=True;Integrated Security=True",
+   "lang": "text",
+   "tip": "Replika to nie backup: DELETE bez WHERE zreplikuje się w sekundę.",
+   "deep": "Read-your-writes: użytkownik zapisuje formularz, odświeża stronę i nie widzi zmian, bo odczyt poszedł na replikę z lagiem. Rozwiązania: odczyty tuż po zapisie (np. przez kilka sekund albo w obrębie tej samej operacji) kierować na primary, zapamiętać w sesji znacznik zapisu i czekać, aż replika go dogoni, albo zaakceptować opóźnienie tam, gdzie nie ma znaczenia (raporty, listy). Nawet synchronous commit w AG gwarantuje utrwalenie logu na secondary, a nie jego odtworzenie (redo) – odczyt na secondary nadal może być minimalnie opóźniony. Zapytania na readable secondary działają automatycznie w SNAPSHOT isolation, żeby nie blokować redo, co wymaga wersjonowania wierszy także na primary (narzut 14 bajtów na wiersz). Długie zapytania na replice mogą w pewnych przypadkach blokować redo (np. przy DDL na primary), zwiększając lag. Repliki nie skalują zapisów – do tego potrzebny jest sharding lub zmiana architektury (CQRS, kolejki). W PostgreSQL to streaming replication z hot standby i podobnym kompromisem: hot_standby_feedback kontra anulowanie długich zapytań na replice."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "sql-q001",
+   "topic": "Podstawy SELECT",
+   "level": 1,
+   "q": "Które z tych zapytań zakończy się błędem w SQL Server?",
+   "code": "-- Zapytanie 1\nSELECT Price * Qty AS Total FROM OrderLines ORDER BY Total;\n-- Zapytanie 2\nSELECT Price * Qty AS Total FROM OrderLines WHERE Total > 100;\n-- Zapytanie 3\nSELECT Price * Qty AS Total FROM OrderLines WHERE Price * Qty > 100;\n-- Zapytanie 4\nSELECT TOP (5) Price * Qty AS Total FROM OrderLines ORDER BY Total DESC;",
+   "lang": "sql",
+   "options": [
+    "Zapytanie 2 – alias Total nie istnieje jeszcze na etapie WHERE",
+    "Zapytanie 1 – ORDER BY nie może odwoływać się do aliasu z SELECT",
+    "Zapytanie 3 – nie wolno powtarzać w WHERE wyrażenia z SELECT",
+    "Zapytanie 4 – TOP nie działa z aliasem w ORDER BY"
+   ],
+   "correct": 0,
+   "why": "WHERE jest przetwarzane logicznie przed SELECT, więc alias Total jest tam niewidoczny (błąd Invalid column name). ORDER BY działa po SELECT i widzi aliasy – również razem z TOP. Powtórzenie wyrażenia w WHERE jest w pełni poprawne."
+  },
+  {
+   "id": "sql-q002",
+   "topic": "Podstawy SELECT",
+   "level": 1,
+   "q": "Tabela A zawiera wartości 1, 2, 2, a tabela B – 2, 3. Ile wierszy zwróci SELECT x FROM A UNION SELECT x FROM B, a ile ta sama konstrukcja z UNION ALL?",
+   "options": [
+    "4 i 5",
+    "3 i 5",
+    "3 i 4",
+    "2 i 5"
+   ],
+   "correct": 1,
+   "why": "UNION deduplikuje cały wynik – także duplikaty wewnątrz A – więc zostaje {1, 2, 3}, czyli 3 wiersze. UNION ALL po prostu skleja: 3 + 2 = 5. Częsty błąd to myślenie, że UNION usuwa tylko duplikaty „pomiędzy” zbiorami (stąd odpowiedź 4)."
+  },
+  {
+   "id": "sql-q003",
+   "topic": "NULL",
+   "level": 1,
+   "q": "Tabela Tasks ma 3 wiersze, kolumna Status zawiera: 'Open', 'Closed' i NULL. Co zwróci zapytanie?",
+   "code": "SELECT COUNT(*) FROM Tasks WHERE Status <> 'Closed';",
+   "lang": "sql",
+   "options": [
+    "2",
+    "3",
+    "1",
+    "0"
+   ],
+   "correct": 2,
+   "why": "'Open' <> 'Closed' to TRUE, 'Closed' <> 'Closed' to FALSE, a NULL <> 'Closed' to UNKNOWN. WHERE przepuszcza tylko TRUE, więc wiersz z NULL odpada i wynik to 1. Żeby go uwzględnić: OR Status IS NULL albo Status IS DISTINCT FROM 'Closed' (SQL Server 2022+, PostgreSQL)."
+  },
+  {
+   "id": "sql-q004",
+   "topic": "JOIN",
+   "level": 1,
+   "q": "Tabela Employees(Id, Name, ManagerId). Które zapytanie zwróci każdego pracownika wraz z imieniem przełożonego, łącznie z prezesem (ManagerId = NULL)?",
+   "options": [
+    "SELECT e.Name, m.Name FROM Employees e JOIN Employees m ON m.Id = e.ManagerId",
+    "SELECT e.Name, m.Name FROM Employees e LEFT JOIN Employees m ON e.Id = m.ManagerId",
+    "SELECT e.Name, m.Name FROM Employees e CROSS JOIN Employees m WHERE m.Id = e.ManagerId",
+    "SELECT e.Name, m.Name FROM Employees e LEFT JOIN Employees m ON m.Id = e.ManagerId"
+   ],
+   "correct": 3,
+   "why": "To self join – ta sama tabela występuje dwa razy pod różnymi aliasami. LEFT JOIN zachowuje prezesa (dostaje NULL jako przełożonego). INNER JOIN i CROSS JOIN z WHERE pominą go, bo nie ma dopasowania. Warunek e.Id = m.ManagerId odwraca relację – łączy pracownika z jego podwładnymi, a nie z przełożonym."
+  },
+  {
+   "id": "sql-q005",
+   "topic": "Agregacja",
+   "level": 1,
+   "q": "Tabela Orders ma 5 wierszy, a kolumna CouponCode zawiera: 'A', 'A', 'B', NULL, NULL. Co zwróci zapytanie?",
+   "code": "SELECT COUNT(*), COUNT(CouponCode), COUNT(DISTINCT CouponCode) FROM Orders;",
+   "lang": "sql",
+   "options": [
+    "5, 3, 2",
+    "5, 5, 3",
+    "5, 3, 3",
+    "3, 3, 2"
+   ],
+   "correct": 0,
+   "why": "COUNT(*) liczy wszystkie wiersze (5). COUNT(kolumna) pomija NULL-e (3). COUNT(DISTINCT kolumna) liczy unikalne wartości bez NULL: 'A' i 'B', czyli 2. NULL nigdy nie jest liczony jako osobna wartość w COUNT(DISTINCT)."
+  },
+  {
+   "id": "sql-q006",
+   "topic": "Funkcje okna",
+   "level": 1,
+   "q": "Wyniki graczy (malejąco): 100, 90, 90, 80. Jaką wartość dostanie gracz z wynikiem 80 w RANK() i DENSE_RANK() (ORDER BY Score DESC)?",
+   "options": [
+    "RANK = 3, DENSE_RANK = 3",
+    "RANK = 4, DENSE_RANK = 3",
+    "RANK = 4, DENSE_RANK = 4",
+    "RANK = 3, DENSE_RANK = 4"
+   ],
+   "correct": 1,
+   "why": "Remis na 90 dostaje w obu funkcjach numer 2. RANK zostawia lukę (kolejna ranga = liczba wierszy przed + 1 = 4), DENSE_RANK nie zostawia luk (3). ROW_NUMBER dałby 4, ale kolejność dwóch graczy z 90 byłaby niedeterministyczna bez tie-breakera."
+  },
+  {
+   "id": "sql-q007",
+   "topic": "DDL i constrainty",
+   "level": 1,
+   "q": "Baza nie może przyjąć produktu z ceną ujemną ani zerową, niezależnie od tego, która aplikacja zapisuje dane. Czego użyjesz?",
+   "options": [
+    "DEFAULT 1 na kolumnie Price",
+    "UNIQUE na kolumnie Price",
+    "CHECK (Price > 0) na kolumnie lub tabeli",
+    "Tylko walidacji w kontrolerze API – baza nie powinna zawierać reguł"
+   ],
+   "correct": 2,
+   "why": "CHECK constraint wymusza warunek na każdym zapisie, niezależnie od źródła (inne aplikacje, skrypty, ręczne poprawki). DEFAULT działa tylko, gdy kolumnę pominięto w INSERT, a UNIQUE pilnuje duplikatów. Walidacja w API jest potrzebna dla dobrych komunikatów, ale nie zastępuje integralności w bazie. Pamiętaj, że CHECK przepuszcza NULL – dlatego kolumna powinna być też NOT NULL."
+  },
+  {
+   "id": "sql-q008",
+   "topic": "Typy danych",
+   "level": 1,
+   "q": "Kolumna City jest typu varchar(50) z collation SQL_Latin1_General_CP1_CI_AS. Po zapisaniu N'Łódź' odczytujesz zniekształconą wartość. Co jest przyczyną i rozwiązaniem?",
+   "options": [
+    "Brakuje prefiksu N w zapytaniu SELECT odczytującym dane",
+    "varchar(50) jest za krótki dla polskich znaków – zwiększ do varchar(100)",
+    "Collation CI (case-insensitive) zamienia wielkie litery na małe",
+    "Znaki spoza strony kodowej CP1252 (Ł, ź) giną przy konwersji do varchar – użyj nvarchar (lub collation UTF-8)"
+   ],
+   "correct": 3,
+   "why": "varchar przechowuje tekst w stronie kodowej collation – CP1252 nie zawiera Ł ani ź, więc przy zapisie zostają one zamienione na inne znaki lub '?', a informacja jest bezpowrotnie tracona. Prefiks N w SELECT nic nie zmieni, długość nie ma znaczenia, a CI wpływa tylko na porównania, nie na przechowywanie. Rozwiązanie: nvarchar albo (SQL Server 2019+) varchar z collation *_UTF8."
+  },
+  {
+   "id": "sql-q009",
+   "topic": "Bezpieczeństwo",
+   "level": 1,
+   "q": "Który wariant jest odporny na SQL injection?",
+   "code": "// Wariant 1\nvar sql = $\"SELECT * FROM Users WHERE Email = '{email}'\";\n// Wariant 2\nvar sql = \"SELECT * FROM Users WHERE Email = '\" + email.Replace(\"'\", \"''\") + \"'\";\n// Wariant 3\nvar users = await conn.QueryAsync<User>(\n    \"SELECT * FROM Users WHERE Email = @email\", new { email });\n// Wariant 4\nvar users = await db.Users\n    .FromSqlRaw($\"SELECT * FROM Users WHERE Email = '{email}'\").ToListAsync();",
+   "lang": "csharp",
+   "options": [
+    "Wariant 3 – Dapper przekazuje email jako parametr",
+    "Wariant 2 – podwojenie apostrofów wystarcza",
+    "Wariant 4 – EF Core zawsze parametryzuje zapytania",
+    "Wariant 1 – interpolacja stringów w C# jest bezpieczna"
+   ],
+   "correct": 0,
+   "why": "Dapper z obiektem anonimowym tworzy parametr @email – wartość nigdy nie staje się częścią tekstu SQL. FromSqlRaw z interpolowanym stringiem wkleja wartość do SQL (parametryzację interpolacji robią FromSql/FromSqlInterpolated). Ręczne escapowanie jest kruche (inne konteksty, liczby bez apostrofów, błędy w kodowaniu), a zwykła interpolacja to klasyczna podatność."
+  },
+  {
+   "id": "sql-q010",
+   "topic": "Transakcje i izolacja",
+   "level": 1,
+   "q": "Aplikacja wykonała COMMIT przelewu, a sekundę później serwer stracił zasilanie. Po restarcie przelew jest w bazie. Którą właściwość ACID to ilustruje?",
+   "options": [
+    "Atomicity",
+    "Durability",
+    "Consistency",
+    "Isolation"
+   ],
+   "correct": 1,
+   "why": "Durability: po COMMIT zmiana przetrwa awarię. SQL Server potwierdza commit dopiero po utrwaleniu rekordów w transaction logu (write-ahead logging), a przy starcie recovery odtwarza zatwierdzone zmiany. Atomicity dotyczy „wszystko albo nic” w obrębie transakcji, Consistency – reguł integralności, Isolation – wzajemnej widoczności równoległych transakcji."
+  },
+  {
+   "id": "sql-q011",
+   "topic": "JOIN",
+   "level": 2,
+   "q": "Wiesz, że część klientów nie ma zamówień, a to zapytanie zwraca 0 wierszy. Najbardziej prawdopodobna przyczyna?",
+   "code": "SELECT Id FROM Customers\nWHERE Id NOT IN (SELECT CustomerId FROM Orders);",
+   "lang": "sql",
+   "options": [
+    "NOT IN nie działa z podzapytaniami, tylko z listą stałych",
+    "Brakuje DISTINCT w podzapytaniu",
+    "Orders.CustomerId zawiera co najmniej jeden NULL, więc warunek NOT IN daje UNKNOWN dla każdego klienta",
+    "Brakuje indeksu na Orders.CustomerId"
+   ],
+   "correct": 2,
+   "why": "Id NOT IN (1, 2, NULL) rozwija się do Id <> 1 AND Id <> 2 AND Id <> NULL. Ostatni człon zawsze daje UNKNOWN, więc całość nigdy nie jest TRUE. DISTINCT i indeksy wpływają na wydajność, nie na wynik. Rozwiązanie: NOT EXISTS (odporne na NULL) albo WHERE CustomerId IS NOT NULL w podzapytaniu."
+  },
+  {
+   "id": "sql-q012",
+   "topic": "Podzapytania",
+   "level": 2,
+   "q": "Potrzebujesz listy klientów, którzy złożyli co najmniej jedno zamówienie – każdy klient dokładnie raz. Które zapytanie jest poprawne i idiomatyczne?",
+   "options": [
+    "SELECT c.Id, c.Name FROM Customers c JOIN Orders o ON o.CustomerId = c.Id",
+    "SELECT c.Id, c.Name FROM Customers c WHERE EXISTS (SELECT 1 FROM Orders o)",
+    "SELECT c.Id, c.Name FROM Customers c LEFT JOIN Orders o ON o.CustomerId = c.Id",
+    "SELECT c.Id, c.Name FROM Customers c WHERE EXISTS (SELECT 1 FROM Orders o WHERE o.CustomerId = c.Id)"
+   ],
+   "correct": 3,
+   "why": "EXISTS ze skorelowanym podzapytaniem to semi-join: zwraca klienta raz, niezależnie od liczby zamówień, i przerywa szukanie po pierwszym dopasowaniu. JOIN powiela klienta tyle razy, ile ma zamówień (trzeba by DISTINCT). EXISTS bez korelacji jest prawdziwy dla wszystkich klientów, jeśli Orders nie jest pusta. LEFT JOIN zwraca też klientów bez zamówień. IN (SELECT CustomerId FROM Orders) również byłoby poprawne – optymalizator zwykle buduje dla obu ten sam plan."
+  },
+  {
+   "id": "sql-q013",
+   "topic": "CTE",
+   "level": 2,
+   "q": "Rekurencyjne CTE po drzewie kategorii kończy się błędem „The maximum recursion 100 has been exhausted before statement completion”. Drzewo ma maksymalnie 8 poziomów. Co najpewniej się dzieje?",
+   "options": [
+    "W danych jest cykl (kategoria jest pośrednio swoim własnym rodzicem), więc rekurencja się nie kończy",
+    "Drzewo ma więcej niż 100 węzłów, a limit dotyczy liczby zwróconych wierszy",
+    "Część rekurencyjna łączy się przez UNION ALL zamiast UNION",
+    "Dla drzew zawsze trzeba ustawić OPTION (MAXRECURSION 0)"
+   ],
+   "correct": 0,
+   "why": "MAXRECURSION ogranicza liczbę poziomów rekurencji, nie wierszy. Przy 8 poziomach limit 100 nie powinien zostać osiągnięty – rekurencja się zapętla, co wskazuje na cykl. MAXRECURSION 0 zamieniłoby błąd w zapytanie bez końca. UNION ALL jest wymagany w rekurencyjnym CTE w SQL Server. Napraw dane i dodaj zabezpieczenie (np. kolumnę ze ścieżką odwiedzonych Id)."
+  },
+  {
+   "id": "sql-q014",
+   "topic": "Funkcje okna",
+   "level": 2,
+   "q": "Co jest nie tak z tym zapytaniem (najnowsze zamówienie każdego klienta)?",
+   "code": "SELECT CustomerId, Id, CreatedAt\nFROM Orders\nWHERE ROW_NUMBER() OVER (PARTITION BY CustomerId\n                         ORDER BY CreatedAt DESC) = 1;",
+   "lang": "sql",
+   "options": [
+    "ROW_NUMBER wymaga GROUP BY CustomerId",
+    "Funkcji okna nie można użyć w WHERE – trzeba opakować zapytanie w CTE lub podzapytanie i filtrować rn = 1 na zewnątrz",
+    "W OVER nie można łączyć PARTITION BY z ORDER BY",
+    "Zapytanie jest poprawne, tylko wolne – lepiej użyć RANK"
+   ],
+   "correct": 1,
+   "why": "Funkcje okna są liczone na etapie SELECT, czyli po WHERE, więc nie mogą występować w WHERE ani HAVING (błąd „Windowed functions can only appear in the SELECT or ORDER BY clauses”). Standardowe rozwiązanie to CTE z kolumną rn i filtr na zewnątrz. Klauzula QUALIFY istnieje m.in. w Snowflake, BigQuery i DuckDB, ale nie w SQL Server ani PostgreSQL."
+  },
+  {
+   "id": "sql-q015",
+   "topic": "Zadania z rozmów",
+   "level": 2,
+   "q": "Pensje: 100, 100, 90, 80. Szukasz drugiej najwyższej unikalnej pensji (90). Które zapytanie zwróci 100 zamiast 90?",
+   "options": [
+    "SELECT DISTINCT Salary FROM Employees ORDER BY Salary DESC OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY",
+    "SELECT MAX(Salary) FROM Employees WHERE Salary < (SELECT MAX(Salary) FROM Employees)",
+    "SELECT Salary FROM Employees ORDER BY Salary DESC OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY",
+    "WITH r AS (SELECT Salary, DENSE_RANK() OVER (ORDER BY Salary DESC) AS rnk FROM Employees) SELECT DISTINCT Salary FROM r WHERE rnk = 2"
+   ],
+   "correct": 2,
+   "why": "Bez DISTINCT OFFSET 1 pomija tylko pierwszy wiersz, a drugi to nadal 100 (remis). Wersja z DISTINCT, MAX z podzapytaniem i DENSE_RANK poprawnie zwracają 90. To pytanie sprawdza, czy pamiętasz o remisach – na rozmowie warto o nie dopytać."
+  },
+  {
+   "id": "sql-q016",
+   "topic": "Indeksy",
+   "level": 2,
+   "q": "Na kolumnie Price (decimal) jest indeks. Który predykat pozwoli na index seek?",
+   "options": [
+    "WHERE Price * 1.23 > 100",
+    "WHERE CAST(Price AS int) > 81",
+    "WHERE ROUND(Price, 0) > 81",
+    "WHERE Price > 100 / 1.23"
+   ],
+   "correct": 3,
+   "why": "Seek wymaga „gołej” kolumny po jednej stronie porównania. Przeniesienie arytmetyki na stronę stałej zachowuje SARGability – wyrażenie 100 / 1.23 liczone jest raz. Mnożenie, CAST czy ROUND na kolumnie wymuszają obliczenie dla każdego wiersza, więc kończy się skanem. Uwaga na typy: wynik dzielenia powinien mieć typ zgodny z kolumną, inaczej może dojść do konwersji."
+  },
+  {
+   "id": "sql-q017",
+   "topic": "Transakcje i izolacja",
+   "level": 2,
+   "q": "Tabela T ma PK na kolumnie Id. Co będzie w tabeli po wykonaniu tego batcha przy domyślnym SET XACT_ABORT OFF?",
+   "code": "BEGIN TRAN;\n  INSERT INTO T (Id) VALUES (1);\n  INSERT INTO T (Id) VALUES (1);  -- naruszenie PK\n  INSERT INTO T (Id) VALUES (2);\nCOMMIT;",
+   "lang": "sql",
+   "options": [
+    "Wiersze 1 i 2 – błąd PK przerywa tylko tę instrukcję, a transakcja trwa dalej i zostaje zatwierdzona",
+    "Nic – błąd automatycznie wycofuje całą transakcję",
+    "Tylko wiersz 1 – batch przerywa się na błędzie, a otwarta transakcja zostaje zatwierdzona",
+    "Tylko wiersz 2 – błędna instrukcja wycofuje wcześniejsze zmiany"
+   ],
+   "correct": 0,
+   "why": "Przy XACT_ABORT OFF naruszenie PK jest błędem przerywającym tylko instrukcję: drugi INSERT się nie wykonuje, ale batch i transakcja idą dalej, więc COMMIT zatwierdza 1 i 2 – „połowiczna” transakcja. Dlatego w procedurach stosuje się SET XACT_ABORT ON (każdy błąd wycofuje transakcję i przerywa batch) razem z TRY/CATCH i IF @@TRANCOUNT > 0 ROLLBACK w CATCH."
+  },
+  {
+   "id": "sql-q018",
+   "topic": "Transakcje i izolacja",
+   "level": 2,
+   "q": "Aplikacja wykonuje UPDATE Products SET Price = @p WHERE Id = @id AND RowVer = @rv i dostaje 0 zmienionych wierszy, choć produkt o tym Id istnieje. Co to oznacza?",
+   "options": [
+    "Wiersz był zablokowany przez inną transakcję – wystarczy powtórzyć ten sam UPDATE",
+    "Ktoś zmodyfikował wiersz od momentu odczytu – konflikt współbieżności do obsłużenia (odśwież dane, retry lub komunikat)",
+    "rowversion trzeba ręcznie zwiększać w UPDATE, inaczej warunek nigdy nie jest spełniony",
+    "Zapytanie trafiło na replikę tylko do odczytu"
+   ],
+   "correct": 1,
+   "why": "To optymistyczna kontrola współbieżności: rowversion zmienia się automatycznie przy każdej modyfikacji wiersza, więc niezgodność oznacza, że ktoś inny go zmienił. Blokada nie dałaby 0 wierszy – UPDATE by poczekał (lub dostał timeout). Ręczne zwiększanie rowversion jest niemożliwe, a replika tylko do odczytu zwróciłaby błąd. Powtórzenie tego samego UPDATE z tym samym @rv znowu da 0 – trzeba najpierw odczytać aktualny stan."
+  },
+  {
+   "id": "sql-q019",
+   "topic": "Obiekty programowalne",
+   "level": 2,
+   "q": "Co jest nie tak z tym triggerem?",
+   "code": "CREATE TRIGGER trg_Orders_Ins ON Orders AFTER INSERT AS\nBEGIN\n  DECLARE @customerId int;\n  SELECT @customerId = CustomerId FROM inserted;\n  UPDATE Customers SET OrderCount = OrderCount + 1\n  WHERE Id = @customerId;\nEND;",
+   "lang": "sql",
+   "options": [
+    "Pseudo-tabela inserted nie jest dostępna w triggerze AFTER",
+    "Trigger AFTER INSERT nie może modyfikować innych tabel",
+    "Trigger odpala się raz na instrukcję – przy INSERT wielu wierszy zaktualizuje tylko jednego klienta i tylko o 1",
+    "Brakuje COMMIT na końcu triggera"
+   ],
+   "correct": 2,
+   "why": "inserted może zawierać wiele wierszy, a przypisanie do zmiennej bierze jeden przypadkowy. Poprawnie: UPDATE c SET OrderCount = c.OrderCount + x.Cnt FROM Customers c JOIN (SELECT CustomerId, COUNT(*) AS Cnt FROM inserted GROUP BY CustomerId) x ON x.CustomerId = c.Id. inserted jest dostępne w AFTER i INSTEAD OF, trigger może modyfikować inne tabele, a COMMIT w triggerze to błąd projektowy – trigger działa w transakcji instrukcji wywołującej."
+  },
+  {
+   "id": "sql-q020",
+   "topic": "Paginacja",
+   "level": 2,
+   "q": "Endpoint zwraca stronę wyników i łączną liczbę rekordów spełniających filtr. Co pozwala dostać oba w jednym zapytaniu w SQL Server?",
+   "options": [
+    "@@ROWCOUNT odczytane po zapytaniu z OFFSET/FETCH",
+    "SELECT COUNT(*) z GROUP BY razem z OFFSET/FETCH",
+    "Maksymalna wartość ROW_NUMBER() OVER (ORDER BY Id) na zwróconej stronie",
+    "COUNT(*) OVER () w SELECT razem z ORDER BY … OFFSET/FETCH"
+   ],
+   "correct": 3,
+   "why": "Funkcje okna liczone są przed zastosowaniem OFFSET/FETCH, więc COUNT(*) OVER () widzi wszystkie wiersze po filtrze. @@ROWCOUNT zwróci rozmiar strony, a maksymalny ROW_NUMBER na stronie to offset + rozmiar strony. Koszt: baza i tak musi przejść cały wynik filtra, więc przy dużych zbiorach lepsze bywa osobne (cache'owane) COUNT, wartość przybliżona albo rezygnacja z total przy keyset pagination."
+  },
+  {
+   "id": "sql-q021",
+   "topic": "Temporal i JSON",
+   "level": 2,
+   "q": "Kolumna Attributes zawiera {\"size\":\"XL\",\"dims\":{\"w\":10,\"h\":20}}. Co zwrócą JSON_VALUE(Attributes, '$.dims') i JSON_QUERY(Attributes, '$.dims') w domyślnym trybie?",
+   "options": [
+    "NULL oraz {\"w\":10,\"h\":20}",
+    "{\"w\":10,\"h\":20} w obu przypadkach",
+    "Błąd w JSON_VALUE oraz {\"w\":10,\"h\":20}",
+    "NULL w obu przypadkach"
+   ],
+   "correct": 0,
+   "why": "JSON_VALUE zwraca tylko wartości skalarne; dla obiektu lub tablicy w domyślnym trybie lax zwraca NULL (w trybie strict – błąd). JSON_QUERY służy do wyciągania obiektów i tablic. Ciche NULL-e w trybie lax to częsta pułapka – literówka w ścieżce w WHERE po prostu filtruje wszystko."
+  },
+  {
+   "id": "sql-q022",
+   "topic": "Normalizacja",
+   "level": 2,
+   "q": "Tabela OrderItems(OrderId, ProductId, ProductName, Quantity) ma klucz (OrderId, ProductId). Którą postać normalną narusza i dlaczego?",
+   "options": [
+    "1NF – tabela ma klucz złożony",
+    "2NF – ProductName zależy tylko od części klucza (ProductId)",
+    "3NF – Quantity zależy przechodnio od ProductName",
+    "BCNF – OrderId nie jest kluczem kandydującym"
+   ],
+   "correct": 1,
+   "why": "2NF wymaga, by każda kolumna niekluczowa zależała od całego klucza. ProductName zależy tylko od ProductId, więc powtarza się w każdym zamówieniu (anomalia aktualizacji). Quantity zależy od całego klucza – to poprawne. Klucz złożony nie narusza 1NF. Rozwiązanie: ProductName tylko w tabeli Products (chyba że świadomie zapisujesz nazwę „na moment zamówienia” – wtedy to snapshot, a nie redundancja)."
+  },
+  {
+   "id": "sql-q023",
+   "topic": "Skalowanie i HA",
+   "level": 2,
+   "q": "Baza w FULL recovery ma full backup o 1:00, differential co 6 godzin i log backup co 15 minut. O 14:07 padł dysk z danymi i logiem (tail-log backup niemożliwy). Jaka jest maksymalna utrata danych?",
+   "options": [
+    "Ok. 2 godziny – od ostatniego differential o 12:00",
+    "Ok. 13 godzin – od full backupu",
+    "Ok. 7 minut – od ostatniego log backupu o 14:00",
+    "Zero – FULL recovery gwarantuje brak utraty danych"
+   ],
+   "correct": 2,
+   "why": "RPO wyznacza częstotliwość log backupów. Odtworzenie: full z 1:00 → diff z 12:00 → log backupy 12:15 … 14:00, więc tracisz tylko zmiany z 14:00–14:07. FULL recovery umożliwia point-in-time restore, ale nie gwarantuje zerowej utraty – gdyby plik logu przetrwał, tail-log backup pozwoliłby odzyskać wszystko do 14:07."
+  },
+  {
+   "id": "sql-q024",
+   "topic": "SQL vs NoSQL",
+   "level": 2,
+   "q": "Potrzebujesz przechowywać sesje użytkowników i liczniki rate limitingu z TTL – odczyt i zapis po kluczu z bardzo małą latencją przy dużym ruchu. Co jest najlepszym wyborem?",
+   "options": [
+    "Baza grafowa, np. Neo4j",
+    "Tabela w SQL Server z clustered index na SessionId i jobem czyszczącym",
+    "Baza wide-column, np. Cassandra",
+    "Baza key-value w pamięci, np. Redis"
+   ],
+   "correct": 3,
+   "why": "Redis daje operacje po kluczu w pamięci, wbudowany TTL i atomowe inkrementy (INCR) – idealne do sesji i rate limitingu. Tabela w SQL Server zadziała, ale każdy request obciąża bazę transakcyjną zapisami i wymaga ręcznego czyszczenia. Grafowa baza rozwiązuje inny problem, a Cassandra jest zbyt ciężka do tak prostego i ulotnego stanu."
+  },
+  {
+   "id": "sql-q025",
+   "topic": "Plany wykonania",
+   "level": 3,
+   "q": "Kolumna Users.Email to varchar(256) z indeksem, collation SQL_Latin1_General_CP1_CI_AS. Zapytanie z aplikacji .NET WHERE Email = @email robi Index Scan, a plan pokazuje ostrzeżenie CONVERT_IMPLICIT. Najlepsza poprawka?",
+   "options": [
+    "Wysyłać parametr jako varchar – np. w Dapperze DbString { IsAnsi = true }, w EF Core skonfigurować kolumnę przez IsUnicode(false)",
+    "Dodać hint WITH (FORCESEEK) do zapytania",
+    "Przebudować indeks i zaktualizować statystyki",
+    "Zastąpić indeks filtered indexem WHERE Email IS NOT NULL"
+   ],
+   "correct": 0,
+   "why": "Stringi z .NET trafiają domyślnie jako nvarchar. nvarchar ma wyższą precedencję typów, więc to kolumna jest konwertowana dla każdego wiersza, a przy collation SQL_* seek staje się niemożliwy. Zgodny typ parametru usuwa przyczynę. FORCESEEK nie usuwa konwersji (w najlepszym razie da gorszy plan, w najgorszym błąd kompilacji), a rebuild czy filtered index nie mają związku z problemem."
+  },
+  {
+   "id": "sql-q026",
+   "topic": "Funkcje okna",
+   "level": 3,
+   "q": "Dlaczego kolumna LastAmt zwraca dla każdego wiersza jego własną kwotę zamiast ostatniej kwoty w miesiącu (Day jest unikalny w miesiącu)?",
+   "code": "SELECT Month, Day, Amount,\n  LAST_VALUE(Amount) OVER (PARTITION BY Month ORDER BY Day) AS LastAmt\nFROM Sales;",
+   "lang": "sql",
+   "options": [
+    "LAST_VALUE ignoruje PARTITION BY – trzeba dodać GROUP BY Month",
+    "Domyślna ramka przy ORDER BY to RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW – ostatni wiersz ramki to bieżący; trzeba podać ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING",
+    "ORDER BY w OVER sortuje rosnąco – wystarczy zmienić na ORDER BY Day DESC",
+    "LAST_VALUE wymaga ramki ROWS, a bez niej zachowuje się jak FIRST_VALUE"
+   ],
+   "correct": 1,
+   "why": "Gdy OVER ma ORDER BY bez ramki, obowiązuje RANGE UNBOUNDED PRECEDING AND CURRENT ROW, więc ramka kończy się na bieżącym wierszu (i jego remisach). Zmiana na DESC nic nie da – ostatni w ramce wciąż jest bieżący wiersz (pomogłoby dopiero FIRST_VALUE z ORDER BY Day DESC). PARTITION BY działa poprawnie, a GROUP BY zwinąłby wiersze."
+  },
+  {
+   "id": "sql-q027",
+   "topic": "Plany wykonania",
+   "level": 3,
+   "q": "Procedura GetOrders @CustomerId zwykle trwa 20 ms. Od rana dla wszystkich klientów trwa 15 s. W nocy, tuż po restarcie serwera, jako pierwszą wywołano ją dla klienta hurtowego z 2 mln zamówień. sp_recompile na procedurze „naprawia” problem. Co się najpewniej stało?",
+   "options": [
+    "Restart serwera usunął statystyki i zapytania działają bez nich",
+    "Deadlocki między równoległymi wywołaniami procedury",
+    "Parameter sniffing – plan skompilowany pod klienta z 2 mln wierszy (scan + hash) został zcache'owany i źle pasuje do małych klientów",
+    "Fragmentacja indeksów spowodowana restartem serwera"
+   ],
+   "correct": 2,
+   "why": "Restart wyczyścił cache planów, a pierwsze wywołanie z nietypowym parametrem „zatruło” plan dla wszystkich. sp_recompile pomaga, bo kolejna kompilacja trafiła na typowego klienta. Statystyki są zapisane w bazie i przetrwają restart, deadlocki dałyby błędy 1205, a restart nie fragmentuje indeksów. Trwałe rozwiązania: OPTION (RECOMPILE) lub OPTIMIZE FOR, wymuszenie planu w Query Store, PSP optimization w SQL Server 2022, rozdzielenie ścieżek dla dużych klientów."
+  },
+  {
+   "id": "sql-q028",
+   "topic": "Transakcje i izolacja",
+   "level": 3,
+   "q": "Dwie transakcje w SNAPSHOT isolation odczytały ten sam wiersz konta (Balance = 100). T1 robi UPDATE tego wiersza i COMMIT. Co się stanie, gdy T2 spróbuje teraz zaktualizować ten sam wiersz?",
+   "options": [
+    "T2 nadpisze zmianę T1 bez błędu (lost update)",
+    "T2 zostanie zablokowana aż do lock timeoutu",
+    "UPDATE w T2 zobaczy wartość z T1 i zastosuje zmianę do niej, jak w READ COMMITTED",
+    "T2 dostanie błąd update conflict (3960) i zostanie wycofana – trzeba ją ponowić"
+   ],
+   "correct": 3,
+   "why": "SNAPSHOT wykrywa konflikt zapisu: wiersz zmieniony i zatwierdzony przez inną transakcję po starcie T2 nie może zostać przez nią zaktualizowany, więc T2 jest wycofywana z błędem 3960. W RCSI byłoby inaczej – UPDATE czyta najnowszą zatwierdzoną wersję i nie zgłasza konfliktu, więc przy wzorcu „odczyt w aplikacji, potem zapis” możliwy jest lost update. SNAPSHOT nie chroni jednak przed write skew na różnych wierszach."
+  },
+  {
+   "id": "sql-q029",
+   "topic": "Blokady i deadlocki",
+   "level": 3,
+   "q": "Nocny job wykonuje DELETE FROM Logs WHERE CreatedAt < @cutoff, usuwając ok. 3 mln wierszy. W tym czasie inserty nowych logów z API stoją przez kilka minut. Najlepsze rozwiązanie?",
+   "options": [
+    "Usuwać w paczkach (np. DELETE TOP (4000) w pętli, każda paczka w osobnej transakcji) przy indeksie na CreatedAt",
+    "Dodać WITH (NOLOCK) do DELETE",
+    "Uruchomić DELETE w transakcji SERIALIZABLE",
+    "Zwiększyć timeout komend w API do 10 minut"
+   ],
+   "correct": 0,
+   "why": "Jedno DELETE milionów wierszy przekracza próg ok. 5000 blokad i eskaluje do blokady X na całej tabeli – inserty czekają do końca operacji. Paczki poniżej progu trzymają tylko blokady wierszy/stron, krótko, i ograniczają rozrost logu. NOLOCK jest niedozwolony dla tabeli docelowej DELETE, SERIALIZABLE tylko pogorszy blokowanie, a dłuższy timeout ukrywa problem. Przy dużej skali alternatywą jest partycjonowanie po dacie i TRUNCATE/SWITCH partycji."
+  },
+  {
+   "id": "sql-q030",
+   "topic": "MERGE i upsert",
+   "level": 3,
+   "q": "Endpoint wykonuje upsert jak poniżej. Pod obciążeniem w logach pojawiają się błędy naruszenia PK (2627). Dlaczego?",
+   "code": "IF NOT EXISTS (SELECT 1 FROM Stock WHERE ProductId = @id)\n  INSERT INTO Stock (ProductId, Qty) VALUES (@id, @qty);\nELSE\n  UPDATE Stock SET Qty = @qty WHERE ProductId = @id;",
+   "lang": "sql",
+   "options": [
+    "Brakuje BEGIN TRAN/COMMIT – samo opakowanie w transakcję READ COMMITTED rozwiąże problem",
+    "Między sprawdzeniem EXISTS a INSERT inna sesja może wstawić ten sam klucz – odczyt nie trzyma blokady; potrzeba transakcji z UPDLOCK + SERIALIZABLE (HOLDLOCK)",
+    "IF NOT EXISTS źle działa z NULL i zwraca błędny wynik",
+    "Wystarczy zamienić kod na MERGE bez hintów – MERGE jest atomowy"
+   ],
+   "correct": 1,
+   "why": "To klasyczny race condition check-then-act: dwie sesje jednocześnie widzą brak wiersza i obie robią INSERT. Transakcja w READ COMMITTED nie pomaga, bo blokady S są zwalniane zaraz po odczycie, a brakującego wiersza nie ma czego blokować. MERGE bez HOLDLOCK ma ten sam problem. Rozwiązanie: UPDLOCK + SERIALIZABLE (key-range lock na brakujący klucz) albo wzorzec UPDATE-then-INSERT z tymi hintami."
+  },
+  {
+   "id": "sql-q031",
+   "topic": "Agregacja",
+   "level": 3,
+   "q": "Tabela Sales zawiera dane z 2 lat, po 3 miesiące w każdym roku (6 kombinacji Year, Month). Ile wierszy zwróci zapytanie?",
+   "code": "SELECT Year, Month, SUM(Amount) AS Total\nFROM Sales\nGROUP BY ROLLUP (Year, Month);",
+   "lang": "sql",
+   "options": [
+    "6",
+    "8",
+    "9",
+    "12"
+   ],
+   "correct": 2,
+   "why": "ROLLUP (Year, Month) to GROUPING SETS ((Year, Month), (Year), ()): 6 wierszy szczegółowych + 2 sumy roczne + 1 suma całkowita = 9. CUBE dodałby jeszcze sumy per miesiąc (3), czyli razem 12. W wierszach sum zwinięte kolumny mają NULL – GROUPING(Month) = 1 pozwala odróżnić je od prawdziwych NULL-i w danych."
+  },
+  {
+   "id": "sql-q032",
+   "topic": "Indeksy",
+   "level": 3,
+   "q": "Istnieje indeks CREATE INDEX IX_Orders_Pending ON Orders(CreatedAt) WHERE Status = 'Pending'. Zapytanie w procedurze WHERE Status = @status AND CreatedAt > @from nie korzysta z niego, nawet gdy @status = 'Pending'. Dlaczego?",
+   "options": [
+    "Indeksy filtrowane działają tylko z kolumnami typu bit",
+    "Kolumna z filtra musi być pierwszą kolumną klucza indeksu",
+    "Dla indeksów filtrowanych nie tworzą się statystyki",
+    "Plan jest cache'owany i musi być poprawny dla każdej wartości @status, więc optymalizator nie może wybrać indeksu filtrowanego"
+   ],
+   "correct": 3,
+   "why": "Dopasowanie do filtra odbywa się w czasie kompilacji. Przy parametrze optymalizator nie ma gwarancji, że @status zawsze będzie 'Pending', więc wybór indeksu z wierszami tylko 'Pending' mógłby dać błędny wynik. Rozwiązania: literał w zapytaniu (osobna gałąź IF lub osobne zapytanie), OPTION (RECOMPILE) albo dynamiczny SQL z wartością stałą. Filtr może dotyczyć dowolnego typu, kolumna nie musi być w kluczu, a statystyki dla indeksu filtrowanego powstają normalnie."
+  },
+  {
+   "id": "sql-q033",
+   "topic": "Skalowanie i HA",
+   "level": 3,
+   "q": "Po zapisaniu profilu (POST na primary) aplikacja przekierowuje na stronę profilu, która czyta z asynchronicznej read repliki. Użytkownicy czasem widzą stare dane. Najbardziej adekwatne rozwiązanie?",
+   "options": [
+    "Kierować odczyty tuż po zapisie danego użytkownika (read-your-writes) na primary, resztę odczytów zostawić na replice",
+    "Włączyć na replice READ UNCOMMITTED, żeby widziała niezatwierdzone zmiany",
+    "Dodać indeks na tabeli profili",
+    "Przenieść wszystkie odczyty na replikę i dodać retry"
+   ],
+   "correct": 0,
+   "why": "To replication lag: zmiana jest zatwierdzona na primary, ale replika jeszcze jej nie odtworzyła. Poziom izolacji na replice nie pomoże – danych tam po prostu jeszcze nie ma (a zapytania na readable secondary i tak działają w SNAPSHOT). Indeks nie ma związku z lagiem, a retry bez warunku niczego nie gwarantuje. Typowe wzorce: odczyt z primary przez krótki czas po zapisie, śledzenie znacznika zapisu w sesji, albo akceptacja opóźnienia tam, gdzie jest nieistotne."
+  },
+  {
+   "id": "sql-q034",
+   "topic": "Zadania z rozmów",
+   "level": 3,
+   "q": "Tabela Invoices zawiera numery Id: 1, 2, 3, 7, 8, 10. Co zwróci zapytanie?",
+   "code": "SELECT MIN(Id) AS F, MAX(Id) AS T\nFROM (SELECT Id, Id - ROW_NUMBER() OVER (ORDER BY Id) AS grp\n      FROM Invoices) x\nGROUP BY grp\nORDER BY F;",
+   "lang": "sql",
+   "options": [
+    "(4, 6), (9, 9)",
+    "(1, 3), (7, 8), (10, 10)",
+    "(1, 10)",
+    "(1, 3), (4, 6), (7, 8), (9, 9), (10, 10)"
+   ],
+   "correct": 1,
+   "why": "To wzorzec „islands”: Id − ROW_NUMBER() daje 0 dla 1–3, 3 dla 7–8 i 4 dla 10, więc grupy to ciągłe zakresy (1–3), (7–8), (10–10). Odpowiedź (4, 6), (9, 9) to luki – do nich używa się LEAD i warunku NextId − Id > 1."
+  },
+  {
+   "id": "sql-q035",
+   "topic": "DDL i constrainty",
+   "level": 3,
+   "q": "Tabela Events ma clustered PK na kolumnie uniqueidentifier z DEFAULT NEWID() i przyjmuje tysiące insertów na sekundę. Indeks szybko osiąga bardzo wysoką fragmentację, a I/O rośnie. Które rozwiązanie najlepiej adresuje przyczynę?",
+   "options": [
+    "Codzienny REBUILD indeksu z FILLFACTOR = 100",
+    "Zmiana typu kolumny na nvarchar(36)",
+    "Rosnący klucz klastrowany: NEWSEQUENTIALID() lub sekwencyjny GUID z aplikacji, albo clustered na bigint IDENTITY i nieklastrowany PK na GUID",
+    "Dodatkowy indeks nieklastrowany na kolumnie Id"
+   ],
+   "correct": 2,
+   "why": "Losowe GUID-y wstawiane są w losowe miejsca B-tree, co powoduje page splity i fragmentację. Rosnący klucz kieruje inserty na koniec indeksu. REBUILD z FILLFACTOR = 100 tylko odtworzy pełne strony, które za chwilę znów będą się dzielić (jeśli już, to niższy FILLFACTOR łagodzi objaw). nvarchar(36) to 72 bajty zamiast 16 i ten sam losowy rozkład, a dodatkowy indeks tylko zwiększy koszt zapisu."
+  }
+ ]
+}

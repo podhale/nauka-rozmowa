@@ -1,0 +1,56 @@
+@if (s(); as s) {
+  @if (q(); as q) {
+    <section class="view">
+      <div class="study-head">
+        <button class="btn ghost" style="min-height:40px;padding:8px 12px" (click)="session.finishQuiz()">✕ Zakończ</button>
+        <span class="muted num" style="font-size:.88rem">{{ correctSoFar() }} ✓ · {{ s.index + 1 }} / {{ s.ids.length }}</span>
+      </div>
+      <div class="progress"><span [style.width.%]="progressPct()"></span></div>
+
+      <article class="flash" style="min-height:0">
+        <div class="tags"><app-cat-tag [cat]="q.cat" /><span class="tag">· {{ q.topic }}</span><app-level [level]="q.level" /></div>
+        <p class="q" style="font-size:1.12rem" [innerHTML]="q.q | rich"></p>
+        <app-code [code]="q.code" [lang]="q.lang" />
+      </article>
+
+      <div class="opts">
+        @for (oi of s.order[q.id]; track oi; let k = $index) {
+          <button [class]="optionClass(oi)" [disabled]="answered()" (click)="session.pick(oi)">
+            <span class="k">{{ letters[k] }}</span><span [innerHTML]="q.options[oi] | rich"></span>
+          </button>
+        }
+      </div>
+
+      @if (answered()) {
+        @if (right()) {
+          <div class="goodbox" #feedback><b style="color:var(--good)">Dobrze.</b> <span [innerHTML]="q.why | rich"></span></div>
+        } @else {
+          <div class="wrongbox" #feedback>
+            <b style="color:var(--bad)">Niestety nie.</b>
+            <p><span class="muted">Zaznaczyłeś:</span> <span [innerHTML]="q.options[s.pick!] | rich"></span></p>
+            <p><span class="muted">Poprawna:</span> <b [innerHTML]="q.options[q.correct] | rich"></b></p>
+            <p [innerHTML]="q.why | rich"></p>
+            @if (ai.available() && !explained()) {
+              <button class="btn" style="align-self:flex-start;min-height:42px" (click)="explain()">Wyjaśnij mój błąd</button>
+            }
+          </div>
+          <app-ai-answer label="Claude wyjaśnia" />
+          @if (hasSheet()) {
+            <details class="deep" open>
+              <summary>Ściąga: {{ q.topic }}</summary>
+              <div class="in"><app-cheat-sheet [cat]="q.cat" [topic]="q.topic" [showTitle]="false" [showActions]="false" /></div>
+            </details>
+          }
+          @if (topicCards()) {
+            <button class="btn ghost" [disabled]="scheduled()" (click)="schedule()">
+              {{ scheduled() ?? 'Dodaj ' + topicCards() + ' ' + (topicCards() | plural: 'fiszkę' : 'fiszki' : 'fiszek') + ' z tematu do dzisiejszej powtórki' }}
+            </button>
+          }
+        }
+        <div class="sticky-bottom">
+          <button class="btn primary block" (click)="next()">{{ s.index + 1 < s.ids.length ? 'Następne pytanie' : 'Zobacz wynik' }}</button>
+        </div>
+      }
+    </section>
+  }
+}

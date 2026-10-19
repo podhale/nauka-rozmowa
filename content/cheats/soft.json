@@ -1,0 +1,208 @@
+{
+  "cat": "soft",
+  "sheets": [
+    {
+      "topic": "Metoda STAR",
+      "points": [
+        "**S**ituation (1–2 zdania) → **T**ask (Twój cel) → **A**ction (co TY zrobiłeś, ~50–60% czasu) → **R**esult (liczby + lekcja).",
+        "Długość: 1,5–2 minuty; mów w 1. osobie liczby pojedynczej, zespół wspominaj jako kontekst.",
+        "Przygotuj **bank 5–7 historii**: sukces, porażka, konflikt, presja, inicjatywa, mentoring, szybka nauka.",
+        "Jedna historia może obsłużyć kilka pytań – zmieniasz tylko akcent (ownership, komunikacja, nauka).",
+        "Do każdej historii zapisz liczby (czas, %, użytkownicy, incydenty) i odpowiedź na „co byś zrobił inaczej?”.",
+        "Ucz się słów kluczowych, nie tekstu na pamięć – wyuczone historie brzmią sztucznie.",
+        "Przed rozmową zmapuj historie na wartości z ogłoszenia (np. ownership, customer focus)."
+      ],
+      "pitfalls": [
+        "Same „my” – rekruter nie wie, co zrobiłeś Ty.",
+        "Długi kontekst, jedno zdanie akcji, brak wyniku.",
+        "„Nie miałem takiej sytuacji” zamiast najbliższej analogii."
+      ],
+      "say": "Opowiem to w skrócie: jaki był kontekst, za co odpowiadałem, co konkretnie zrobiłem i jaki był mierzalny efekt – plus czego mnie to nauczyło."
+    },
+    {
+      "topic": "Autoprezentacja i projekty z CV",
+      "points": [
+        "„Opowiedz o sobie” = pitch **60–90 s**: teraz (rola, stack, domena) → 1–2 osiągnięcia z liczbami → dlaczego ta rola.",
+        "Dopasuj akcent do ogłoszenia: rola frontendowa – zacznij od Angulara, backendowa – od .NET.",
+        "Projekt z CV: cel biznesowy i skala → architektura w 1 zdaniu → **Twoja rola** → trudny problem → wynik → co byś zmienił.",
+        "Mów tylko o tym, co umiesz rozwinąć 2 poziomy w dół – rekruter techniczny robi drill-down.",
+        "Impact: „zrobiłem X → efekt Y → zmierzony Z”; senior pokazuje też dźwignię (standardy, adopcja przez inne zespoły).",
+        "Mocne strony: 2–3, każda z dowodem; słabe: prawdziwa, niekrytyczna dla roli + co z nią robisz.",
+        "Przy NDA mów ogólnie („duży klient z branży finansowej”) – to sygnał profesjonalizmu.",
+        "Prowadź „brag document”: co miesiąc kilka osiągnięć z liczbami."
+      ],
+      "pitfalls": [
+        "Czytanie CV punkt po punkcie albo start od studiów.",
+        "Lista technologii, których nie umiesz rozwinąć.",
+        "Słabość typu „jestem perfekcjonistą” albo „nie mam słabych stron”."
+      ],
+      "say": "Jestem fullstack developerem .NET/Angular; ostatnio odpowiadałem za [moduł], co dało [liczba]. Szukam roli z większym wpływem na [obszar] – i dlatego aplikuję tutaj."
+    },
+    {
+      "topic": "Trudne sytuacje i porażki",
+      "points": [
+        "Bug/problem: objaw → hipotezy → zawężanie (logi, metryki, reprodukcja) → przyczyna → fix → **zapobieganie** (test, alert, post-mortem).",
+        "Porażka: prawdziwy błąd z realnym skutkiem, krótko o błędzie, dłużej o reakcji i trwałej zmianie nawyku.",
+        "Presja deadline'u: wczesne wykrycie ryzyka → komunikacja z PM/leadem → **opcje** (mniejszy zakres, przesunięcie, pomoc).",
+        "Iron triangle: przy stałym czasie i zasobach negocjujesz **zakres**, nie jakość.",
+        "Priorytety: incydent produkcyjny > blokada innych > sprint > nice-to-have; konflikt priorytetów eskalujesz do PO.",
+        "Na produkcji najpierw mitigacja (rollback, feature flag), potem root cause.",
+        "Pokaż narzędzia: structured logging, OpenTelemetry/trace id, Application Insights, dumpy pamięci."
+      ],
+      "pitfalls": [
+        "Ukryta przechwałka zamiast porażki albo zrzucanie winy na innych.",
+        "„Siedziałem po nocach” jako jedyna strategia na deadline.",
+        "Informowanie o poślizgu w dniu terminu."
+      ],
+      "say": "Wcześnie sygnalizuję ryzyko i przychodzę z opcjami, a po każdym problemie zostawiam coś, co zapobiega powtórce – test, alert albo zmianę w procesie."
+    },
+    {
+      "topic": "Konflikty i feedback",
+      "points": [
+        "Konflikt: wybieraj merytoryczny, nie personalny; rozmowa 1:1 zamiast wojny w komentarzach PR.",
+        "Najpierw zrozum motywację drugiej strony, potem wspólne **kryteria**, spike/dane, decyzja zapisana w **ADR**.",
+        "**Disagree and commit**: zgłoś zastrzeżenia z argumentami, a po decyzji wspieraj ją w pełni; ustal punkt kontrolny.",
+        "Eskalacja tylko razem i z opcjami; wyjątek: bezpieczeństwo, prawo, etyka, dane osobowe.",
+        "Z biznesem mów o ryzyku i koszcie (awaria, wyciek, regresje), nie o „brzydkim kodzie”.",
+        "Code review: poprawność i security → architektura → testy → wydajność → styl (automatyzuj linterem); oznaczaj blocker vs nit.",
+        "Przyjmowanie feedbacku: dziękuję, dopytuję, poprawiam albo argumentuję merytorycznie – kod ≠ ja.",
+        "Trudny feedback: model **SBI** (Situation, Behavior, Impact) + pytanie o perspektywę + ustalone kroki i termin powrotu."
+      ],
+      "pitfalls": [
+        "Historia, w której druga strona jest „głupia”, albo konflikt rozwiązany „bo szef przyznał mi rację”.",
+        "Bierna agresja po decyzji („mówiłem, że tak będzie”).",
+        "Feedback publicznie lub dopiero na ocenie rocznej."
+      ],
+      "say": "Spór techniczny przenoszę z komentarzy na krótką rozmowę, ustalamy kryteria, sprawdzamy dane i zapisujemy decyzję – a jak zapadnie inaczej niż chciałem, w pełni ją wspieram."
+    },
+    {
+      "topic": "Motywacja i rozwój",
+      "points": [
+        "Zmiana pracy: mów, **do czego dążysz**, nie przed czym uciekasz; połącz powód z ofertą firmy.",
+        "Za 3–5 lat: kierunek (ekspert / architekt / lead), nie sztywny plan; powiąż ze ścieżką w firmie.",
+        "Nauka: system + praktyka – release notes i blogi .NET/Angular, mały projekt lub spike, dzielenie się wiedzą w zespole.",
+        "Miej świeży przykład z ostatnich miesięcy (np. signals, httpResource, zoneless, .NET 10).",
+        "„Dlaczego my”: 2–3 konkrety o firmie (produkt, stack, blog techniczny) powiązane z Twoim doświadczeniem.",
+        "Pieniądze jako powód są OK, ale nie jako jedyny – zasygnalizuj neutralnie."
+      ],
+      "pitfalls": [
+        "Obgadywanie obecnego szefa lub zespołu.",
+        "Powód zmiany, który dotyczy też nowej firmy.",
+        "„Dlaczego my” zbudowane wyłącznie z benefitów i ogólników."
+      ],
+      "say": "Szukam miejsca, gdzie mogę wziąć odpowiedzialność za funkcję od pomysłu po produkcję – i Wasz produkt oraz sposób pracy dokładnie to oferują."
+    },
+    {
+      "topic": "Scrum, Kanban i organizacja pracy",
+      "points": [
+        "Scrum: planning, daily (15 min, blokery), review (demo), retro (proces), refinement; role: PO, Scrum Master, Developers.",
+        "Kanban: ciągły przepływ, **WIP limits**, metryki cycle time / throughput – dobry dla utrzymania i supportu.",
+        "Estymacja to prognoza, nie obietnica; story pointy = złożoność + niepewność; przy dużej niepewności – timeboxowany **spike**.",
+        "Planning poker: karty odkrywane jednocześnie, by uniknąć anchoringu.",
+        "Poślizg zgłaszasz od razu: przyczyna + opcje, a nie „prawie skończone” przez tydzień.",
+        "Retro: konkretna, mierzalna zmiana i jej weryfikacja po 1–2 sprintach.",
+        "Zdalnie: pytania z kontekstem, wczesny draft PR, statusy w tickecie, krótki call zamiast długiego wątku.",
+        "Duże inicjatywy estymuj przedziałem i podawaj poziom pewności."
+      ],
+      "pitfalls": [
+        "Mylenie review z retrospektywą.",
+        "„Kanban to brak procesu” / dogmatyzm procesowy.",
+        "Przeliczanie story pointów 1:1 na godziny."
+      ],
+      "say": "Proces dobieram do rodzaju pracy: przy rozwoju produktu sprawdza się Scrum, przy dużej ilości nieplanowanych zgłoszeń – Kanban z limitem WIP; estymaty traktuję jako prognozę i aktualizuję je głośno."
+    },
+    {
+      "topic": "Dług techniczny",
+      "points": [
+        "Dług = koszt przyszłych zmian z dzisiejszych skrótów; „odsetki” to wolniejsze funkcje i więcej regresji.",
+        "Bywa **świadomy** (MVP) i **nieświadomy** (brak wiedzy, starzejący się stack).",
+        "Na co dzień: zasada skauta, rejestr długu w backlogu, stały % capacity (np. 15–20%), refaktoring przy okazji zmian.",
+        "Biznes przekonują liczby: lead time zmian w module, incydenty, czas regresji, metryki DORA (change failure rate, MTTR).",
+        "Twarde daty ryzyka: koniec wsparcia (.NET 8 i 9 – listopad 2026; .NET 10 to LTS), podatności, audyt.",
+        "Proponuj ograniczony zakres powiązany z funkcją, której biznes potrzebuje – nie „3 miesiące refaktoringu”.",
+        "Nie spłacaj długu w kodzie, który się nie zmienia, albo w module do wygaszenia.",
+        "Po spłacie wróć z wynikiem – buduje zaufanie przy kolejnej prośbie."
+      ],
+      "pitfalls": [
+        "Argumenty estetyczne („kod jest brzydki”, „nowy framework jest fajniejszy”).",
+        "Big bang rewrite od zera.",
+        "Ukryty refaktoring wpychany do niezwiązanych PR-ów."
+      ],
+      "say": "Pokazuję dług jako koszt i ryzyko w liczbach i proponuję spłatę w małych porcjach przy funkcjach, które i tak robimy – tak, żeby biznes widział zwrot."
+    },
+    {
+      "topic": "Rola seniora i leadership",
+      "points": [
+        "Senior jest oceniany po **wpływie na system i zespół**, nie tylko po własnym kodzie.",
+        "Decyzja techniczna: kontekst → min. 2 opcje → kryteria → decyzja i zaakceptowane koszty → weryfikacja; zapis w **ADR**.",
+        "Decyzje odwracalne podejmuj szybko, nieodwracalne (model danych, publiczne API, granice serwisów) analizuj głębiej.",
+        "Mentoring: diagnoza → zadania o rosnącej trudności → pair programming (mentee prowadzi) → pytania zamiast gotowców → feedback 1:1.",
+        "Mentoring, coaching, sponsoring – różne tryby; sukces mentora to samodzielność mentee i wyższy bus factor (mniejsza zależność od jednej osoby).",
+        "Ownership: odpowiadasz za efekt na produkcji – monitoring, alerty na objawy (latencja, error rate), runbooki.",
+        "Incydent: mitigacja (rollback/flag) → komunikacja statusu → root cause → **blameless post-mortem** z akcjami i właścicielami.",
+        "Metryki incydentów: MTTD, MTTR, powtarzalność; przy on-call dopytaj o częstotliwość, liczbę alertów i wynagrodzenie dyżurów."
+      ],
+      "pitfalls": [
+        "Decyzja z jedną opcją („bo X jest najlepszy”) albo CV-driven development.",
+        "Przejmowanie klawiatury od juniora zamiast uczenia.",
+        "Godzina debugowania na produkcji zamiast rollbacku; szukanie winnych na post-mortem."
+      ],
+      "say": "Jako senior najpierw dbam o to, żeby zespół i system działały lepiej beze mnie: decyzje z trade-offami są spisane, juniorzy rosną, a incydenty kończą się zmianą, która zapobiega powtórce."
+    },
+    {
+      "topic": "Wynagrodzenie i oferta",
+      "points": [
+        "Przed rozmową: widełki z ogłoszenia, raporty płacowe, Twoje minimum i cel.",
+        "Zawsze doprecyzuj: **brutto/netto**, **UoP/B2B** (B2B zwykle netto + VAT), miesięcznie.",
+        "Podawaj przedział, którego dolna granica jest dla Ciebie OK – firmy celują zwykle w dół widełek.",
+        "Pytanie o obecną pensję przekieruj na oczekiwania oparte na rynku.",
+        "Negocjuj po otrzymaniu oferty; poza kwotą: przegląd po okresie próbnym, premia, poziom stanowiska, szkolenia, dni wolne przy B2B.",
+        "UoP: ochrona kodeksu pracy (płatny urlop, chorobowe, wypowiedzenie); B2B: współpraca firm, własne koszty i ryzyko, warunki zależą od umowy.",
+        "Porównuj oferty całościowo i proś o ofertę na piśmie; szczegóły podatkowe/prawne – z księgowym lub prawnikiem."
+      ],
+      "pitfalls": [
+        "„Ile dacie?” bez żadnej kwoty.",
+        "Kwota bez formy umowy i brutto/netto.",
+        "Porównywanie stawki B2B z UoP bez uwzględnienia kosztów i braku płatnego urlopu."
+      ],
+      "say": "Biorąc pod uwagę zakres roli i stawki rynkowe, oczekuję X–Y zł brutto na UoP albo odpowiednio przeliczonej stawki na B2B; chętnie porozmawiam o całym pakiecie."
+    },
+    {
+      "topic": "Przebieg rekrutacji i pytania do pracodawcy",
+      "points": [
+        "HR: motywacja, komunikacja, dopasowanie, widełki – prosto, bez żargonu.",
+        "Tech lead/zespół: głębia techniczna, projekty z CV, trade-offy, współpraca.",
+        "CTO/manager: wpływ biznesowy, samodzielność, myślenie produktowe – łącz technologię z celami firmy.",
+        "Tę samą historię opowiadaj na różnych poziomach szczegółowości, ale z **tymi samymi faktami**.",
+        "Zawsze miej 3–5 pytań: proces PR → produkcja, testy i CI/CD, onboarding, pierwsze zadanie, największe wyzwanie zespołu, miara sukcesu w roli.",
+        "Dopasuj pytania do rozmówcy: HR – kultura i proces, tech lead – stack i dług, manager – oczekiwania.",
+        "Na koniec zapytaj o kolejne etapy i termin decyzji."
+      ],
+      "pitfalls": [
+        "„Nie mam pytań”.",
+        "Pytania techniczne do HR albo tylko o urlop na pierwszym etapie.",
+        "Lekceważenie screeningu HR."
+      ],
+      "say": "Dziękuję – mam kilka pytań: jak wygląda droga zmiany od PR do produkcji, jakie jest największe wyzwanie zespołu w najbliższym półroczu i po czym poznacie po trzech miesiącach, że to była dobra decyzja?"
+    },
+    {
+      "topic": "Zadania techniczne i live coding",
+      "points": [
+        "Nie znasz odpowiedzi: przyznaj się, powiedz co wiesz z pokrewnego obszaru, jak byś sprawdził, hipotezę oznacz jako przypuszczenie.",
+        "Live coding: powtórz zadanie, dopytaj o wymagania i edge case'y, zaproponuj podejście, **myśl na głos**.",
+        "Najpierw proste działające rozwiązanie, potem optymalizacja; przetestuj na przykładach (pusto, null, duże dane).",
+        "Utknąłeś? Powiedz gdzie i przyjmij podpowiedź – współpraca jest oceniana.",
+        "Zapytaj na starcie o zasady użycia AI/dokumentacji; jeśli wolno – weryfikuj wygenerowany kod.",
+        "Zadanie domowe: trzymaj się zakresu i czasu, testy, README (uruchomienie, założenia, trade-offy, co dalej), sensowne commity.",
+        "Brak czasu? Opowiedz, co byś dokończył i jak.",
+        "Bądź gotów obronić i rozbudować swoje zadanie domowe na kolejnym etapie."
+      ],
+      "pitfalls": [
+        "Pisanie w ciszy przez 20 minut albo zmyślanie odpowiedzi z pewną miną.",
+        "Przerost formy w home assignment (mikroserwisy, CQRS na 4 godziny).",
+        "Kod, którego nie umiesz wyjaśnić."
+      ],
+      "say": "Zanim zacznę pisać, upewnię się, że dobrze rozumiem zadanie i edge case'y, powiem jakie podejście wybieram, a potem zacznę od prostej działającej wersji i będę komentował na głos."
+    }
+  ]
+}

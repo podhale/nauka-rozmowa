@@ -1,0 +1,320 @@
+{
+  "cat": "arch",
+  "name": "Architektura i wzorce",
+  "cards": [
+    {
+      "id": "arch-s001",
+      "topic": "System design",
+      "level": 3,
+      "q": "Jak prowadzisz 45-minutową rozmowę system design (np. „zaprojektuj system powiadomień”)?",
+      "a": "Prowadzę ją etapami i pilnuję czasu: 1) wymagania funkcjonalne i niefunkcjonalne (skala, latency, spójność, dostępność) – ok. 5–8 min, 2) estymacje rzędu wielkości (RPS, storage, przepustowość), 3) API i główne przepływy, 4) model danych i wybór magazynów, 5) diagram wysokiego poziomu, 6) pogłębienie 1–2 trudnych miejsc i wąskich gardeł, 7) trade-offy, awarie, observability. Na każdym etapie mówię głośno, co zakładam i dlaczego, oraz pytam rekrutera, gdzie chce zejść głębiej.",
+      "tip": "Gdy rekruter milczy, to nie znaczy „dobrze” – zapytaj wprost, czy chce, żebyś poszedł głębiej w dane, skalowanie czy API.",
+      "deep": "Na poziomie senior oceniane jest prowadzenie rozmowy, nie wiedza encyklopedyczna: czy kandydat sam zawęża problem, ustala priorytety i świadomie rezygnuje z części funkcji („pomijam multi-region, chyba że to wymaganie”). Najczęstszy błąd to skok do technologii (Kafka, Kubernetes, Cassandra) przed ustaleniem wymagań – każdy wybór powinien wynikać z liczby lub wymagania. Dobrze zacząć od najprostszego działającego projektu (monolit + jedna baza) i ewoluować go pod konkretne wąskie gardła, zamiast rysować od razu 15 mikroserwisów. Warto nazwać niezmienniki (np. powiadomienie nie może zostać wysłane dwa razy) i ścieżki awarii: co gdy padnie broker, zewnętrzny dostawca SMS, jedna strefa dostępności. Na koniec krótkie podsumowanie projektu i lista rzeczy, które zrobiłbym w kolejnej iteracji – to pokazuje dojrzałość i zostawia dobre ostatnie wrażenie."
+    },
+    {
+      "id": "arch-s002",
+      "topic": "System design",
+      "level": 3,
+      "q": "Jak robić szybkie estymacje (back-of-the-envelope) na rozmowie system design?",
+      "a": "Liczę rzędy wielkości, zaokrąglając agresywnie: doba ≈ 100 tys. sekund (86 400), więc 1 mln zdarzeń dziennie ≈ 12/s średnio, a szczyt to zwykle 2–5× średniej. Storage: liczba obiektów × rozmiar × retencja × replikacja. Przepustowość: RPS × rozmiar odpowiedzi. Celem nie jest precyzja, tylko decyzja: czy wystarczy jedna baza, czy potrzebny cache, partycjonowanie, CDN.",
+      "code": "DAU 10 mln × 20 odczytów/dzień = 200 mln/dzień\n200 mln / ~100 tys. s ≈ 2 000 RPS średnio → szczyt ×3 ≈ 6 000 RPS\nZapisy: 10 mln × 2 = 20 mln/dzień ≈ 200 RPS (read:write ≈ 10:1)\nStorage: 20 mln × 1 KB × 365 ≈ 7,3 TB/rok (+ repliki ×3)",
+      "lang": "text",
+      "deep": "Przydatne liczby orientacyjne: odczyt z RAM to nanosekundy, round-trip w obrębie data center rzędu 0,5 ms, losowy odczyt z SSD ~0,1 ms, round-trip międzykontynentalny ~100–150 ms; jedna instancja relacyjnej bazy na dobrym sprzęcie obsłuży typowo tysiące–kilkadziesiąt tysięcy prostych zapytań na sekundę, a pojedyncza instancja ASP.NET Core – tysiące RPS przy lekkim endpointcie. Ważniejsze od liczb jest pokazanie, którą decyzję estymacja zmienia: 50 GB danych mieści się w RAM jednego serwera cache, 50 TB już wymaga partycjonowania. Zawsze rozróżniam odczyty i zapisy (stosunek read:write decyduje o cache i replikach) oraz średnią i szczyt. Liczby zapisuję na tablicy, żeby później się do nich odwołać przy uzasadnianiu architektury. Lepiej powiedzieć „ok. 2–3 tys. RPS w szczycie” niż liczyć do jedności."
+    },
+    {
+      "id": "arch-s003",
+      "topic": "Skalowanie",
+      "level": 3,
+      "q": "Jak identyfikujesz i usuwasz wąskie gardła w projektowanym systemie?",
+      "a": "Idę wzdłuż ścieżki requestu i dla każdego elementu pytam, co się stanie przy 10× ruchu. Zwykle pierwszym limitem jest baza: najpierw indeksy i zapytania, potem cache dla gorących odczytów, read replicas, a dopiero na końcu partycjonowanie/sharding. Pracę, która nie musi być synchroniczna, przenoszę do kolejki. Szukam też pojedynczych punktów awarii i gorących kluczy (jeden celebryta, jeden tenant).",
+      "tip": "Prawo Little’a: równoległość = przepustowość × czas obsługi. 1000 RPS × 200 ms = 200 równoległych requestów, co od razu mówi, ile połączeń do bazy potrzeba.",
+      "deep": "Bezstanowa warstwa aplikacji skaluje się horyzontalnie prawie za darmo, więc prawdziwe problemy są w stanie: bazie, cache, sesjach, plikach. Sharding rozwiązuje skalę zapisów, ale kosztuje: zapytania między shardami, rebalancing, transakcje wieloshardowe – dlatego przed nim wyczerpuję tańsze opcje. Gorący klucz psuje każdą partycjonowaną architekturę: jeden partition key przyjmuje cały ruch, więc stosuje się dodatkowy sufiks klucza, lokalny cache lub osobną ścieżkę dla „wielkich” encji. Kolejka wygładza szczyty, ale nie zwiększa przepustowości – jeśli konsumenci są wolniejsi niż producenci, kolejka rośnie bez końca, więc trzeba skalować konsumentów lub stosować backpressure. Zależności zewnętrzne (płatności, SMS) mają własne limity – rate limiting po naszej stronie i circuit breaker. Na koniec zawsze: jak to zmierzę (metryki nasycenia: CPU, połączenia, długość kolejek, p99 latency)."
+    },
+    {
+      "id": "arch-s004",
+      "topic": "Event-driven",
+      "level": 3,
+      "q": "Czym różnią się event notification, event-carried state transfer i event sourcing?",
+      "a": "Event notification: zdarzenie mówi tylko „coś się stało” (OrderPlaced z Id), a odbiorca w razie potrzeby dopytuje źródło o szczegóły – małe sprzężenie danych, ale dodatkowe wywołania. Event-carried state transfer: zdarzenie niesie dane, dzięki czemu odbiorca buduje własną kopię i nie zależy od dostępności źródła – kosztem duplikacji danych i eventual consistency. Event sourcing to coś innego: sposób przechowywania stanu agregatu jako sekwencji zdarzeń, a nie mechanizm integracji.",
+      "tip": "Na rozmowie powiedz wprost: „EDA nie implikuje event sourcingu” – to od razu sygnał doświadczenia.",
+      "deep": "Częsty błąd to mylenie event-driven architecture z event sourcingiem – można mieć zdarzenia integracyjne między serwisami przy zwykłej bazie CRUD. Zdarzenia integracyjne to publiczny kontrakt: muszą być wersjonowane, zmiany tylko addytywne, a usunięcie pola wymaga cyklu deprecjacji – inaczej jeden zespół psuje konsumentów, o których nie wie. Warto rozdzielić domain events (wewnątrz bounded contextu, mogą być bogate) od integration events (stabilne, minimalne). Kolejność zdarzeń jest gwarantowana zwykle tylko w obrębie partycji/klucza, więc konsument powinien tolerować zdarzenia nie po kolei (np. wersja agregatu w zdarzeniu i ignorowanie starszych). Zdarzenia nie mogą być ukrytymi komendami („SendEmailRequested” wysyłane do jednego odbiorcy to komenda) – to pogarsza czytelność przepływu. Debugowanie przepływów zdarzeń wymaga correlation id i distributed tracingu propagowanego przez broker."
+    },
+    {
+      "id": "arch-s005",
+      "topic": "Event-driven",
+      "level": 3,
+      "q": "Event sourcing – na czym polega i kiedy go NIE stosować?",
+      "a": "Stan agregatu nie jest zapisywany wprost – zapisuję niezmienne zdarzenia (append-only), a stan odtwarzam, aplikując je po kolei; widoki do odczytu buduję projekcjami. Zyski: pełna historia i audyt z natury, możliwość odtworzenia stanu z dowolnej chwili i budowania nowych projekcji z przeszłości. Nie stosuję go dla typowego CRUD, gdy nie ma wymagania historii ani złożonej domeny – koszt złożoności jest wtedy dużo większy niż zysk.",
+      "code": "public sealed class Account\n{\n    public decimal Balance { get; private set; }\n    public void Apply(object e)\n    {\n        switch (e)\n        {\n            case MoneyDeposited d: Balance += d.Amount; break;\n            case MoneyWithdrawn w: Balance -= w.Amount; break;\n        }\n    }\n    public static Account Rehydrate(IEnumerable<object> events)\n    { var a = new Account(); foreach (var e in events) a.Apply(e); return a; }\n}",
+      "lang": "csharp",
+      "deep": "Koszty, które trzeba umieć nazwać: wersjonowanie zdarzeń zapisanych lata temu (upcasting), eventual consistency projekcji i read-your-writes, odbudowa projekcji trwająca godziny przy dużym wolumenie, snapshoty dla agregatów z tysiącami zdarzeń, trudniejsze zapytania ad hoc (nie zrobisz po prostu SELECT po stanie), RODO i prawo do usunięcia danych w niezmiennym logu (crypto-shredding: szyfrowanie danych osobowych kluczem per osoba i usunięcie klucza). Zespół musi znać ten model, a narzędzia (EventStoreDB/Kurrent, Marten na PostgreSQL) to dodatkowa infrastruktura. Dobrze pasuje do domen, gdzie historia jest istotą biznesu: księgowość, ledger, ubezpieczenia, systemy z audytem regulacyjnym. Można go stosować selektywnie – w jednym bounded contexcie, a nie w całym systemie. Jeśli potrzeba tylko „kto co zmienił”, wystarczy tabela audytu lub temporal tables."
+    },
+    {
+      "id": "arch-s006",
+      "topic": "Spójność danych",
+      "level": 3,
+      "q": "Saga: choreografia czy orkiestracja? Jak działają kompensacje?",
+      "a": "Saga to długotrwały proces biznesowy rozbity na lokalne transakcje w różnych serwisach; gdy krok się nie uda, wykonuje się kompensacje wcześniejszych kroków (np. zwrot płatności, zwolnienie rezerwacji) – to nie jest rollback, tylko nowa operacja biznesowa. Choreografia: serwisy reagują na zdarzenia innych bez centralnego koordynatora – proste przy 2–3 krokach, ale przepływ jest rozproszony i trudny do śledzenia. Orkiestracja: jeden koordynator (state machine) wysyła komendy i śledzi stan – lepsza przy wielu krokach, timeoutach i rozgałęzieniach.",
+      "code": "Orkiestracja (OrderSaga):\n  ReserveStock → OK → ChargePayment → OK → ScheduleShipping → OK → Completed\n                                   ↘ FAIL → ReleaseStock → Cancelled\n  ScheduleShipping FAIL → RefundPayment → ReleaseStock → Cancelled",
+      "lang": "text",
+      "deep": "Kompensacje muszą być idempotentne i same mogą się nie udać – potrzebne są retry, a ostatecznie ręczna interwencja (stan „wymaga obsługi”). Nie wszystko da się skompensować (wysłany mail, wydany towar), więc kroki nieodwracalne układa się na końcu sagi, a wcześniej robi rezerwacje (pivot transaction). Saga nie daje izolacji: inne procesy widzą stany pośrednie (zamówienie „opłacone”, ale jeszcze bez rezerwacji), co ogranicza się semantic lockami (status Pending) i projektowaniem UI. Orkiestrator przechowuje stan sagi w bazie i musi przetrwać restart – w .NET robi się to np. przez state machine w MassTransit, NServiceBus Sagas, Durable Functions lub Temporal. Przy choreografii warto mieć mapę zdarzeń i tracing, bo bez tego nikt nie wie, jaki jest pełny proces; cykliczne zależności zdarzeń to sygnał, że pora na orkiestrację. Timeouty to pełnoprawne zdarzenia sagi (płatność nie przyszła w 15 min → anuluj)."
+    },
+    {
+      "id": "arch-s007",
+      "topic": "Spójność danych",
+      "level": 3,
+      "q": "Exactly-once delivery to mit? Jak zaprojektować idempotencję w API i konsumentach?",
+      "a": "W systemie rozproszonym nie da się zagwarantować, że wiadomość zostanie dostarczona dokładnie raz – przy timeoucie nadawca nie wie, czy odbiorca ją przetworzył, więc musi ponowić. Osiąga się za to exactly-once processing: at-least-once delivery + idempotentny odbiorca. W API: nagłówek Idempotency-Key, zapisany atomowo przed wykonaniem operacji, a przy ponowieniu zwracam zapamiętaną odpowiedź. W konsumentach: tabela przetworzonych MessageId w tej samej transakcji co efekt lub operacje naturalnie idempotentne.",
+      "code": "CREATE TABLE IdempotencyKeys (\n  ClientId     INT          NOT NULL,\n  [Key]        VARCHAR(64)  NOT NULL,\n  RequestHash  BINARY(32)   NOT NULL,\n  StatusCode   INT          NULL,      -- NULL = w trakcie\n  ResponseBody NVARCHAR(MAX) NULL,\n  CreatedAt    DATETIME2    NOT NULL,\n  CONSTRAINT PK_Idem PRIMARY KEY (ClientId, [Key]));",
+      "lang": "sql",
+      "deep": "Szczegóły, o które dopytują: klucz idempotencji zapisuję z unikalnym indeksem (key + klient) w tej samej transakcji co efekt, a nie „sprawdź, potem wykonaj” – inaczej dwa równoległe requesty z tym samym kluczem przejdą oba. Request w trakcie przetwarzania z tym samym kluczem dostaje 409 lub czeka; ten sam klucz z innym payloadem to błąd (422), więc przechowuję hash żądania. Klucze mają TTL (np. 24 h), bo tabela rośnie. Gdy operacja dotyka zewnętrznego systemu (bramka płatności), klucz idempotencji przekazuję dalej, bo moja baza nie obejmie jego transakcji. Kafka ma „exactly-once semantics”, ale tylko dla przepływu czytaj–przetwarzaj–zapisz w obrębie Kafki (idempotentny producer + transakcje); efekt w zewnętrznej bazie i tak wymaga idempotencji. Idempotencja to też projekt operacji: „ustaw status na Paid” jest idempotentne, „dodaj 100 zł” nie."
+    },
+    {
+      "id": "arch-s008",
+      "topic": "Spójność danych",
+      "level": 3,
+      "q": "Transakcje rozproszone (2PC) czy eventual consistency? Jak argumentujesz trade-off?",
+      "a": "2PC daje atomowość między zasobami, ale koordynator jest pojedynczym punktem awarii, uczestnicy trzymają blokady w czasie niepewności, a dostępność całości jest iloczynem dostępności uczestników. Większość brokerów i baz w chmurze w ogóle go nie wspiera, a w .NET transakcje rozproszone (MSDTC) wróciły w .NET 7 tylko na Windows. Dlatego między serwisami wybieram eventual consistency: lokalna transakcja + outbox, sagi z kompensacjami i idempotencja, a silną spójność trzymam wewnątrz jednego serwisu i jednej bazy.",
+      "tip": "Dobra formuła: „silna spójność wewnątrz agregatu i serwisu, eventual consistency między nimi”.",
+      "deep": "CAP mówi, że przy partycji sieci trzeba wybrać spójność lub dostępność; PACELC dodaje, że nawet bez partycji wybiera się między latency a spójnością – to lepiej opisuje codzienne decyzje (synchroniczna replikacja do drugiego regionu = większa latencja każdego zapisu). Decyzja zależy od niezmiennika biznesowego: saldo konta czy unikalność loginu wymagają silnej spójności w jednym miejscu, a licznik polubień czy rekomendacje mogą być nieaktualne przez sekundy. Często dobrym rozwiązaniem jest przesunięcie granic: jeśli dwa serwisy muszą być ciągle spójne transakcyjnie, to może są jednym bounded contextem. Koszt eventual consistency przenosi się na UX i procesy: statusy „w trakcie”, obsługa konfliktów, raporty uzgodnień (reconciliation) wykrywające rozjazdy. Koszt finansowy też jest argumentem: multi-region z silną spójnością (np. globalnie rozproszone bazy z konsensusem) jest wielokrotnie droższy niż region główny + asynchroniczna replika."
+    },
+    {
+      "id": "arch-s009",
+      "topic": "Monolit vs mikroserwisy",
+      "level": 3,
+      "q": "Jak migrujesz monolit do nowej architektury wzorcem strangler fig?",
+      "a": "Zamiast przepisywać wszystko naraz (big bang), stawiam przed monolitem fasadę – reverse proxy/API gateway, np. YARP – i wydzielam funkcje kawałek po kawałku: nowy serwis lub moduł przejmuje konkretne endpointy, a proxy kieruje na niego ruch, reszta dalej idzie do monolitu. Zaczynam od obszaru o dobrze zdefiniowanych granicach i realnej wartości biznesowej. Każdy krok jest małym, odwracalnym wdrożeniem, a stary kod usuwam, gdy ruch w całości przeszedł na nowy.",
+      "code": "// YARP jako fasada strangler fig\nbuilder.Services.AddReverseProxy()\n    .LoadFromConfig(builder.Configuration.GetSection(\"ReverseProxy\"));\n// routes: /api/invoices/** -> invoicing-service, /** (catch-all) -> legacy-monolith\napp.MapReverseProxy();",
+      "lang": "csharp",
+      "deep": "Najtrudniejsze są dane, nie kod: nowy komponent powinien mieć własne dane, a w okresie przejściowym synchronizuje się je przez zdarzenia lub CDC z bazy monolitu; bezpośrednie czytanie tabel monolitu przez nowy serwis to wygodny skrót, który tworzy ukryty kontrakt na schemacie. Anti-corruption layer chroni nowy model przed pojęciami ze starego systemu. Przełączanie ruchu warto robić stopniowo (procent użytkowników, feature flag, shadow traffic z porównywaniem odpowiedzi), z możliwością natychmiastowego powrotu. Ryzyko to „wieczna migracja”: dwa systemy na lata, podwójne utrzymanie – potrzebny jest plan, metryka postępu (procent ruchu, liczba endpointów) i decyzja, co zostaje w monolicie na zawsze. Nie zawsze celem są mikroserwisy: często strangler kończy się na modularnym monolicie z kilkoma wydzielonymi serwisami tam, gdzie była potrzeba skalowania lub niezależnych wdrożeń."
+    },
+    {
+      "id": "arch-s010",
+      "topic": "Monolit vs mikroserwisy",
+      "level": 3,
+      "q": "Jak egzekwować granice modułów w modularnym monolicie?",
+      "a": "Każdy moduł ma publiczne API (interfejsy/kontrakty, zdarzenia integracyjne) w osobnym projekcie, a implementacja jest internal. Moduł ma własny DbContext i własny schemat bazy; nie robi JOIN-ów do tabel innego modułu. Komunikacja przez publiczne kontrakty w procesie lub przez zdarzenia (outbox), nigdy przez współdzielone encje. Granice pilnuję testami architektury (NetArchTest, ArchUnitNET) w CI, a nie tylko dobrą wolą.",
+      "code": "[Fact]\npublic void Billing_should_not_depend_on_Orders_internals()\n{\n    var result = Types.InAssembly(typeof(BillingModule).Assembly)\n        .ShouldNot().HaveDependencyOn(\"App.Modules.Orders.Infrastructure\")\n        .GetResult();\n    Assert.True(result.IsSuccessful);\n}",
+      "lang": "csharp",
+      "deep": "Bez automatycznej weryfikacji granice erodują w ciągu miesięcy, bo „szybki JOIN do tabeli Orders” zawsze jest kuszący przed deadline’em. Separacja schematów (orders.*, billing.*) i osobne konta bazy z uprawnieniami tylko do własnego schematu to twarda bariera. Komunikacja synchroniczna w procesie jest tania, ale tworzy sprzężenie czasowe – dla procesów między modułami często lepsze są zdarzenia, co przy okazji przygotowuje moduł do ewentualnego wydzielenia. Potrzeby raportowe przekrojowe rozwiązuje się osobnym read modelem lub modułem raportowym zasilanym zdarzeniami, a nie łamaniem granic. Shared kernel ograniczam do prawdziwie wspólnych typów (Money, identyfikatory), bo „Common” rośnie w nowy monolit. Zaleta względem mikroserwisów: refaktoryzacja granic to zmiana w jednym repo i jednym wdrożeniu, a nie migracja danych między bazami."
+    },
+    {
+      "id": "arch-s011",
+      "topic": "Decyzje i dług techniczny",
+      "level": 3,
+      "q": "Czym jest ADR (Architecture Decision Record) i jak go prowadzisz?",
+      "a": "ADR to krótki dokument opisujący jedną istotną decyzję architektoniczną: kontekst (problem, ograniczenia), rozważane opcje, decyzję i konsekwencje (także negatywne). Trzymam je w repozytorium obok kodu jako Markdown, numerowane, z statusem (proposed, accepted, superseded by …). ADR są niezmienne – zmianę decyzji opisuje nowy ADR, który zastępuje stary. Dzięki temu za rok wiadomo, dlaczego coś zrobiono, a nie tylko co.",
+      "code": "# ADR-012: Outbox zamiast publikacji po SaveChanges\nStatus: Accepted (2026-03-14)\n## Kontekst\nGubimy zdarzenia OrderPlaced przy restarcie podów (dual write).\n## Decyzja\nTransactional outbox w EF Core + publisher z READPAST.\n## Konsekwencje\n+ brak utraty zdarzeń; − opóźnienie do ~1 s, konsumenci muszą być idempotentni.",
+      "lang": "text",
+      "deep": "Wartość ADR to przede wszystkim kontekst: decyzja „wybraliśmy Service Bus zamiast Kafki” bez opisu ówczesnych ograniczeń (wolumen, kompetencje zespołu, koszt) wygląda po roku na błąd. Pisze się je dla decyzji kosztownych do odwrócenia (wybór bazy, styl komunikacji, granice modułów, strategia multi-tenancy), a nie dla każdego wyboru biblioteki – inaczej nikt ich nie czyta. Dobrze działa proces: ADR w statusie proposed jako pull request, dyskusja w review, akceptacja po merge – to zarazem narzędzie do budowania konsensusu i onboardingu. Popularne szablony to oryginalny format Michaela Nygarda i MADR. Na rozmowie seniorskiej warto pokazać, że decyzje mają datę ważności: ADR może zawierać warunki ponownej oceny („wrócimy do tematu, gdy przekroczymy 5 tys. RPS”)."
+    },
+    {
+      "id": "arch-s012",
+      "topic": "Decyzje i dług techniczny",
+      "level": 3,
+      "q": "Jak rozmawiasz o długu technicznym z biznesem i jak nim zarządzasz?",
+      "a": "Mówię językiem skutków, nie kodu: ile dłużej trwa dostarczenie funkcji w danym obszarze, ile incydentów i godzin on-call generuje, jakie ryzyko (bezpieczeństwo, nieobsługiwana wersja .NET). Rozróżniam dług świadomy (szybsze wejście na rynek, z planem spłaty) od przypadkowego. Dług trafia do backlogu jako konkretne pozycje z kosztem i wpływem, a spłacam go regularnie – stała część pojemności zespołu i przy okazji prac w danym obszarze – zamiast liczyć na „sprint refaktoryzacji”.",
+      "tip": "Kwadrant Fowlera: dług rozważny/lekkomyślny × świadomy/nieświadomy – dobry punkt wyjścia do rozmowy.",
+      "deep": "Priorytetyzuję dług według „odsetek”: kod, którego nikt nie dotyka, może być brzydki bez kosztu, a dług w często zmienianym module (hotspot – wysoka częstotliwość zmian × złożoność, widoczna w historii gita) kosztuje co sprint. Biznes akceptuje inwestycje, gdy są powiązane z celem: „ta refaktoryzacja skróci wdrożenie nowych metod płatności z 3 tygodni do 1” przekonuje bardziej niż „kod jest nieczytelny”. Wielkie przepisanie od zera to zwykle najdroższy sposób spłaty – lepiej stopniowo, z testami charakteryzacyjnymi na starym zachowaniu. Dług niejawny (brak testów, brak observability, ręczne wdrożenia) też jest długiem i często najbardziej kosztownym. Mierniki postępu: lead time, change failure rate, liczba incydentów w obszarze – pokazują biznesowi zwrot z inwestycji. Senior nie tylko zgłasza dług, ale też nie dokłada go bez świadomej decyzji i zapisu (np. TODO z ticketem lub ADR)."
+    },
+    {
+      "id": "arch-s013",
+      "topic": "Niezawodność",
+      "level": 3,
+      "q": "Czym są SLI, SLO, SLA i error budget? Jak używasz ich w praktyce?",
+      "a": "SLI to mierzony wskaźnik z perspektywy użytkownika, np. odsetek requestów zakończonych sukcesem w czasie < 300 ms. SLO to cel dla SLI w oknie czasowym, np. 99,9% w 30 dni. SLA to zobowiązanie umowne z konsekwencjami finansowymi, zwykle luźniejsze niż SLO. Error budget = 100% − SLO: przy 99,9% to ok. 43 minuty niedostępności miesięcznie. Gdy budżet jest, zespół może ryzykować szybsze wdrożenia; gdy się kończy, priorytetem staje się niezawodność.",
+      "code": "SLO 99,9% / 30 dni → budżet: 0,1% × 43 200 min = 43,2 min\nSLO 99,95%         → 21,6 min\nSLO 99,99%         → 4,3 min\nBurn rate 14,4 przez 1 h → 2% budżetu w godzinę → page on-call",
+      "lang": "text",
+      "deep": "SLI definiuje się na granicy systemu widzianej przez użytkownika (load balancer, gateway), a nie na metrykach CPU – 90% CPU nie jest problemem, jeśli użytkownicy dostają szybkie odpowiedzi. Każda dodatkowa dziewiątka kosztuje rząd wielkości więcej (99,99% to ~4,3 min miesięcznie, czyli praktycznie brak czasu na ręczną reakcję), a zależności ograniczają możliwe SLO: serwis zależny synchronicznie od trzech usług po 99,9% nie osiągnie 99,9%. Alerty warto oprzeć na burn rate, czyli tempie spalania budżetu (np. alert, gdy w ciągu godziny zużyto 2% miesięcznego budżetu), zamiast na progach chwilowych – mniej fałszywych alarmów i szybsza reakcja na poważne awarie. Error budget policy, uzgodniona z biznesem z góry, zamienia emocjonalną dyskusję „wydawać czy stabilizować” w regułę. SLO powinny obejmować także latency (p95/p99), nie tylko dostępność, oraz krytyczne ścieżki osobno (checkout ważniejszy niż strona „O nas”)."
+    },
+    {
+      "id": "arch-s014",
+      "topic": "Niezawodność",
+      "level": 3,
+      "q": "Czym jest backpressure i jak chronić system przed przeciążeniem?",
+      "a": "Backpressure to sygnalizowanie producentowi, że konsument nie nadąża, zamiast przyjmowania pracy bez limitu. W praktyce: ograniczone bufory i kolejki (bounded channel, limit długości kolejki), limity współbieżności i rate limiting na wejściu, a gdy limit jest przekroczony – szybkie odrzucenie (429/503 z Retry-After) lub degradacja funkcji. Lepiej obsłużyć 80% ruchu dobrze niż 100% ruchu z timeoutami.",
+      "code": "builder.Services.AddRateLimiter(o =>\n{\n    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;\n    o.AddConcurrencyLimiter(\"orders\", l => { l.PermitLimit = 200; l.QueueLimit = 50; });\n});\nvar channel = Channel.CreateBounded<Job>(new BoundedChannelOptions(1_000)\n{\n    FullMode = BoundedChannelFullMode.Wait\n});",
+      "lang": "csharp",
+      "deep": "Kolejka bez limitu nie usuwa przeciążenia, tylko je przesuwa: rośnie pamięć, a czas oczekiwania przekracza timeout klienta, więc system wykonuje pracę, na której wynik nikt już nie czeka. Load shedding powinien odrzucać tanio i wcześnie (na gateway, middleware rate limitera ASP.NET Core), z priorytetami – ruch płacących klientów lub krytycznych ścieżek przed tłem. Po stronie klienta: retry z exponential backoff i jitterem, limit prób i circuit breaker, inaczej po awarii zależności wszystkie instancje jednocześnie ją dobiją (retry storm); w .NET daje to Microsoft.Extensions.Http.Resilience (Polly v8). Timeouty muszą maleć wzdłuż łańcucha wywołań (deadline propagation), żeby serwis głębiej nie pracował po tym, jak wywołujący już się poddał. Autoskalowanie po długości kolejki lub liczbie requestów w toku reaguje z opóźnieniem minut, więc nie zastępuje limitów. W System.Threading.Channels bounded channel z FullMode = Wait daje naturalny backpressure dla producentów w procesie."
+    },
+    {
+      "id": "arch-s015",
+      "topic": "Projektowanie API",
+      "level": 3,
+      "q": "API Gateway vs Backend for Frontend (BFF) – czym się różnią i kiedy który?",
+      "a": "API Gateway to jeden punkt wejścia przed wieloma serwisami: routing, terminacja TLS, uwierzytelnianie, rate limiting, logowanie – sprawy przekrojowe, bez logiki biznesowej. BFF to backend dedykowany jednemu typowi klienta (np. SPA w Angularze, aplikacja mobilna), który agreguje wywołania i dopasowuje kształt odpowiedzi do UI. Dla SPA BFF ma też wymiar bezpieczeństwa: tokeny OAuth trzyma serwer, a przeglądarka dostaje tylko ciasteczko HttpOnly, SameSite.",
+      "tip": "Pytanie o Angular + .NET często kończy się na: gdzie trzymasz tokeny? Odpowiedź z BFF i ciasteczkiem HttpOnly robi dobre wrażenie.",
+      "deep": "Wzorzec BFF jest dziś zalecanym podejściem dla aplikacji przeglądarkowych z OAuth/OIDC, bo token w localStorage jest dostępny dla każdego skryptu w razie XSS; BFF na ciasteczkach wymaga za to ochrony przed CSRF (SameSite, antiforgery lub własny nagłówek). W .NET buduje się go zwykle na YARP (proxy z dołączaniem tokenu) i ewentualnie gotowych bibliotekach, np. Duende BFF. Pułapki: gateway, w którym rośnie logika biznesowa i orkiestracja, staje się nowym monolitem i wąskim gardłem wdrożeń wszystkich zespołów; BFF współdzielony przez wiele klientów przestaje być BFF. BFF powinien należeć do zespołu frontendu, który go używa – to on decyduje o kształcie danych. Każdy dodatkowy hop to latency i kolejny element do skalowania i monitorowania, więc przy jednym serwisie i jednym kliencie gateway bywa zbędny. Alternatywą dla agregacji w BFF jest GraphQL, ale przenosi to złożoność w inne miejsce (autoryzacja na polach, kosztowne zapytania)."
+    },
+    {
+      "id": "arch-s016",
+      "topic": "Multi-tenancy",
+      "level": 3,
+      "q": "Jak projektujesz system multi-tenant na poziomie architektury?",
+      "a": "Wybieram model izolacji per warstwa: silo (zasoby dedykowane tenantowi), pool (wspólne zasoby z TenantId) lub mieszany – np. wspólna aplikacja, a dane dużych klientów w osobnych bazach. Tenant jest rozpoznawany na wejściu (subdomena, claim w tokenie), a jego kontekst propagowany przez całe wywołanie: do bazy, cache, logów, wiadomości w kolejce. Na każdym poziomie chronię przed wyciekiem danych między tenantami i przed noisy neighbor – limity i quoty per tenant.",
+      "tip": "Kluczowe zdanie: „tenant context jest częścią każdego klucza – w bazie, cache, kolejce i telemetrii”.",
+      "deep": "Decyzję o modelu izolacji napędzają: wymagania klientów (regulacje, data residency, osobny klucz szyfrowania), koszt jednostkowy tenanta i liczba tenantów – tysiące małych klientów w modelu silo to koszmar operacyjny, kilku korporacyjnych w modelu pool może nie przejść audytu. Tenant musi być w każdym kluczu cache, nazwie partycji kolejki, metrykach i logach – inaczej nie da się odpowiedzieć na pytanie „czy ten incydent dotyczy wszystkich, czy jednego klienta”. Noisy neighbor ogranicza się rate limitami per tenant, osobnymi kolejkami lub pulami workerów dla dużych klientów i możliwością przeniesienia tenanta do osobnego zasobu. Operacje cyklu życia tenanta (onboarding, migracja między shardami, eksport i usunięcie danych) trzeba zaprojektować od początku, bo później są bardzo drogie. Feature flags i konfiguracja per tenant pozwalają różnicować funkcje bez osobnych wdrożeń; osobne wdrożenia per klient zabijają tempo rozwoju."
+    },
+    {
+      "id": "arch-s017",
+      "topic": "Niezawodność",
+      "level": 3,
+      "q": "Feature flags – do czego ich używasz i jakie mają koszty?",
+      "a": "Feature flags oddzielają wdrożenie (deploy) od udostępnienia funkcji (release): kod trafia na produkcję wyłączony, a włączam go stopniowo – dla testerów, procentu użytkowników, wybranych tenantów – i mogę wyłączyć bez rollbacku. Typy: release toggles (krótkotrwałe), ops toggles/kill switch (np. wyłączenie drogiej funkcji pod obciążeniem), eksperymenty A/B, uprawnienia (funkcja dla planu premium). W .NET: Microsoft.FeatureManagement z Azure App Configuration lub standard OpenFeature z wybranym providerem.",
+      "code": "builder.Services.AddFeatureManagement();\n\napp.MapPost(\"/checkout\", async (IFeatureManager features, CheckoutRequest req) =>\n    await features.IsEnabledAsync(\"NewCheckout\")\n        ? await newCheckout.Handle(req)\n        : await legacyCheckout.Handle(req));",
+      "lang": "csharp",
+      "deep": "Największy koszt to dług flag: każda flaga to rozgałęzienie w kodzie i podwójna liczba ścieżek do testowania, więc release toggles mają właściciela i datę usunięcia, a stare flagi wykrywa się automatycznie. Flagi umożliwiają trunk-based development – niedokończony kod jest na mainie, ale wyłączony – co eliminuje długie gałęzie i bolesne merge. Zmiana schematu bazy nie da się „schować” za flagą, więc łączy się je z expand/contract. Ewaluacja flagi musi być szybka i odporna: lokalny cache konfiguracji i sensowna wartość domyślna, gdy serwis flag jest niedostępny, inaczej flaga staje się nową zależnością krytyczną. Ostrożnie z flagami w wielu serwisach jednocześnie – niespójne włączenie u producenta i konsumenta może zepsuć kontrakt. Przełączenie flagi to zmiana produkcyjna: powinno być audytowane i widoczne w telemetrii (wartość flagi jako atrybut spanu), żeby skorelować ją z incydentem."
+    },
+    {
+      "id": "arch-s018",
+      "topic": "Rola seniora",
+      "level": 3,
+      "q": "Jak jako senior prowadzisz code review i mentoring?",
+      "a": "W review skupiam się na tym, czego nie wyłapią narzędzia: poprawność i edge case’y, granice i projekt API, bezpieczeństwo, wydajność na realnych danych, testowalność i to, czy zmiana pasuje do architektury. Formatowanie i styl zostawiam analizatorom i formatterowi w CI. Komentarze piszę jako pytania lub sugestie z uzasadnieniem i oznaczam wagę (blokujące vs nit). W mentoringu nie podaję gotowych rozwiązań, tylko pomagam dojść do nich, daję stopniowo większe zadania i bezpieczną przestrzeń na błędy.",
+      "tip": "Pytanie behawioralne często brzmi: „opowiedz o sytuacji, gdy nie zgadzałeś się w review”. Przygotuj historię w formacie STAR.",
+      "deep": "Review jest przede wszystkim narzędziem dzielenia się wiedzą, a nie bramką jakości – jakość budują testy, pair programming i dobre zadania. Duże PR-y (kilka tysięcy linii) dostają powierzchowne review, więc promuję małe zmiany, opis „dlaczego” w PR i ewentualnie review projektu przed implementacją dla większych funkcji. Czas odpowiedzi na review jest metryką przepływu zespołu: PR czekający dwa dni blokuje kogoś bardziej niż mój bieżący task. Senior nie może być jedynym recenzentem wszystkiego (bottleneck i bus factor) – uczę innych recenzować i zapisuję powtarzające się uwagi jako reguły lintera lub wytyczne. Przy różnicy zdań odróżniam preferencję od problemu: preferencje nie blokują merge, a spór projektowy przenoszę do rozmowy lub ADR zamiast 40 komentarzy. W mentoringu działa model stopniowej odpowiedzialności (obserwuje → robi z pomocą → robi sam → uczy innych) i regularny feedback, także pozytywny i konkretny."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "arch-sq001",
+      "topic": "System design",
+      "level": 2,
+      "q": "Na rozmowie pada: „Zaprojektuj serwis skracania linków”. Kandydat od razu rysuje Kafkę, Cassandrę i trzy mikroserwisy. Co doświadczony rekruter oceni najgorzej i co powinien był zrobić najpierw?",
+      "options": [
+        "Wybór Cassandry – powinien był wybrać SQL Server, bo jest standardem w .NET",
+        "Brak diagramu sekwencji – powinien był zacząć od UML",
+        "Projektowanie bez wymagań – najpierw doprecyzować funkcje, skalę (odczyty/zapisy, retencja), wymagania latency i dostępności, a dopiero z nich wyprowadzić architekturę",
+        "Zbyt mała liczba mikroserwisów – przy takim systemie potrzeba ich co najmniej kilku"
+      ],
+      "correct": 2,
+      "why": "Oceniany jest proces: wymagania i estymacje decydują o architekturze. Skracacz linków ma bardzo wysoki stosunek odczytów do zapisów, co sugeruje cache i proste przechowywanie klucz–wartość; bez tych ustaleń wybór technologii jest losowy. Konkretna baza, UML czy liczba serwisów to rzeczy wtórne wobec tego, czy rozwiązanie wynika z wymagań."
+    },
+    {
+      "id": "arch-sq002",
+      "topic": "System design",
+      "level": 2,
+      "q": "System ma 50 mln requestów dziennie, a szczyt jest ok. 4 razy wyższy od średniej. Jaki rząd wielkości ruchu w szczycie przyjmiesz w projekcie?",
+      "options": [
+        "ok. 600 RPS",
+        "ok. 2 300 RPS",
+        "ok. 23 000 RPS",
+        "ok. 9 000 RPS"
+      ],
+      "correct": 1,
+      "why": "50 mln / 86 400 s ≈ 580 RPS średnio; × 4 ≈ 2 300 RPS w szczycie. 600 RPS to średnia, bez szczytu. 9 000 i 23 000 to wynik pomyłki o rząd wielkości lub mnożenia dwa razy przez współczynnik szczytu. W estymacjach wystarczy rząd wielkości, ale trzeba pamiętać o rozróżnieniu średniej i szczytu."
+    },
+    {
+      "id": "arch-sq003",
+      "topic": "Event-driven",
+      "level": 3,
+      "q": "Wewnętrzny panel administracyjny (CRUD na produktach, kilkunastu użytkowników) ma nowe wymaganie: „chcemy wiedzieć, kto i kiedy zmienił cenę”. Architekt proponuje event sourcing dla całej aplikacji. Jaka jest najrozsądniejsza odpowiedź?",
+      "options": [
+        "Zgodzić się – event sourcing to jedyny sposób na pełną historię zmian",
+        "Wystarczy audyt: tabela historii zmian (interceptor) lub temporal tables – event sourcing wprowadziłby projekcje, wersjonowanie zdarzeń i eventual consistency bez realnej potrzeby",
+        "Dodać Kafkę i publikować wszystkie zmiany jako zdarzenia, a historię trzymać w topicu z nieskończoną retencją",
+        "Zrezygnować z wymagania – w CRUD nie da się śledzić historii zmian"
+      ],
+      "correct": 1,
+      "why": "Wymaganie audytu nie uzasadnia event sourcingu: koszty (projekcje, upcasting, odbudowy, inny model mentalny zespołu) są nieproporcjonalne do prostego CRUD. Tabela audytu lub temporal tables spełniają wymaganie przy minimalnej złożoności. Topic Kafki jako baza historii to trudny do odpytywania magazyn i nowa infrastruktura bez potrzeby."
+    },
+    {
+      "id": "arch-sq004",
+      "topic": "Spójność danych",
+      "level": 3,
+      "q": "Proces zamówienia ma 7 kroków w 5 serwisach, oparty na choreografii zdarzeń. Nikt nie potrafi odpowiedzieć, na jakim etapie jest konkretne zamówienie, pojawiły się zdarzenia wywołujące się cyklicznie, a dodanie kroku wymaga zmian w 3 serwisach. Co zaproponujesz?",
+      "options": [
+        "Orkiestrację: orkiestrator sagi (state machine) z jawnym stanem procesu, timeoutami i kompensacjami",
+        "Zastąpić zdarzenia synchronicznymi wywołaniami HTTP w łańcuchu",
+        "Rozproszoną transakcję 2PC obejmującą wszystkie 5 serwisów",
+        "Dodać więcej typów zdarzeń, żeby każdy krok był bardziej szczegółowy"
+      ],
+      "correct": 0,
+      "why": "Choreografia sprawdza się przy kilku prostych krokach; przy długich procesach przepływ jest rozproszony po serwisach, trudny do śledzenia i zmiany. Orkiestrator przechowuje stan sagi, więc wiadomo, gdzie jest każde zamówienie, a zmiana procesu dotyczy jednego miejsca. Synchroniczny łańcuch HTTP sprzęga dostępność wszystkich serwisów, 2PC jest niepraktyczne między serwisami, a więcej zdarzeń pogłębi problem."
+    },
+    {
+      "id": "arch-sq005",
+      "topic": "Spójność danych",
+      "level": 2,
+      "q": "Saga zamówienia: pobrano płatność, ale rezerwacja wysyłki u kuriera definitywnie się nie udała. Co powinna zrobić saga?",
+      "options": [
+        "Wykonać rollback transakcji płatności w bazie serwisu Payments",
+        "Ponawiać rezerwację wysyłki w nieskończoność, aż się uda",
+        "Zostawić płatność i oznaczyć zamówienie jako wysłane, żeby nie tracić przychodu",
+        "Wykonać kompensację: zlecić zwrot płatności (refund) i zwolnić rezerwację towaru, oznaczając zamówienie jako anulowane"
+      ],
+      "correct": 3,
+      "why": "Lokalna transakcja płatności jest już zatwierdzona – nie ma czego wycofać rollbackiem. Saga wykonuje kompensacje, czyli nowe operacje biznesowe odwracające skutki wcześniejszych kroków (refund, zwolnienie stanu). Retry ma sens dla błędów przejściowych, ale przy błędzie definitywnym nieskończone ponawianie blokuje proces. Oznaczenie jako wysłane łamie spójność biznesową."
+    },
+    {
+      "id": "arch-sq006",
+      "topic": "Spójność danych",
+      "level": 3,
+      "q": "Implementacja Idempotency-Key: „SELECT klucz; jeśli nie istnieje → wykonaj płatność → INSERT klucz z odpowiedzią”. W logach widać podwójne obciążenia, gdy aplikacja mobilna wysyła dwa identyczne requesty w odstępie 50 ms. Gdzie jest błąd?",
+      "options": [
+        "Klucz powinien być generowany przez serwer, a nie przez klienta",
+        "Check-then-act jest wyścigiem: oba requesty widzą brak klucza. Klucz trzeba zarezerwować atomowo przed wykonaniem (INSERT z unikalnym indeksem, status „w trakcie”), a drugi request dostaje 409 lub czeka na wynik",
+        "Trzeba użyć GET zamiast POST, bo GET jest idempotentny",
+        "Wystarczy dodać cache w pamięci procesu z kluczami z ostatniej minuty"
+      ],
+      "correct": 1,
+      "why": "Sprawdzenie i zapis klucza są osobnymi krokami, więc dwa równoległe requesty przechodzą oba. Unikalny indeks i INSERT jako pierwszy krok sprawiają, że tylko jeden request „wygrywa”, a drugi dostaje konflikt lub zapamiętaną odpowiedź. Klucz generuje klient, bo tylko on wie, że to ponowienie. GET nie nadaje się do operacji zmieniających stan, a cache w procesie nie działa przy wielu instancjach."
+    },
+    {
+      "id": "arch-sq007",
+      "topic": "Monolit vs mikroserwisy",
+      "level": 2,
+      "q": "Firma ma 10-letni monolit, który wciąż zarabia. Zespół proponuje przepisanie całości od zera w 18 miesięcy i jednorazowe przełączenie. Jakie podejście zarekomendujesz jako senior?",
+      "options": [
+        "Strangler fig: fasada przed monolitem i stopniowe przenoszenie wybranych obszarów, z małymi, odwracalnymi przełączeniami ruchu",
+        "Przepisanie od zera, ale z zamrożeniem rozwoju nowych funkcji w monolicie na 18 miesięcy",
+        "Przepisanie od zera równolegle przez dwa zespoły, a potem wybór lepszej wersji",
+        "Rozbicie monolitu na mikroserwisy przez skopiowanie kodu do osobnych repozytoriów, zostawiając wspólną bazę"
+      ],
+      "correct": 0,
+      "why": "Big bang rewrite ma ogromne ryzyko: system docelowy musi dogonić ruchomy cel, a wartość dostarcza się dopiero na końcu. Strangler fig dostarcza wartość przyrostowo, każdy krok można cofnąć, a ryzyko jest rozłożone. Zamrożenie rozwoju zatrzymuje biznes, dwa równoległe zespoły podwajają koszt, a mikroserwisy na wspólnej bazie to rozproszony monolit."
+    },
+    {
+      "id": "arch-sq008",
+      "topic": "Monolit vs mikroserwisy",
+      "level": 3,
+      "q": "W modularnym monolicie moduł Billing potrzebuje danych zamówień do faktury, więc jego DbContext mapuje tabelę orders.Orders i robi JOIN-y. Co jest problemem i jak to naprawić?",
+      "options": [
+        "Nic – w monolicie jest jedna baza, więc JOIN-y między modułami są w porządku",
+        "Problemem jest wydajność JOIN-ów – trzeba dodać indeksy",
+        "Billing tworzy ukryty kontrakt na schemacie Orders. Lepiej pobierać dane przez publiczne API modułu Orders lub utrzymywać własną kopię potrzebnych danych zasilaną zdarzeniami (OrderPlaced)",
+        "Trzeba połączyć moduły Billing i Orders w jeden, bo współdzielą dane"
+      ],
+      "correct": 2,
+      "why": "Bezpośredni dostęp do tabel innego modułu łamie granice: każda zmiana schematu Orders może zepsuć Billing, a moduł nie da się już wydzielić. Publiczne API modułu lub własny read model zasilany zdarzeniami utrzymują niezależność. Łączenie modułów ma sens tylko, gdy granica była źle wyznaczona – sama potrzeba danych do tego nie wystarcza; indeksy nie rozwiązują problemu sprzężenia."
+    },
+    {
+      "id": "arch-sq009",
+      "topic": "Niezawodność",
+      "level": 2,
+      "q": "Serwis ma SLO dostępności 99,9% w oknie 30 dni. Jest 10. dzień okna, a incydenty zużyły już 38 minut niedostępności. Co mówi error budget i jakie działanie jest najrozsądniejsze?",
+      "options": [
+        "Budżet to ok. 4,3 min, więc SLO jest już dawno przekroczone – trzeba zmienić SLO na 99%",
+        "Budżet to ok. 432 min, więc nie ma się czym przejmować",
+        "Budżet nie ma związku z wdrożeniami – dotyczy tylko awarii infrastruktury",
+        "Budżet to ok. 43 min i jest prawie wyczerpany – zgodnie z error budget policy wstrzymać ryzykowne wdrożenia i skupić się na niezawodności do końca okna"
+      ],
+      "correct": 3,
+      "why": "0,1% z 43 200 minut to 43,2 minuty. Po 38 minutach zostało ok. 5 minut na 20 dni. Typowa polityka error budgetu mówi wtedy: zamrożenie ryzykownych zmian, priorytet dla poprawek stabilności i postmortemów. 4,3 min to budżet dla 99,99%, a 432 min dla 99%. Error budget dotyczy wszystkich przyczyn niedostępności, także wadliwych wdrożeń – to właśnie on reguluje tempo zmian."
+    },
+    {
+      "id": "arch-sq010",
+      "topic": "Niezawodność",
+      "level": 3,
+      "q": "Serwis płatności miał 3-minutową awarię. Po jej zakończeniu natychmiast padł ponownie, bo 40 instancji klientów ponawiało requesty co 100 ms bez limitu. Co najlepiej zapobiegnie temu w przyszłości?",
+      "options": [
+        "Zwiększenie timeoutu po stronie klientów do 5 minut",
+        "Retry z exponential backoff i jitterem, limitem prób, circuit breakerem po stronie klientów oraz load shedding (429/503 z Retry-After) po stronie serwisu",
+        "Dodanie kolejnych instancji serwisu płatności na stałe, żeby wytrzymał każdy ruch",
+        "Wyłączenie retry całkowicie we wszystkich klientach"
+      ],
+      "correct": 1,
+      "why": "To retry storm: zsynchronizowane, agresywne ponowienia mnożą ruch dokładnie w chwili, gdy serwis wraca. Backoff z jitterem rozkłada ponowienia w czasie, circuit breaker przestaje wysyłać ruch do niezdrowej zależności, a load shedding po stronie serwisu tanio odrzuca nadmiar. Dłuższy timeout zwiększa liczbę wiszących requestów, nadmiarowe instancje są drogie i nie skalują się w nieskończoność, a całkowity brak retry psuje odporność na drobne, przejściowe błędy."
+    }
+  ]
+}

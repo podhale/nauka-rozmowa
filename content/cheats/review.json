@@ -1,0 +1,220 @@
+{
+ "cat": "review",
+ "sheets": [
+  {
+   "topic": "Async i współbieżność",
+   "points": [
+    "**async void** tylko w event handlerach (z własnym try/catch) – wyjątek z async void może zakończyć proces.",
+    "Szukaj `.Result`, `.Wait()`, `GetAwaiter().GetResult()` – sync-over-async: deadlock z SynchronizationContext (WPF/WinForms), **thread pool starvation** w ASP.NET Core.",
+    "Każda metoda async przyjmuje i przekazuje dalej `CancellationToken`; w akcji jest bindowany do `HttpContext.RequestAborted`, w BackgroundService to `stoppingToken`.",
+    "Fire-and-forget (`_ = DoAsync()`) w requestcie = użycie scoped serwisów po końcu scope'a; zamiast tego kolejka (Channel) + BackgroundService z własnym scope.",
+    "Współdzielony stan (pola static, singletony) + `Dictionary`/`List` = race condition; użyj `ConcurrentDictionary`, `Interlocked` lub `lock` obejmującego cały **check-then-act**.",
+    "`lock` tylko na prywatnym obiekcie (`private readonly Lock _gate = new();` w .NET 9+), nigdy na `this`, `typeof`, stringu; w kodzie async `SemaphoreSlim` + `Release` w `finally`.",
+    "`GetOrAdd`/`AddOrUpdate` mogą wywołać fabrykę kilka razy – drogie/efektowne fabryki owijaj w `Lazy<T>`.",
+    "Stan w pamięci procesu znika przy restarcie i nie jest wspólny między instancjami – unikalność/liczniki biznesowe gwarantuje baza."
+   ],
+   "pitfalls": [
+    "„W ASP.NET Core .Result zawsze robi deadlock” – nie; problemem jest blokowanie wątków i starvation pod obciążeniem.",
+    "ConcurrentDictionary nie czyni sekwencji `ContainsKey` → zapis atomową.",
+    "`Release()` semafora poza `finally` – pierwszy wyjątek zawiesza wszystkich kolejnych wywołujących."
+   ],
+   "code": "private readonly SemaphoreSlim _gate = new(1, 1);\n\npublic async Task<string> GetTokenAsync(CancellationToken ct)\n{\n    await _gate.WaitAsync(ct);\n    try {\n        if (_token is null || _expires < _time.GetUtcNow().AddMinutes(1))\n            (_token, _expires) = await _auth.RefreshAsync(ct);\n        return _token;\n    }\n    finally { _gate.Release(); }\n}",
+   "lang": "csharp",
+   "say": "Sprawdzam async all the way z CancellationToken, brak async void i blokowania na Taskach, a przy współdzielonym stanie pytam: kto pisze równolegle i czy check-then-act jest atomowy – a jeśli stan ma przetrwać restart lub skalowanie, przenoszę go do bazy."
+  },
+  {
+   "topic": "DI i cykl życia obiektów",
+   "points": [
+    "Reguła lifetime'ów: zależność musi żyć **tyle samo lub dłużej** niż konsument – scoped w singletonie to **captive dependency**.",
+    "Hosted services i `AddSingleton` + DbContext/`IOptionsSnapshot` = czerwona flaga; rozwiązanie: `IServiceScopeFactory.CreateAsyncScope()` lub `IDbContextFactory<T>`.",
+    "Włącz `ValidateScopes` i `ValidateOnBuild` (także w testach integracyjnych) – wyłapią captive dependency przy starcie.",
+    "`new HttpClient()` per wywołanie → socket exhaustion; używaj `IHttpClientFactory` (typed/named client) lub singletona z `PooledConnectionLifetime`.",
+    "Typed clienta nie wstrzykuj do singletona – zamrozisz handler (problem DNS).",
+    "Wszystko co `IDisposable`/`IAsyncDisposable` tworzysz sam: `using`/`await using` (SqlConnection, Stream, reader, CancellationTokenSource, Timer).",
+    "Subskrypcja eventu singletona z obiektu krótko żyjącego bez `-=` = memory leak (publisher trzyma subskrybenta).",
+    "`new ConcreteService()` wewnątrz klasy zamiast wstrzyknięcia = brak testowalności i łamanie DIP."
+   ],
+   "pitfalls": [
+    "Odpowiedź „dam wszystko jako singleton dla wydajności” – DbContext i serwisy ze stanem requestu muszą być scoped.",
+    "Disposowanie obiektów rozwiązanych z DI – to robi kontener; Ty disposujesz tylko to, co sam utworzyłeś."
+   ],
+   "code": "builder.Services.AddHttpClient<WeatherClient>(c =>\n        c.BaseAddress = new Uri(builder.Configuration[\"Weather:BaseUrl\"]!))\n    .AddStandardResilienceHandler();\n\nbuilder.Services.AddDbContextFactory<AppDbContext>(o => o.UseSqlServer(cs));\n\n// w singletonie / BackgroundService – scope per operacja:\nawait using var scope = _scopes.CreateAsyncScope();\nvar db = scope.ServiceProvider.GetRequiredService<AppDbContext>();",
+   "lang": "csharp",
+   "say": "Przy review DI sprawdzam lifetime każdej zależności względem konsumenta, szukam ręcznego `new` dla HttpClient i serwisów oraz brakujących `using` – bo te trzy rzeczy dają najczęstsze wycieki i błędy pod obciążeniem."
+  },
+  {
+   "topic": "EF Core i wydajność zapytań",
+   "points": [
+    "Zapytanie w pętli lub lazy loading w `foreach` = **N+1**; naprawa: projekcja `Select` do DTO, ewentualnie `Include`/`AsSplitQuery`.",
+    "`ToList()`/`AsEnumerable()` przed `Where`/`OrderBy`/`Take` przenosi filtrowanie do pamięci – materializuj **na końcu**.",
+    "Liczenie: `CountAsync(predicate)` / `AnyAsync`, nigdy `ToList().Count`.",
+    "Własne metody C# w `Where` nie tłumaczą się na SQL – od EF Core 3 wyjątek; używaj `Expression<Func<T,bool>>`.",
+    "DbContext nie jest thread-safe: żadnego `Task.WhenAll`/`Parallel.ForEachAsync` na jednej instancji – osobne konteksty z `IDbContextFactory` albo sekwencyjnie.",
+    "Read-modify-write (stany magazynowe, miejsca) wymaga concurrency token (`[Timestamp]`) lub atomowego `ExecuteUpdateAsync` z warunkiem.",
+    "Read-only: `AsNoTracking()` lub projekcja; masowe operacje: `ExecuteUpdateAsync`/`ExecuteDeleteAsync` zamiast pętli z `SaveChanges`.",
+    "Skip/Take zawsze z deterministycznym `OrderBy` (z tie-breakerem Id)."
+   ],
+   "pitfalls": [
+    "N+1 nie widać na 10 rekordach w dev – wychodzi dopiero na produkcji; patrz w logi SQL.",
+    "Include wielu kolekcji naraz → cartesian explosion; rozważ projekcję lub `AsSplitQuery()`."
+   ],
+   "code": "var page = await _db.Orders\n    .Where(o => o.Status == OrderStatus.Open)\n    .OrderByDescending(o => o.CreatedAt).ThenByDescending(o => o.Id)\n    .Take(pageSize)\n    .Select(o => new OrderListItem(o.Id, o.Customer.Name,\n        o.Lines.Sum(l => l.Price * l.Qty)))\n    .ToListAsync(ct);",
+   "lang": "csharp",
+   "say": "W kodzie EF szukam trzech rzeczy: zapytań w pętli (N+1), materializacji przed filtrem i współdzielenia DbContext – a dla list zawsze proponuję projekcję do DTO z paginacją."
+  },
+  {
+   "topic": "Bezpieczeństwo",
+   "points": [
+    "SQL: żadnej interpolacji/konkatenacji w tekście zapytania; `FromSqlRaw($\"...\")` jest podatne, `FromSql($\"...\")` parametryzuje; w Dapperze obiekt parametrów.",
+    "Identyfikatorów (ORDER BY kolumna, kierunek) nie da się sparametryzować – biała lista lub LINQ `OrderBy`.",
+    "Encja jako model wejściowy = **mass assignment/overposting**; osobne request DTO tylko z dozwolonymi polami.",
+    "Każdy endpoint z `{id}`: czy sprawdzono, że zasób należy do użytkownika/tenanta (**IDOR/BOLA**)?",
+    "Logi: nigdy haseł, tokenów, numerów kart; uważaj na `{@Obj}` (destrukturyzacja całego obiektu) – loguj wybrane pola lub użyj redakcji.",
+    "Sekrety (connection string, klucz JWT, API key) nie w kodzie ani appsettings w repo – Key Vault/env vars, user-secrets w dev; wyciekły sekret = rotacja.",
+    "Angular: interpolacja escapuje, `[innerHTML]` sanityzuje; dziury to `bypassSecurityTrust*` na danych użytkownika i `nativeElement.innerHTML`.",
+    "Frontend (guardy, ukryte przyciski, rola w localStorage) to UX – autoryzacja zawsze na backendzie; token doklejaj tylko do własnego API."
+   ],
+   "pitfalls": [
+    "„ORM chroni przed SQL injection” – nie, gdy sam sklejasz SQL (FromSqlRaw, Dapper, ADO.NET).",
+    "Usunięcie sekretu z kodu bez rotacji – historia gita go pamięta.",
+    "„Angular ma sanityzację, więc XSS mi nie grozi” – nie przy bypassSecurityTrustHtml i bezpośrednim DOM."
+   ],
+   "say": "Bezpieczeństwo sprawdzam jako pierwsze: czy dane użytkownika trafiają do SQL lub HTML bez parametryzacji/sanityzacji, czy model wejściowy pozwala na overposting, czy endpoint weryfikuje właściciela zasobu i czy w kodzie lub logach nie ma sekretów."
+  },
+  {
+   "topic": "Obsługa błędów",
+   "points": [
+    "Pusty `catch {}` lub `catch { return null; }` = ukryta awaria; łap konkretne wyjątki, które umiesz obsłużyć.",
+    "`throw;` zachowuje stack trace, `throw ex;` go resetuje.",
+    "Logger: wyjątek jako pierwszy argument (`LogError(ex, \"... {Id}\", id)`), structured logging zamiast konkatenacji.",
+    "Nie łap `OperationCanceledException` przy anulowaniu – pozwól mu się propagować.",
+    "Nie loguj i nie rethrowuj w każdej warstwie – jedno miejsce (globalny `UseExceptionHandler` + `AddProblemDetails()`).",
+    "RxJS: błąd **kończy** strumień – `catchError`/`retry` umieszczaj wewnątrz `switchMap` (per żądanie), nie na zewnętrznym strumieniu.",
+    "Interceptor HTTP: globalna reakcja (401 → login, log, toast) + `throwError(() => err)`, nie `EMPTY`.",
+    "Flagi `loading/saving` resetuj w `finalize`, użytkownikowi pokazuj przyjazny komunikat, nie `err.message`."
+   ],
+   "pitfalls": [
+    "Zamiana każdego błędu na `null`/404 – awaria integracji wygląda jak „nie znaleziono”.",
+    "`retry` bez opóźnienia i bez rozróżnienia błędów przejściowych (5xx/0) od 4xx."
+   ],
+   "code": "results = toSignal(this.query.valueChanges.pipe(\n  debounceTime(300), distinctUntilChanged(),\n  switchMap(q => this.api.search(q).pipe(\n    retry({ count: 2, delay: 500 }),\n    catchError(() => { this.error.set(true); return of([]); })\n  ))\n), { initialValue: [] });",
+   "lang": "typescript",
+   "say": "Patrzę, czy błąd jest obsłużony w miejscu, które umie coś z nim zrobić, czy nie gubimy stack trace i kontekstu, a w RxJS – czy jeden błąd HTTP nie zabija całego strumienia."
+  },
+  {
+   "topic": "Projekt API",
+   "points": [
+    "Kody: 200 OK, **201 Created + Location** (`CreatedAtAction`), 204 No Content, 400 walidacja, 401 brak uwierzytelnienia, 403 brak uprawnień, 404, 409 konflikt.",
+    "Nigdy 200 z `{ success: false }` ani 500 dla błędu klienta; błędy w formacie **ProblemDetails** (RFC 9457).",
+    "Nigdy `ex.ToString()`/stack trace w odpowiedzi – information disclosure.",
+    "GET bezpieczny i idempotentny – operacje zmieniające stan pod POST/PUT/PATCH/DELETE.",
+    "Każda lista ma paginację z **limitem pageSize na serwerze** (`Math.Clamp`) i stabilnym sortowaniem.",
+    "Duże/rosnące zbiory: keyset (cursor) pagination zamiast `Skip` – koszt offsetu rośnie liniowo.",
+    "Zwracaj DTO, nie encje (wyciek pól, cykle, lazy loading przy serializacji)."
+   ],
+   "pitfalls": [
+    "„Paginacja” z parametrem `pageSize` bez górnego limitu – to wciąż DoS.",
+    "Skip/Take bez OrderBy – strony się powtarzają lub gubią rekordy."
+   ],
+   "code": "[HttpGet]\npublic async Task<PagedResult<AuditDto>> List(long? after, int pageSize = 50,\n    CancellationToken ct = default)\n{\n    pageSize = Math.Clamp(pageSize, 1, 100);\n    var items = await _db.Audit\n        .Where(a => after == null || a.Id < after)\n        .OrderByDescending(a => a.Id).Take(pageSize + 1)\n        .Select(a => new AuditDto(a.Id, a.UserName, a.CreatedAt)).ToListAsync(ct);\n    var hasMore = items.Count > pageSize;\n    return new(items.Take(pageSize).ToList(), hasMore ? items[pageSize - 1].Id : null);\n}",
+   "lang": "csharp",
+   "say": "W API sprawdzam semantykę metod i kodów HTTP, format błędów (ProblemDetails bez szczegółów wewnętrznych) i to, czy każda lista ma twardy limit i stabilne sortowanie."
+  },
+  {
+   "topic": "Czysty kod i SOLID",
+   "points": [
+    "**SRP**: kontroler/komponent robi jedną rzecz – HTTP/UI ↔ use case; walidacja, logika, wysyłka maili w osobnych klasach.",
+    "**DIP**: `new` konkretnych zależności, `DateTime.Now`, statyczne helpery z I/O → wstrzykiwane abstrakcje (`TimeProvider`, interfejsy).",
+    "**OCP**: rosnący `if/switch` po typie lub stringu (plan, rola) → strategia, słownik, polimorfizm.",
+    "Magiczne stringi/liczby → enum, stałe, union type w TS (`'new' | 'paid'`), `Record<Status, string>` dla wyczerpującego mapowania.",
+    "Metoda „Calculate/Get” bez efektów ubocznych (command-query separation) – nie wysyła maili.",
+    "Logika biznesowa (ceny, rabaty, uprawnienia) nie w komponencie Angular – serwis/store + backend jako źródło prawdy.",
+    "Priorytetyzuj uwagi: bezpieczeństwo i poprawność > wydajność > czytelność/styl."
+   ],
+   "pitfalls": [
+    "Recytowanie SOLID bez wskazania konkretnej linii, która łamie zasadę.",
+    "Over-engineering w drugą stronę: 5 warstw abstrakcji i MediatR dla prostego CRUD-a."
+   ],
+   "code": "public sealed class LateFeeCalculator(IRentalRepository repo, TimeProvider time)\n{\n    private const decimal FeePerDay = 2.5m, MaxFee = 100m;\n\n    public async Task<decimal> CalculateAsync(int rentalId, CancellationToken ct)\n    {\n        var rental = await repo.GetAsync(rentalId, ct);\n        var daysLate = (time.GetUtcNow().Date - rental.DueDate.Date).Days;\n        return daysLate <= 0 ? 0m : Math.Min(daysLate * FeePerDay, MaxFee);\n    }\n}",
+   "lang": "csharp",
+   "say": "Na review nie wymieniam liter SOLID dla zasady – pokazuję, co konkretnie utrudnia testowanie lub zmianę (twarde zależności, klasa robiąca wszystko, if po stringach) i proponuję minimalny refaktor, zaczynając od problemów z poprawnością."
+  },
+  {
+   "topic": "RxJS i subskrypcje",
+   "points": [
+    "Zamykaj nieskończone strumienie: store, `router.events`, `interval`, `valueChanges`, WebSocket; pojedynczy `HttpClient.get` kończy się sam.",
+    "Narzędzia: `toSignal`, `async` pipe, `takeUntilDestroyed()` (w injection context, inaczej podaj `DestroyRef`).",
+    "`takeUntil` zawsze **ostatni** w `pipe` – przed `switchMap` nie zamknie wewnętrznego strumienia.",
+    "Nested subscribe → flattening: **switchMap** (wyszukiwarka, nawigacja), **concatMap** (zapisy po kolei), **mergeMap** (równolegle), **exhaustMap** (przycisk „Zapisz”).",
+    "Wyszukiwarka: `debounceTime` + `distinctUntilChanged` + `switchMap` + `catchError` wewnątrz.",
+    "Cold observable: każdy `async` pipe = osobne żądanie; użyj `@if (x$ | async; as x)`, `toSignal` lub `shareReplay({ bufferSize: 1, refCount: true })`.",
+    "Metoda zwracająca nowy observable w szablonie + `async` = nowa subskrypcja przy każdym CD (lawina żądań)."
+   ],
+   "pitfalls": [
+    "`mergeMap` w wyszukiwarce – stare odpowiedzi nadpisują nowe.",
+    "`shareReplay(1)` bez `refCount: true` na nieskończonym źródle – wyciek.",
+    "`switchMap` na zapisie zamówienia – anulowanie po stronie klienta nie cofa operacji na serwerze."
+   ],
+   "code": "order = toSignal(this.route.paramMap.pipe(\n  map(p => Number(p.get('id'))),\n  switchMap(id => this.api.getOrder(id).pipe(\n    catchError(() => of(null))\n  ))\n));",
+   "lang": "typescript",
+   "say": "Przy RxJS pytam o każdą subskrypcję: kto ją zamyka, co się dzieje przy kolejnej emisji w trakcie poprzedniego żądania (wybór flattening operatora) i czy błąd nie zabije strumienia."
+  },
+  {
+   "topic": "Signals",
+   "points": [
+    "Sygnał powiadamia tylko przy `set`/`update` z nową wartością (`Object.is`) – **nie mutuj** tablic/obiektów (`push`, `obj.x = ...`).",
+    "Immutable update: `list.update(l => [...l, x])`, `filter` do usuwania, `map` + spread do zmiany elementu.",
+    "Stan pochodny = `computed` (leniwy, memoizowany, spójny); `effect` tylko do efektów ubocznych (DOM, storage, analityka).",
+    "Pochodny, ale lokalnie nadpisywalny stan → `linkedSignal` (stabilny od Angular 20).",
+    "Effect czytający i zapisujący ten sam sygnał = pętla; odczyty niebędące zależnościami w `untracked()`.",
+    "`computed` musi być czysty – bez HTTP, subskrypcji, zapisu do sygnałów.",
+    "`toSignal`/`toObservable`/`effect` tylko w injection context (pole, konstruktor) albo z jawnym `injector`.",
+    "Store: prywatny `WritableSignal`, publicznie `asReadonly()`/`computed`, zmiany tylko przez metody."
+   ],
+   "pitfalls": [
+    "„Od Angular 19 można pisać do sygnałów w effect, więc to OK” – można, ale do stanu pochodnego nadal służy computed.",
+    "Publiczny WritableSignal w serwisie root – globalna zmienna z powiadomieniami."
+   ],
+   "code": "@Injectable({ providedIn: 'root' })\nexport class CartStore {\n  private readonly _items = signal<readonly CartItem[]>([]);\n  readonly items = this._items.asReadonly();\n  readonly total = computed(() => this._items().reduce((s, i) => s + i.price * i.qty, 0));\n\n  changeQty(id: string, qty: number) {\n    this._items.update(list => list.map(i => (i.id === id ? { ...i, qty } : i)));\n  }\n}",
+   "lang": "typescript",
+   "say": "W kodzie z sygnałami sprawdzam immutability aktualizacji, czy stan pochodny jest w computed zamiast effect i czy store nie wystawia zapisywalnych sygnałów na zewnątrz."
+  },
+  {
+   "topic": "Szablony i wydajność Angular",
+   "points": [
+    "W szablonie odczyt sygnału lub **pure pipe** – nie kosztowne metody (wykonują się przy każdym CD).",
+    "`@for` wymaga `track`: śledź po stabilnym `id`; po referencji tylko dla niezmiennych obiektów, `$index` tylko dla list statycznych.",
+    "Obiekty z HTTP po odświeżeniu to nowe referencje – `track item` niszczy i odtwarza wszystkie komponenty wierszy.",
+    "Impure pipe (`pure: false`) liczy się przy każdym CD – zamień na immutable dane + pure pipe lub `computed`.",
+    "OnPush sprawdza komponent przy: nowej referencji inputu, zdarzeniu z szablonu, zmianie odczytanego sygnału/`async`, `markForCheck()` – mutacja obiektu to nie zmiana.",
+    "Zoneless (domyślny w nowych projektach Angular 21): zwykłe pola zmieniane w `setTimeout`/`subscribe` nie odświeżą widoku – używaj sygnałów."
+   ],
+   "pitfalls": [
+    "`track $index` w liście z usuwaniem – lokalny stan komponentów „przeskakuje” na sąsiednie wiersze.",
+    "Mutowanie obiektu przekazanego do dziecka OnPush – losowo nieodświeżony widok."
+   ],
+   "code": "products = input<Product[]>([]);\nterm = signal('');\nvisible = computed(() => {\n  const t = this.term().toLowerCase();\n  return this.products()\n    .filter(p => p.name.toLowerCase().includes(t))\n    .sort((a, b) => a.name.localeCompare(b.name, 'pl'));\n});\n// szablon: @for (p of visible(); track p.id) { ... }",
+   "lang": "typescript",
+   "say": "W szablonach szukam pracy wykonywanej przy każdym change detection (metody, impure pipe'y, nowe observable) i złego `track`, a stan przenoszę do sygnałów/computed z niemutowalnymi aktualizacjami – to przygotowuje też komponent pod zoneless."
+  },
+  {
+   "topic": "Komponenty i TypeScript",
+   "points": [
+    "`any` wyłącza type-checking – typuj DTO (`http.get<Order[]>`), dla niepewnych danych `unknown` + zawężanie; `strict: true`, lint `no-explicit-any`.",
+    "`http.get<T>` to tylko asercja typu – nie waliduje danych w runtime (na granicy systemu np. Zod).",
+    "Bez `document.querySelector`/`getElementById`: stan w komponencie + binding; konieczny dostęp do elementu → `viewChild`/`ElementRef` + `afterNextRender`, `Renderer2`.",
+    "Ręczny DOM psuje SSR, wiele instancji komponentu i spójność ze stanem.",
+    "Sprzątaj zasoby: `setInterval`, listenery na `window`/`document`, observery, instancje bibliotek – `DestroyRef.onDestroy` / `ngOnDestroy`.",
+    "`removeEventListener` wymaga tej samej referencji – `bind(this)` tworzy nową funkcję; lepiej `host: { '(document:click)': ... }` / `@HostListener`.",
+    "Nowoczesne API: `input()`/`input.required()`, `output()`, `model()`, `inject()` zamiast dekoratorów i wykrzykników."
+   ],
+   "pitfalls": [
+    "`@Input() x!: T` – wykrzyknik ukrywa brak wartości; użyj `input.required<T>()`.",
+    "Timer w komponencie bez `clearInterval` – setki aktywnych timerów po kilku nawigacjach."
+   ],
+   "code": "export class CountdownComponent {\n  endsAt = input.required<Date>();\n  private now = toSignal(interval(1000).pipe(map(() => Date.now())),\n    { initialValue: Date.now() });\n  remaining = computed(() => Math.max(0, this.endsAt().getTime() - this.now()));\n\n  constructor() {\n    fromEvent(window, 'resize').pipe(debounceTime(100), takeUntilDestroyed())\n      .subscribe(() => this.layout());\n  }\n  private layout() { /* ... */ }\n}",
+   "lang": "typescript",
+   "say": "W komponentach sprawdzam typy zamiast any, brak bezpośredniego dostępu do DOM i to, czy wszystko, co komponent otwiera (timery, listenery, subskrypcje), zostaje zamknięte w DestroyRef."
+  }
+ ]
+}

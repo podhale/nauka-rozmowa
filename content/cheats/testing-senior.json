@@ -1,0 +1,189 @@
+{
+  "cat": "testing",
+  "sheets": [
+    {
+      "topic": "Testy kontraktowe",
+      "points": [
+        "Sprawdzają zgodność formatu komunikacji konsument–dostawca bez uruchamiania obu systemów naraz.",
+        "**Consumer-driven (Pact)**: konsument definiuje interakcje na mock serwerze → plik kontraktu → **Pact Broker**.",
+        "**Provider verification**: dostawca odtwarza interakcje na prawdziwej aplikacji; stan przez **provider states**.",
+        "`can-i-deploy` sprawdza zgodność wersji z tym, co jest na danym środowisku.",
+        "Kontrakt obejmuje tylko to, czego konsument używa – dostawca może swobodnie dodawać pola.",
+        "Obsługuje też wiadomości asynchroniczne (kolejki).",
+        "Implementacje: PactNet (.NET), pact-js; alternatywa w monorepo: OpenAPI + wykrywanie breaking changes."
+      ],
+      "pitfalls": [
+        "Traktowanie kontraktów jak testów funkcjonalnych logiki dostawcy.",
+        "Pact dla jednego frontu i jednego backendu w monorepo – zwykle overkill."
+      ],
+      "say": "Testy kontraktowe zastępują kruche e2e między serwisami: konsument publikuje oczekiwania, a dostawca weryfikuje je w swoim CI, więc breaking change wychodzi przed wdrożeniem, a can-i-deploy pilnuje kompatybilności wersji."
+    },
+    {
+      "topic": "Testy architektury",
+      "points": [
+        "Testy jednostkowe analizujące assembly przez refleksję – reguły zależności jako bramka w CI.",
+        "**NetArchTest** – proste fluent API; **ArchUnitNET** – bogatszy model reguł.",
+        "Typowe reguły: Domain nie zależy od Infrastructure/EF Core, granice modułów, konwencje nazw, sealed handlery.",
+        "Komunikat wskazuje konkretne typy łamiące regułę (`FailingTypeNames`).",
+        "Widzą tylko zależności w IL – refleksja i DI kontener są niewidoczne.",
+        "Taniej egzekwować też przez osobne csproj, `internal`, analizatory Roslyn.",
+        "Front: Nx `enforce-module-boundaries`, dependency-cruiser."
+      ],
+      "pitfalls": [
+        "Zbyt drobiazgowe reguły – stają się biurokracją i są wyłączane.",
+        "Poleganie na testach architektury tam, gdzie wystarczy brak referencji między projektami."
+      ],
+      "code": "var result = Types.InAssembly(typeof(Order).Assembly)\n    .That().ResideInNamespace(\"Shop.Domain\")\n    .ShouldNot().HaveDependencyOn(\"Microsoft.EntityFrameworkCore\")\n    .GetResult();\nAssert.True(result.IsSuccessful);",
+      "lang": "csharp",
+      "say": "Testy architektury zamieniają ustalenia z diagramu w automatyczną bramkę – np. Domain nie może zależeć od EF Core. Piszę kilka reguł odpowiadających realnym decyzjom, a nie dziesiątki konwencji."
+    },
+    {
+      "topic": "Mutation testing",
+      "points": [
+        "Narzędzie wprowadza mutanty (`>=`→`>`, `&&`→`||`, usunięcie wywołania) i uruchamia testy.",
+        "Test padł → mutant **killed**; wszystkie przeszły → **survived** = luka w asercjach.",
+        "**Mutation score** = zabite / wszystkie; mierzy jakość asercji, nie tylko wykonanie linii.",
+        "Stryker.NET (`dotnet stryker`), StrykerJS dla TypeScript.",
+        "Koszt: testy per mutant – używaj analizy pokrycia i trybu przyrostowego (`--since:main`).",
+        "Mutanty równoważne nie zmieniają zachowania – nie celuj w 100%.",
+        "Stosuj punktowo: logika finansowa, uprawnienia, parsery, biblioteki wspólne; progi `break` w CI."
+      ],
+      "pitfalls": [
+        "Utożsamianie 100% coverage z dobrymi testami – test bez asercji ma pełne pokrycie i zerowy wynik mutacyjny.",
+        "Pełne przebiegi na każdym PR w dużym repo – za wolne."
+      ],
+      "say": "Mutation testing sprawdza, czy testy faktycznie wykrywają zmiany w kodzie – coverage mówi tylko, co zostało wykonane. Używam Strykera przyrostowo na krytycznych modułach, a przeżyłe mutanty traktuję jako listę brakujących przypadków brzegowych."
+    },
+    {
+      "topic": "Testowanie współbieżności",
+      "points": [
+        "Optimistic concurrency: dwa DbContexty, ten sam rekord → drugi `SaveChanges` rzuca `DbUpdateConcurrencyException`.",
+        "Token współbieżności: `[Timestamp]`/rowversion (SQL Server), `xmin` (PostgreSQL) – tylko na prawdziwej bazie.",
+        "Równoległe requesty `Task.WhenAll` + asercja na dokładnie jeden efekt (unikalny indeks, idempotency key).",
+        "Deterministyczny przeplot: `TaskCompletionSource`/`SemaphoreSlim` w fake'u zatrzymuje wywołanie w wybranym punkcie.",
+        "Idempotencja konsumenta kolejki: ta sama wiadomość dwa razy → jeden efekt.",
+        "Testy „odpal 1000 razy” są probabilistyczne i zależne od liczby rdzeni.",
+        "Systematyczne przeszukiwanie przeplotów: Microsoft Coyote (rzadko potrzebne)."
+      ],
+      "pitfalls": [
+        "Test współbieżności na EF InMemory – nie ma tokenów ani prawdziwych transakcji.",
+        "Mieszanie niedeterminizmu wątków i prawdziwego czasu – używaj FakeTimeProvider."
+      ],
+      "code": "var a = await ctx1.Orders.FindAsync(id);\nvar b = await ctx2.Orders.FindAsync(id);\na!.Note = \"A\"; b!.Note = \"B\";\nawait ctx1.SaveChangesAsync();\nawait Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => ctx2.SaveChangesAsync());",
+      "lang": "csharp",
+      "say": "Wyścigi testuję celowanymi scenariuszami: równoległe requesty z asercją na jeden efekt i konflikty optimistic concurrency na prawdziwej bazie, a w kodzie w pamięci wymuszam przeplot punktami synchronizacji zamiast liczyć na szczęście."
+    },
+    {
+      "topic": "Snapshot i approval testing",
+      "points": [
+        "Wynik serializowany do pliku i porównywany z zatwierdzoną wersją zamiast wielu asercji.",
+        "Verify: `.received` (do przejrzenia, w .gitignore) vs `.verified` (commit do repo).",
+        "Domyślne scrubbery: Guidy i daty → `Guid_1`, `DateTime_1`; własne pola: `ScrubMembers`/`IgnoreMember`.",
+        "Kolekcje muszą mieć deterministyczną kolejność.",
+        "Rozszerzenia: Verify.Http, Verify.EntityFramework (wygenerowany SQL), obrazy.",
+        "Dobre do: kontraktów API, mapowań, raportów, generatorów kodu.",
+        "Front: `toMatchSnapshot` w Vitest/Jest – dla danych lub małych fragmentów."
+      ],
+      "pitfalls": [
+        "Bezrefleksyjne akceptowanie wielkich snapshotów – test przestaje chronić.",
+        "Snapshot całego DOM komponentu – łamie się przy każdej zmianie CSS."
+      ],
+      "code": "await Verify(response).ScrubMembers(\"ETag\", \"RequestId\");",
+      "lang": "csharp",
+      "say": "Approval testing z Verify sprawdza złożone wyniki jednym plikiem zatwierdzanym w PR. Pilnuję, by snapshoty były małe, deterministyczne i świadomie reviewowane."
+    },
+    {
+      "topic": "Testy wydajnościowe i obciążeniowe",
+      "points": [
+        "Typy: **benchmark** (BenchmarkDotNet), **load**, **stress**, **spike**, **soak** (godziny – wycieki, pule).",
+        "Narzędzia: **k6** (JS/TS, `thresholds` w CI), **NBomber** (C#), BenchmarkDotNet w Release z `[MemoryDiagnoser]`.",
+        "Cel przed testem: np. p95 < 300 ms i błędy < 1% przy 500 RPS.",
+        "Patrz na **percentyle (p95, p99)**, nie na średnią.",
+        "Open model (`constant-arrival-rate`) lepiej oddaje ruch niż zamknięty – unika coordinated omission.",
+        "Środowisko zbliżone do produkcji; generator nie może być wąskim gardłem.",
+        "Zbieraj metryki serwera: CPU, GC, thread pool, pula połączeń DB, wolne zapytania."
+      ],
+      "pitfalls": [
+        "Wnioskowanie ze średniej – ukrywa długi ogon.",
+        "Test na pustej bazie i laptopie dewelopera."
+      ],
+      "code": "export const options = {\n  thresholds: {\n    http_req_duration: ['p(95)<300'],\n    http_req_failed: ['rate<0.01'],\n  },\n};",
+      "lang": "typescript",
+      "say": "Najpierw definiuję cel w percentylach, potem dobieram typ testu: load, stress, spike lub soak. Wyniki k6 koreluję z metrykami serwera, bo sam czas odpowiedzi nie mówi, gdzie jest wąskie gardło."
+    },
+    {
+      "topic": "Test data builders",
+      "points": [
+        "Builder: sensowne wartości domyślne + metody `With...`/semantyczne (`Paid()`); test ustawia tylko to, co istotne.",
+        "Nowe wymagane pole w encji → zmiana w jednym miejscu, nie w stu testach.",
+        "Object Mother (`Orders.Paid()`) – prostszy, ale rozrasta się; można łączyć z builderem.",
+        "**AutoFixture** – anonimowe dane, `Build<T>().With(...).Without(...)`, AutoMoq/AutoNSubstitute.",
+        "**Bogus** – realistyczne dane do seedów i testów wydajnościowych.",
+        "Buduj przez publiczne API domeny – nie omijaj invariantów refleksją.",
+        "Losowe dane: stały seed albo logowanie wartości przy porażce."
+      ],
+      "pitfalls": [
+        "AutoFixture ukrywa, które wartości są istotne dla testu.",
+        "Kopiowane literały obiektów w każdym teście – kruche przy zmianie modelu."
+      ],
+      "code": "var order = new OrderBuilder()\n    .WithLine(\"SKU-9\", 2, 50m)\n    .Paid()\n    .Build();",
+      "lang": "csharp",
+      "say": "Dane testowe tworzę builderami z sensownymi domyślnymi wartościami, więc test pokazuje tylko to, co dla niego istotne, a zmiana modelu dotyka jednego miejsca. AutoFixture używam, gdy wartości naprawdę nie mają znaczenia."
+    },
+    {
+      "topic": "Testy w CI",
+      "points": [
+        "Etapy: build + unit → integracyjne (Testcontainers) → e2e w shardach (`--shard=1/4`, raport blob + `merge-reports`).",
+        "`dotnet test` uruchamia **projekty testowe równolegle** (osobne procesy); xUnit równolegle wykonuje kolekcje.",
+        "Izolacja per wykonawca: osobny kontener/baza, konta testowe, unikalne ID.",
+        "Uruchamiaj tylko dotknięte części (Nx affected), pełny zestaw na main i nocą.",
+        "Cache: NuGet/npm, obrazy Docker, przeglądarki Playwright, remote cache buildów.",
+        "Zawsze publikuj artefakty: raporty JUnit/TRX, trace'y, logi, zrzuty.",
+        "Budżet czasu PR (np. 10 min) monitorowany jak metryka produktu."
+      ],
+      "pitfalls": [
+        "Dwa projekty testowe na jednej bazie – kolizje mimo poprawnej serializacji w każdym z nich.",
+        "Sharding bez izolacji danych – rośnie flakiness."
+      ],
+      "say": "W CI dzielę testy na etapy i shardy, każdy wykonawca ma izolowane dane, a testy uruchamiam selektywnie według zmian. Czas pipeline'u i odsetek flaky testów traktuję jako metryki, które aktywnie pilnuję."
+    },
+    {
+      "topic": "Component harnesses",
+      "points": [
+        "Harness = semantyczne, asynchroniczne API do interakcji z komponentem (Angular CDK).",
+        "`TestbedHarnessEnvironment.loader(fixture)` + `loader.getHarness(MatButtonHarness.with({ text: 'Zapisz' }))`.",
+        "Angular Material dostarcza harnessy do swoich komponentów – stabilne między wersjami.",
+        "Własny: `extends ComponentHarness`, `static hostSelector`, `locatorFor(...)`.",
+        "Każda akcja wyzwala change detection i czeka na stabilizację – metody są `async`.",
+        "API harnessa = intencja użytkownika (`selectOption`, `getRowCount`), nie selektory.",
+        "Filtry przez `HarnessPredicate` w statycznej metodzie `with()`."
+      ],
+      "pitfalls": [
+        "Szukanie elementów Material po wewnętrznych klasach CSS – psuje się przy aktualizacji.",
+        "Harness dla każdego prostego komponentu – czasem Testing Library wystarcza."
+      ],
+      "code": "const loader = TestbedHarnessEnvironment.loader(fixture);\nconst save = await loader.getHarness(MatButtonHarness.with({ text: 'Zapisz' }));\nawait save.click();",
+      "lang": "typescript",
+      "say": "Harnessy oddzielają testy od wewnętrznego DOM komponentów: przy zmianie implementacji poprawiam jeden harness zamiast setek testów. Dla design systemu to inwestycja, która szybko się zwraca."
+    },
+    {
+      "topic": "MSW",
+      "points": [
+        "Mock Service Worker przechwytuje żądania na poziomie sieci: Service Worker w przeglądarce, interceptory fetch/XHR w Node.",
+        "MSW 2.x: `http.get(url, () => HttpResponse.json(data))` – stare `rest`/`ctx` nieaktualne.",
+        "Te same handlery w testach, lokalnym devie i Storybooku.",
+        "Niezależne od klienta: HttpClient, fetch, httpResource.",
+        "Setup: `listen({ onUnhandledRequest: 'error' })`, `resetHandlers()` w afterEach, `close()` w afterAll.",
+        "Scenariusze błędów przez `server.use(...)` w pojedynczym teście.",
+        "HttpTestingController – gdy trzeba sprawdzić szczegóły samego żądania w teście serwisu."
+      ],
+      "pitfalls": [
+        "Brak `resetHandlers()` – nadpisania z `server.use()` przeciekają do kolejnych testów.",
+        "Ręcznie pisane mocki rozjeżdżające się z prawdziwym API – typuj je z OpenAPI."
+      ],
+      "code": "const server = setupServer(\n  http.get('/api/products', () => HttpResponse.json([{ id: 1 }])),\n);\nbeforeAll(() => server.listen({ onUnhandledRequest: 'error' }));\nafterEach(() => server.resetHandlers());\nafterAll(() => server.close());",
+      "lang": "typescript",
+      "say": "MSW mockuje API na poziomie sieci, więc testuję zachowanie aplikacji niezależnie od klienta HTTP i reużywam tych samych handlerów w devie. HttpTestingController zostawiam do precyzyjnych testów samego żądania."
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "nauka-rozmowa",
+  "version": "1.0.0",
+  "scripts": {
+    "content": "node scripts/build-content.mjs",
+    "content:check": "node scripts/build-content.mjs --check",
+    "start": "npm run content && ng serve",
+    "build": "npm run content && ng build",
+    "build:artifact": "npm run build && node scripts/make-artifact.mjs",
+    "android": "npm run build && npx cap sync android && npx cap open android",
+    "ng": "ng",
+    "test": "ng test"
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/common": "21.2.25",
+    "@angular/compiler": "21.2.25",
+    "@angular/core": "21.2.25",
+    "@angular/platform-browser": "21.2.25",
+    "@angular/router": "21.2.25",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "highlight.js": "11.11.1",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "21.2.25",
+    "@angular/cli": "21.2.25",
+    "@angular/compiler-cli": "21.2.25",
+    "@capacitor/cli": "^8.5.2",
+    "prettier": "^3.8.1",
+    "typescript": "5.9.3"
+  }
+}

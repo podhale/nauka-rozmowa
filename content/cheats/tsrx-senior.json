@@ -1,0 +1,207 @@
+{
+  "cat": "tsrx",
+  "sheets": [
+    {
+      "topic": "Template literal types",
+      "points": [
+        "Składnia jak template string, ale na typach (np. on${Capitalize<K>}) – unia na wejściu daje unię wszystkich kombinacji.",
+        "Intrinsic: **Uppercase, Lowercase, Capitalize, Uncapitalize** – wbudowane w kompilator.",
+        "Key remapping w mapped types: klauzula `as` z template literal generuje nowe nazwy kluczy; `as never` usuwa klucz.",
+        "Z `infer` parsuje stringi, np. wzorzec ${string}:${infer P}/${infer Rest} wyciąga parametry trasy.",
+        "`infer` w template literal dopasowuje najkrótszy prefiks do pierwszego separatora.",
+        "Zastosowania: klucze i18n, nazwy eventów, ścieżki pól formularza ('address.city'), parametry routingu.",
+        "Iloczyn kartezjański unii rośnie szybko – powyżej ~100k członów błąd „union type too complex”."
+      ],
+      "pitfalls": [
+        "Walidacja formatów (e-mail, UUID) w typach zamiast w runtime – dane z API to i tak `string`.",
+        "Zapominanie o `string & K` – klucze mogą być number | symbol i Capitalize ich nie przyjmie."
+      ],
+      "code": "type Getters<T> = {\n  [K in keyof T as `get${Capitalize<string & K>}`]: () => T[K];\n};\ntype G = Getters<{ name: string }>;   // { getName: () => string }",
+      "lang": "typescript",
+      "say": "Template literal types pozwalają generować i parsować nazwy na poziomie typów, np. gettery z kluczy czy parametry ':id' ze ścieżki – literówki stają się błędami kompilacji. Pilnuję tylko, żeby unie nie eksplodowały kombinatorycznie."
+    },
+    {
+      "topic": "Type-level programming",
+      "points": [
+        "System typów TS jest Turing-zupełny: rekurencyjne conditional types + infer + mapped types.",
+        "Limit zwykłej rekurencji: błąd **TS2589** „excessively deep”; tail-recursive conditional types (TS 4.5+) do ~1000 iteracji.",
+        "Koszt: każda instancjacja generyka jest liczona – złożone typy spowalniają tsc i IDE.",
+        "Diagnoza: `tsc --extendedDiagnostics` (Instantiations), `--generateTrace`.",
+        "Typy testuję: `@ts-expect-error`, `expectTypeOf` (Vitest), tsd.",
+        "Sensowne w bibliotekach i warstwach wspólnych; w kodzie aplikacji wolę proste typy + codegen (OpenAPI) + walidację runtime (zod, `z.infer`)."
+      ],
+      "pitfalls": [
+        "Typ trudniejszy do zrozumienia niż kod, który chroni, i nieczytelne komunikaty błędów.",
+        "„Udowadnianie” w typach poprawności danych z sieci – bez walidacji w runtime to fikcja."
+      ],
+      "say": "Umiem pisać typy rekurencyjne typu DeepReadonly czy Paths, ale stosuję je tam, gdzie jeden typ chroni setki wywołań. Gdy typ spowalnia IDE albo nikt w zespole go nie rozumie, wybieram prostsze typy, generowanie kodu lub schemę runtime."
+    },
+    {
+      "topic": "Wariancja",
+      "points": [
+        "**Kowariancja**: Dog ⊂ Animal ⇒ Producer<Dog> ⊂ Producer<Animal> (wyjścia, readonly).",
+        "**Kontrawariancja**: parametry funkcji – handler(Animal) może zastąpić handler(Dog), nie odwrotnie.",
+        "**Inwariancja**: T na wejściu i wyjściu (mutowalny get/set) – brak przypisywalności w żadną stronę.",
+        "`strictFunctionTypes` sprawdza kontrawariantnie tylko właściwości typu funkcyjnego; **składnia metody pozostaje biwariantna**.",
+        "Tablice są kowariantne (dziura w soundness): `animals = dogs; animals.push(cat)` się kompiluje.",
+        "TS 4.7+: adnotacje `in` / `out` na parametrach typu – dokumentują intencję i przyspieszają sprawdzanie."
+      ],
+      "pitfalls": [
+        "Deklarowanie callbacków składnią metody `handle(x: T): void` – traci się kontrawariancję.",
+        "Mylenie kierunku: myślenie, że funkcja przyjmująca Dog pasuje tam, gdzie oczekiwana jest funkcja przyjmująca Animal."
+      ],
+      "code": "interface ByMethod   { handle(a: Animal): void }      // biwariantne\ninterface ByProperty { handle: (a: Animal) => void }  // kontrawariantne\ninterface Producer<out T> { get(): T }",
+      "lang": "typescript",
+      "say": "Wyjścia są kowariantne, wejścia kontrawariantne. TS pod strictFunctionTypes pilnuje tego dla właściwości funkcyjnych, ale metody i tablice są biwariantne/kowariantne dla wygody – dlatego callbacki w kontraktach typuję jako właściwości."
+    },
+    {
+      "topic": "Branded types",
+      "points": [
+        "Typowanie strukturalne nie odróżni `UserId` od `OrderId`, jeśli oba to `string`.",
+        "Brand: `string & { readonly __brand: 'UserId' }` – fantomowa właściwość, **zero kosztu w runtime**.",
+        "Wartość tworzy tylko smart konstruktor/parser z walidacją (jedyne miejsce z `as`).",
+        "„Parse, don't validate” – typ jest dowodem, że walidacja się odbyła.",
+        "`declare const brand: unique symbol` – brand niemożliwy do podrobienia literałem.",
+        "Zastosowania: ID encji, kwoty/waluty, jednostki, zwalidowany e-mail, bezpieczny HTML; zod ma `.brand()`."
+      ],
+      "pitfalls": [
+        "Dane z JSON/API nie są brandowane automatycznie – trzeba je sparsować na granicy systemu.",
+        "Brand na każdym stringu – biurokracja bez zysku."
+      ],
+      "code": "type UserId = string & { readonly __brand: 'UserId' };\nconst toUserId = (raw: string): UserId => {\n  if (!raw.startsWith('usr_')) throw new Error('Invalid id');\n  return raw as UserId;\n};",
+      "lang": "typescript",
+      "say": "Branded types dodają nominalność tam, gdzie pomyłka jest kosztowna, np. przy identyfikatorach i kwotach. Brand istnieje tylko w compile time, a tworzę go wyłącznie w funkcji, która waliduje dane."
+    },
+    {
+      "topic": "Declaration merging",
+      "points": [
+        "Interfejsy o tej samej nazwie **sumują pola**; aliasy `type` → błąd Duplicate identifier.",
+        "Namespace łączy się z funkcją, klasą lub enumem (statyczne dodatki).",
+        "Module augmentation: `declare module 'lib' { interface X { ... } }` – rozszerzanie typów paczki.",
+        "`declare global { interface Window { ... } }` – tylko w pliku będącym modułem (dodaj `export {}`).",
+        "Augmentacja łata istniejące deklaracje – nie doda nowego eksportu do modułu.",
+        "Augmentacje trzymam w jednym pliku, np. `types/augmentations.d.ts`.",
+        "Argument za `interface` w API bibliotek: konsument może je rozszerzyć."
+      ],
+      "pitfalls": [
+        "Plik bez import/export jest skryptem – `declare global` rzuca TS2669, a interfejsy mogą przypadkiem zlać się z globalnymi (np. `Event`).",
+        "Klasa nie zmerguje się z klasą."
+      ],
+      "code": "export {};\ndeclare global {\n  interface Window { __APP_CONFIG__: { apiUrl: string } }\n}",
+      "lang": "typescript",
+      "say": "Interfejsy się łączą, aliasy typów nie. Na tym opiera się module augmentation – tak dodaję np. pole user do Request w Expressie albo konfigurację do Window, zawsze w pliku-module."
+    },
+    {
+      "topic": "Module resolution",
+      "points": [
+        "`moduleResolution: \"bundler\"` – dla Angular CLI/Vite/esbuild; rozumie `exports`, bez rozszerzeń w importach.",
+        "`nodenext` – kod uruchamiany przez Node: ESM wymaga `.js` w importach względnych, CJS/ESM wg `type` w package.json.",
+        "Stary `node`/`node10` ignoruje pole `exports` – źródło błędów z paczkami ESM-only.",
+        "**`paths` nie przepisuje importów** w emitowanym JS – alias musi rozwiązać bundler/loader/test runner.",
+        "`verbatimModuleSyntax` + `isolatedModules` – wymusza `import type`, bezpieczne dla esbuild/swc.",
+        "Pole `exports` to też enkapsulacja: deep importy niedozwolone, warunki types/import/require.",
+        "Debug: `tsc --traceResolution`."
+      ],
+      "pitfalls": [
+        "Aliasy z `paths` niezsynchronizowane z Vitest/Jest – tsc zielony, testy nie widzą modułów.",
+        "Oczekiwanie, że tsc przepisze `@app/utils` na ścieżkę względną."
+      ],
+      "code": "{\n  \"compilerOptions\": {\n    \"module\": \"preserve\",\n    \"moduleResolution\": \"bundler\",\n    \"verbatimModuleSyntax\": true\n  }\n}",
+      "lang": "json",
+      "say": "Dla kodu przez bundler używam moduleResolution bundler, dla Node – nodenext. Pamiętam, że TypeScript nie przepisuje specyfikatorów: paths to tylko informacja dla kompilatora."
+    },
+    {
+      "topic": "Wydajność kompilacji",
+      "points": [
+        "Najpierw pomiar: `tsc --extendedDiagnostics`, `--generateTrace` + `@typescript/analyze-trace`.",
+        "`incremental` (.tsbuildinfo) i **project references** (`composite` + `tsc -b`) – budowanie tylko zmienionych części.",
+        "`skipLibCheck`, wąskie `include` i `types` – mniej plików do sprawdzenia.",
+        "Interfejsy zamiast dużych intersekcji (cache po nazwie); jawne typy zwracane eksportowanych funkcji.",
+        "`isolatedDeclarations` (TS 5.5) – równoległe generowanie .d.ts bez pełnego type-checku.",
+        "Unikać gigantycznych unii i głębokich typów rekurencyjnych.",
+        "Natywny kompilator w Go (TypeScript 7, preview `@typescript/native-preview`) – deklarowane ~10× szybciej; sprawdzić zgodność narzędzi."
+      ],
+      "pitfalls": [
+        "Optymalizowanie na ślepo bez trace'a – zwykle winny jest jeden patologiczny typ.",
+        "Project references z cyklami zależności – trzeba najpierw uporządkować graf."
+      ],
+      "say": "Zaczynam od extendedDiagnostics i trace'a, żeby znaleźć najdroższe typy i pliki. Potem incremental, project references z tsc -b i cache w CI, a w kodzie jawne typy zwracane i interfejsy zamiast intersekcji."
+    },
+    {
+      "topic": "Schedulery",
+      "points": [
+        "**queueScheduler** – synchronicznie z kolejką; **asapScheduler** – microtask; **asyncScheduler** – setTimeout; **animationFrameScheduler** – przed repaintem.",
+        "Operatory czasowe (`delay`, `debounceTime`, `interval`, `timer`) domyślnie używają asyncScheduler.",
+        "`observeOn` przesuwa powiadomienia; `subscribeOn` przesuwa moment subskrypcji.",
+        "`of(x, scheduler)` deprecated w RxJS 7 → `scheduled([...], scheduler)`.",
+        "`auditTime(0, animationFrameScheduler)` – maksymalnie jedna aktualizacja na klatkę.",
+        "Z zone.js szybkie strumienie subskrybuj w `runOutsideAngular`; w zoneless CD wyzwalają sygnały.",
+        "TestScheduler.run() – wszystkie operatory czasowe na czasie wirtualnym."
+      ],
+      "pitfalls": [
+        "Mylenie observeOn z subscribeOn.",
+        "Zakładanie, że asyncScheduler wykona się przed then() Promise – microtaski idą pierwsze."
+      ],
+      "code": "ticks$.pipe(auditTime(0, animationFrameScheduler))\n  .subscribe(t => this.price.set(t.price));",
+      "lang": "typescript",
+      "say": "Scheduler decyduje, kiedy wykona się emisja: synchronicznie, jako microtask, macrotask czy przed klatką animacji. Świadomie używam animationFrameScheduler do renderowania szybkich strumieni i TestScheduler w testach."
+    },
+    {
+      "topic": "Backpressure i buffering",
+      "points": [
+        "RxJS jest **push-based** – brak prawdziwego backpressure, trzeba wybrać strategię.",
+        "Stratne: `throttleTime`, `auditTime`, `sampleTime`, `debounceTime`, `exhaustMap` – gdy liczy się najnowszy stan.",
+        "Bezstratne: `bufferTime`/`bufferCount` (batching), `mergeMap(fn, concurrency)` – limit równoległości.",
+        "`bufferTime(250, null, 500)` – paczka co 250 ms lub po 500 elementach; filtruj puste tablice.",
+        "`concatMap` buforuje bez limitu – przy szybkim producencie kolejka i opóźnienie rosną.",
+        "Najlepiej u źródła: agregacja po stronie serwera (snapshot co 100 ms), bounded `Channel` w .NET.",
+        "Mierz: renderów/s, długość kolejki, pamięć."
+      ],
+      "pitfalls": [
+        "concatMap na autozapisie przy wolnym API – setki przestarzałych zapisów w kolejce.",
+        "mergeMap bez limitu – setki równoległych requestów."
+      ],
+      "code": "events$.pipe(\n  bufferTime(250, null, 500),\n  filter(b => b.length > 0),\n  concatMap(batch => this.api.saveBatch(batch)),\n);",
+      "lang": "typescript",
+      "say": "RxJS nie spowolni producenta, więc wybieram strategię: stratną, gdy liczy się najnowszy stan, albo batching, gdy nie mogę gubić danych. W UI łączę bufor z renderowaniem maksymalnie raz na klatkę."
+    },
+    {
+      "topic": "Własne operatory",
+      "points": [
+        "Operator = funkcja `(source: Observable<T>) => Observable<R>`.",
+        "Typy: `OperatorFunction<T, R>`, `MonoTypeOperatorFunction<T>`.",
+        "Najpierw kompozycja: `source => source.pipe(...)` – najbezpieczniejsze.",
+        "Logika niestandardowa: `new Observable(subscriber => { const sub = source.subscribe(...); return () => sub.unsubscribe(); })`.",
+        "Stan per subskrypcja – wewnątrz `new Observable` lub `defer`, nie w domknięciu fabryki.",
+        "Propaguj error/complete i sprzątaj w teardownie.",
+        "Kandydaci: `filterNil`, mapowanie na `{ loading, data, error }`, firmowe retry; testuj marble testami."
+      ],
+      "pitfalls": [
+        "Stan w domknięciu fabryki – współdzielony przez wszystkich subskrybentów.",
+        "Brak teardownu – operator przecieka subskrypcje źródła."
+      ],
+      "code": "export function filterNil<T>(): OperatorFunction<T, NonNullable<T>> {\n  return source => source.pipe(filter((v): v is NonNullable<T> => v != null));\n}",
+      "lang": "typescript",
+      "say": "Własny operator to funkcja z Observable w Observable – najczęściej składam go z istniejących przez pipe. Gdy piszę go od zera, pilnuję leniwości, stanu per subskrypcja i sprzątania w teardownie."
+    },
+    {
+      "topic": "Marble testing",
+      "points": [
+        "Diagram: `-` klatka, litera = wartość, `|` complete, `#` error, `( )` grupa w jednej klatce, `^` subskrypcja (hot).",
+        "`TestScheduler.run()` – czas wirtualny, `debounceTime`/`delay` działają bez czekania.",
+        "W run(): 1 klatka = 1 ms; `300ms` przesuwa czas (spacje wymagane); wartość też zajmuje klatkę.",
+        "Helpery: `cold`, `hot`, `expectObservable(...).toBe(...)`, `expectSubscriptions`.",
+        "`expectSubscriptions` udowadnia anulowanie (switchMap, takeUntil).",
+        "Wewnętrzne cold observables twórz przed potokiem, nie w projekcji switchMap.",
+        "Dla prostych komponentów czytelniejsze bywają fake timers (`vi.useFakeTimers`)."
+      ],
+      "pitfalls": [
+        "Liczenie klatek bez uwzględnienia, że sama wartość zajmuje 1 ms.",
+        "Długie diagramy – nieczytelne i kruche."
+      ],
+      "code": "scheduler.run(({ cold, expectObservable }) => {\n  const src = cold('-a-b-----c|');\n  expectObservable(src.pipe(debounceTime(3))).toBe('------b---(c|)');\n});",
+      "lang": "typescript",
+      "say": "Marble testy z TestScheduler.run pozwalają deterministycznie testować logikę czasową w wirtualnym czasie i sprawdzać nawet moment subskrypcji i odsubskrypcji. Używam ich głównie do własnych operatorów i efektów."
+    }
+  ]
+}

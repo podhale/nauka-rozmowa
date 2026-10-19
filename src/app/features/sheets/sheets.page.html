@@ -1,0 +1,89 @@
+<section class="view">
+  <div class="stack">
+    <h1>{{ mode() === 'cards' ? 'Baza pytań' : mode() === 'mine' ? 'Moja ściąga' : 'Ściągi' }}</h1>
+    <p class="muted">
+      @switch (mode()) {
+        @case ('sheets') { Najważniejsze fakty, pułapki i gotowe formułki do każdego tematu. Idealne na ostatnią chwilę przed rozmową. }
+        @case ('mine') { Tematy, w których najczęściej się mylisz, od najsłabszego. Aktualizuje się po każdej sesji. }
+        @case ('cards') { Wszystkie fiszki do czytania i szukania. Kropka pokazuje stan nauki. }
+      }
+    </p>
+  </div>
+  <div class="seg">
+    @for (m of modes; track m.key) { <button [attr.aria-pressed]="mode() === m.key" (click)="setMode(m)">{{ m.label }}</button> }
+  </div>
+
+  @if (mode() !== 'mine') {
+    <div class="stack" style="gap:8px">
+      <input class="search" type="search" placeholder="Szukaj: np. effect, N+1, middleware, docker…" autocomplete="off"
+        [value]="ui.browseQuery()" (input)="ui.browseQuery.set($any($event.target).value)" aria-label="Szukaj" />
+      <select [value]="ui.browseCat()" (change)="ui.browseCat.set($any($event.target).value)" aria-label="Obszar">
+        <option value="all">Wszystkie obszary</option>
+        @for (c of content.categories(); track c.cat) { <option [value]="c.cat">{{ c.name }}</option> }
+      </select>
+    </div>
+  }
+
+  <div>
+    @switch (mode()) {
+      @case ('mine') {
+        @for (w of mine(); track w.cat + w.topic) {
+          <div class="card" style="margin-bottom:12px"><app-cheat-sheet [cat]="w.cat" [topic]="w.topic" /></div>
+        } @empty {
+          <div class="empty">
+            <h3>Jeszcze pusto</h3>
+            <p class="muted">Zrób kilka testów albo fiszek. Tematy, w których się pomylisz, trafią tutaj jako Twoja osobista ściąga.</p>
+            <button class="btn primary" (click)="session.startQuickQuiz()">Szybki test</button>
+          </div>
+        }
+      }
+      @case ('sheets') {
+        @if (sheetTotal()) {
+          <p class="muted" style="font-size:.85rem;margin-bottom:6px">{{ sheetTotal() }} {{ sheetTotal() | plural: 'ściąga' : 'ściągi' : 'ściąg' }}</p>
+          @for (g of sheetGroups(); track g.cat) {
+            <div class="stack" style="gap:4px;margin-top:14px">
+              <app-cat-tag [cat]="g.cat" />
+              <div class="card list sheetlist" style="padding:2px 14px">
+                @for (t of g.topics; track t) {
+                  <a class="li" [routerLink]="['/sciaga', g.cat, t]"><span style="min-width:0;font-weight:600">{{ t }}</span><span class="muted">→</span></a>
+                }
+              </div>
+            </div>
+          }
+        } @else {
+          <div class="empty"><h3>Nic nie znaleziono</h3><p class="muted">Spróbuj krótszej frazy albo innego obszaru.</p></div>
+        }
+      }
+      @case ('cards') {
+        @if (cardMatches().length) {
+          <p class="muted" style="font-size:.85rem;margin-bottom:6px">
+            {{ cardMatches().length }} {{ cardMatches().length | plural: 'karta' : 'karty' : 'kart' }}
+            @if (cardMatches().length > maxCards) { (pokazuję {{ maxCards }}, zawęź wyszukiwanie) }
+          </p>
+          @for (g of cardGroups(); track g.cat + g.topic) {
+            <div class="stack" style="gap:0;margin-top:14px">
+              <div class="row" style="gap:8px"><app-cat-tag [cat]="g.cat" /><span class="tag">· {{ g.topic }}</span></div>
+              @for (c of g.cards; track c.id) {
+                <details class="item">
+                  <summary><span [innerHTML]="c.q | rich"></span><span [class]="stateClass(c.id)"></span></summary>
+                  <div class="body">
+                    <p style="white-space:pre-line" [innerHTML]="c.a | rich"></p>
+                    <app-code [code]="c.code" [lang]="c.lang" />
+                    @if (c.deep) { <details class="deep"><summary>Pogłębienie (senior)</summary><div class="in"><p [innerHTML]="c.deep | rich"></p></div></details> }
+                    @if (c.tip) { <div class="tip"><b>Na rozmowie:</b> <span [innerHTML]="c.tip | rich"></span></div> }
+                    <div class="minirow">
+                      <app-level [level]="c.level" />
+                      @if (content.sheet(c.cat, c.topic)) { <a class="linkbtn" [routerLink]="['/sciaga', c.cat, c.topic]">Ściąga</a> }
+                    </div>
+                  </div>
+                </details>
+              }
+            </div>
+          }
+        } @else {
+          <div class="empty"><h3>Nic nie znaleziono</h3><p class="muted">Spróbuj krótszej frazy albo innego obszaru.</p></div>
+        }
+      }
+    }
+  </div>
+</section>

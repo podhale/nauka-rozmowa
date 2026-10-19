@@ -1,0 +1,691 @@
+{
+  "cat": "arch",
+  "name": "Architektura i wzorce",
+  "cards": [
+    {
+      "id": "arch-001",
+      "topic": "SOLID",
+      "level": 1,
+      "q": "Single Responsibility Principle – co oznacza i jak wygląda typowe naruszenie?",
+      "a": "Klasa powinna mieć jeden powód do zmiany, czyli odpowiadać przed jednym „aktorem” (np. księgowością, a nie jednocześnie księgowością i działem IT). Naruszenie: InvoiceService liczy kwoty, generuje PDF, wysyła maila i zapisuje do bazy – zmiana szablonu PDF i zmiana reguł VAT dotykają tej samej klasy. Poprawka: wydzielić kalkulator, renderer, notifier i repozytorium, a serwis tylko je orkiestruje.",
+      "code": "// naruszenie SRP\npublic class InvoiceService\n{\n    public decimal CalculateTotal(Invoice i) { /* reguły VAT */ }\n    public byte[] RenderPdf(Invoice i) { /* layout */ }\n    public void SendEmail(Invoice i, byte[] pdf) { /* SMTP */ }\n    public void Save(Invoice i) { /* SQL */ }\n}",
+      "lang": "csharp",
+      "tip": "Nie myl SRP z „klasa ma jedną metodę” – chodzi o spójność powodów zmiany."
+    },
+    {
+      "id": "arch-002",
+      "topic": "SOLID",
+      "level": 2,
+      "q": "Open/Closed Principle – co oznacza i jaki jest klasyczny przykład naruszenia?",
+      "a": "Moduł powinien być otwarty na rozszerzenie, zamknięty na modyfikację: nowe zachowanie dodajemy nowym kodem, a nie edycją sprawdzonego. Naruszenie: switch po typie (rodzaj płatności, kraj, typ dokumentu), który trzeba rozbudowywać przy każdym nowym przypadku, często w kilku miejscach naraz. Poprawka: polimorfizm/Strategy – nowa implementacja interfejsu rejestrowana w DI.",
+      "code": "// naruszenie OCP\ndecimal Fee(Payment p) => p.Type switch\n{\n    \"card\"   => p.Amount * 0.015m,\n    \"blik\"   => 0.5m,\n    \"paypal\" => p.Amount * 0.029m,   // każdy nowy typ = edycja tej metody\n    _ => throw new NotSupportedException()\n};",
+      "lang": "csharp",
+      "tip": "Pragmatycznie: jeden switch w fabryce jest OK; problemem jest ten sam switch rozsiany po kodzie."
+    },
+    {
+      "id": "arch-003",
+      "topic": "SOLID",
+      "level": 2,
+      "q": "Liskov Substitution Principle – co oznacza i jak wygląda naruszenie?",
+      "a": "Obiekt podtypu musi dać się użyć wszędzie tam, gdzie typ bazowy, bez zmiany poprawności programu: nie wzmacnia warunków wstępnych, nie osłabia gwarancji, nie rzuca nieoczekiwanych wyjątków. Naruszenie: klasa dziedzicząca, która nadpisuje metodę rzucając NotSupportedException (np. ReadOnlyRepository : Repository z Save rzucającym wyjątek) albo klasyczny Square : Rectangle, gdzie ustawienie szerokości zmienia wysokość.",
+      "code": "public class Bird { public virtual void Fly() { } }\npublic class Penguin : Bird\n{\n    public override void Fly() => throw new NotSupportedException(); // łamie LSP\n}",
+      "lang": "csharp",
+      "tip": "Sygnał ostrzegawczy w kodzie: if (x is Penguin) przed wywołaniem metody bazowej."
+    },
+    {
+      "id": "arch-004",
+      "topic": "SOLID",
+      "level": 2,
+      "q": "Interface Segregation Principle – co oznacza i jak wygląda naruszenie?",
+      "a": "Klienci nie powinni zależeć od metod, których nie używają. Naruszenie: „gruby” interfejs IUserService z 20 metodami (logowanie, raporty, eksport, administracja), przez co każda implementacja i każdy mock musi obsłużyć wszystko, a zmiana jednej metody dotyka wszystkich konsumentów. Poprawka: mniejsze, rolowe interfejsy (IUserReader, IUserExporter) – klasa może implementować kilka.",
+      "code": "public interface IPrinter  { void Print(Doc d); }\npublic interface IScanner  { Doc Scan(); }\npublic class SimplePrinter : IPrinter { public void Print(Doc d) { } }\n// zamiast IMultiFunctionDevice z Scan() rzucającym NotImplementedException",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-005",
+      "topic": "SOLID",
+      "level": 1,
+      "q": "Dependency Inversion Principle – co oznacza i jak się ma do dependency injection?",
+      "a": "Moduły wysokiego poziomu (logika biznesowa) nie powinny zależeć od niskopoziomowych (SQL, SMTP); oba zależą od abstrakcji, a abstrakcję definiuje strona wysokopoziomowa. Naruszenie: OrderService robi new SqlOrderRepository() i new SmtpClient() – nie da się podmienić ani przetestować. DI to technika realizacji DIP: zależności są przekazywane z zewnątrz (konstruktor), a kontener je składa.",
+      "code": "public class OrderService(IOrderRepository repo, INotifier notifier)\n{\n    public async Task PlaceAsync(Order o)\n    {\n        await repo.AddAsync(o);\n        await notifier.OrderPlacedAsync(o);\n    }\n}",
+      "lang": "csharp",
+      "tip": "DIP = zasada, IoC = ogólna idea odwrócenia sterowania, DI = konkretny mechanizm. Rekruterzy lubią to rozróżnienie."
+    },
+    {
+      "id": "arch-006",
+      "topic": "Zasady ogólne",
+      "level": 1,
+      "q": "Co oznaczają DRY, KISS i YAGNI i kiedy DRY bywa szkodliwe?",
+      "a": "DRY – każda wiedza (reguła biznesowa) ma jedno źródło prawdy. KISS – najprostsze rozwiązanie, które działa. YAGNI – nie buduj czegoś „na zapas”, dopóki nie jest potrzebne. DRY szkodzi, gdy łączymy kod, który jest podobny przypadkowo, a nie z tego samego powodu – wspólna abstrakcja zaczyna obrastać flagami i parametrami. Lepsza jest drobna duplikacja niż zła abstrakcja (zasada „rule of three”).",
+      "tip": "Duplikacja DTO między warstwami czy modułami jest często celowa – izoluje kontrakty."
+    },
+    {
+      "id": "arch-007",
+      "topic": "Zasady ogólne",
+      "level": 2,
+      "q": "Dlaczego „composition over inheritance”?",
+      "a": "Dziedziczenie tworzy silne, statyczne powiązanie: podklasa zależy od szczegółów bazowej (fragile base class), hierarchie eksplodują przy łączeniu cech (LoggingCachingRepository...), a C# pozwala na jedną klasę bazową. Kompozycja składa zachowanie z obiektów za interfejsami – można je podmieniać w runtime, testować osobno i łączyć dowolnie (Strategy, Decorator). Dziedziczenie zostawiam dla prawdziwej relacji „is-a” i współdzielenia szablonu (np. abstrakcyjna klasa bazowa z template method).",
+      "code": "public class ReportService(IExporter exporter, IStorage storage)\n{\n    public async Task RunAsync(Report r) =>\n        await storage.SaveAsync(await exporter.ExportAsync(r));\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-008",
+      "topic": "Wzorce GoF",
+      "level": 1,
+      "q": "Opisz wzorzec Strategy i pokaż, jak go użyć z DI w .NET.",
+      "a": "Strategy wydziela rodzinę wymiennych algorytmów za wspólnym interfejsem, a klient wybiera implementację w runtime. Usuwa switch-e i realizuje OCP. W .NET implementacje rejestruje się w DI; wybór przez IEnumerable<IStrategy> z właściwością rozróżniającą albo przez keyed services (od .NET 8).",
+      "code": "public interface IShippingCost { string Carrier { get; } decimal Calc(Parcel p); }\n\nbuilder.Services.AddKeyedScoped<IShippingCost, DhlCost>(\"dhl\");\nbuilder.Services.AddKeyedScoped<IShippingCost, InpostCost>(\"inpost\");\n\napp.MapGet(\"/cost/{carrier}\", (string carrier, IServiceProvider sp, [AsParameters] Parcel p) =>\n    sp.GetRequiredKeyedService<IShippingCost>(carrier).Calc(p));",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-009",
+      "topic": "Wzorce GoF",
+      "level": 2,
+      "q": "Factory Method vs Abstract Factory – różnica i jak wygląda fabryka w świecie DI?",
+      "a": "Factory Method – metoda (często wirtualna) decyduje, jaki konkretny obiekt utworzyć; klient zna tylko abstrakcję. Abstract Factory – interfejs tworzący całą rodzinę powiązanych obiektów (np. UI dla motywu, klienci dla konkretnego dostawcy chmury). W .NET fabryki pojawiają się, gdy obiekt potrzebuje danych dostępnych dopiero w runtime albo krótkiego czasu życia: IHttpClientFactory, IDbContextFactory, własna fabryka wstrzykująca IServiceProvider lub Func<T>.",
+      "tip": "Statyczne fabryki (Order.Create(...)) w DDD służą też do pilnowania niezmienników przy tworzeniu obiektu."
+    },
+    {
+      "id": "arch-010",
+      "topic": "Wzorce GoF",
+      "level": 2,
+      "q": "Kiedy stosować wzorzec Builder? Podaj przykłady z .NET.",
+      "a": "Gdy obiekt ma wiele opcjonalnych parametrów lub budowa przebiega etapami, a konstruktor z 10 parametrami jest nieczytelny. Builder daje płynne API i może walidować całość w Build(). W .NET: WebApplication.CreateBuilder(), StringBuilder, ModelBuilder w EF, UriBuilder, ConfigurationBuilder. W testach często stosuje się Test Data Builder. Dla prostych DTO w C# wystarczą object initializer, required members i rekordy z with.",
+      "code": "var order = new OrderBuilder()\n    .ForCustomer(customerId)\n    .WithLine(\"SKU-1\", qty: 2)\n    .WithDiscount(10)\n    .Build();   // tu walidacja niezmienników",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-011",
+      "topic": "Wzorce GoF",
+      "level": 2,
+      "q": "Czym jest Decorator i jak go zastosować w .NET?",
+      "a": "Decorator owija obiekt implementujący ten sam interfejs i dokłada zachowanie przed/po delegacji – bez zmiany oryginału i bez dziedziczenia. Typowe użycia: cache, logowanie, retry, metryki wokół repozytorium lub klienta HTTP. Middleware w ASP.NET Core i DelegatingHandler w HttpClient to ten sam pomysł. Wbudowany kontener nie ma metody Decorate – ręczna rejestracja przez fabrykę albo biblioteka Scrutor.",
+      "code": "public class CachedProductRepo(IProductRepo inner, IMemoryCache cache) : IProductRepo\n{\n    public Task<Product?> GetAsync(int id) =>\n        cache.GetOrCreateAsync($\"product:{id}\", _ => inner.GetAsync(id));\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-012",
+      "topic": "Wzorce GoF",
+      "level": 1,
+      "q": "Czym jest Adapter i kiedy go używasz?",
+      "a": "Adapter tłumaczy interfejs istniejącej klasy (np. zewnętrznego SDK lub legacy API) na interfejs, którego oczekuje nasz kod. Dzięki temu domena zależy od własnej abstrakcji (np. IPaymentGateway), a szczegóły dostawcy są w jednym miejscu – zmiana dostawcy to nowy adapter. W architekturze heksagonalnej całe warstwy infrastruktury to adaptery do portów.",
+      "code": "public class StripeGateway(StripeClient stripe) : IPaymentGateway\n{\n    public async Task<PaymentResult> ChargeAsync(Money m, string token) =>\n        Map(await stripe.CreateChargeAsync(m.AmountInCents, m.Currency, token));\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-013",
+      "topic": "Wzorce GoF",
+      "level": 2,
+      "q": "Wzorzec Observer – jak występuje w .NET i jakie są pułapki?",
+      "a": "Obiekt (subject) powiadamia zarejestrowanych obserwatorów o zmianie stanu, nie znając ich typów. W C#: event/delegaty, IObservable<T>/IObserver<T> (Rx), w szerszej skali – publish/subscribe na message brokerze lub domain events. Pułapki: wyciek pamięci, gdy długo żyjący publisher trzyma referencje do subskrybentów, którzy się nie wypisali (-=); kolejność i wyjątki w handlerach; synchroniczne wykonanie handlerów w wątku publishera.",
+      "tip": "W Angularze analogią są Observable z RxJS i konieczność unsubscribe (takeUntilDestroyed) – dobry most na rozmowie fullstack."
+    },
+    {
+      "id": "arch-014",
+      "topic": "Wzorce GoF",
+      "level": 2,
+      "q": "Czym jest Mediator i jak ma się do MediatR?",
+      "a": "Mediator centralizuje komunikację między obiektami: zamiast odwoływać się do siebie nawzajem, wysyłają komunikaty do pośrednika, który kieruje je do odbiorcy – zmniejsza liczbę zależności. Biblioteka MediatR implementuje odmianę in-process: kontroler wysyła request, a mediator znajduje jeden handler (plus pipeline behaviors do walidacji, logowania, transakcji). Koszt: pośredniość utrudnia nawigację po kodzie („gdzie jest handler?”).",
+      "tip": "Mediator jako wzorzec ≠ MediatR jako biblioteka; to samo da się zrobić prostym wstrzyknięciem handlera."
+    },
+    {
+      "id": "arch-015",
+      "topic": "Wzorce GoF",
+      "level": 2,
+      "q": "Singleton jako wzorzec vs lifetime Singleton w DI – dlaczego w .NET używamy DI?",
+      "a": "Klasyczny Singleton (prywatny konstruktor + static Instance) to ukryty stan globalny: zależność nie jest widoczna w konstruktorze, trudno ją podmienić w testach, łatwo o problemy z wątkami i kolejnością inicjalizacji. W .NET rejestrujemy zwykłą klasę z AddSingleton – kontener gwarantuje jedną instancję, a klasa pozostaje testowalna i jawnie wstrzykiwana. Singleton musi być thread-safe i nie może zależeć od scoped serwisów (captive dependency).",
+      "code": "builder.Services.AddSingleton<IClock, SystemClock>();\nbuilder.Services.AddSingleton(TimeProvider.System);   // .NET 8+",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-016",
+      "topic": "Architektura aplikacji",
+      "level": 2,
+      "q": "Opisz Clean Architecture i regułę zależności.",
+      "a": "Warstwy w okręgach: Domain (encje, reguły), Application (use case'y, interfejsy portów np. IOrderRepository, IEmailSender), Infrastructure (EF Core, kolejki, zewnętrzne API – implementacje interfejsów), Presentation/API. Reguła zależności: referencje wskazują tylko do środka – Domain nie zna niczego, Infrastructure zależy od Application, a składanie odbywa się w composition root (Program.cs). Zysk: logika biznesowa niezależna od frameworków i testowalna; koszt: więcej projektów, mapowań i ceremonii, przesadne dla prostego CRUD-a.",
+      "tip": "Dobrze powiedzieć, kiedy NIE stosować – rekruter sprawdza pragmatyzm, nie tylko znajomość diagramu."
+    },
+    {
+      "id": "arch-017",
+      "topic": "Architektura aplikacji",
+      "level": 3,
+      "q": "Clean vs Onion vs Hexagonal – czym się różnią?",
+      "a": "To warianty tej samej idei: domena w centrum, zależności do środka, infrastruktura na obrzeżach. Hexagonal (Ports & Adapters, Cockburn) mówi o portach (interfejsach) i adapterach – „driving” (HTTP, CLI, testy wywołują aplikację) i „driven” (baza, broker, które aplikacja wywołuje); nie narzuca liczby warstw. Onion (Palermo) wprowadza koncentryczne warstwy: Domain Model, Domain Services, Application Services, a na zewnątrz UI/Infrastructure/testy. Clean (Martin) uogólnia je z nazwami Entities / Use Cases / Interface Adapters / Frameworks. Różnice są głównie w nazewnictwie i akcentach."
+    },
+    {
+      "id": "arch-018",
+      "topic": "Architektura aplikacji",
+      "level": 2,
+      "q": "Czym jest Vertical Slice Architecture i czym różni się od warstwowej?",
+      "a": "Kod organizuje się wokół funkcjonalności (feature), a nie warstw technicznych: folder Features/Orders/PlaceOrder zawiera endpoint, request, walidator, handler i ewentualnie zapytanie do bazy. Zmiana jednej funkcji dotyka jednego miejsca, a każdy slice może wybrać własne podejście (EF, Dapper, prosta logika). Minimalizuje sprzężenie między funkcjami i maksymalizuje spójność wewnątrz. Ryzyko: duplikacja i rozjechanie się konwencji – wspólną logikę domenową dalej trzyma się w modelu domeny.",
+      "code": "Features/\n  Orders/\n    PlaceOrder.cs     // endpoint + command + validator + handler\n    GetOrder.cs\n    CancelOrder.cs",
+      "lang": "text"
+    },
+    {
+      "id": "arch-019",
+      "topic": "CQRS",
+      "level": 2,
+      "q": "Czym jest CQRS i czy wymaga osobnych baz danych?",
+      "a": "Command Query Responsibility Segregation rozdziela modele zapisu (komendy zmieniające stan, przez model domenowy i walidację) i odczytu (zapytania zwracające DTO, zoptymalizowane pod widok). Nie wymaga osobnych baz – najprostsza wersja to te same tabele, komendy przez EF z trackingiem, zapytania przez projekcje/AsNoTracking lub Dapper. Osobne read modele (zdenormalizowane, aktualizowane przez eventy) to opcjonalny krok dający skalowanie odczytów kosztem eventual consistency.",
+      "tip": "CQRS ≠ event sourcing. Można stosować jedno bez drugiego."
+    },
+    {
+      "id": "arch-020",
+      "topic": "CQRS",
+      "level": 3,
+      "q": "Czy do CQRS potrzebny jest MediatR?",
+      "a": "Nie. CQRS to separacja modeli, a MediatR to tylko mechanizm dispatchowania requestów do handlerów. Handler można wstrzyknąć bezpośrednio do endpointu (ICommandHandler<T>), a cross-cutting concerns zrealizować dekoratorami, filtrami endpointów lub middleware. MediatR daje wygodne pipeline behaviors i spójną konwencję, ale dodaje pośredniość. Warto też wiedzieć, że w 2025 autor przeszedł z MediatR na model komercyjny (dual licensing, wersje od 13 wymagają licencji w części zastosowań komercyjnych), co skłoniło część zespołów do zostania przy starszej wersji, własnej prostej implementacji lub alternatyw.",
+      "code": "public interface ICommandHandler<TCmd, TResult> { Task<TResult> HandleAsync(TCmd cmd, CancellationToken ct); }\n\napp.MapPost(\"/orders\", (PlaceOrder cmd, ICommandHandler<PlaceOrder, Guid> handler, CancellationToken ct)\n    => handler.HandleAsync(cmd, ct));",
+      "lang": "csharp",
+      "tip": "Przy temacie licencji odpowiadaj neutralnie i faktograficznie – szczegóły warunków sprawdza się na stronie projektu."
+    },
+    {
+      "id": "arch-021",
+      "topic": "DDD",
+      "level": 2,
+      "q": "Encja vs value object – czym się różnią? Przykład w C#.",
+      "a": "Encja ma tożsamość trwającą w czasie (Id) – dwa zamówienia z identycznymi danymi to różne zamówienia; jej stan się zmienia. Value object nie ma tożsamości, definiują go wartości (Money, Address, DateRange), jest niemutowalny i porównywany po wartości; często waliduje się w konstruktorze. W C# naturalnie modeluje się go jako record, w EF mapuje jako complex/owned type.",
+      "code": "public sealed record Money\n{\n    public decimal Amount { get; }\n    public string Currency { get; }\n    public Money(decimal amount, string currency)\n    {\n        if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));\n        (Amount, Currency) = (amount, currency);\n    }\n    public Money Add(Money o) => o.Currency == Currency\n        ? new Money(Amount + o.Amount, Currency)\n        : throw new InvalidOperationException(\"Currency mismatch\");\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-022",
+      "topic": "DDD",
+      "level": 3,
+      "q": "Czym jest agregat i jakie są zasady projektowania agregatów?",
+      "a": "Agregat to klaster encji i value objectów traktowany jako jednostka spójności, z jednym korzeniem (aggregate root), przez który odbywa się każda modyfikacja – root pilnuje niezmienników (np. suma pozycji zamówienia ≤ limit). Zasady (Vernon): małe agregaty; jedna transakcja modyfikuje jeden agregat; inne agregaty referujemy po Id, nie przez nawigację; spójność między agregatami jest ostateczna (domain events). Repozytorium istnieje per agregat, nie per tabela.",
+      "code": "public class Order\n{\n    private readonly List<OrderLine> _lines = [];\n    public IReadOnlyList<OrderLine> Lines => _lines;\n    public void AddLine(Guid productId, int qty, Money price)\n    {\n        if (Status != OrderStatus.Draft) throw new DomainException(\"Order is closed\");\n        _lines.Add(new OrderLine(productId, qty, price));\n    }\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-023",
+      "topic": "DDD",
+      "level": 3,
+      "q": "Czym są domain events i jak je publikować?",
+      "a": "Domain event to fakt z przeszłości istotny dla domeny (OrderPlaced), nazwany w czasie przeszłym. Agregat zapisuje zdarzenia w wewnętrznej liście, a infrastruktura publikuje je przy zapisie – np. SaveChangesInterceptor. Ważna decyzja: handlery wykonane przed commitem w tej samej transakcji (spójność natychmiastowa, ale ryzyko długiej transakcji) czy po commicie (ryzyko utraty, jeśli proces padnie). Dla efektów poza bazą (mail, inne serwisy) zapisuje się integration event do outboxa w tej samej transakcji.",
+      "tip": "Domain event (wewnątrz bounded contextu) vs integration event (kontrakt między serwisami, wersjonowany) – warto rozróżnić."
+    },
+    {
+      "id": "arch-024",
+      "topic": "DDD",
+      "level": 3,
+      "q": "Co to jest bounded context i ubiquitous language?",
+      "a": "Ubiquitous language to wspólny język ekspertów i programistów, używany w kodzie, rozmowach i testach. Bounded context to granica, w której dany model i język są spójne – to samo słowo może znaczyć coś innego w innym kontekście (Product w katalogu ma opis i zdjęcia, w magazynie wagę i lokalizację, w fakturowaniu stawkę VAT). Zamiast jednego wielkiego modelu robi się kilka spójnych. Konteksty łączy context map (np. anti-corruption layer, shared kernel, customer–supplier) i są naturalnymi kandydatami na moduły lub mikroserwisy."
+    },
+    {
+      "id": "arch-025",
+      "topic": "DDD",
+      "level": 2,
+      "q": "Co to jest anemic domain model i dlaczego bywa krytykowany?",
+      "a": "To encje będące workami na dane (publiczne gettery/settery, brak zachowań), a cała logika siedzi w serwisach. Fowler nazywa to antywzorcem w kontekście DDD: niezmienniki nie są chronione (każdy może ustawić Status = Paid), logika się rozprasza i duplikuje. Bogaty model ukrywa stan (private set) i wystawia metody wyrażające intencję (order.Pay(...)). Uczciwie: dla prostego CRUD-a anemiczny model z transaction script bywa w pełni wystarczający.",
+      "code": "// anemicznie:\norder.Status = OrderStatus.Paid; order.PaidAt = now;\n// bogato:\norder.MarkAsPaid(payment, clock);   // sprawdza stan, ustawia pola, rejestruje event",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-026",
+      "topic": "Obsługa błędów",
+      "level": 2,
+      "q": "Result pattern vs wyjątki – kiedy co?",
+      "a": "Wyjątki są dla sytuacji wyjątkowych/nieoczekiwanych (brak połączenia, bug) – kosztowne, niewidoczne w sygnaturze metody, łatwo nimi sterować przepływem jak goto. Result<T> jawnie modeluje oczekiwane porażki biznesowe (walidacja, brak środków, nie znaleziono) – wywołujący musi je obsłużyć, a mapowanie na HTTP (400/404/409 jako ProblemDetails) jest proste. W praktyce: Result dla błędów domenowych, wyjątki dla infrastruktury i naruszeń kontraktu, globalny handler (IExceptionHandler) dla nieobsłużonych.",
+      "code": "public record Result<T>(T? Value, Error? Error)\n{\n    public bool IsSuccess => Error is null;\n    public static Result<T> Ok(T v) => new(v, null);\n    public static Result<T> Fail(Error e) => new(default, e);\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-027",
+      "topic": "Unit of Work",
+      "level": 2,
+      "q": "Czym jest Unit of Work i jak ma się do EF Core?",
+      "a": "Unit of Work śledzi zmiany w obiektach w ramach jednej operacji biznesowej i zapisuje je atomowo na końcu. DbContext już nim jest: change tracker + SaveChanges w jednej transakcji. Dlatego dodatkowe IUnitOfWork często jest cienkim wrapperem (CommitAsync → SaveChangesAsync), sensownym głównie po to, by warstwa aplikacji nie zależała od EF. Ważne: repozytoria w jednym requeście muszą współdzielić tę samą instancję kontekstu (scoped).",
+      "code": "public interface IUnitOfWork { Task<int> CommitAsync(CancellationToken ct = default); }\npublic class AppDbContext(DbContextOptions o) : DbContext(o), IUnitOfWork\n{\n    public Task<int> CommitAsync(CancellationToken ct = default) => SaveChangesAsync(ct);\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-028",
+      "topic": "Monolit vs mikroserwisy",
+      "level": 2,
+      "q": "Monolit modularny czy mikroserwisy – jak argumentować?",
+      "a": "Mikroserwisy dają niezależny deployment, skalowanie i autonomię zespołów, ale kosztują: sieć zamiast wywołań w procesie, rozproszone transakcje i eventual consistency, observability, DevOps, wersjonowanie kontraktów. Monolit modularny to jedna aplikacja podzielona na moduły wg bounded contextów, z jasnymi publicznymi API, osobnymi schematami bazy i bez sięgania do cudzych tabel. Dla większości zespołów to lepszy start – granice można zweryfikować, a dobrze odseparowany moduł da się później wydzielić. Mikroserwisy, gdy jest realna potrzeba organizacyjna lub skalowania.",
+      "tip": "Czerwona flaga: „rozproszony monolit” – serwisy wdrażane razem, współdzielona baza, łańcuchy synchronicznych wywołań."
+    },
+    {
+      "id": "arch-029",
+      "topic": "Komunikacja",
+      "level": 2,
+      "q": "Komunikacja synchroniczna vs asynchroniczna między serwisami – plusy i minusy.",
+      "a": "Synchroniczna (HTTP/gRPC): prosta, natychmiastowa odpowiedź, ale tworzy temporal coupling – jeśli serwis B leży, A też nie działa; łańcuchy wywołań sumują opóźnienia i awaryjność (potrzebne timeouty, retry, circuit breaker). Asynchroniczna (message broker: RabbitMQ, Azure Service Bus, Kafka): nadawca nie czeka, kolejka buforuje skoki ruchu, serwisy są luźniej powiązane; koszt to eventual consistency, trudniejsze debugowanie, duplikaty i kolejność wiadomości. Komendy (jeden odbiorca, kolejka) vs eventy (wielu subskrybentów, topic).",
+      "tip": "W .NET resiliency dla HTTP: Microsoft.Extensions.Http.Resilience (oparte na Polly) – AddStandardResilienceHandler()."
+    },
+    {
+      "id": "arch-030",
+      "topic": "Komunikacja",
+      "level": 3,
+      "q": "Na czym polega Transactional Outbox pattern i jaki problem rozwiązuje?",
+      "a": "Problem dual write: zapis do bazy i publikacja na broker to dwie operacje bez wspólnej transakcji – jeśli proces padnie pomiędzy, stan i wiadomości się rozjadą. Outbox: w tej samej transakcji co zmiany biznesowe zapisuję wiadomość do tabeli Outbox; osobny proces (background worker, CDC) czyta nieopublikowane wpisy, publikuje je i oznacza jako wysłane. Gwarantuje at-least-once, więc konsumenci muszą być idempotentni. Gotowe implementacje mają m.in. MassTransit, NServiceBus, Wolverine.",
+      "code": "await using var tx = await db.Database.BeginTransactionAsync();\ndb.Orders.Add(order);\ndb.OutboxMessages.Add(OutboxMessage.From(new OrderPlaced(order.Id)));\nawait db.SaveChangesAsync();   // jedna transakcja: zamówienie + wiadomość\nawait tx.CommitAsync();\n// OutboxPublisher (BackgroundService) wysyła wpisy z ProcessedAt == null",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-031",
+      "topic": "Komunikacja",
+      "level": 3,
+      "q": "Czym jest idempotentny konsument i eventual consistency?",
+      "a": "Brokery i outbox dają zwykle gwarancję at-least-once, więc ta sama wiadomość może przyjść dwa razy (retry, redelivery). Idempotentny konsument daje ten sam efekt niezależnie od liczby przetworzeń: zapisuje MessageId w tabeli przetworzonych wiadomości w tej samej transakcji co efekt (inbox pattern) albo opiera się na naturalnej idempotencji operacji (upsert, „ustaw status na X” zamiast „dodaj 10”). Eventual consistency oznacza, że po zmianie różne części systemu przez chwilę widzą różne stany, ale bez nowych zmian zbiegną się do spójnego – UI i procesy biznesowe muszą to uwzględniać (np. status „przetwarzanie”).",
+      "tip": "Exactly-once w systemach rozproszonych w praktyce osiąga się jako at-least-once + idempotencja."
+    },
+    {
+      "id": "arch-032",
+      "topic": "Cache",
+      "level": 2,
+      "q": "Opisz cache-aside i strategie invalidacji cache.",
+      "a": "Cache-aside: aplikacja najpierw szuka w cache; przy missie czyta z bazy i wkłada wynik do cache z TTL. Przy zapisie aktualizuje bazę i usuwa (invaliduje) wpis, zamiast go aktualizować – mniejsze ryzyko wyścigów. Strategie: TTL/expiration (proste, akceptuje nieświeżość), jawna invalidacja przy zapisie, invalidacja przez eventy w systemach rozproszonych, tagi. Problemy: cache stampede (wiele requestów naraz odbudowuje ten sam klucz), spójność między instancjami (IMemoryCache jest per instancja, Redis współdzielony). Od .NET 9 HybridCache (pakiet działa też na .NET 8) łączy cache L1 w pamięci i L2 rozproszony oraz chroni przed stampede.",
+      "code": "public async Task<ProductDto?> GetAsync(int id, CancellationToken ct) =>\n    await cache.GetOrCreateAsync($\"product:{id}\",\n        async token => await repo.GetDtoAsync(id, token),\n        cancellationToken: ct);   // cache: HybridCache",
+      "lang": "csharp",
+      "tip": "„There are only two hard things in Computer Science: cache invalidation and naming things” – ale lepiej pokazać konkretną strategię niż cytat."
+    },
+    {
+      "id": "arch-033",
+      "topic": "Skalowanie",
+      "level": 2,
+      "q": "Jak skalować aplikację webową .NET? Vertical vs horizontal.",
+      "a": "Vertical – mocniejsza maszyna; proste, ale ma limit i jest pojedynczym punktem awarii. Horizontal – więcej instancji za load balancerem; wymaga bezstanowości aplikacji: sesje, cache i pliki poza procesem (Redis, blob storage), Data Protection keys współdzielone, brak sticky sessions. Baza bywa wąskim gardłem: indeksy i optymalizacja zapytań, cache, read replicas dla odczytów, partycjonowanie/sharding na końcu. Pracę długą przenosi się do kolejek i workerów. Najpierw mierzyć (profiling, metryki), potem skalować.",
+      "tip": "Wspomnij async/await jako sposób na lepsze wykorzystanie wątków przy I/O – to skalowanie w obrębie jednej instancji."
+    },
+    {
+      "id": "arch-034",
+      "topic": "Cloud-native",
+      "level": 1,
+      "q": "Czym jest 12-factor app i które zasady są najważniejsze w praktyce .NET?",
+      "a": "To zbiór 12 zasad dla aplikacji uruchamianych w chmurze. Najczęściej omawiane: konfiguracja w środowisku (zmienne środowiskowe/secret store, nie w kodzie – IConfiguration to wspiera), bezstanowe procesy (stan w backing services), backing services jako dołączane zasoby (baza, kolejka przez connection string), jeden codebase i wiele deployów, ścisłe rozdzielenie build/release/run, logi jako strumień zdarzeń na stdout, szybki start i graceful shutdown (disposability), parity dev/prod (Docker, Testcontainers).",
+      "code": "# appsettings.json: \"ConnectionStrings\": { \"Default\": \"...\" }\n# nadpisanie w kontenerze:\nexport ConnectionStrings__Default=\"Host=db;Database=app;...\"",
+      "lang": "bash"
+    },
+    {
+      "id": "arch-035",
+      "topic": "Observability",
+      "level": 2,
+      "q": "Czym jest observability i jak ją zapewnić w .NET (logi, metryki, tracing)?",
+      "a": "Observability to zdolność zrozumienia stanu systemu z zewnątrz na podstawie telemetrii. Trzy filary: logi (zdarzenia; strukturalne, z poziomami i kontekstem – ILogger, Serilog), metryki (liczbowe agregaty: RPS, latencja p95/p99, błędy; System.Diagnostics.Metrics), tracing rozproszony (ścieżka requestu przez serwisy; Activity, propagacja W3C traceparent). Standardem jest OpenTelemetry – jeden SDK i protokół OTLP, eksport do dowolnego backendu (Grafana/Prometheus/Tempo, Jaeger, Application Insights, Datadog). Ważna jest korelacja: TraceId w logach.",
+      "code": "builder.Services.AddOpenTelemetry()\n    .ConfigureResource(r => r.AddService(\"orders-api\"))\n    .WithTracing(t => t.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation())\n    .WithMetrics(m => m.AddAspNetCoreInstrumentation().AddRuntimeInstrumentation())\n    .UseOtlpExporter();",
+      "lang": "csharp",
+      "tip": "Logi strukturalne: logger.LogInformation(\"Order {OrderId} placed\", id) – szablon zamiast interpolacji, żeby pola były indeksowane."
+    },
+    {
+      "id": "arch-036",
+      "topic": "Clean code",
+      "level": 1,
+      "q": "Na co zwracasz uwagę podczas code review?",
+      "a": "Kolejność: poprawność i wymagania (czy rozwiązuje problem, edge case'y, obsługa błędów), bezpieczeństwo (walidacja wejścia, autoryzacja, SQL injection, sekrety), wydajność tam, gdzie ma znaczenie (N+1, alokacje w pętli, brak async), testy, czytelność (nazwy wyrażające intencję, małe funkcje, brak magicznych liczb, jeden poziom abstrakcji), spójność z architekturą i konwencjami. Formatowanie i style zostawiam linterom/analyzerom (.editorconfig, dotnet format). Komentarze formułuję jako pytania lub sugestie, rozróżniam blokery od nitpicków, chwalę dobre rozwiązania.",
+      "tip": "Mały PR = lepsze review. Warto wspomnieć, że dzielisz duże zmiany na mniejsze."
+    },
+    {
+      "id": "arch-037",
+      "topic": "Projektowanie API",
+      "level": 3,
+      "q": "Jak podejść do pytania „zaprojektuj API do X” (np. system rezerwacji)?",
+      "a": "1) Doprecyzuj wymagania: funkcje, użytkownicy, skala (RPS, wolumen danych), wymagania spójności i SLA – nie projektuj w ciemno. 2) Wyznacz zasoby i model domeny (Booking, Slot, Customer) oraz niezmienniki (brak podwójnej rezerwacji). 3) Zaprojektuj endpointy REST: rzeczowniki, właściwe metody i kody statusu, paginacja, filtrowanie, wersjonowanie, ProblemDetails dla błędów. 4) Omów trudne miejsca: współbieżność (optimistic concurrency, unikalne ograniczenie w bazie), idempotencja POST (Idempotency-Key), auth (OAuth2/OIDC, JWT), rate limiting. 5) Dane i skalowanie: wybór bazy, indeksy, cache, async przez kolejki dla powiadomień. 6) Observability i trade-offy – głośno nazywaj kompromisy.",
+      "code": "POST   /api/v1/bookings            -> 201 Created + Location   (Idempotency-Key)\nGET    /api/v1/bookings/{id}       -> 200 / 404\nGET    /api/v1/slots?date=2026-10-20&resourceId=7&cursor=...\nDELETE /api/v1/bookings/{id}       -> 204 / 409 (już rozpoczęta)",
+      "lang": "text",
+      "tip": "Rekruter ocenia proces myślenia i zadawanie pytań bardziej niż „idealny” wynik."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "arch-q001",
+      "topic": "SOLID",
+      "level": 1,
+      "q": "Którą zasadę SOLID najbardziej narusza ta klasa?",
+      "code": "public class SalesReport\n{\n    public Report Build(DateOnly from, DateOnly to) { /* zapytania */ }\n    public string ToCsv(Report r) { /* formatowanie */ }\n    public void SaveToDisk(string csv) { /* File.WriteAllText */ }\n    public void EmailToManager(string csv) { /* SMTP */ }\n}",
+      "lang": "csharp",
+      "options": [
+        "Liskov Substitution – nie dziedziczy po klasie bazowej",
+        "Single Responsibility – łączy logikę raportu, formatowanie, zapis do pliku i wysyłkę maila",
+        "Interface Segregation – nie implementuje żadnego interfejsu",
+        "Open/Closed – ma publiczne metody"
+      ],
+      "correct": 1,
+      "why": "Klasa ma kilka niezależnych powodów do zmiany (format raportu, miejsce zapisu, kanał powiadomień). LSP i ISP dotyczą dziedziczenia i kształtu interfejsów, a publiczne metody nie mają związku z OCP."
+    },
+    {
+      "id": "arch-q002",
+      "topic": "SOLID",
+      "level": 2,
+      "q": "Dodanie nowego kanału powiadomień (Push) wymaga zmiany tej metody i trzech podobnych switchy w innych klasach. Którą zasadę to narusza i jaka jest typowa poprawka?",
+      "code": "switch (channel)\n{\n    case Channel.Email: SendEmail(msg); break;\n    case Channel.Sms:   SendSms(msg);   break;\n}",
+      "lang": "csharp",
+      "options": [
+        "Open/Closed – wprowadzić interfejs INotificationChannel i osobne implementacje rejestrowane w DI (Strategy)",
+        "Dependency Inversion – zamienić enum na string",
+        "Single Responsibility – przenieść switch do klasy statycznej",
+        "Liskov Substitution – dodać klasę bazową NotificationBase z metodą wirtualną rzucającą wyjątek"
+      ],
+      "correct": 0,
+      "why": "Każde rozszerzenie wymaga modyfikacji istniejącego kodu w wielu miejscach – klasyczne naruszenie OCP. Polimorfizm pozwala dodać kanał nowym kodem. Zmiana typu na string lub przeniesienie switcha nic nie rozwiązuje, a metoda bazowa rzucająca wyjątek łamałaby LSP."
+    },
+    {
+      "id": "arch-q003",
+      "topic": "SOLID",
+      "level": 2,
+      "q": "Co jest problemem w tym kodzie z perspektywy SOLID?",
+      "code": "public class FileStorage { public virtual void Save(string path, byte[] data) { /* ... */ } }\npublic class ReadOnlyStorage : FileStorage\n{\n    public override void Save(string path, byte[] data) => throw new NotSupportedException();\n}",
+      "lang": "csharp",
+      "options": [
+        "Narusza SRP – ReadOnlyStorage ma za mało odpowiedzialności",
+        "Narusza DIP – ReadOnlyStorage powinien tworzyć FileStorage przez new",
+        "Nic – rzucanie NotSupportedException jest zalecanym sposobem ograniczania klas pochodnych",
+        "Narusza LSP – kod przyjmujący FileStorage nie może bezpiecznie użyć ReadOnlyStorage, bo Save nagle rzuca wyjątek"
+      ],
+      "correct": 3,
+      "why": "Podtyp osłabia kontrakt bazowy: klient spodziewa się działającego Save. Lepiej rozdzielić interfejsy (IReadableStorage / IWritableStorage – też ISP) zamiast dziedziczyć i wyłączać funkcje."
+    },
+    {
+      "id": "arch-q004",
+      "topic": "Wzorce GoF",
+      "level": 2,
+      "q": "Klasa CachedOrderRepository implementuje IOrderRepository, przyjmuje w konstruktorze inny IOrderRepository, sprawdza cache i deleguje do niego przy missie. Jaki to wzorzec?",
+      "options": [
+        "Adapter",
+        "Proxy wirtualne generowane przez EF",
+        "Decorator",
+        "Composite"
+      ],
+      "correct": 2,
+      "why": "Ten sam interfejs, owinięty obiekt i dodane zachowanie przed delegacją – to Decorator. Adapter zmienia interfejs na inny, Composite traktuje drzewo obiektów jednolicie. Strukturalnie Decorator i Proxy są podobne, ale intencją tu jest dołożenie funkcji (cache), a proxy EF dotyczy lazy loadingu."
+    },
+    {
+      "id": "arch-q005",
+      "topic": "Wzorce GoF",
+      "level": 1,
+      "q": "Integrujesz zewnętrzne SDK kuriera z własnym interfejsem IShippingProvider, tłumacząc jego metody i modele na Twoje. Jaki wzorzec stosujesz?",
+      "options": [
+        "Builder",
+        "Adapter",
+        "Observer",
+        "Singleton"
+      ],
+      "correct": 1,
+      "why": "Adapter dopasowuje istniejący, niekompatybilny interfejs do oczekiwanego przez klienta. Builder dotyczy konstruowania obiektów, Observer powiadamiania o zdarzeniach, Singleton – liczby instancji."
+    },
+    {
+      "id": "arch-q006",
+      "topic": "Wzorce GoF",
+      "level": 2,
+      "q": "Dlaczego w aplikacji ASP.NET Core zamiast klasy z public static Instance lepiej użyć AddSingleton<IClock, SystemClock>()?",
+      "options": [
+        "Zależność staje się jawna w konstruktorze i łatwo ją podmienić w testach, a kontener i tak pilnuje jednej instancji",
+        "AddSingleton tworzy nową instancję dla każdego requestu, co jest bezpieczniejsze",
+        "Statyczne singletony nie działają w .NET 8+",
+        "AddSingleton automatycznie czyni klasę thread-safe"
+      ],
+      "correct": 0,
+      "why": "Lifetime Singleton w DI to jedna instancja na kontener (aplikację), ale bez globalnego stanu i ukrytych zależności. Nowa instancja per request to Scoped. Statyczne singletony działają, tylko są gorsze w testach. Kontener nie zapewnia thread-safety – to odpowiedzialność klasy."
+    },
+    {
+      "id": "arch-q007",
+      "topic": "DDD",
+      "level": 2,
+      "q": "Co wypisze ten kod?",
+      "code": "public record Money(decimal Amount, string Currency);\n\nvar a = new Money(10m, \"PLN\");\nvar b = new Money(10m, \"PLN\");\nConsole.WriteLine(a == b);",
+      "lang": "csharp",
+      "options": [
+        "False – to dwa różne obiekty w pamięci",
+        "False – rekordy porównują referencje",
+        "Błąd kompilacji – nie można użyć == na rekordach",
+        "True"
+      ],
+      "correct": 3,
+      "why": "Rekordy w C# mają generowaną równość wartościową (Equals, ==, GetHashCode) po wszystkich polach. Dlatego dobrze nadają się na value objecty: dwie kwoty 10 PLN są sobie równe niezależnie od instancji."
+    },
+    {
+      "id": "arch-q008",
+      "topic": "DDD",
+      "level": 3,
+      "q": "Order jest agregatem z kolekcją OrderLine. Serwis z innego modułu robi: line = db.OrderLines.Find(id); line.Quantity = 50; SaveChanges(). Co jest nie tak?",
+      "options": [
+        "Nic – OrderLine to encja, więc może być modyfikowana niezależnie",
+        "Problemem jest tylko wydajność – Find wykonuje dodatkowe zapytanie",
+        "Modyfikacja omija korzeń agregatu, więc Order nie może pilnować niezmienników (np. limitu wartości zamówienia lub statusu)",
+        "OrderLine powinien mieć własne repozytorium, więc wystarczy przenieść kod do OrderLineRepository"
+      ],
+      "correct": 2,
+      "why": "Zmiany wewnątrz agregatu przechodzą przez root (order.ChangeQuantity(lineId, 50)), który sprawdza reguły dla całości. Bezpośredni dostęp do encji wewnętrznych łamie granicę spójności. Repozytorium jest per agregat, nie per encję wewnętrzną."
+    },
+    {
+      "id": "arch-q009",
+      "topic": "Komunikacja",
+      "level": 3,
+      "q": "Handler zapisuje zamówienie (SaveChanges), a następnie publikuje OrderPlaced na Service Bus. Raz na jakiś czas magazyn nie dostaje informacji o zamówieniu. Najbardziej prawdopodobna przyczyna i rozwiązanie?",
+      "options": [
+        "Service Bus gubi wiadomości – trzeba zmienić broker na Kafkę",
+        "Dual write – proces/sieć pada między commitem a publikacją; rozwiązaniem jest transactional outbox",
+        "Brak await przy SaveChanges – wystarczy go dodać",
+        "Za niski poziom izolacji transakcji – należy użyć Serializable"
+      ],
+      "correct": 1,
+      "why": "Zapis do bazy i publikacja to dwie niezależne operacje bez wspólnej transakcji; awaria pomiędzy daje zapisane zamówienie bez wiadomości. Outbox zapisuje wiadomość w tej samej transakcji i publikuje ją niezawodnie później. Poziom izolacji nie dotyczy brokera, a zmiana brokera nie usuwa dual write."
+    },
+    {
+      "id": "arch-q010",
+      "topic": "Komunikacja",
+      "level": 2,
+      "q": "Konsument eventu PaymentReceived zwiększa saldo klienta o kwotę płatności. Broker gwarantuje at-least-once. Co należy zrobić?",
+      "options": [
+        "Uczynić konsumenta idempotentnym – zapisywać Id przetworzonych wiadomości w tej samej transakcji co zmianę salda i pomijać duplikaty",
+        "Nic – at-least-once oznacza, że wiadomość przyjdzie dokładnie raz",
+        "Wyłączyć retry w brokerze, żeby uniknąć duplikatów",
+        "Przetwarzać wiadomości w jednym wątku, co eliminuje duplikaty"
+      ],
+      "correct": 0,
+      "why": "At-least-once oznacza możliwe duplikaty; „dodaj kwotę” nie jest naturalnie idempotentne, więc podwójne przetworzenie podwoi saldo. Wyłączenie retry grozi utratą wiadomości, a jednowątkowość nie zapobiega redelivery."
+    },
+    {
+      "id": "arch-q011",
+      "topic": "CQRS",
+      "level": 2,
+      "q": "Które stwierdzenie o CQRS jest prawdziwe?",
+      "options": [
+        "Wymaga event sourcingu",
+        "Wymaga biblioteki MediatR",
+        "Wymaga osobnych baz do zapisu i odczytu oraz message brokera",
+        "Można go stosować z jedną bazą danych – wystarczy rozdzielić modele i ścieżki zapisu i odczytu"
+      ],
+      "correct": 3,
+      "why": "Istotą CQRS jest separacja odpowiedzialności komend i zapytań. Osobne bazy, eventy i event sourcing to opcjonalne rozszerzenia, a MediatR to tylko jeden ze sposobów dispatchowania handlerów."
+    },
+    {
+      "id": "arch-q012",
+      "topic": "Architektura aplikacji",
+      "level": 2,
+      "q": "W Clean Architecture: gdzie powinien znaleźć się interfejs IOrderRepository, a gdzie jego implementacja na EF Core?",
+      "options": [
+        "Interfejs i implementacja w Infrastructure",
+        "Interfejs w Infrastructure, implementacja w Domain",
+        "Interfejs w Domain/Application, implementacja w Infrastructure",
+        "Oba w projekcie API, bo tam jest konfiguracja DI"
+      ],
+      "correct": 2,
+      "why": "Reguła zależności: wewnętrzne warstwy definiują potrzebne abstrakcje (porty), a zewnętrzne je implementują. Dzięki temu Application nie ma referencji do EF Core. API/Program.cs jedynie składa zależności (composition root)."
+    },
+    {
+      "id": "arch-q013",
+      "topic": "Architektura aplikacji",
+      "level": 1,
+      "q": "Co jest charakterystyczne dla Vertical Slice Architecture?",
+      "options": [
+        "Każda warstwa (Controllers, Services, Repositories) jest w osobnym projekcie",
+        "Kod jest grupowany według funkcjonalności – każdy feature ma razem endpoint, logikę i dostęp do danych",
+        "Wszystkie zapytania muszą przechodzić przez generyczne repozytorium",
+        "Wymaga mikroserwisów – każdy slice to osobny serwis"
+      ],
+      "correct": 1,
+      "why": "VSA minimalizuje sprzężenie między funkcjami i grupuje to, co zmienia się razem. Podział na projekty per warstwa to podejście warstwowe, generyczne repozytorium nie jest wymagane, a slice'y żyją zwykle w jednej aplikacji."
+    },
+    {
+      "id": "arch-q014",
+      "topic": "Obsługa błędów",
+      "level": 2,
+      "q": "Endpoint rejestracji użytkownika musi zwrócić czytelny błąd, gdy email jest już zajęty. Które podejście jest najbardziej zalecane?",
+      "options": [
+        "Zwrócić Result z błędem domenowym i zmapować go na 409/400 z ProblemDetails",
+        "Rzucić Exception(\"Email taken\") i pozwolić middleware zwrócić 500",
+        "Zwrócić null z serwisu i 200 OK z pustym body",
+        "Złapać każdy wyjątek w kontrolerze i zwrócić 400 z jego StackTrace"
+      ],
+      "correct": 0,
+      "why": "Zajęty email to przewidywalny przypadek biznesowy, nie awaria – Result jawnie go modeluje, a ProblemDetails daje standardowy format błędu. 500 sugeruje błąd serwera, null ukrywa przyczynę, a stack trace w odpowiedzi to wyciek informacji."
+    },
+    {
+      "id": "arch-q015",
+      "topic": "Cache",
+      "level": 3,
+      "q": "Przy cache-aside aktualizujesz cenę produktu. Która kolejność jest najbezpieczniejsza w typowej implementacji?",
+      "options": [
+        "Najpierw usunąć klucz z cache, potem bez żadnych dodatkowych kroków zaktualizować bazę",
+        "Zaktualizować cache nową wartością, a bazę asynchronicznie później",
+        "Zaktualizować bazę i nie ruszać cache – TTL kiedyś wygaśnie, więc to zawsze wystarczy",
+        "Zaktualizować bazę, a potem usunąć klucz z cache"
+      ],
+      "correct": 3,
+      "why": "Zapis do bazy i następnie invalidacja minimalizuje okno nieświeżych danych; kolejny odczyt pobierze aktualną wartość. Usunięcie przed zapisem pozwala równoległemu odczytowi wpisać starą wartość z powrotem. Zapis tylko do cache ryzykuje utratę danych, a poleganie wyłącznie na TTL bywa akceptowalne tylko przy tolerancji na nieświeżość."
+    },
+    {
+      "id": "arch-q016",
+      "topic": "Monolit vs mikroserwisy",
+      "level": 2,
+      "q": "Zespół ma 5 „mikroserwisów”, które czytają i piszą do tych samych tabel w jednej bazie i są zawsze wdrażane razem. Jak to nazwać?",
+      "options": [
+        "Modelowa architektura mikroserwisowa",
+        "Modularny monolit",
+        "Rozproszony monolit – koszty mikroserwisów bez ich korzyści",
+        "Architektura heksagonalna"
+      ],
+      "correct": 2,
+      "why": "Współdzielona baza i wspólny deployment oznaczają silne sprzężenie – brak niezależności, a mimo to płacimy za sieć i rozproszenie. Modularny monolit to jedna jednostka wdrożeniowa z dobrze oddzielonymi modułami, a hexagonal dotyczy struktury pojedynczej aplikacji."
+    },
+    {
+      "id": "arch-q017",
+      "topic": "Cloud-native",
+      "level": 1,
+      "q": "Zgodnie z 12-factor, gdzie powinien znajdować się connection string do produkcyjnej bazy?",
+      "options": [
+        "W appsettings.json w repozytorium",
+        "W konfiguracji środowiska (zmienne środowiskowe lub secret store, np. Key Vault)",
+        "Jako stała w kodzie, żeby uniknąć błędów konfiguracji",
+        "W pliku README dla zespołu operacyjnego"
+      ],
+      "correct": 1,
+      "why": "Konfiguracja różniąca się między deployami (zwłaszcza sekrety) powinna być poza kodem. IConfiguration w .NET pozwala nadpisać wartości z appsettings zmiennymi środowiskowymi i dostawcami sekretów. Sekrety w repozytorium to ryzyko wycieku."
+    },
+    {
+      "id": "arch-q018",
+      "topic": "Observability",
+      "level": 2,
+      "q": "Request przechodzi przez API Gateway, Orders i Payments. Chcesz zobaczyć, który serwis odpowiada za 2 s opóźnienia. Czego potrzebujesz?",
+      "options": [
+        "Distributed tracingu (np. OpenTelemetry) z propagacją kontekstu traceparent między serwisami",
+        "Logowania na poziomie Debug w każdym serwisie",
+        "Metryki CPU każdej maszyny",
+        "Health checków /health w każdym serwisie"
+      ],
+      "correct": 0,
+      "why": "Trace pokazuje spany każdego serwisu w jednej osi czasu, z czasami trwania i relacją rodzic-dziecko. Logi bez korelacji trudno złożyć, CPU nie wskaże wolnego wywołania, a health check mówi tylko, czy serwis żyje."
+    },
+    {
+      "id": "arch-q019",
+      "topic": "Wzorce GoF",
+      "level": 2,
+      "q": "Masz kilka algorytmów naliczania rabatu wybieranych w runtime na podstawie typu klienta. Który wzorzec pasuje najlepiej?",
+      "options": [
+        "Singleton",
+        "Builder",
+        "Observer",
+        "Strategy"
+      ],
+      "correct": 3,
+      "why": "Strategy kapsułkuje wymienne algorytmy za wspólnym interfejsem i pozwala wybrać jeden w runtime (np. przez keyed services lub słownik). Pozostałe wzorce rozwiązują inne problemy: liczbę instancji, konstruowanie obiektu i powiadamianie o zdarzeniach."
+    },
+    {
+      "id": "arch-q020",
+      "topic": "DDD",
+      "level": 2,
+      "q": "Encja Invoice ma tylko publiczne właściwości z setterami, a InvoiceService zawiera całą logikę (zmiana statusu, wyliczanie sum, walidacja). Jak nazywa się ten model i jakie jest główne ryzyko?",
+      "options": [
+        "Rich domain model – ryzykiem jest zbyt duża liczba metod w encji",
+        "Aggregate root – ryzykiem jest zbyt duży agregat",
+        "Anemic domain model – niezmienniki nie są chronione, bo każdy może ustawić dowolny stan z pominięciem reguł",
+        "Value object – ryzykiem jest mutowalność"
+      ],
+      "correct": 2,
+      "why": "Encja bez zachowań to model anemiczny; reguły w serwisach można obejść, ustawiając pola bezpośrednio, a logika się duplikuje. Bogaty model hermetyzuje stan i udostępnia metody biznesowe. Value object byłby niemutowalny i bez tożsamości."
+    },
+    {
+      "id": "arch-q021",
+      "topic": "Zasady ogólne",
+      "level": 1,
+      "q": "Developer dodaje do nowego serwisu abstrakcję wieloprovidera kolejek, plugin system i konfigurowalne retry, „bo kiedyś może się przydać”, choć jest jedno wymaganie: wysłać maila. Którą zasadę łamie?",
+      "options": [
+        "DRY",
+        "YAGNI",
+        "Liskov Substitution",
+        "Composition over inheritance"
+      ],
+      "correct": 1,
+      "why": "YAGNI mówi, by nie implementować funkcji, dopóki nie są potrzebne – spekulacyjna złożoność kosztuje utrzymanie i często okazuje się nietrafiona. DRY dotyczy duplikacji wiedzy, a LSP i kompozycja nie mają tu zastosowania."
+    },
+    {
+      "id": "arch-q022",
+      "topic": "Zasady ogólne",
+      "level": 2,
+      "q": "Masz klasy Notifier, EmailNotifier, SmsNotifier, LoggingEmailNotifier, RetryingSmsNotifier, LoggingRetryingEmailNotifier... Co jest źródłem problemu i jak go rozwiązać?",
+      "options": [
+        "Łączenie cech przez dziedziczenie powoduje eksplozję klas; kompozycja (dekoratory: logging, retry wokół INotifier) pozwala łączyć je dowolnie",
+        "Za mało dziedziczenia – trzeba dodać klasę bazową AbstractLoggingRetryingNotifier",
+        "Naruszenie ISP – trzeba podzielić INotifier na więcej interfejsów",
+        "Brak Singletona – każda klasa powinna mieć jedną instancję"
+      ],
+      "correct": 0,
+      "why": "Każda kombinacja cech jako osobna podklasa rośnie kombinatorycznie. Dekoratory implementujące ten sam interfejs można nakładać w dowolnej kolejności i liczbie. Kolejna klasa bazowa pogłębia problem, a ISP i Singleton nie dotyczą tej sytuacji."
+    },
+    {
+      "id": "arch-q023",
+      "topic": "Komunikacja",
+      "level": 3,
+      "q": "Po złożeniu zamówienia użytkownik od razu przechodzi do listy zamówień (read model aktualizowany przez event) i nie widzi nowego zamówienia. Co jest najrozsądniejszą reakcją projektową?",
+      "options": [
+        "Usunąć brokera i aktualizować wszystkie read modele synchronicznie w jednej rozproszonej transakcji 2PC",
+        "Dodać Thread.Sleep(2000) w handlerze komendy, żeby read model zdążył się zaktualizować",
+        "Wyłączyć cache przeglądarki",
+        "Zaakceptować eventual consistency i obsłużyć ją w UX – np. zwrócić utworzone zamówienie z komendy i pokazać je od razu albo status „przetwarzanie”"
+      ],
+      "correct": 3,
+      "why": "Opóźnienie read modelu jest naturalną cechą asynchronicznej aktualizacji. Rozwiązuje się je projektowo (optimistic UI, zwracanie wyniku komendy, read-your-writes dla autora). 2PC drastycznie zwiększa sprzężenie i jest słabo wspierane przez brokery, sleep tylko maskuje problem, a cache przeglądarki nie jest przyczyną."
+    },
+    {
+      "id": "arch-q024",
+      "topic": "DDD",
+      "level": 3,
+      "q": "Domain events są dispatchowane w SaveChangesInterceptor PRZED zapisem, a handler OrderPlaced wysyła maila do klienta przez SMTP. Jakie ryzyko to tworzy?",
+      "options": [
+        "Żadne – interceptor gwarantuje, że SaveChanges zawsze się powiedzie",
+        "Mail nigdy nie zostanie wysłany, bo interceptor blokuje operacje I/O",
+        "Mail może zostać wysłany, mimo że transakcja się nie powiedzie (rollback) – efekty zewnętrzne lepiej realizować po commicie przez outbox",
+        "Jedynym ryzykiem jest to, że event zostanie obsłużony dwa razy przez EF"
+      ],
+      "correct": 2,
+      "why": "Handlery przed commitem nadają się do zmian w tej samej transakcji (np. aktualizacja innego agregatu w tej samej bazie). Efekt zewnętrzny, którego nie da się wycofać, wykonany przed zapisem tworzy niespójność, gdy zapis się nie uda. Wzorzec: integration event w outboxie, wysyłka po commicie."
+    },
+    {
+      "id": "arch-q025",
+      "topic": "Projektowanie API",
+      "level": 3,
+      "q": "Klient mobilny przy słabym zasięgu ponawia POST /payments po timeoucie i czasem powstają podwójne płatności. Jaki jest standardowy sposób zaprojektowania tego endpointu?",
+      "options": [
+        "Zmienić metodę na GET, bo GET jest idempotentny",
+        "Wymagać nagłówka Idempotency-Key i po stronie serwera zapamiętywać wynik dla klucza – ponowienie zwraca ten sam wynik bez drugiej płatności",
+        "Wyłączyć retry w kliencie i zwiększyć timeout do 5 minut",
+        "Zwracać 500 przy każdym duplikacie, żeby klient przestał ponawiać"
+      ],
+      "correct": 1,
+      "why": "POST nie jest idempotentny z definicji, ale można to zapewnić kluczem idempotencji generowanym przez klienta i zapisywanym razem z wynikiem (z unikalnym indeksem w bazie). GET nie powinien zmieniać stanu, wyłączenie retry nie rozwiązuje utraty odpowiedzi, a 500 nie mówi klientowi, czy płatność się udała."
+    }
+  ]
+}

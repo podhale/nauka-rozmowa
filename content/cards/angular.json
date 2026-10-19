@@ -1,0 +1,830 @@
+{
+  "cat": "angular",
+  "name": "Angular",
+  "cards": [
+    {
+      "id": "angular-001",
+      "topic": "Standalone",
+      "level": 1,
+      "q": "Czym są standalone components i dlaczego są domyślne?",
+      "a": "Standalone component sam deklaruje swoje zależności w `imports` (inne komponenty, dyrektywy, pipe'y), bez potrzeby NgModule. Od Angular 19 `standalone: true` jest domyślne – nie trzeba go pisać, a komponent w NgModule musi mieć jawnie `standalone: false`. Zalety: mniej boilerplate'u, jasne zależności widoczne w pliku komponentu, łatwiejszy lazy loading pojedynczych komponentów (`loadComponent`) i lepszy tree-shaking. NgModule nadal działa, ale nowe projekty go nie potrzebują.",
+      "code": "@Component({\n  selector: 'app-user-list',\n  imports: [UserCardComponent, DatePipe, RouterLink],\n  templateUrl: './user-list.html',\n})\nexport class UserListComponent {}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-002",
+      "topic": "Bootstrap",
+      "level": 1,
+      "q": "Jak wygląda bootstrap aplikacji standalone i gdzie rejestruje się providery?",
+      "a": "Aplikację uruchamia `bootstrapApplication(AppComponent, appConfig)`. `appConfig` (zwykle `app.config.ts`) to `ApplicationConfig` z tablicą `providers`, w której rejestrujemy funkcje `provide*`: router, HttpClient, change detection, hydrację, animacje itd. Zastępuje to `AppModule` i `forRoot()`. Providery z tej tablicy trafiają do root environment injectora.",
+      "code": "export const appConfig: ApplicationConfig = {\n  providers: [\n    provideBrowserGlobalErrorListeners(),\n    provideRouter(routes, withComponentInputBinding()),\n    provideHttpClient(withFetch(), withInterceptors([authInterceptor])),\n  ],\n};\n\nbootstrapApplication(AppComponent, appConfig);",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-003",
+      "topic": "Dependency Injection",
+      "level": 3,
+      "q": "Opisz hierarchię injectorów: environment injector vs element injector.",
+      "a": "Są dwie hierarchie. Environment injectors: platform → root (providery z `bootstrapApplication` i `providedIn: 'root'`) → injectory tworzone dla lazy-loaded tras (`providers` w konfiguracji route). Element injectors: tworzone dla komponentów/dyrektyw z `providers`/`viewProviders` w drzewie DOM. Przy `inject()` Angular najpierw idzie w górę hierarchii element injectorów (od bieżącego elementu do korzenia), a gdy nie znajdzie – przechodzi do environment injectorów. Provider w komponencie daje osobną instancję dla każdej instancji komponentu i jego poddrzewa.",
+      "tip": "Typowe follow-up: \"jak zrobić serwis per instancję komponentu?\" – `providers: [MyService]` w @Component. \"Jak per lazy feature?\" – `providers` w definicji trasy."
+    },
+    {
+      "id": "angular-004",
+      "topic": "Dependency Injection",
+      "level": 1,
+      "q": "Co daje providedIn: 'root'?",
+      "a": "`@Injectable({ providedIn: 'root' })` rejestruje serwis jako singleton w root injectorze bez dopisywania go do żadnej tablicy providers. Jest tree-shakable – jeśli nikt go nie wstrzykuje, nie trafi do bundla. Instancja jest tworzona leniwie, przy pierwszym wstrzyknięciu. To domyślny wybór dla serwisów aplikacyjnych."
+    },
+    {
+      "id": "angular-005",
+      "topic": "Dependency Injection",
+      "level": 2,
+      "q": "inject() vs constructor injection – różnice i co wybrać?",
+      "a": "`inject(Token)` pobiera zależność z bieżącego injection context: w konstruktorze, inicjalizatorze pola, fabryce providera, guardzie/interceptorze funkcyjnym lub w `runInInjectionContext`. Zalety: działa w funkcjach (functional guards, interceptory, resolvery), ułatwia dziedziczenie (podklasa nie musi przekazywać zależności do `super`), lepiej współpracuje z typowaniem i nowymi dekoratorami TS. Wywołanie poza injection context (np. w `ngOnInit`, w callbacku) kończy się błędem NG0203. Obecny styl Angulara preferuje `inject()`.",
+      "code": "export class OrdersComponent {\n  private readonly http = inject(HttpClient);\n  private readonly route = inject(ActivatedRoute);\n  private readonly config = inject(APP_CONFIG, { optional: true });\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-006",
+      "topic": "Dependency Injection",
+      "level": 2,
+      "q": "Czym jest InjectionToken i kiedy go używać?",
+      "a": "`InjectionToken<T>` to token DI dla wartości, które nie są klasą: konfiguracja, stałe, interfejsy, funkcje. Interfejs TypeScript znika w runtime, więc nie może być tokenem. Token może mieć wbudowaną fabrykę z `providedIn: 'root'` – wtedy jest tree-shakable i ma wartość domyślną bez rejestracji.",
+      "code": "export interface AppConfig { apiUrl: string; }\n\nexport const APP_CONFIG = new InjectionToken<AppConfig>('APP_CONFIG');\n\nproviders: [{ provide: APP_CONFIG, useValue: { apiUrl: '/api' } }]\n\nconst config = inject(APP_CONFIG);",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-007",
+      "topic": "Dependency Injection",
+      "level": 3,
+      "q": "Czym są multi providers i jakie są rodzaje providerów?",
+      "a": "Rodzaje: `useClass` (instancja klasy), `useValue` (gotowa wartość), `useFactory` (fabryka, może używać `inject()`), `useExisting` (alias do innego tokenu – ta sama instancja). `multi: true` sprawia, że pod jednym tokenem zbierana jest tablica wartości od wielu providerów zamiast nadpisywania – tak działają np. `HTTP_INTERCEPTORS`, `NG_VALIDATORS` czy `ENVIRONMENT_INITIALIZER`. Bez `multi` ostatni zarejestrowany provider wygrywa.",
+      "code": "export const PLUGINS = new InjectionToken<Plugin[]>('PLUGINS');\n\nproviders: [\n  { provide: PLUGINS, useClass: AnalyticsPlugin, multi: true },\n  { provide: PLUGINS, useClass: LoggerPlugin, multi: true },\n  { provide: Logger, useExisting: ConsoleLogger },\n]\n\nconst plugins = inject(PLUGINS); // [AnalyticsPlugin, LoggerPlugin]",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-008",
+      "topic": "Dependency Injection",
+      "level": 3,
+      "q": "Do czego służą opcje optional, self, skipSelf, host oraz viewProviders?",
+      "a": "Modyfikatory rozwiązywania w `inject(Token, { ... })`: `optional` – zwraca null zamiast błędu, gdy brak providera; `self` – szuka tylko w bieżącym element injectorze; `skipSelf` – zaczyna od rodzica (np. zagnieżdżone menu szuka rodzica tego samego typu); `host` – szuka najwyżej do komponentu-hosta. `viewProviders` udostępnia serwis tylko widokowi komponentu, a nie treści projektowanej przez `ng-content` – w przeciwieństwie do `providers`.",
+      "code": "export class TreeNodeComponent {\n  parent = inject(TreeNodeComponent, { skipSelf: true, optional: true });\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-009",
+      "topic": "Lifecycle",
+      "level": 1,
+      "q": "Wymień lifecycle hooks w kolejności i do czego służą najważniejsze.",
+      "a": "Kolejność: constructor → `ngOnChanges` (zmiana inputów, przed init i przy każdej zmianie) → `ngOnInit` (raz, inputy są już ustawione) → `ngDoCheck` → `ngAfterContentInit` / `ngAfterContentChecked` (treść z ng-content) → `ngAfterViewInit` / `ngAfterViewChecked` (widok i dzieci gotowe) → `ngOnDestroy`. W konstruktorze tylko DI i proste inicjalizacje, logikę startową w `ngOnInit`. Przy signal inputs `ngOnChanges` zastępuje się zwykle przez `computed`/`effect`.",
+      "tip": "Częsty błąd: czytanie inputów w konstruktorze – jeszcze nie są ustawione."
+    },
+    {
+      "id": "angular-010",
+      "topic": "Lifecycle",
+      "level": 2,
+      "q": "Czym są DestroyRef, takeUntilDestroyed oraz afterNextRender/afterEveryRender?",
+      "a": "`DestroyRef` pozwala zarejestrować callback na zniszczenie kontekstu (`onDestroy`) bez implementowania `ngOnDestroy` – przydatne w funkcjach i serwisach. `takeUntilDestroyed()` (z `rxjs-interop`) odpina subskrypcję przy zniszczeniu; w injection context nie wymaga argumentu, poza nim trzeba podać `DestroyRef`. `afterNextRender` wykonuje kod raz po najbliższym renderze, `afterEveryRender` (w v20 przemianowane z `afterRender`) po każdym – do pracy z DOM; nie uruchamiają się na serwerze, więc są bezpieczne dla SSR.",
+      "code": "constructor() {\n  this.socket.messages$\n    .pipe(takeUntilDestroyed())\n    .subscribe(m => this.messages.update(l => [...l, m]));\n\n  afterNextRender(() => this.editor = createEditor(this.host.nativeElement));\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-011",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "Jak działa change detection z Zone.js?",
+      "a": "Zone.js patchuje asynchroniczne API przeglądarki (zdarzenia DOM, setTimeout, Promise, XHR). Po zakończeniu takiego zadania Angular dostaje sygnał i uruchamia change detection od korzenia: przechodzi przez drzewo komponentów i porównuje wartości bindingów w szablonach z poprzednimi. Przy strategii Default sprawdzany jest każdy komponent. Wady: narzut Zone.js na bundle i wydajność, zbędne sprawdzenia, trudniejsze debugowanie oraz CD po zdarzeniach, które niczego nie zmieniły. W dev mode CD wykonuje dodatkowy przebieg kontrolny – stąd ExpressionChangedAfterItHasBeenCheckedError."
+    },
+    {
+      "id": "angular-012",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "Kiedy odświeżany jest komponent z ChangeDetectionStrategy.OnPush?",
+      "a": "Komponent OnPush jest sprawdzany tylko gdy jest oznaczony jako dirty, czyli: 1) zmieniła się referencja inputu (porównanie `===`, mutacja obiektu nie wystarcza), 2) zdarzenie obsłużone w jego szablonie lub w dzieciach, 3) zmienił się signal czytany w jego szablonie, 4) wywołano `markForCheck()` (robi to np. async pipe przy emisji). Samo `detectChanges()` sprawdza komponent od razu. OnPush wymusza niemutowalne dane i daje dużą oszczędność w dużych drzewach.",
+      "code": "@Component({\n  selector: 'app-product-card',\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  template: `{{ product().name }} – {{ product().price | currency }}`,\n})\nexport class ProductCardComponent {\n  product = input.required<Product>();\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-013",
+      "topic": "Change detection",
+      "level": 3,
+      "q": "Czym jest tryb zoneless i co w nim wyzwala change detection?",
+      "a": "Zoneless to działanie bez Zone.js: Angular nie przechwytuje asynchroniczności, tylko reaguje na jawne powiadomienia. CD jest planowana przez: zmiany sygnałów czytanych w szablonach, `markForCheck()` (np. async pipe), `ComponentRef.setInput()`, zdarzenia obsłużone w szablonie (listenery) oraz dołączenie/odłączenie widoku. Włącza się przez `provideZonelessChangeDetection()` (stabilne od v20.2; wcześniej `provideExperimentalZonelessChangeDetection`) i usunięcie zone.js z polyfills. Od Angular 21 nowe projekty generowane przez CLI są domyślnie zoneless. Zyski: mniejszy bundle, lepsza wydajność, czytelniejsze stack trace'y.",
+      "tip": "Migracja: kod, który zmienia zwykłe pola w setTimeout/subskrypcjach bez markForCheck, przestanie odświeżać widok. Najlepiej najpierw przejść na OnPush i sygnały."
+    },
+    {
+      "id": "angular-014",
+      "topic": "Control flow",
+      "level": 1,
+      "q": "Jak działa nowy control flow (@if, @for, @switch)?",
+      "a": "Wbudowana składnia blokowa zastępuje dyrektywy `*ngIf`, `*ngFor`, `ngSwitch` (te zostały oznaczone jako deprecated w v20). Nie wymaga importów, ma lepsze typowanie (zawężanie typów w `@if`) i jest szybsza. `@if` wspiera `@else if`/`@else` i alias `as`. `@switch` porównuje przez `===` i ma `@default`. Migrację automatyzuje `ng generate @angular/core:control-flow`.",
+      "code": "@if (user(); as u) {\n  <p>Witaj, {{ u.name }}</p>\n} @else {\n  <app-login />\n}\n\n@switch (status()) {\n  @case ('loading') { <app-spinner /> }\n  @case ('error') { <p>Błąd</p> }\n  @default { <app-list /> }\n}",
+      "lang": "html"
+    },
+    {
+      "id": "angular-015",
+      "topic": "Control flow",
+      "level": 2,
+      "q": "Dlaczego @for wymaga track i jakie zmienne udostępnia?",
+      "a": "`track` jest obowiązkowy – mówi Angularowi, jak identyfikować elementy, by przy zmianie listy przenosić/aktualizować istniejące węzły DOM zamiast tworzyć je od nowa. Dla encji z id używamy `track item.id`; `track $index` tylko dla statycznych list prymitywów, a `track item` (referencja) psuje wydajność, gdy dane przychodzą z serwera jako nowe obiekty. Dostępne zmienne: `$index`, `$first`, `$last`, `$even`, `$odd`, `$count`. Blok `@empty` renderuje się przy pustej kolekcji.",
+      "code": "@for (item of items(); track item.id; let i = $index, last = $last) {\n  <app-row [item]=\"item\" [position]=\"i + 1\" [class.last]=\"last\" />\n} @empty {\n  <p>Brak wyników</p>\n}",
+      "lang": "html"
+    },
+    {
+      "id": "angular-016",
+      "topic": "Control flow",
+      "level": 1,
+      "q": "Do czego służy @let w szablonie?",
+      "a": "`@let` deklaruje lokalną zmienną tylko do odczytu w szablonie (stabilne od v19). Pozwala uniknąć wielokrotnego powtarzania tego samego wyrażenia lub wielu `async` pipe'ów i poprawia czytelność. Zmienna jest przeliczana przy każdej change detection i widoczna w bieżącym widoku i jego dzieciach (nie przed deklaracją).",
+      "code": "@let user = user$ | async;\n@let fullName = user?.firstName + ' ' + user?.lastName;\n\n<h1>{{ fullName }}</h1>\n<app-avatar [user]=\"user\" />",
+      "lang": "html"
+    },
+    {
+      "id": "angular-017",
+      "topic": "@defer",
+      "level": 2,
+      "q": "Jak działa @defer i jakie ma triggery?",
+      "a": "`@defer` leniwie ładuje fragment szablonu wraz z jego zależnościami (komponenty, dyrektywy, pipe'y trafiają do osobnego chunka). Triggery `on`: `idle` (domyślny), `viewport`, `interaction`, `hover`, `immediate`, `timer(2s)`; oraz `when <warunek>`. `prefetch on ...` pozwala pobrać kod wcześniej niż wyrenderować. Bloki pomocnicze: `@placeholder` (przed załadowaniem, opcja `minimum`), `@loading` (w trakcie, opcje `after` i `minimum` przeciw migotaniu), `@error`.",
+      "code": "@defer (on viewport; prefetch on idle) {\n  <app-comments [postId]=\"postId()\" />\n} @placeholder (minimum 300ms) {\n  <div class=\"skeleton\"></div>\n} @loading (after 100ms; minimum 500ms) {\n  <app-spinner />\n} @error {\n  <p>Nie udało się załadować komentarzy</p>\n}",
+      "lang": "html"
+    },
+    {
+      "id": "angular-018",
+      "topic": "@defer",
+      "level": 3,
+      "q": "Jakie warunki muszą być spełnione, by @defer faktycznie wydzielił kod, i jak zachowuje się na serwerze?",
+      "a": "Zależności w bloku `@defer` muszą być standalone i nie mogą być używane nigdzie indziej w tym samym pliku (ani odwołane np. przez viewChild) – inaczej trafią do głównego chunka i zostaną załadowane od razu. Triggery `on viewport/interaction/hover` bez argumentu wymagają `@placeholder`, bo to on jest elementem obserwowanym. Przy SSR serwer domyślnie renderuje `@placeholder` (lub nic), a zawartość ładuje się w przeglądarce. Z incremental hydration (`hydrate on ...`) serwer renderuje główną treść, a jej hydracja jest odkładana do triggera.",
+      "tip": "@defer to świetne narzędzie na Core Web Vitals (mniejszy initial bundle), ale nie dla treści widocznej above the fold."
+    },
+    {
+      "id": "angular-019",
+      "topic": "Pipes",
+      "level": 2,
+      "q": "Czym różnią się pure i impure pipes?",
+      "a": "Pure pipe (domyślny) jest wywoływany tylko, gdy zmieni się referencja lub wartość prymitywna argumentu – Angular cache'uje wynik, więc jest tani. Mutacja tablicy (push) nie wywoła pure pipe'a ponownie. Impure pipe (`pure: false`) wykonuje się przy każdej change detection – działa przy mutacjach, ale jest kosztowny; przykładem jest `async`. Lepsze rozwiązanie niż impure pipe to zwykle niemutowalne dane albo `computed`.",
+      "code": "@Pipe({ name: 'initials' })\nexport class InitialsPipe implements PipeTransform {\n  transform(name: string): string {\n    return name.split(' ').map(p => p[0]).join('').toUpperCase();\n  }\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-020",
+      "topic": "Pipes",
+      "level": 1,
+      "q": "Jak działa async pipe i dlaczego jest wygodny?",
+      "a": "`async` subskrybuje Observable lub Promise, zwraca ostatnią wartość, wywołuje `markForCheck()` przy każdej emisji (działa z OnPush i zoneless) i automatycznie odpina subskrypcję przy zniszczeniu widoku. Eliminuje ręczne subscribe/unsubscribe i wycieki pamięci. Uwaga: każde użycie `| async` na zimnym Observable to osobna subskrypcja (np. osobne żądanie HTTP) – rozwiązanie to jeden `@let`, `shareReplay` albo `toSignal`.",
+      "code": "@let orders = orders$ | async;\n@if (orders) {\n  <app-orders-table [orders]=\"orders\" />\n}",
+      "lang": "html"
+    },
+    {
+      "id": "angular-021",
+      "topic": "Directives",
+      "level": 2,
+      "q": "Jak napisać attribute directive i jak obsłużyć zdarzenia/klasy hosta?",
+      "a": "Attribute directive zmienia zachowanie lub wygląd elementu, na którym jest użyta. Interakcję z elementem hosta definiuje się we właściwości `host` metadanych (zalecane w style guide zamiast `@HostListener`/`@HostBinding`): bindowanie klas, atrybutów, stylów i listenery zdarzeń. Do elementu dostęp przez `inject(ElementRef)`, a do bezpiecznych zmian DOM przez `Renderer2`.",
+      "code": "@Directive({\n  selector: '[appHighlight]',\n  host: {\n    '[class.highlighted]': 'active()',\n    '(mouseenter)': 'active.set(true)',\n    '(mouseleave)': 'active.set(false)',\n  },\n})\nexport class HighlightDirective {\n  active = signal(false);\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-022",
+      "topic": "Directives",
+      "level": 3,
+      "q": "Jak działa structural directive i jak napisać własną?",
+      "a": "Structural directive zarządza fragmentem DOM przez `TemplateRef` (szablon do wyrenderowania) i `ViewContainerRef` (miejsce, w którym tworzymy/usuwamy widoki). Gwiazdka (`*appIf=\"x\"`) to cukier składniowy – Angular owija element w `<ng-template>` i przekazuje go do dyrektywy. Kontekst widoku (np. `$implicit`) przekazuje zmienne do szablonu, a statyczna metoda `ngTemplateContextGuard` poprawia typowanie. Dziś przypadki typu if/for obsługuje control flow, ale własne strukturalne dyrektywy przydają się np. do uprawnień (`*appHasRole`).",
+      "code": "@Directive({ selector: '[appHasRole]' })\nexport class HasRoleDirective {\n  private tpl = inject(TemplateRef);\n  private vcr = inject(ViewContainerRef);\n  private auth = inject(AuthService);\n  appHasRole = input.required<string>();\n\n  constructor() {\n    effect(() => {\n      this.vcr.clear();\n      if (this.auth.hasRole(this.appHasRole())) this.vcr.createEmbeddedView(this.tpl);\n    });\n  }\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-023",
+      "topic": "Directives",
+      "level": 3,
+      "q": "Czym są host directives?",
+      "a": "`hostDirectives` pozwala dołączyć standalone dyrektywy do komponentu lub innej dyrektywy na poziomie definicji – kompozycja zachowań bez dziedziczenia i bez wymagania, by użytkownik dopisywał atrybuty w szablonie. Inputy i outputy dołączonej dyrektywy nie są domyślnie publiczne – trzeba je jawnie wystawić (opcjonalnie z aliasem). Dobre do współdzielenia zachowań jak focus, tooltip, drag, atrybuty ARIA.",
+      "code": "@Component({\n  selector: 'app-menu-item',\n  hostDirectives: [\n    { directive: FocusableDirective },\n    { directive: TooltipDirective, inputs: ['tooltipText: hint'] },\n  ],\n  template: `<ng-content />`,\n})\nexport class MenuItemComponent {}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-024",
+      "topic": "Content projection",
+      "level": 2,
+      "q": "Jak działa content projection i ng-content z select?",
+      "a": "`<ng-content>` wstawia w szablon komponentu treść przekazaną przez rodzica między tagami komponentu. Wiele slotów definiuje się przez `select` (selektor CSS: tag, atrybut, klasa); treść niepasująca trafia do `<ng-content>` bez select. Od v18 `ng-content` może mieć treść domyślną (fallback). Ważne: projektowana treść jest tworzona przez rodzica zawsze – nawet jeśli `ng-content` jest w `@if` i nie jest wyświetlany. Do warunkowego/wielokrotnego renderowania używa się `ng-template` + `ngTemplateOutlet`.",
+      "code": "<!-- card.html -->\n<header><ng-content select=\"[card-title]\" /></header>\n<section><ng-content>Brak treści</ng-content></section>\n<footer><ng-content select=\"app-card-actions\" /></footer>\n\n<!-- użycie -->\n<app-card>\n  <h2 card-title>Zamówienie</h2>\n  <p>Szczegóły...</p>\n</app-card>",
+      "lang": "html"
+    },
+    {
+      "id": "angular-025",
+      "topic": "Style",
+      "level": 2,
+      "q": "Jakie są tryby ViewEncapsulation i jak stylować hosta?",
+      "a": "`Emulated` (domyślny): Angular dodaje unikalne atrybuty do elementów i przepisuje selektory CSS, więc style komponentu nie wyciekają na zewnątrz ani do komponentów dzieci. `None`: style są globalne. `ShadowDom`: prawdziwy Shadow DOM przeglądarki. Element hosta styluje się przez `:host` (i `:host(.active)`), a kontekst rodzica przez `:host-context()`. `::ng-deep` przebija enkapsulację, ale jest deprecated – lepiej używać CSS custom properties jako API stylów komponentu.",
+      "code": ":host {\n  display: block;\n  padding: var(--card-padding, 16px);\n}\n:host(.compact) { --card-padding: 8px; }",
+      "lang": "text"
+    },
+    {
+      "id": "angular-026",
+      "topic": "Routing",
+      "level": 1,
+      "q": "Jak skonfigurować lazy loading w routerze?",
+      "a": "Standalone komponent ładujemy leniwie przez `loadComponent`, a grupę tras feature'a przez `loadChildren` zwracające tablicę `Routes`. Dynamiczny `import()` sprawia, że builder tworzy osobny chunk ładowany przy pierwszym wejściu na trasę. Przy domyślnym eksporcie (`export default`) można pominąć `.then(m => m.X)`. `providers` w definicji trasy tworzą environment injector dla tego feature'a.",
+      "code": "export const routes: Routes = [\n  { path: '', component: HomeComponent },\n  { path: 'settings', loadComponent: () => import('./settings/settings').then(m => m.SettingsComponent) },\n  {\n    path: 'admin',\n    canMatch: [adminGuard],\n    loadChildren: () => import('./admin/admin.routes').then(m => m.ADMIN_ROUTES),\n  },\n];",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-027",
+      "topic": "Routing",
+      "level": 2,
+      "q": "Jak pisze się funkcyjne guardy i czym różni się canActivate od canMatch?",
+      "a": "Zalecanym stylem są funkcje typu `CanActivateFn`, `CanMatchFn`, `CanDeactivateFn` (zastąpiły guardy klasowe) – zależności pobiera się przez `inject()`. Guard zwraca `boolean`, `UrlTree` (przekierowanie) lub `RedirectCommand` (od v18), także jako Observable/Promise. `canActivate` sprawdza dostęp po dopasowaniu trasy, `canMatch` decyduje, czy trasa w ogóle może zostać dopasowana – jeśli nie, router próbuje kolejnych tras, a leniwy kod nie jest pobierany. `canActivateChild` działa na trasach-dzieciach.",
+      "code": "export const authGuard: CanActivateFn = (route, state) => {\n  const auth = inject(AuthService);\n  const router = inject(Router);\n  return auth.isLoggedIn()\n    ? true\n    : router.createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });\n};",
+      "lang": "typescript",
+      "tip": "Guard na froncie to UX, nie bezpieczeństwo – autoryzacja musi być wymuszana na backendzie."
+    },
+    {
+      "id": "angular-028",
+      "topic": "Routing",
+      "level": 2,
+      "q": "Czym są resolvery i co daje withComponentInputBinding()?",
+      "a": "Resolver (`ResolveFn<T>`) pobiera dane przed aktywacją trasy – komponent dostaje je gotowe, ale nawigacja czeka na odpowiedź (gorszy odbiór przy wolnym API, więc często lepiej ładować w komponencie i pokazać skeleton). `withComponentInputBinding()` w `provideRouter` wiąże parametry trasy, query params, `data` i wyniki resolverów bezpośrednio z inputami komponentu o tej samej nazwie – bez wstrzykiwania `ActivatedRoute`.",
+      "code": "export const productResolver: ResolveFn<Product> = (route) =>\n  inject(ProductService).get(route.paramMap.get('id')!);\n\n{ path: 'product/:id', component: ProductComponent, resolve: { product: productResolver } }\n\nexport class ProductComponent {\n  id = input.required<string>();        // z :id\n  product = input.required<Product>();  // z resolvera\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-029",
+      "topic": "HttpClient",
+      "level": 1,
+      "q": "Jak skonfigurować HttpClient w aplikacji standalone i co daje withFetch()?",
+      "a": "HttpClient rejestruje się przez `provideHttpClient()` w providerach aplikacji (`HttpClientModule` jest deprecated). Features dodaje się funkcjami: `withInterceptors([...])`, `withFetch()`, `withXsrfConfiguration()` itd. `withFetch()` przełącza backend z XMLHttpRequest na Fetch API – zalecane przy SSR (lepsza wydajność i kompatybilność na serwerze); kosztem jest brak raportowania postępu uploadu. Metody HttpClient zwracają zimne Observable – żądanie idzie dopiero przy subskrypcji.",
+      "code": "provideHttpClient(\n  withFetch(),\n  withInterceptors([authInterceptor, errorInterceptor]),\n)",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-030",
+      "topic": "HttpClient",
+      "level": 2,
+      "q": "Jak napisać interceptor funkcyjny?",
+      "a": "Interceptor funkcyjny to `HttpInterceptorFn`: `(req, next) => Observable<HttpEvent>`. Zależności przez `inject()`. `HttpRequest` jest niemutowalny – zmiany robi się przez `req.clone(...)`. Na odpowiedź można reagować operatorami RxJS (catchError, retry, finalize). Kolejność w `withInterceptors` ma znaczenie: żądanie przechodzi przez nie od pierwszego do ostatniego, a odpowiedź w odwrotnej kolejności. Interceptory klasowe nadal działają przez `withInterceptorsFromDi()`.",
+      "code": "export const authInterceptor: HttpInterceptorFn = (req, next) => {\n  const token = inject(AuthService).token();\n  const router = inject(Router);   // synchronicznie, w injection context\n  if (!token || !req.url.startsWith('/api')) return next(req);\n\n  return next(req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })).pipe(\n    catchError(err => {\n      if (err.status === 401) router.navigate(['/login']);\n      return throwError(() => err);\n    }),\n  );\n};",
+      "lang": "typescript",
+      "tip": "Pułapka: inject() wywołane wewnątrz catchError (asynchronicznie) jest już poza injection context – zależności pobiera się synchronicznie na początku funkcji interceptora."
+    },
+    {
+      "id": "angular-031",
+      "topic": "Formularze",
+      "level": 1,
+      "q": "Reactive forms vs template-driven forms – czym się różnią?",
+      "a": "Template-driven (`FormsModule`, `ngModel`): model formularza tworzony niejawnie z szablonu, mniej kodu, dobre dla prostych formularzy, ale trudniejsze testowanie i dynamika (asynchroniczne aktualizacje). Reactive (`ReactiveFormsModule`, `FormGroup`/`FormControl`): model zdefiniowany jawnie w TypeScript, synchroniczny dostęp, silne typowanie, łatwe testy, dynamiczne pola (`FormArray`), strumienie `valueChanges`. Do złożonych formularzy w aplikacjach biznesowych standardem są reactive forms. Signal Forms w v21 są eksperymentalne."
+    },
+    {
+      "id": "angular-032",
+      "topic": "Formularze",
+      "level": 2,
+      "q": "Czym są typed forms i NonNullableFormBuilder?",
+      "a": "Od v14 reactive forms są silnie typowane: typ `FormGroup` jest inferowany z wartości początkowych, a `form.value.email` ma typ `string | undefined` (bo kontrolka może być disabled), natomiast `getRawValue()` zwraca pełny typ. Domyślnie `reset()` ustawia `null`, więc typ kontrolki to `string | null`. `nonNullable` (np. `fb.nonNullable.group` lub `inject(NonNullableFormBuilder)`) sprawia, że reset wraca do wartości początkowej i typ nie zawiera null.",
+      "code": "private fb = inject(NonNullableFormBuilder);\n\nform = this.fb.group({\n  email: ['', [Validators.required, Validators.email]],\n  age: [18, Validators.min(18)],\n});\n// form.controls.email: FormControl<string>",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-033",
+      "topic": "Formularze",
+      "level": 2,
+      "q": "Jak napisać własny walidator synchroniczny i asynchroniczny?",
+      "a": "Walidator synchroniczny to `ValidatorFn`: przyjmuje `AbstractControl` i zwraca `ValidationErrors | null` (null = poprawnie). Może dotyczyć całej grupy (np. zgodność haseł). Walidator asynchroniczny (`AsyncValidatorFn`) zwraca Observable lub Promise z tym samym typem; uruchamia się tylko, gdy walidatory synchroniczne przeszły, a w trakcie kontrolka ma status `PENDING`. Dla async warto ustawić `updateOn: 'blur'` albo debounce, żeby nie odpytywać API przy każdym znaku.",
+      "code": "export const passwordsMatch: ValidatorFn = (group) =>\n  group.get('password')?.value === group.get('confirm')?.value\n    ? null : { passwordsMismatch: true };\n\nexport function uniqueEmail(api: UserApi): AsyncValidatorFn {\n  return (control) => api.emailExists(control.value).pipe(\n    map(exists => (exists ? { emailTaken: true } : null)),\n  );\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-034",
+      "topic": "SSR",
+      "level": 3,
+      "q": "Jak działa SSR, hydracja i incremental hydration w Angularze?",
+      "a": "SSR renderuje HTML na serwerze (`@angular/ssr`), co poprawia LCP i SEO. Hydracja (`provideClientHydration()`) sprawia, że klient przejmuje istniejący DOM zamiast go niszczyć i renderować od nowa. Event replay (`withEventReplay()`) zapamiętuje kliknięcia użytkownika przed hydracją i odtwarza je po niej. Incremental hydration (`withIncrementalHydration()`, stabilne od v20) pozwala odkładać hydrację fragmentów oznaczonych `@defer` z triggerami `hydrate on viewport/interaction/idle/...` lub `hydrate never` – kod tych fragmentów nie jest pobierany, dopóki nie są potrzebne. Można też ustalać tryb renderowania per trasa (server routes: Prerender, Server, Client).",
+      "code": "// app.config.ts\nprovideClientHydration(withEventReplay(), withIncrementalHydration())\n\n// szablon\n@defer (hydrate on viewport) {\n  <app-reviews />\n}",
+      "lang": "typescript",
+      "tip": "Typowy problem: bezpośrednia manipulacja DOM lub dostęp do window/localStorage w konstruktorze – na serwerze nie istnieją. Kod przeglądarkowy w afterNextRender."
+    },
+    {
+      "id": "angular-035",
+      "topic": "Performance",
+      "level": 2,
+      "q": "Jakie są najważniejsze techniki optymalizacji wydajności w Angularze?",
+      "a": "Renderowanie: OnPush wszędzie, sygnały, zoneless, `track` po id w `@for`, unikanie wywołań metod w szablonach (computed/pure pipes), wirtualny scroll (CDK) dla długich list. Ładowanie: lazy loading tras, `@defer` dla ciężkich fragmentów, SSR + hydracja, `NgOptimizedImage`. Bundle: budgets w `angular.json` (build ostrzega/failuje po przekroczeniu), analiza (source-map-explorer, `--stats-json`), usuwanie ciężkich zależności. Diagnostyka: Angular DevTools profiler i Chrome Performance.",
+      "code": "\"budgets\": [\n  { \"type\": \"initial\", \"maximumWarning\": \"500kB\", \"maximumError\": \"1MB\" },\n  { \"type\": \"anyComponentStyle\", \"maximumWarning\": \"4kB\" }\n]",
+      "lang": "json"
+    },
+    {
+      "id": "angular-036",
+      "topic": "Performance",
+      "level": 2,
+      "q": "Co daje NgOptimizedImage?",
+      "a": "Dyrektywa `NgOptimizedImage` (atrybut `ngSrc` zamiast `src`) wymusza dobre praktyki dla obrazów: wymaga `width`/`height` (lub `fill`), co zapobiega CLS; domyślnie ustawia `loading=\"lazy\"`; dla obrazu LCP dodaje się `priority` (wysoki fetchpriority, brak lazy, ostrzeżenie o preconnect). Generuje `srcset` przy użyciu loadera CDN i ostrzega w dev mode, gdy obraz LCP nie ma `priority` lub jest dużo większy niż wyświetlany.",
+      "code": "<img ngSrc=\"/hero.jpg\" width=\"1200\" height=\"600\" priority alt=\"Baner\" />\n<img ngSrc=\"/avatar.png\" width=\"48\" height=\"48\" alt=\"Avatar\" />",
+      "lang": "html"
+    },
+    {
+      "id": "angular-037",
+      "topic": "Komunikacja",
+      "level": 1,
+      "q": "Jakie są sposoby komunikacji między komponentami?",
+      "a": "Rodzic → dziecko: `input()`. Dziecko → rodzic: `output()`. Dwukierunkowo dla kontrolek: `model()`. Rodzic wywołuje metodę dziecka: `viewChild()`. Komponenty niespokrewnione lub odległe w drzewie: wspólny serwis ze stanem (sygnały lub Observable), ewentualnie store (NgRx). Przez router: parametry trasy i query params. Zasada: preferować przepływ danych w dół i zdarzenia w górę, a współdzielony stan wynosić do serwisu zamiast przekazywać przez wiele poziomów (prop drilling)."
+    },
+    {
+      "id": "angular-038",
+      "topic": "Zarządzanie stanem",
+      "level": 2,
+      "q": "Serwis ze stanem czy NgRx – jak zdecydować?",
+      "a": "Serwis z sygnałami (lub BehaviorSubject) wystarcza w większości aplikacji: prosty, bez dodatkowych bibliotek, łatwy do testowania. NgRx Store (akcje, reducery, efekty, selektory) daje ścisły jednokierunkowy przepływ, Redux DevTools z time-travel i konwencje dla dużych zespołów – kosztem boilerplate'u. NgRx SignalStore to lżejszy środek: ustandaryzowany store oparty o sygnały. Kryteria: rozmiar zespołu i aplikacji, ilość współdzielonego stanu, potrzeba audytu zdarzeń i debugowania. Nie każdy stan musi być globalny – stan lokalny zostaje w komponencie."
+    },
+    {
+      "id": "angular-039",
+      "topic": "Bezpieczeństwo",
+      "level": 2,
+      "q": "Jak Angular chroni przed XSS i kiedy używać DomSanitizer?",
+      "a": "Angular traktuje wszystkie wartości jako niezaufane i automatycznie escapuje interpolację, a przy bindowaniu do `[innerHTML]`, `[style]`, `[href]`, `[src]` sanitizuje wartość wg kontekstu (HTML, style, URL, resource URL) – np. usuwa `<script>` i `javascript:` z linków, logując ostrzeżenie w dev mode. `DomSanitizer.bypassSecurityTrust*` wyłącza tę ochronę i wolno go używać tylko dla treści, którą sami kontrolujemy (nigdy dla danych od użytkownika). Unikać `ElementRef.nativeElement.innerHTML` – omija sanitizację. Dodatkowo: CSP (Angular wspiera nonce przez `ngCspNonce`), Trusted Types oraz obsługa XSRF w HttpClient.",
+      "code": "export class EmbedComponent {\n  private sanitizer = inject(DomSanitizer);\n  // tylko dla zaufanego URL z naszej konfiguracji!\n  videoUrl = this.sanitizer.bypassSecurityTrustResourceUrl(TRUSTED_EMBED_URL);\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-040",
+      "topic": "Architektura",
+      "level": 2,
+      "q": "Jak zorganizować strukturę dużego projektu Angular?",
+      "a": "Struktura według funkcjonalności (feature folders), a nie typów plików: `features/orders`, `features/admin`, każdy z własnymi trasami ładowanymi leniwie. Wspólne rzeczy: `core` (singletony: auth, interceptory, layout) i `shared` (UI bez logiki biznesowej, pipe'y, dyrektywy). Podział smart/dumb (container/presentational): komponenty kontenerowe pobierają dane i rozmawiają z serwisami, prezentacyjne dostają dane przez input i emitują zdarzenia – są OnPush, łatwe do testowania i reużycia. Granice między feature'ami warto pilnować (np. lint rules w Nx). Style guide z v20 rezygnuje z sufiksów nazw plików (`user-list.ts` zamiast `user-list.component.ts`)."
+    },
+    {
+      "id": "angular-041",
+      "topic": "Angular CLI",
+      "level": 2,
+      "q": "Jaki builder używa Angular CLI i co zmieniło się w Angular 21?",
+      "a": "Domyślny builder to `@angular/build:application` oparty na esbuild (szybkie buildy, wspólna obsługa przeglądarki, SSR i prerenderingu), a dev server używa Vite (HMR, szybki start). Stary webpackowy `browser` builder jest w trybie legacy. Angular 21: nowe projekty są domyślnie zoneless, domyślnym test runnerem jest Vitest (builder `@angular/build:unit-test`; Karma jest deprecated), a Signal Forms pojawiły się jako experimental. Przydatne komendy: `ng new`, `ng generate`, `ng update` (migracje automatyczne), `ng build --configuration production`.",
+      "code": "ng new shop --ssr --style=scss\nng generate component features/orders/order-list\nng update @angular/core @angular/cli\nng test",
+      "lang": "bash"
+    },
+    {
+      "id": "angular-042",
+      "topic": "Formularze",
+      "level": 3,
+      "q": "Jak zintegrować własny komponent z formularzami (ControlValueAccessor)?",
+      "a": "Aby własna kontrolka (np. date picker, rating) działała z `formControlName` i `ngModel`, implementuje `ControlValueAccessor`: `writeValue` (model → widok), `registerOnChange` (widok → model), `registerOnTouched` i opcjonalnie `setDisabledState`. Rejestruje się ją jako provider `NG_VALUE_ACCESSOR` z `multi: true` i `useExisting`. Wtedy walidacja, stan touched/dirty i disabled działają jak w natywnych inputach.",
+      "code": "@Component({\n  selector: 'app-rating',\n  providers: [{ provide: NG_VALUE_ACCESSOR, useExisting: RatingComponent, multi: true }],\n  template: `...`,\n})\nexport class RatingComponent implements ControlValueAccessor {\n  value = signal(0);\n  private onChange = (v: number) => {};\n  writeValue(v: number) { this.value.set(v ?? 0); }\n  registerOnChange(fn: (v: number) => void) { this.onChange = fn; }\n  registerOnTouched(fn: () => void) {}\n  rate(v: number) { this.value.set(v); this.onChange(v); }\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-043",
+      "topic": "HttpClient",
+      "level": 3,
+      "q": "Jak Angular obsługuje XSRF/CSRF w HttpClient?",
+      "a": "HttpClient automatycznie odczytuje token z cookie (domyślnie `XSRF-TOKEN`) i dodaje go jako nagłówek (domyślnie `X-XSRF-TOKEN`) do żądań modyfikujących (np. POST, PUT, DELETE) wysyłanych do tego samego originu (typowo względne URL-e). Nie dodaje go do GET/HEAD ani do żądań na inny origin, żeby nie wyciekał token. Nazwy cookie/nagłówka zmienia się przez `withXsrfConfiguration()`. Backend musi ustawić cookie i weryfikować nagłówek – sam Angular niczego nie chroni bez współpracy serwera.",
+      "code": "provideHttpClient(\n  withXsrfConfiguration({ cookieName: 'CSRF-TOKEN', headerName: 'X-CSRF-TOKEN' }),\n)",
+      "lang": "typescript",
+      "tip": "W ASP.NET Core trzeba skonfigurować antiforgery z nagłówkiem zgodnym z tym, co wysyła Angular."
+    },
+    {
+      "id": "angular-044",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "Czym jest ExpressionChangedAfterItHasBeenCheckedError i jak go naprawić?",
+      "a": "W dev mode Angular po change detection wykonuje drugi przebieg kontrolny i sprawdza, czy wartości bindingów się nie zmieniły. Jeśli zmieniły się w trakcie cyklu (np. ustawienie pola w `ngAfterViewInit`, dziecko modyfikujące stan rodzica podczas renderowania, getter zwracający za każdym razem nowy obiekt), dostajemy ten błąd – sygnał, że przepływ danych jest niejednokierunkowy. Naprawa: przenieść logikę wcześniej (`ngOnInit`, computed), używać sygnałów i pochodnych zamiast zmian w hookach \"after\". `setTimeout` czy `detectChanges` to obejścia, a nie rozwiązanie."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "angular-q001",
+      "topic": "Control flow",
+      "level": 1,
+      "q": "Co się stanie przy kompilacji tego szablonu?",
+      "code": "@for (user of users()) {\n  <li>{{ user.name }}</li>\n}",
+      "lang": "html",
+      "options": [
+        "Zadziała, Angular domyślnie użyje track $index",
+        "Zadziała, Angular domyślnie użyje track item (referencja)",
+        "Ostrzeżenie w konsoli tylko w dev mode",
+        "Błąd kompilacji – blok @for wymaga wyrażenia track"
+      ],
+      "correct": 3,
+      "why": "W nowym control flow track jest obowiązkowy, a jego brak to błąd kompilacji. To świadoma decyzja – w *ngFor brak trackBy był częstym źródłem problemów z wydajnością."
+    },
+    {
+      "id": "angular-q002",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "Rodzic wykonuje poniższy kod, a dziecko z OnPush wyświetla `user.name` z inputu (dekorator @Input). Co zobaczy użytkownik?",
+      "code": "changeName() {\n  this.user.name = 'Anna';\n}",
+      "lang": "typescript",
+      "options": [
+        "Nowe imię, bo change detection zawsze sprawdza wszystkie komponenty",
+        "Stare imię – referencja inputu się nie zmieniła, więc komponent OnPush nie zostanie odświeżony",
+        "Błąd ExpressionChangedAfterItHasBeenCheckedError",
+        "Nowe imię, ale dopiero po 2 cyklach change detection"
+      ],
+      "correct": 1,
+      "why": "OnPush porównuje inputy przez referencję. Mutacja obiektu nie zmienia referencji, więc komponent nie jest oznaczany jako dirty. Rozwiązanie: niemutowalna aktualizacja `this.user = { ...this.user, name: 'Anna' }` lub sygnały."
+    },
+    {
+      "id": "angular-q003",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "Które zdarzenie NIE spowoduje odświeżenia komponentu OnPush (aplikacja z Zone.js, bez sygnałów)?",
+      "options": [
+        "Kliknięcie przycisku z (click) w szablonie tego komponentu",
+        "Zmiana zwykłego pola komponentu w callbacku setTimeout",
+        "Przekazanie nowej referencji obiektu do inputu",
+        "Emisja Observable wyświetlanego przez async pipe"
+      ],
+      "correct": 1,
+      "why": "setTimeout uruchomi globalną change detection (Zone.js), ale komponent OnPush nie jest oznaczony jako dirty, więc zostanie pominięty. Zdarzenie w szablonie, nowa referencja inputu i async pipe (markForCheck) oznaczają go do sprawdzenia."
+    },
+    {
+      "id": "angular-q004",
+      "topic": "Dependency Injection",
+      "level": 2,
+      "q": "Serwis ma `providedIn: 'root'`, ale komponent dodatkowo ma `providers: [CartService]`. Co dostaną dwie instancje tego komponentu?",
+      "options": [
+        "Każda instancja komponentu dostanie własną instancję CartService",
+        "Obie dostaną ten sam singleton z root",
+        "Błąd – serwisu nie można zarejestrować w dwóch miejscach",
+        "Pierwsza dostanie instancję z root, druga nową"
+      ],
+      "correct": 0,
+      "why": "Element injector komponentu jest sprawdzany przed root injectorem. providers w @Component tworzy instancję na każdy egzemplarz komponentu (i współdzieloną z jego poddrzewem). Rejestracja w kilku miejscach jest dozwolona – wygrywa najbliższy injector."
+    },
+    {
+      "id": "angular-q005",
+      "topic": "Dependency Injection",
+      "level": 2,
+      "q": "Co jest nie tak w tym kodzie?",
+      "code": "export class Cmp implements OnInit {\n  ngOnInit() {\n    const router = inject(Router);\n    router.navigate(['/home']);\n  }\n}",
+      "lang": "typescript",
+      "options": [
+        "inject() można używać tylko w serwisach",
+        "Router trzeba wstrzykiwać przez konstruktor, bo nie jest providedIn root",
+        "inject() wywołane w ngOnInit jest poza injection context – błąd NG0203",
+        "Nic – ngOnInit to część injection context"
+      ],
+      "correct": 2,
+      "why": "Injection context istnieje w konstruktorze, inicjalizatorach pól, fabrykach providerów i funkcjach wywoływanych przez Angular w DI (guardy, interceptory). Hooki cyklu życia już nie. Poprawka: `private router = inject(Router);` jako pole."
+    },
+    {
+      "id": "angular-q006",
+      "topic": "Dependency Injection",
+      "level": 3,
+      "q": "Dwa providery rejestrują ten sam token PLUGINS przez useClass, bez multi: true. Co zwróci inject(PLUGINS)?",
+      "options": [
+        "Tablicę obu instancji",
+        "Instancję z pierwszego providera",
+        "Błąd o zduplikowanym providerze",
+        "Instancję z ostatnio zarejestrowanego providera"
+      ],
+      "correct": 3,
+      "why": "Bez multi: true kolejna rejestracja tego samego tokenu nadpisuje poprzednią i wygrywa ostatnia. Żeby zebrać wszystkie wartości w tablicę (jak HTTP_INTERCEPTORS), każdy provider musi mieć multi: true."
+    },
+    {
+      "id": "angular-q007",
+      "topic": "Lifecycle",
+      "level": 1,
+      "q": "Jaka jest poprawna kolejność wywołań przy tworzeniu komponentu z inputem?",
+      "options": [
+        "constructor → ngOnChanges → ngOnInit → ngAfterContentInit → ngAfterViewInit",
+        "constructor → ngOnInit → ngOnChanges → ngAfterViewInit → ngAfterContentInit",
+        "ngOnInit → constructor → ngOnChanges → ngAfterViewInit → ngAfterContentInit",
+        "constructor → ngOnInit → ngAfterViewInit → ngOnChanges → ngAfterContentInit"
+      ],
+      "correct": 0,
+      "why": "ngOnChanges jest wywoływany przed ngOnInit (gdy są bindowane inputy), potem init, następnie treść projektowana (content) i na końcu widok (view) – bo widok może zależeć od treści."
+    },
+    {
+      "id": "angular-q008",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "W dev mode po uruchomieniu komponentu pojawia się błąd. Jaki i dlaczego?",
+      "code": "@Component({ template: `<h1>{{ title }}</h1>` })\nexport class Cmp implements AfterViewInit {\n  title = 'Ładowanie';\n  ngAfterViewInit() { this.title = 'Gotowe'; }\n}",
+      "lang": "typescript",
+      "options": [
+        "NG0203 – brak injection context",
+        "Brak błędu – ngAfterViewInit to właściwe miejsce na zmiany stanu",
+        "NullInjectorError dla ElementRef",
+        "ExpressionChangedAfterItHasBeenCheckedError – wartość bindingu zmieniła się po jego sprawdzeniu"
+      ],
+      "correct": 3,
+      "why": "Widok został już sprawdzony z title = 'Ładowanie', a ngAfterViewInit zmienia wartość w tym samym cyklu. Przebieg kontrolny dev mode wykrywa niezgodność. Przenieś ustawienie do ngOnInit lub użyj sygnału/computed."
+    },
+    {
+      "id": "angular-q009",
+      "topic": "Pipes",
+      "level": 2,
+      "q": "Pure pipe `filterActive` jest użyty jako `users | filterActive`. Po wykonaniu kodu poniżej lista w widoku:",
+      "code": "this.users.push(newUser);",
+      "lang": "typescript",
+      "options": [
+        "Zaktualizuje się, bo pipe wykonuje się przy każdej change detection",
+        "Nie zmieni się – referencja tablicy jest ta sama, więc pure pipe nie jest wywoływany ponownie",
+        "Zaktualizuje się tylko przy OnPush",
+        "Spowoduje błąd, bo pure pipe nie przyjmuje tablic"
+      ],
+      "correct": 1,
+      "why": "Pure pipe przelicza się tylko przy zmianie referencji/wartości prymitywnej argumentu. push mutuje tablicę. Rozwiązanie: `this.users = [...this.users, newUser]` (lub sygnał z update), a nie zmiana pipe'a na impure."
+    },
+    {
+      "id": "angular-q010",
+      "topic": "Pipes",
+      "level": 1,
+      "q": "Ile żądań HTTP wyśle ten szablon, jeśli `user$ = this.http.get<User>('/api/me')`?",
+      "code": "<h1>{{ (user$ | async)?.name }}</h1>\n<img [src]=\"(user$ | async)?.avatarUrl\" />",
+      "lang": "html",
+      "options": [
+        "2 – każdy async pipe to osobna subskrypcja zimnego Observable",
+        "1 – Angular deduplikuje identyczne żądania",
+        "1 – async pipe współdzieli subskrypcję w obrębie komponentu",
+        "0 – żądanie wyśle się dopiero po wywołaniu subscribe w kodzie"
+      ],
+      "correct": 0,
+      "why": "Observable z HttpClient jest zimny: każda subskrypcja wykonuje żądanie. Rozwiązanie: `@let user = user$ | async;`, shareReplay lub toSignal."
+    },
+    {
+      "id": "angular-q011",
+      "topic": "@defer",
+      "level": 2,
+      "q": "Co się stanie przy kompilacji tego szablonu?",
+      "code": "@defer (on viewport) {\n  <app-map />\n}",
+      "lang": "html",
+      "options": [
+        "Zadziała – Angular obserwuje sam komponent app-map",
+        "Zadziała – blok zostanie załadowany od razu",
+        "Błąd – trigger on viewport bez argumentu wymaga bloku @placeholder",
+        "Zadziała, ale tylko w SSR"
+      ],
+      "correct": 2,
+      "why": "on viewport (oraz interaction/hover) bez wskazanej referencji obserwuje element z @placeholder. Bez placeholdera nie ma czego obserwować – kompilator zgłasza błąd. Alternatywą jest `on viewport(triggerRef)` z referencją do innego elementu."
+    },
+    {
+      "id": "angular-q012",
+      "topic": "@defer",
+      "level": 2,
+      "q": "Komponent HeavyChart jest użyty w @defer, ale w tym samym komponencie jest też odczyt `viewChild(HeavyChartComponent)`. Co się stanie?",
+      "options": [
+        "HeavyChart zostanie załadowany eagerly – nie trafi do osobnego chunka",
+        "HeavyChart zostanie wydzielony, a viewChild zwróci zawsze undefined",
+        "Błąd kompilacji",
+        "Angular utworzy dwa chunki: eager i lazy"
+      ],
+      "correct": 0,
+      "why": "Aby zależność była lazy, nie może być referencjonowana poza blokami @defer w tym samym pliku. Odwołanie w kodzie klasy (viewChild z typem jako predykatem) wymaga klasy od razu, więc trafia do głównego bundla. Angular nie zgłasza błędu – po prostu traci się korzyść."
+    },
+    {
+      "id": "angular-q013",
+      "topic": "@defer",
+      "level": 3,
+      "q": "Aplikacja z SSR (bez incremental hydration) ma `@defer (on viewport) { <app-reviews /> } @placeholder { <p>…</p> }`. Co znajdzie się w HTML z serwera?",
+      "options": [
+        "Wyrenderowany app-reviews",
+        "Zawartość @placeholder",
+        "Zawartość @loading",
+        "Pusty komentarz – serwer nigdy nie renderuje bloków @defer"
+      ],
+      "correct": 1,
+      "why": "Na serwerze triggery typu viewport/interaction nie mają sensu, więc renderowany jest placeholder; właściwa treść ładuje się w przeglądarce. Z incremental hydration i `hydrate on ...` serwer renderuje główną treść, a odkłada tylko jej hydrację."
+    },
+    {
+      "id": "angular-q014",
+      "topic": "Routing",
+      "level": 1,
+      "q": "Guard ma przekierować niezalogowanego użytkownika na /login. Co powinien zwrócić?",
+      "options": [
+        "router.navigate(['/login']) i false",
+        "window.location.href = '/login'",
+        "router.createUrlTree(['/login'])",
+        "throw new Error('unauthorized')"
+      ],
+      "correct": 2,
+      "why": "Zwrócenie UrlTree (lub RedirectCommand) to deklaratywne przekierowanie, które router obsłuży jako część tej samej nawigacji – bez wyścigu dwóch nawigacji. navigate + false działa, ale jest gorszą praktyką; window.location przeładowuje aplikację."
+    },
+    {
+      "id": "angular-q015",
+      "topic": "Routing",
+      "level": 2,
+      "q": "Trasa to `{ path: 'orders/:id', component: OrderComponent }`. Router skonfigurowano z withComponentInputBinding(). Jak najprościej odczytać id?",
+      "options": [
+        "id = input<string>() w OrderComponent",
+        "Wstrzyknąć ActivatedRoute i subskrybować paramMap – nie ma innej drogi",
+        "id = model<string>() – inputy z routera muszą być model",
+        "Dodać resolver zwracający id"
+      ],
+      "correct": 0,
+      "why": "withComponentInputBinding wiąże parametry trasy, query params, data i wyniki resolverów z inputami o tej samej nazwie. input() jest w pełni wystarczający; ActivatedRoute nadal działa, ale nie jest konieczny."
+    },
+    {
+      "id": "angular-q016",
+      "topic": "HttpClient",
+      "level": 2,
+      "q": "Dlaczego nagłówek Authorization nie trafia do żądania?",
+      "code": "export const authInterceptor: HttpInterceptorFn = (req, next) => {\n  req.headers.set('Authorization', `Bearer ${inject(Auth).token()}`);\n  return next(req);\n};",
+      "lang": "typescript",
+      "options": [
+        "Interceptory funkcyjne nie mogą modyfikować nagłówków",
+        "Brakuje withFetch() w provideHttpClient",
+        "HttpHeaders są niemutowalne – set() zwraca nowy obiekt, a oryginalne req się nie zmienia",
+        "Nagłówek Authorization jest blokowany przez przeglądarkę"
+      ],
+      "correct": 2,
+      "why": "HttpRequest i HttpHeaders są niemutowalne; wynik set() jest ignorowany. Poprawnie: `return next(req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }));`."
+    },
+    {
+      "id": "angular-q017",
+      "topic": "HttpClient",
+      "level": 3,
+      "q": "Konfiguracja: `withInterceptors([logging, auth, retry])`. W jakiej kolejności interceptory zobaczą odpowiedź?",
+      "options": [
+        "logging → auth → retry",
+        "Kolejność jest nieokreślona",
+        "auth → retry → logging",
+        "retry → auth → logging"
+      ],
+      "correct": 3,
+      "why": "Żądanie przechodzi przez łańcuch w kolejności rejestracji (logging → auth → retry → backend), a odpowiedź wraca w odwrotnej kolejności, jak w stosie wywołań. Dlatego np. logowanie czasu umieszcza się na początku – obejmuje całą resztę łańcucha."
+    },
+    {
+      "id": "angular-q018",
+      "topic": "Formularze",
+      "level": 2,
+      "q": "Jaki będzie typ i wartość `form.controls.name.value` po `form.reset()`?",
+      "code": "form = inject(FormBuilder).group({ name: '' });",
+      "lang": "typescript",
+      "options": [
+        "string | null, wartość null",
+        "string, wartość ''",
+        "string | undefined, wartość undefined",
+        "any, wartość ''"
+      ],
+      "correct": 0,
+      "why": "Domyślnie FormControl może być zresetowany do null, więc typed forms dodają null do typu. Aby reset wracał do wartości początkowej i typ był string, używa się nonNullable (fb.nonNullable.group lub NonNullableFormBuilder)."
+    },
+    {
+      "id": "angular-q019",
+      "topic": "Formularze",
+      "level": 2,
+      "q": "Kontrolka email ma walidatory [required, email] oraz async walidator uniqueEmail. Użytkownik wpisał 'abc'. Co się dzieje?",
+      "options": [
+        "Async walidator wysyła żądanie, a status to PENDING",
+        "Wszystkie walidatory uruchamiają się równolegle",
+        "Async walidator uruchomi się dopiero przy submit",
+        "Async walidator nie jest uruchamiany, bo walidatory synchroniczne zwracają błąd"
+      ],
+      "correct": 3,
+      "why": "Angular uruchamia walidatory asynchroniczne dopiero, gdy wszystkie synchroniczne przejdą – to oszczędza zbędne żądania. Przy poprawnym formacie status przejdzie w PENDING na czas walidacji async."
+    },
+    {
+      "id": "angular-q020",
+      "topic": "Content projection",
+      "level": 3,
+      "q": "Rodzic przekazuje `<app-expensive />` do panelu, który ma `@if (open()) { <ng-content /> }`. Panel jest zamknięty. Czy app-expensive zostanie utworzony?",
+      "options": [
+        "Nie – @if blokuje utworzenie projektowanej treści",
+        "Tak, ale tylko konstruktor, bez ngOnInit",
+        "Nie, ale zostanie utworzony przy pierwszym otwarciu i zniszczony przy zamknięciu",
+        "Tak – projektowana treść jest tworzona przez rodzica zawsze, niezależnie od tego, czy ng-content się wyświetla"
+      ],
+      "correct": 3,
+      "why": "Treść projektowana należy do widoku rodzica i jest tworzona razem z nim. ng-content tylko decyduje, gdzie ją wstawić. Do leniwego/warunkowego tworzenia trzeba przekazać ng-template i renderować go przez ngTemplateOutlet (lub użyć @defer po stronie rodzica)."
+    },
+    {
+      "id": "angular-q021",
+      "topic": "Style",
+      "level": 2,
+      "q": "Komponent Parent ma w swoich stylach `button { color: red; }` (ViewEncapsulation.Emulated). Których przycisków to dotyczy?",
+      "options": [
+        "Wszystkich przycisków w aplikacji",
+        "Tylko przycisków w szablonie Parent, nie w szablonach komponentów-dzieci",
+        "Przycisków w Parent i we wszystkich komponentach-dzieciach",
+        "Żadnych – w Emulated trzeba użyć :host button"
+      ],
+      "correct": 1,
+      "why": "Emulated dodaje do selektorów atrybut unikalny dla komponentu, więc style dotyczą tylko elementów utworzonych w szablonie Parent. Elementy w szablonach dzieci mają atrybuty swoich komponentów, więc style nie przeciekają. Globalnie działałyby przy ViewEncapsulation.None."
+    },
+    {
+      "id": "angular-q022",
+      "topic": "Routing",
+      "level": 1,
+      "q": "Który zapis poprawnie ładuje leniwie standalone komponent?",
+      "options": [
+        "loadChildren: () => SettingsComponent",
+        "component: import('./settings')",
+        "loadComponent: () => import('./settings').then(m => m.SettingsComponent)",
+        "lazy: SettingsComponent"
+      ],
+      "correct": 2,
+      "why": "loadComponent przyjmuje funkcję zwracającą Promise komponentu (dynamiczny import). loadChildren służy do tras lub NgModule, a pole component wymaga klasy, nie Promise. Opcja lazy nie istnieje."
+    },
+    {
+      "id": "angular-q023",
+      "topic": "Bezpieczeństwo",
+      "level": 2,
+      "q": "Komentarz użytkownika zawiera `<img src=x onerror=alert(1)><b>OK</b>`. Co wyrenderuje `<div [innerHTML]=\"comment\"></div>`?",
+      "options": [
+        "Wykona alert(1)",
+        "Tekst ze znacznikami wyświetlony dosłownie, jak w interpolacji",
+        "Obrazek bez atrybutu onerror i pogrubione OK – Angular usunie niebezpieczny atrybut i ostrzeże w konsoli",
+        "Błąd w runtime – innerHTML jest zablokowany"
+      ],
+      "correct": 2,
+      "why": "Binding do innerHTML przechodzi przez sanitizację w kontekście HTML: bezpieczne tagi zostają, niebezpieczne atrybuty i skrypty są usuwane (w dev mode z ostrzeżeniem). Interpolacja {{ }} wyświetliłaby tekst dosłownie. Ochronę wyłącza dopiero bypassSecurityTrustHtml."
+    },
+    {
+      "id": "angular-q024",
+      "topic": "Bezpieczeństwo",
+      "level": 3,
+      "q": "Aplikacja wysyła POST na `https://api.example.com/orders` (inna domena niż frontend). Czy HttpClient doda nagłówek X-XSRF-TOKEN?",
+      "options": [
+        "Nie – HttpClient dodaje token XSRF tylko do żądań modyfikujących wysyłanych do tego samego originu",
+        "Tak – zawsze dla POST",
+        "Tak – dla każdego żądania, gdy istnieje cookie XSRF-TOKEN",
+        "Nie – XSRF działa tylko z withFetch()"
+      ],
+      "correct": 0,
+      "why": "Celowo, by token nie wyciekał do obcych domen, Angular dodaje nagłówek tylko do mutujących żądań na URL-e z tego samego originu (typowo względne). Dla API na innej domenie trzeba to rozwiązać inaczej (np. własny interceptor świadomie dodający token, CORS + SameSite cookies, tokeny Bearer)."
+    },
+    {
+      "id": "angular-q025",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "Nowy projekt w Angular 21 (domyślnie zoneless). Po kliknięciu wywołuje się `loadData()`. Czy widok pokaże dane?",
+      "code": "data: Item[] = [];\nloadData() {\n  this.http.get<Item[]>('/api/items').subscribe(d => this.data = d);\n}",
+      "lang": "typescript",
+      "options": [
+        "Tak – kliknięcie zawsze odświeża wszystkie widoki po zakończeniu żądania",
+        "Nie – zmiana zwykłego pola w subskrypcji nie powiadamia Angulara; trzeba użyć sygnału lub markForCheck",
+        "Tak – HttpClient automatycznie uruchamia change detection",
+        "Nie – w zoneless HttpClient nie działa bez withFetch()"
+      ],
+      "correct": 1,
+      "why": "Kliknięcie planuje CD synchronicznie po handlerze, ale odpowiedź przychodzi później, a przypisanie do zwykłego pola nie jest powiadomieniem dla Angulara. Rozwiązania: `data = signal(...)` i set w subskrypcji, toSignal/httpResource albo async pipe."
+    },
+    {
+      "id": "angular-q026",
+      "topic": "Performance",
+      "level": 2,
+      "q": "Lighthouse wskazuje obraz bannera jako element LCP ładowany późno. Używasz NgOptimizedImage. Co dodać?",
+      "options": [
+        "loading=\"lazy\"",
+        "Atrybut priority na tym obrazie",
+        "Owinąć obraz w @defer (on viewport)",
+        "Zamienić ngSrc na src"
+      ],
+      "correct": 1,
+      "why": "priority ustawia wysoki fetchpriority i wyłącza lazy loading dla obrazu LCP (i podpowiada preconnect). Lazy loading albo @defer jeszcze opóźniłyby LCP."
+    },
+    {
+      "id": "angular-q027",
+      "topic": "Komunikacja",
+      "level": 1,
+      "q": "Dwa niespokrewnione komponenty (nagłówek i lista produktów) muszą znać liczbę elementów w koszyku. Najlepsze rozwiązanie?",
+      "options": [
+        "Wspólny serwis providedIn: 'root' ze stanem koszyka (np. sygnały)",
+        "Przekazywać liczbę przez input/output przez wszystkie komponenty pośrednie",
+        "Zapisywać liczbę w localStorage i odczytywać w każdym komponencie co sekundę",
+        "Użyć viewChild z nagłówka do listy produktów"
+      ],
+      "correct": 0,
+      "why": "Wspólny stan dla odległych komponentów należy do serwisu. Przekazywanie przez wiele poziomów (prop drilling) wiąże komponenty pośrednie, polling localStorage jest nieefektywny, a viewChild działa tylko na dzieci we własnym widoku."
+    },
+    {
+      "id": "angular-q028",
+      "topic": "Directives",
+      "level": 2,
+      "q": "Jak Angular traktuje zapis `<div *appTooltip=\"'Pomoc'\">...</div>`?",
+      "options": [
+        "Dodaje atrybut appTooltip do div i tworzy element injector",
+        "Owija div w <ng-template [appTooltip]=\"'Pomoc'\"> i przekazuje TemplateRef do dyrektywy",
+        "Kompiluje div jako komponent o nazwie appTooltip",
+        "Gwiazdka oznacza, że dyrektywa ma pure: false"
+      ],
+      "correct": 1,
+      "why": "Gwiazdka to cukier składniowy structural directive: element zostaje przeniesiony do ng-template, a dyrektywa dostaje TemplateRef i sama decyduje przez ViewContainerRef, czy i ile razy go wyrenderować. Dla zwykłego zachowania na elemencie (tooltip) wystarczyłaby attribute directive – bez gwiazdki."
+    },
+    {
+      "id": "angular-q029",
+      "topic": "Angular CLI",
+      "level": 1,
+      "q": "Jaki test runner dostaje domyślnie nowy projekt wygenerowany przez Angular CLI 21?",
+      "options": [
+        "Karma z Jasmine",
+        "Jest",
+        "Web Test Runner",
+        "Vitest"
+      ],
+      "correct": 3,
+      "why": "Od Angular 21 domyślnym runnerem testów jednostkowych w nowych projektach jest Vitest (builder @angular/build:unit-test). Karma jest deprecated, ale istniejące projekty mogą z niej dalej korzystać."
+    },
+    {
+      "id": "angular-q030",
+      "topic": "SSR",
+      "level": 3,
+      "q": "Po włączeniu hydracji w konsoli pojawia się błąd niezgodności DOM (hydration mismatch) dla komponentu, który w konstruktorze dodaje element przez `nativeElement.appendChild`. Jak to najlepiej naprawić?",
+      "options": [
+        "Wyłączyć hydrację w całej aplikacji",
+        "Owinąć kod w setTimeout",
+        "Przenieść manipulację DOM do afterNextRender lub zastąpić ją szablonem; ostatecznie oznaczyć komponent ngSkipHydration",
+        "Dodać ChangeDetectionStrategy.OnPush"
+      ],
+      "correct": 2,
+      "why": "Hydracja oczekuje, że DOM z serwera odpowiada temu, co wygenerowałby klient. Bezpośrednia manipulacja DOM to łamie. Najlepiej opisać strukturę w szablonie lub wykonywać kod przeglądarkowy w afterNextRender; ngSkipHydration to furtka dla pojedynczych komponentów (traci się zalety hydracji dla nich). setTimeout i OnPush nie rozwiązują problemu."
+    }
+  ]
+}

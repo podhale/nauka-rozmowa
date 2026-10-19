@@ -1,0 +1,332 @@
+{
+  "cat": "tsrx",
+  "name": "TypeScript i RxJS",
+  "cards": [
+    {
+      "id": "tsrx-s001",
+      "topic": "Template literal types",
+      "level": 3,
+      "q": "Czym są template literal types i do czego realnie ich używasz?",
+      "a": "To typy stringów budowane jak template stringi w JS: `on${Capitalize<K>}` tworzy unię wszystkich kombinacji. W połączeniu z mapped types i key remapping (as) generuję np. nazwy getterów czy eventów z kluczy obiektu, a z infer potrafię parsować stringi na poziomie typów – np. wyciągnąć parametry ':id' z wzorca ścieżki. Dzięki temu literówka w nazwie eventu albo parametru trasy jest błędem kompilacji, a nie bugiem w runtime.",
+      "code": "type Params<S extends string> =\n  S extends `${string}:${infer P}/${infer Rest}` ? P | Params<`/${Rest}`>\n  : S extends `${string}:${infer P}` ? P : never;\n\ntype R = Params<'/users/:id/posts/:postId'>;   // 'id' | 'postId'\n\ntype Getters<T> = {\n  [K in keyof T as `get${Capitalize<string & K>}`]: () => T[K];\n};\ntype G = Getters<{ name: string }>;            // { getName: () => string }",
+      "lang": "typescript",
+      "tip": "Dobry follow-up: pokaż key remapping z as i filtrowanie kluczy przez zwrócenie never.",
+      "deep": "Unie w template literal types mnożą się kartezjańsko: `${A}-${B}` przy unii 20 × 20 × 20 elementów to już 8000 członów i kompilator zaczyna zwalniać, a powyżej ok. 100 tys. rzuca błąd „Expression produces a union type that is too complex to represent”. Parsowanie przez infer działa leniwie od lewej: `${infer P}/${infer Rest}` bierze najkrótszy prefiks do pierwszego '/'. Wbudowane intrinsic types (Uppercase, Lowercase, Capitalize, Uncapitalize) są realizowane w kompilatorze, nie da się ich napisać samemu. Dobre zastosowania produkcyjne: typowane klucze i18n z pliku JSON, nazwy eventów, ścieżki do zagnieżdżonych pól formularza ('address.city'), parametry tras. Złe: walidacja formatu e-maila czy UUID w typach – to robi się w runtime (np. schemą zod) i ewentualnie oznacza brandem. Pamiętaj, że to wyłącznie compile time: dane z API typu string nie zostaną magicznie zawężone, trzeba je zwalidować."
+    },
+    {
+      "id": "tsrx-s002",
+      "topic": "Type-level programming",
+      "level": 3,
+      "q": "Gdzie jest granica sensownego type-level programming w TypeScript? Kiedy przesadzasz?",
+      "a": "System typów TS jest Turing-zupełny: rekurencyjne conditional types z infer pozwalają pisać DeepPartial, ścieżki do pól czy parsery stringów. Stosuję to w bibliotekach i warstwach współdzielonych, gdzie jeden skomplikowany typ daje bezpieczeństwo setkom wywołań. W kodzie aplikacyjnym przesadzam, gdy typ jest trudniejszy do zrozumienia niż kod, który zabezpiecza, gdy błędy kompilacji stają się nieczytelne albo gdy IDE zaczyna zwalniać. Wtedy wybieram prostsze typy, generowanie kodu (np. klient z OpenAPI) lub walidację w runtime.",
+      "code": "type DeepReadonly<T> =\n  T extends (...args: any[]) => any ? T\n  : T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> }\n  : T;\n\n// test typu – kompiluje się tylko, gdy typ działa zgodnie z oczekiwaniem\ndeclare const cfg: DeepReadonly<{ db: { port: number } }>;\n// @ts-expect-error\ncfg.db.port = 1;",
+      "lang": "typescript",
+      "tip": "Wspomnij o testowaniu typów: @ts-expect-error, expectTypeOf z Vitest albo biblioteki typu tsd.",
+      "deep": "Limity są twarde: zwykła rekurencja typów kończy się błędem TS2589 „Type instantiation is excessively deep and possibly infinite” (głębokość rzędu kilkudziesięciu poziomów), a tail-recursive conditional types (od TS 4.5) pozwalają na ok. 1000 iteracji. Każde użycie generycznego typu to instancjacja, którą kompilator liczy i cache'uje – typ typu Paths<T> na dużym modelu potrafi wydłużyć tsc o sekundy i zabić podpowiedzi w IDE. Do diagnozy używam tsc --extendedDiagnostics (Instantiations, Types) i --generateTrace. Praktyczne heurystyki: typ powinien mieć test (plik z @ts-expect-error i przypisaniami), komunikat błędu dla użytkownika powinien dać się zrozumieć, a zespół musi umieć go utrzymać. Zamiast typów, które „udowadniają” poprawność danych z sieci, lepsza jest jedna schema runtime, z której typ się wywodzi (z.infer). Na rozmowie dobrze brzmi: „umiem to napisać, ale wiem, kiedy nie warto”."
+    },
+    {
+      "id": "tsrx-s003",
+      "topic": "Wariancja",
+      "level": 3,
+      "q": "Co to jest wariancja (kowariancja, kontrawariancja) i jak dotyczy TypeScriptu?",
+      "a": "Wariancja mówi, czy relacja podtypu przenosi się na typ złożony. Kowariancja: jeśli Dog jest podtypem Animal, to Producer<Dog> jest podtypem Producer<Animal> – dotyczy wartości zwracanych i tylko-do-odczytu. Kontrawariancja działa odwrotnie i dotyczy parametrów funkcji: handler przyjmujący Animal może zastąpić handler przyjmujący Dog, ale nie odwrotnie. Pod strictFunctionTypes TS sprawdza parametry funkcji kontrawariantnie, ale metody deklarowane składnią metody (handle(x): void) pozostają biwariantne, a tablice są kowariantne – to świadome dziury w soundness.",
+      "code": "interface Animal { name: string }\ninterface Dog extends Animal { bark(): void }\n\ninterface ByMethod   { handle(a: Animal): void }       // biwariantne\ninterface ByProperty { handle: (a: Animal) => void }   // kontrawariantne\n\nconst m: ByMethod   = { handle: (d: Dog) => d.bark() }; // OK (dziura!)\nconst p: ByProperty = { handle: (d: Dog) => d.bark() }; // błąd kompilacji\n\ninterface Producer<out T> { get(): T }                  // TS 4.7+",
+      "lang": "typescript",
+      "deep": "Biwariancja metod została zostawiona dla kompatybilności, np. żeby Array<Dog> był przypisywalny do Array<Animal> mimo metody push(item: T). Skutek: `const animals: Animal[] = dogs; animals.push(cat)` kompiluje się i psuje dane w runtime. W interfejsach, gdzie zależy mi na bezpieczeństwie (handlery, callbacki), deklaruję właściwość typu funkcyjnego (handle: (x: T) => void) zamiast składni metody – wtedy działa kontrawariancja. Od TS 4.7 można jawnie oznaczyć parametry typu adnotacjami in/out (interface Producer<out T>), co dokumentuje intencję, przyspiesza sprawdzanie przypisań dużych typów generycznych i wyłapuje błędne użycia T. Inwariancja pojawia się, gdy T jest i na wejściu, i na wyjściu (np. mutowalna skrzynka get/set) – wtedy Box<Dog> nie jest Box<Animal>. To częsty temat przy EventEmitterach i typowaniu callbacków w Angularze/RxJS (np. dlaczego Observable<Dog> jest Observable<Animal>, a Subject jest w praktyce bardziej problematyczny)."
+    },
+    {
+      "id": "tsrx-s004",
+      "topic": "Branded types",
+      "level": 3,
+      "q": "Czym są branded (nominal) types i jakie problemy rozwiązują?",
+      "a": "TypeScript ma typowanie strukturalne, więc UserId i OrderId będące stringami są dla niego tym samym typem i łatwo je pomylić. Branding dokleja do prymitywu fantomową właściwość (string & { __brand: 'UserId' }), której nie ma w runtime, ale która rozróżnia typy w compile time. Wartość brandowaną tworzę tylko w jednym miejscu – funkcji-fabryce, która waliduje dane – więc typ staje się dowodem, że walidacja się odbyła („parse, don't validate”).",
+      "code": "declare const brand: unique symbol;\ntype Brand<T, B extends string> = T & { readonly [brand]: B };\n\ntype UserId = Brand<string, 'UserId'>;\ntype OrderId = Brand<string, 'OrderId'>;\n\nfunction toUserId(raw: string): UserId {\n  if (!/^usr_[a-z0-9]{12}$/.test(raw)) throw new Error('Invalid UserId');\n  return raw as UserId;\n}\n\ndeclare function getOrder(user: UserId, order: OrderId): void;\n// getOrder(orderId, userId) -> błąd kompilacji",
+      "lang": "typescript",
+      "deep": "Koszt w runtime jest zerowy – brand znika po kompilacji, a rzutowanie as UserId występuje tylko w smart konstruktorze. Typowe zastosowania: identyfikatory encji, kwoty w konkretnej walucie lub w groszach vs złotych, zwalidowany e-mail, zsanityzowany HTML, jednostki (Meters vs Feet). Wariant z `declare const brand: unique symbol` daje brand, którego nie da się przypadkiem podrobić literałem obiektu i który nie pojawia się w podpowiedziach. Trade-off: serializacja JSON i dane z API wracają jako zwykłe stringi, więc trzeba je przepuścić przez parser na granicy systemu (np. schema zod z .brand()). Nie przesadzam – brand na każdym stringu w aplikacji to biurokracja; stosuję go tam, gdzie pomyłka jest kosztowna i realna (pieniądze, identyfikatory w API z wieloma ID w jednej sygnaturze). Analogia z .NET: strongly typed IDs (record struct UserId(Guid Value)), tylko w TS bez narzutu alokacji."
+    },
+    {
+      "id": "tsrx-s005",
+      "topic": "Declaration merging",
+      "level": 3,
+      "q": "Czym jest declaration merging i module augmentation? Kiedy z tego korzystasz?",
+      "a": "Declaration merging to łączenie kilku deklaracji o tej samej nazwie w jedną: interfejsy z tą samą nazwą sumują swoje pola, a namespace może się złączyć z funkcją, klasą lub enumem (dodając im statyczne składowe). Na tym opiera się module augmentation – w pliku będącym modułem piszę declare module 'biblioteka' { interface X { ... } } i rozszerzam typy z zewnętrznej paczki, np. dodaję pole do Request w Expressie albo do Window przez declare global. Aliasy type się nie łączą – druga deklaracja to błąd Duplicate identifier.",
+      "code": "// types/augmentations.d.ts\nimport 'express-serve-static-core';\n\ndeclare module 'express-serve-static-core' {\n  interface Request { user?: { id: string; roles: string[] } }\n}\n\ndeclare global {\n  interface Window { __APP_CONFIG__: { apiUrl: string } }\n}",
+      "lang": "typescript",
+      "deep": "To jeden z praktycznych argumentów w dyskusji type vs interface: biblioteki eksportują interfejsy właśnie po to, żeby konsument mógł je rozszerzyć (np. konfiguracja motywu, rejestry pluginów, typowane eventy). Augmentacja wymaga, żeby plik był modułem – plik bez żadnego import/export jest skryptem globalnym i declare global w nim nie zadziała; wystarczy dodać export {}. Augmentacja może tylko łatać istniejące deklaracje, nie doda nowego eksportu do modułu. Ryzyko: przypadkowe zlanie się interfejsu z globalnym typem o tej samej nazwie (np. własny interface Event w pliku-skrypcie zmerguje się z DOM-owym Event) – stąd zasada, że wszystkie pliki to moduły (moduleDetection: force). Przy merging metod przeciążenia z późniejszych deklaracji trafiają wyżej w kolejności rozstrzygania. Klasa nie zmerguje się z klasą, a enumy const i zwykłe nie mieszają się. Augmentacje trzymam w jednym pliku *.d.ts typu types/augmentations.d.ts, żeby było wiadomo, gdzie „magia” jest zdefiniowana."
+    },
+    {
+      "id": "tsrx-s006",
+      "topic": "Module resolution",
+      "level": 3,
+      "q": "Jak działa module resolution w TypeScript i którą strategię (moduleResolution) wybierasz?",
+      "a": "moduleResolution określa, jak kompilator zamienia specyfikator importu na plik. Dla kodu przechodzącego przez bundler (Angular CLI z esbuild, Vite) używam 'bundler' – rozumie pole exports z package.json i nie wymaga rozszerzeń w importach względnych; nowe projekty Angulara mają to ustawione. Dla kodu uruchamianego bezpośrednio przez Node (ESM) wybieram 'nodenext', które odwzorowuje zasady Node: importy względne muszą mieć rozszerzenie .js, a CJS i ESM są rozróżniane po type w package.json. Kluczowe: TS nie przepisuje ścieżek – paths w tsconfig to tylko aliasy dla kompilatora, a w runtime musi je rozwiązać bundler lub loader.",
+      "code": "{\n  \"compilerOptions\": {\n    \"module\": \"preserve\",\n    \"moduleResolution\": \"bundler\",\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"paths\": { \"@app/*\": [\"src/app/*\"] }   // tylko dla kompilatora!\n  }\n}",
+      "lang": "json",
+      "deep": "Stary tryb 'node' (node10) ignoruje pole exports i dziś jest źródłem dziwnych błędów z paczkami ESM-only. Pole exports to nie tylko mapa wejść, ale i enkapsulacja: import 'lib/internal/x' nie zadziała, jeśli paczka tego nie eksportuje, a warunki types/import/require decydują, które typy zobaczy kompilator (klasyczny problem dual package: inne .d.ts dla CJS i ESM). Flaga verbatimModuleSyntax (TS 5.0) wymusza import type dla importów czysto typowych, dzięki czemu narzędzia transpilujące plik po pliku (esbuild, swc) nie muszą zgadywać, co usunąć – idzie w parze z isolatedModules. W monorepo aliasy z paths muszą być zsynchronizowane z konfiguracją bundlera/test runnera (Vitest, Jest moduleNameMapper), inaczej testy nie znajdą modułów, choć tsc jest zielony. Od TS 5.7 istnieje rewriteRelativeImportExtensions dla uruchamiania .ts bezpośrednio w Node z type strippingiem. Debuguję to przez tsc --traceResolution, które pokazuje każdy krok szukania pliku."
+    },
+    {
+      "id": "tsrx-s007",
+      "topic": "Strict mode",
+      "level": 3,
+      "q": "Jakie flagi poza strict włączasz w tsconfig i jak migrujesz duży projekt na pełny strict?",
+      "a": "Poza strict włączam noUncheckedIndexedAccess (arr[i] i obj[key] mają typ T | undefined), noImplicitOverride (override wymagane przy nadpisywaniu), noImplicitReturns, noFallthroughCasesInSwitch, noPropertyAccessFromIndexSignature, a w nowym kodzie także exactOptionalPropertyTypes (różnica między brakiem pola a polem = undefined). Angular CLI część z nich ustawia domyślnie razem ze strictTemplates. Migrację dużego projektu robię etapami: flaga po fladze, zaczynając od noImplicitAny i strictNullChecks, z mechanizmem zapadki (ratchet), żeby liczba błędów tylko malała.",
+      "code": "const prices: Record<string, number> = { a: 10 };\nconst p = prices['b'];           // noUncheckedIndexedAccess: number | undefined\nconst total = (p ?? 0) * 1.23;\n\nclass Base { save(): void {} }\nclass Child extends Base {\n  override save(): void {}       // noImplicitOverride wymaga 'override'\n}",
+      "lang": "typescript",
+      "deep": "Włączenie strictNullChecks w projekcie 500 tys. linii potrafi dać tysiące błędów, więc big bang zwykle się nie udaje. Opcje: osobny tsconfig.strict.json z listą „już czystych” plików uruchamiany w CI, plugin typescript-strict-plugin z komentarzem per plik, albo narzędzie typu betterer, które zapisuje snapshot liczby błędów i blokuje PR-y zwiększające go. Masowe dodawanie ! (non-null assertion) i as any tylko po to, by było zielono, to dług – wolę // @ts-expect-error z ticketem, bo zgłosi się sam, gdy problem zniknie. noUncheckedIndexedAccess jest uciążliwe w pętlach po indeksie, ale łapie realne bugi przy słownikach i parsowaniu danych; for...of i .at() z narrowingiem łagodzą ból. exactOptionalPropertyTypes bywa niekompatybilne z typami bibliotek, dlatego czasem zostawiam je wyłączone. useUnknownInCatchVariables (część strict) zmusza do zawężenia błędu w catch – w kodzie z HttpErrorResponse to dobra praktyka. Mierzę postęp liczbą błędów na flagę i pokazuję go zespołowi jak burndown."
+    },
+    {
+      "id": "tsrx-s008",
+      "topic": "Wydajność kompilacji",
+      "level": 3,
+      "q": "Kompilacja TypeScriptu w dużym repo trwa kilka minut, a IDE zwalnia. Jak to diagnozujesz i przyspieszasz?",
+      "a": "Najpierw mierzę: tsc --extendedDiagnostics pokazuje czas parsowania, bindowania i sprawdzania oraz liczbę instancjacji typów, a --generateTrace z analizatorem trace'ów wskazuje konkretne pliki i typy, które kosztują najwięcej. Potem stosuję typowe dźwignie: incremental z plikiem .tsbuildinfo, project references (composite + tsc -b), żeby budować tylko zmienione projekty, skipLibCheck, zawężenie include i types. W kodzie: jawne typy zwracane eksportowanych funkcji, interfejsy zamiast dużych intersekcji i unikanie gigantycznych unii czy rekurencyjnych typów.",
+      "code": "npx tsc -p tsconfig.json --noEmit --extendedDiagnostics\nnpx tsc -p tsconfig.json --noEmit --generateTrace ./trace\nnpx @typescript/analyze-trace ./trace     # najdroższe pliki i typy\n\n# monorepo: tylko zmienione projekty\nnpx tsc -b packages/api packages/web --verbose",
+      "lang": "bash",
+      "deep": "Interfejsy są cache'owane po nazwie, a intersekcje i anonimowe typy liczone od nowa przy każdym porównaniu – w dużych modelach różnica jest mierzalna. Jawny typ zwracany oszczędza kompilatorowi inferencji i skraca generowane .d.ts; flaga isolatedDeclarations (TS 5.5) wymusza to i pozwala narzędziom generować deklaracje równolegle, bez pełnego type-checkingu. Project references wymagają uporządkowania grafu zależności (bez cykli) – to przy okazji poprawia architekturę monorepo; Nx czy Turborepo dokładają cache wyników w CI. W Angularze build idzie przez esbuild, ale type-checking nadal robi kompilator TS/ngc, więc te same zasady obowiązują. Microsoft rozwija natywny port kompilatora w Go (TypeScript 7, wcześniej „Project Corsa”) z deklarowanym przyspieszeniem rzędu 10×; dostępny jest preview (pakiet @typescript/native-preview) – warto go sprawdzić na swoim repo, ale nie zakładać pełnej zgodności z narzędziami korzystającymi ze starego API kompilatora. Typowy efekt prac: z 4 minut do 40 sekund w CI dzięki tsc -b i cache, oraz płynne IDE po usunięciu jednego patologicznego typu."
+    },
+    {
+      "id": "tsrx-s009",
+      "topic": "Operatory spłaszczające",
+      "level": 3,
+      "q": "Co dokładnie dzieje się przy anulowaniu żądania przez switchMap i jakich race conditions to nie rozwiązuje?",
+      "a": "switchMap przy nowej wartości odsubskrybowuje poprzedni wewnętrzny Observable; dla HttpClient oznacza to abort żądania (XHR.abort lub AbortController przy withFetch) – w DevTools widać status canceled, a stara odpowiedź nigdy nie dotrze do subskrybenta. To eliminuje klasyczny race w wyszukiwarce, gdzie wolniejsza odpowiedź na starą frazę nadpisuje nowszą (co robi mergeMap). Ale anulowanie dzieje się tylko po stronie klienta: serwer mógł już zacząć lub skończyć przetwarzanie. Dlatego switchMap stosuję do odczytów, a dla zapisów wybieram concatMap/exhaustMap i idempotencję.",
+      "code": "results$ = this.term$.pipe(\n  debounceTime(300),\n  map(t => t.trim()),\n  distinctUntilChanged(),\n  switchMap(term => term.length < 2\n    ? of([])\n    : this.api.search(term).pipe(catchError(() => of([])))),\n);\n\n// ASP.NET Core: anulowanie dociera do bazy\napp.MapGet(\"/search\", (string q, AppDb db, CancellationToken ct) =>\n    db.Products.Where(p => p.Name.Contains(q)).Take(20).ToListAsync(ct));",
+      "lang": "typescript",
+      "deep": "Po stronie ASP.NET Core zerwane połączenie sygnalizuje HttpContext.RequestAborted – jeśli przekażę ten CancellationToken do EF Core i HttpClienta, anulowanie w przeglądarce realnie zwalnia zasoby serwera, co przy typeahead ma znaczenie pod obciążeniem. Przy HTTP/2 abort jednego żądania resetuje tylko jeden stream, nie całe połączenie. switchMap na POST jest groźny: użytkownik nie zobaczy odpowiedzi, a zapis i tak mógł się wykonać – stan UI rozjedzie się z bazą. Inne race conditions, których switchMap nie załatwia: dwa niezależne strumienie piszące do tego samego stanu (np. odświeżanie listy i optymistyczna aktualizacja), cache odpowiedzi współdzielony między użytkownikami oraz wyścigi między nawigacją a żądaniem – tu pomaga takeUntil/takeUntilDestroyed albo wiązanie żądania z parametrem trasy przez switchMap na paramMap. Przy resource/httpResource z Angulara mechanizm jest analogiczny: zmiana params anuluje poprzednie ładowanie przez AbortSignal."
+    },
+    {
+      "id": "tsrx-s010",
+      "topic": "Schedulery",
+      "level": 3,
+      "q": "Czym są schedulery w RxJS i kiedy ich świadomie używasz?",
+      "a": "Scheduler decyduje, kiedy i w jakim kontekście wykonywania wyemitowana zostanie wartość lub nastąpi subskrypcja. W RxJS 7 są cztery: queueScheduler (synchronicznie, z kolejkowaniem rekurencji), asapScheduler (microtask, jak Promise), asyncScheduler (macrotask przez setTimeout/setInterval – domyślny dla delay, debounceTime, interval, timer) oraz animationFrameScheduler (przed repaintem). Świadomie używam ich rzadko: observeOn(animationFrameScheduler) do płynnego renderowania szybkich strumieni, observeOn(asapScheduler) do odroczenia emisji po bieżącym kodzie, a w testach TestScheduler zastępuje czas wirtualnym.",
+      "code": "// maksymalnie jedna aktualizacja UI na klatkę dla szybkiego strumienia\nticks$.pipe(\n  auditTime(0, animationFrameScheduler),\n).subscribe(t => this.price.set(t.price));\n\n// zamiast deprecated of(1, 2, asyncScheduler)\nscheduled([1, 2], asyncScheduler).subscribe(console.log);",
+      "lang": "typescript",
+      "deep": "observeOn przesuwa w czasie powiadomienia (next/error/complete) dla operatorów dalej w łańcuchu, a subscribeOn przesuwa sam moment subskrypcji źródła – to różne rzeczy i częsta pomyłka na rozmowie. Przekazywanie schedulera do of/from (of(1, asyncScheduler)) jest w RxJS 7 deprecated – zamiast tego scheduled([...], scheduler). W Angularze z zone.js każdy setTimeout z asyncSchedulera wyzwala change detection, więc strumień 60 zdarzeń/s potrafi zarżnąć aplikację – wtedy subskrybuję w ngZone.runOutsideAngular i wracam do strefy tylko z wynikiem; w zoneless problem znika, bo CD wyzwalają sygnały i zdarzenia szablonu. Kolejność wykonania wynika z event loopa: kod synchroniczny, potem microtaski (asap, Promise), potem macrotaski (async). animationFrameScheduler z auditTime(0, animationFrameScheduler) to prosty sposób na „maksymalnie raz na klatkę”. Jedyny scheduler, który realnie zmienia testowalność, to TestScheduler – w run() wszystkie operatory czasowe automatycznie przechodzą na czas wirtualny."
+    },
+    {
+      "id": "tsrx-s011",
+      "topic": "shareReplay",
+      "level": 3,
+      "q": "Jakie są pułapki multicastingu w RxJS (share, shareReplay, refCount) w realnej aplikacji?",
+      "a": "share() i shareReplay() współdzielą jedną subskrypcję źródła między wielu subskrybentów. W RxJS 7 shareReplay to w praktyce share z ReplaySubjectem: resetOnError true, resetOnComplete false i resetOnRefCountZero równe opcji refCount. Najczęstsze pułapki: shareReplay bez refCount na nieskończonym źródle (wyciek połączenia), cache w serwisie root, który przeżywa wylogowanie i pokazuje dane poprzedniego użytkownika, oraz shareReplay wewnątrz metody zwracającej nowy pipe przy każdym wywołaniu – wtedy nic nie jest cache'owane. Dla precyzyjnej kontroli używam share() z jawną konfiguracją.",
+      "code": "private refresh$ = new Subject<void>();\n\nreadonly products$ = this.refresh$.pipe(\n  startWith(undefined),\n  switchMap(() => this.http.get<Product[]>('/api/products')),\n  share({\n    connector: () => new ReplaySubject<Product[]>(1),\n    resetOnError: true,\n    resetOnComplete: false,\n    resetOnRefCountZero: () => timer(5000),  // krótki grace period\n  }),\n);\n\ninvalidate() { this.refresh$.next(); }",
+      "lang": "typescript",
+      "deep": "Ponieważ resetOnComplete jest false, odpowiedź HTTP z shareReplay jest cache'owana na zawsze – nawet z refCount: true, bo zakończony ReplaySubject odtwarza wartość nowym subskrybentom; inwalidację trzeba zaprojektować (np. Subject refresh$ + switchMap albo reset przy logout). Błąd nie jest cache'owany (resetOnError), więc kolejny subskrybent ponowi żądanie – zwykle dobrze, ale przy wielu komponentach i padniętym API daje burzę retry. share({ resetOnRefCountZero: () => timer(5000) }) trzyma połączenie WebSocket kilka sekund po zniknięciu ostatniego subskrybenta, co eliminuje rozłączanie i łączenie przy przechodzeniu między trasami. Kolejność operatorów ma znaczenie: shareReplay przed map współdzieli surowe dane, a każdy subskrybent liczy map osobno; operator współdzielący stawiam na końcu łańcucha, który ma być wspólny. W nowym kodzie stan współdzielony coraz częściej trzymam w sygnale (toSignal w serwisie albo resource), a multicasting zostawiam dla strumieni zdarzeń."
+    },
+    {
+      "id": "tsrx-s012",
+      "topic": "catchError i retry",
+      "level": 3,
+      "q": "Jak projektujesz odporną obsługę błędów w RxJS: retry z backoffem, rozróżnianie błędów i fallbacki?",
+      "a": "Najpierw kategoryzuję błędy: przejściowe (status 0, 502/503/504, timeout) warto ponowić, błędy klienta (400, 401, 403, 404, 409) nie – ponawianie ich tylko obciąża serwer. Używam retry({ count, delay }) z RxJS 7.3+, gdzie delay zwraca timer z wykładniczym backoffem i jitterem albo throwError dla błędów nieprzejściowych. Ponawiam tylko operacje idempotentne (GET, PUT z kluczem) – POST bez idempotency key może zduplikować zamówienie. Na końcu catchError zamienia błąd w stan dla UI, a całość siedzi w wewnętrznym Observable, żeby nie zabić zewnętrznego strumienia.",
+      "code": "const isTransient = (e: unknown) =>\n  e instanceof HttpErrorResponse && (e.status === 0 || e.status >= 502);\n\nload$ = this.http.get<Order[]>('/api/orders').pipe(\n  retry({\n    count: 3,\n    delay: (err, attempt) => isTransient(err)\n      ? timer(2 ** attempt * 300 + Math.random() * 200)\n      : throwError(() => err),\n  }),\n  map(data => ({ status: 'ok' as const, data })),\n  catchError(error => of({ status: 'error' as const, error })),\n);",
+      "lang": "typescript",
+      "deep": "Jitter (losowe przesunięcie) zapobiega efektowi thundering herd: bez niego tysiąc klientów po awarii serwera ponawia żądania w tych samych milisekundach i dobija go przy wstawaniu. resetOnSuccess: true resetuje licznik prób po udanej emisji – ważne dla długo żyjących strumieni (WebSocket, polling), inaczej po kilku chwilowych awariach strumień umrze na zawsze. retryWhen jest deprecated – nowe API jest prostsze i czytelniejsze. Retry warto ograniczyć czasem (timeout na całą operację), żeby użytkownik nie czekał minut na spinner. Globalne retry w interceptorze HttpClient brzmi kusząco, ale ponawia też nieidempotentne POST-y – wolę jawne retry per wywołanie albo interceptor sterowany HttpContextToken. Po stronie .NET analogiczną rolę pełni Polly / Microsoft.Extensions.Http.Resilience z circuit breakerem, który przestaje ponawiać przy masowej awarii – w froncie odpowiednikiem jest ograniczenie prób i komunikat dla użytkownika."
+    },
+    {
+      "id": "tsrx-s013",
+      "topic": "Backpressure i buffering",
+      "level": 3,
+      "q": "Strumień z WebSocketu emituje setki zdarzeń na sekundę i UI nie nadąża. Jak radzisz sobie z backpressure w RxJS?",
+      "a": "RxJS jest push-based i nie ma prawdziwego backpressure – producent nie zwolni, bo konsument nie nadąża, więc trzeba świadomie wybrać strategię. Stratne: throttleTime, auditTime, sampleTime, debounceTime albo exhaustMap – gdy liczy się tylko najnowszy stan (ceny, pozycja kursora). Bezstratne: bufferTime/bufferCount do grupowania zdarzeń w paczki (batch insert, jedna aktualizacja listy zamiast stu) i mergeMap z limitem concurrency. W UI najczęściej łączę: zbieram zdarzenia w bufor, scalam do stanu i renderuję maksymalnie raz na klatkę.",
+      "code": "trades$.pipe(\n  bufferTime(250, null, 500),              // paczka co 250 ms lub 500 elementów\n  filter(batch => batch.length > 0),\n  scan((book, batch) => applyAll(book, batch), initialBook),\n  auditTime(0, animationFrameScheduler),   // render max raz na klatkę\n).subscribe(book => this.orderBook.set(book));",
+      "lang": "typescript",
+      "deep": "concatMap wygląda na bezpieczny, ale przy producencie szybszym niż konsument jego wewnętrzna kolejka rośnie bez ograniczeń – pamięć puchnie, a dane przetwarzane są z coraz większym opóźnieniem. mergeMap bez limitu odpali setki równoległych requestów; mergeMap(fn, 4) ogranicza je do czterech, ale nadal buforuje resztę. bufferTime(1000, null, 100) emituje paczkę co sekundę albo po zebraniu 100 elementów; warto odfiltrować puste tablice, bo bufferTime emituje też puste bufory. Najlepiej rozwiązać problem u źródła: serwer może agregować dane (np. SignalR wysyła snapshot co 100 ms zamiast każdego ticka), a gdy potrzebny jest prawdziwy pull, lepsze są Web Streams lub IAsyncEnumerable/Channels po stronie .NET (bounded channel z BoundedChannelFullMode.DropOldest to wprost strategia backpressure). W Angularze z zone.js dodatkowo trzymam taki strumień poza strefą, żeby każda wiadomość nie wywoływała change detection. Mierzę efekt: liczba renderów na sekundę, długość kolejki, zużycie pamięci w DevTools."
+    },
+    {
+      "id": "tsrx-s014",
+      "topic": "Własne operatory",
+      "level": 3,
+      "q": "Jak napisać własny operator RxJS i o czym trzeba pamiętać?",
+      "a": "Operator to po prostu funkcja przyjmująca źródłowy Observable i zwracająca nowy: (source) => Observable. W większości przypadków składam go z istniejących operatorów przez source.pipe(...) – to najprostsze i najbezpieczniejsze. Gdy potrzebuję niestandardowej logiki, tworzę new Observable, w środku subskrybuję źródło i zwracam funkcję teardown, która tę subskrypcję zamyka. Typuję jako OperatorFunction<T, R> albo MonoTypeOperatorFunction<T>, dzięki czemu operator działa w pipe jak wbudowany.",
+      "code": "export function filterNil<T>(): OperatorFunction<T, NonNullable<T>> {\n  return source => source.pipe(filter((v): v is NonNullable<T> => v != null));\n}\n\nexport function debugLifecycle<T>(tag: string): MonoTypeOperatorFunction<T> {\n  return source => new Observable<T>(subscriber => {\n    console.debug(tag, 'subscribe');\n    const sub = source.subscribe(subscriber);\n    return () => { console.debug(tag, 'unsubscribe'); sub.unsubscribe(); };\n  });\n}",
+      "lang": "typescript",
+      "deep": "Najważniejsze zasady: operator musi być leniwy (nic nie dzieje się bez subskrypcji), każda subskrypcja ma mieć własny stan (licznik, bufor) – stan trzymany w domknięciu fabryki operatora byłby współdzielony między subskrybentami, więc tworzę go wewnątrz new Observable albo przez defer. Muszę propagować error i complete do subskrybenta i sprzątać w teardownie, inaczej operator przecieka. Nie łapię wyjątków z callbacków subskrybenta – RxJS sam raportuje je przez reportUnhandledError. Dobre kandydaty na własne operatory w projekcie: filterNil z type guardem, mapowanie odpowiedzi na stan { loading, data, error }, retry z firmową polityką backoffu, logowanie cyklu życia do debugowania. Każdy taki operator testuję marble testami, bo to wspólna infrastruktura używana w setkach miejsc."
+    },
+    {
+      "id": "tsrx-s015",
+      "topic": "Marble testing",
+      "level": 3,
+      "q": "Na czym polega marble testing w RxJS i jak przetestować logikę zależną od czasu?",
+      "a": "Marble testing opisuje strumienie diagramami tekstowymi: '-' to jedna klatka czasu, litery to wartości, '|' zakończenie, '#' błąd, a nawiasy grupują zdarzenia w tej samej klatce. TestScheduler.run() uruchamia test w czasie wirtualnym – operatory takie jak debounceTime czy delay automatycznie korzystają z tego czasu, więc test 300-milisekundowego debounce'a trwa mikrosekundy i jest deterministyczny. Tworzę źródła helperami cold/hot, a wynik sprawdzam przez expectObservable(...).toBe(diagram), opcjonalnie także subskrypcje przez expectSubscriptions.",
+      "code": "it('debounces and keeps only the latest term', () => {\n  scheduler.run(({ hot, cold, expectObservable }) => {\n    const terms$ = hot('a 100ms b 400ms |');\n    const response$ = cold('--r|', { r: ['wynik'] });\n    const result$ = terms$.pipe(debounceTime(300), switchMap(() => response$));\n\n    // 'b' emitowane w 401, odpowiedź 2 klatki później, complete w 502\n    expectObservable(result$).toBe('403ms r 98ms |', { r: ['wynik'] });\n  });\n});",
+      "lang": "typescript",
+      "deep": "W trybie run() jedna klatka '-' to 1 ms wirtualnego czasu, a zapis '300ms' przesuwa czas o podaną wartość (spacje wokół są wymagane); sama wartość też zajmuje klatkę, więc 'a 100ms b' oznacza b w klatce 101. Wewnętrzne cold observables najlepiej tworzyć przed uruchomieniem potoku, a nie dynamicznie w projekcji switchMap – inaczej czasy się rozjeżdżają i test jest mylący. hot vs cold ma znaczenie: hot symuluje źródło niezależne od subskrypcji (zdarzenia DOM, Subject), '^' oznacza moment subskrypcji. expectSubscriptions pozwala udowodnić, że switchMap naprawdę odsubskrybował poprzednie żądanie albo że takeUntilDestroyed zamknął strumień – tego nie da się wygodnie sprawdzić zwykłym testem. Marble testy są świetne dla operatorów i efektów (NgRx), ale dla prostych komponentów czytelniejszy bywa test z fake timers (vi.useFakeTimers) i sprawdzaniem wyniku w DOM. Diagramy trzymam krótkie – długie stają się nieczytelne i kruche."
+    },
+    {
+      "id": "tsrx-s016",
+      "topic": "Sygnały czy RxJS",
+      "level": 3,
+      "q": "Jak przeprowadzić migrację dużej aplikacji z RxJS na sygnały i co świadomie zostawiasz w RxJS?",
+      "a": "Migruję przyrostowo, od stanu: serwisy z BehaviorSubject zamieniam na signal + computed, async pipe na toSignal, a @Input z ngOnChanges na input() i computed. W RxJS zostawiam to, co jest zdarzeniami w czasie: debounce, anulowanie żądań, WebSockety, łączenie wielu asynchronicznych źródeł, retry i złożoną orkiestrację (np. efekty NgRx). Granicę przecinam jawnie przez toSignal i toObservable z @angular/core/rxjs-interop. Nie przepisuję działających, przetestowanych potoków tylko dlatego, że sygnały są modne – zysk musi być konkretny: prostszy kod, mniej subskrypcji, zoneless.",
+      "code": "@Injectable({ providedIn: 'root' })\nexport class CartStore {\n  private readonly items = signal<CartItem[]>([]);\n  readonly total = computed(() => this.items().reduce((s, i) => s + i.price * i.qty, 0));\n\n  // RxJS zostaje tam, gdzie jest czas i anulowanie\n  private readonly search = inject(ProductApi);\n  readonly term = signal('');\n  readonly suggestions = toSignal(\n    toObservable(this.term).pipe(debounceTime(300), switchMap(t => this.search.find(t))),\n    { initialValue: [] },\n  );\n}",
+      "lang": "typescript",
+      "deep": "Pułapki interopu: toSignal subskrybuje natychmiast i trzyma subskrypcję do zniszczenia kontekstu wstrzykiwania – w serwisie root to oznacza „na zawsze”; musi być wywołany w injection context (inaczej błąd NG0203), więc nie w handlerze kliknięcia. Bez initialValue sygnał ma w typie undefined; dla BehaviorSubject używam requireSync: true. toObservable emituje asynchronicznie (przez effect) i glitch-free, więc kilka set() w jednym tiku daje jedną emisję – kto oczekiwał strumienia każdej zmiany, dostanie tylko ostatnią. Effect nie służy do propagowania stanu między sygnałami – to robi computed albo linkedSignal. Do pobierania danych sterowanego sygnałami są resource, rxResource i httpResource (anulują poprzednie ładowanie przy zmianie params) – sprawdzam ich status stabilności w używanej wersji Angulara, zanim oprę na nich krytyczny kod. Kolejność migracji: komponenty liściowe i serwisy stanu, potem formularze i routing; mierzę postęp liczbą subskrypcji i plików z zone.js-zależnym kodem. Wynik końcowy to zwykle hybryda: RxJS na brzegu (zdarzenia, sieć), sygnały w środku (stan, szablony)."
+    },
+    {
+      "id": "tsrx-s017",
+      "topic": "Unsubscribe i wycieki",
+      "level": 3,
+      "q": "Jak szukasz i naprawiasz wycieki pamięci związane z RxJS w dużej aplikacji Angular?",
+      "a": "Objaw to rosnące zużycie pamięci i spowolnienie po wielokrotnym wejściu i wyjściu z widoku, czasem zdublowane requesty lub logi. Diagnozuję w Chrome DevTools: heap snapshot przed i po kilkukrotnej nawigacji tam i z powrotem, porównanie snapshotów, filtr na instancje komponentów i Detached elements, a w retainers widać, kto trzyma referencję – często Subscriber w serwisie singletonie. Typowe przyczyny: subskrypcja w komponencie do nieskończonego strumienia z serwisu root bez takeUntilDestroyed, fromEvent na window, shareReplay bez refCount, Subject w serwisie trzymający callbacki zniszczonych komponentów. Naprawiam przez async pipe/toSignal, takeUntilDestroyed i DestroyRef.onDestroy.",
+      "code": "export class TickerComponent {\n  private readonly destroyRef = inject(DestroyRef);\n\n  constructor() {\n    inject(PriceStream).prices$.pipe(\n      switchMap(p => this.enrich(p)),\n      takeUntilDestroyed(this.destroyRef),   // ostatni w łańcuchu!\n    ).subscribe(p => this.last.set(p));\n\n    const ro = new ResizeObserver(() => this.relayout());\n    ro.observe(inject(ElementRef).nativeElement);\n    this.destroyRef.onDestroy(() => ro.disconnect());\n  }\n}",
+      "lang": "typescript",
+      "deep": "takeUntil/takeUntilDestroyed musi stać na końcu łańcucha: jeśli po nim jest switchMap albo shareReplay, wewnętrzna subskrypcja przeżyje zniszczenie komponentu – reguła lintera no-unsafe-takeuntil wyłapuje to automatycznie. HTTP z HttpClient sam się kończy, więc nie wycieka trwale, ale bez anulowania callback może się wykonać na zniszczonym komponencie i np. nawigować. Wycieki nie zawsze są z RxJS: setInterval, ResizeObserver/IntersectionObserver bez disconnect, biblioteki wykresów bez destroy, globalne listenery dodane w ngAfterViewInit, closures zapisane w cache'u, a nawet console.log obiektów w otwartej konsoli. Przy aplikacjach działających godzinami (dashboardy, terminale) robię test soak: skrypt Playwright klika w pętli nawigację przez godzinę i mierzy performance.memory albo heap snapshoty w CI. Zasada w zespole: komponenty nie wołają subscribe ręcznie, chyba że z takeUntilDestroyed; stan do szablonu idzie przez sygnały lub async pipe."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "tsrx-sq001",
+      "topic": "Template literal types",
+      "level": 2,
+      "q": "Jaki jest typ E?",
+      "code": "type EventName<T extends string> = `on${Capitalize<T>}`;\ntype E = EventName<'click' | 'focus'>;",
+      "lang": "typescript",
+      "options": [
+        "string",
+        "'onClick' | 'onFocus'",
+        "'onclick' | 'onfocus'",
+        "`on${string}`"
+      ],
+      "correct": 1,
+      "why": "Template literal type rozdziela się po unii: każdy człon trafia do szablonu osobno, a Capitalize zamienia pierwszą literę na wielką. Wynik to unia 'onClick' | 'onFocus'. Typ nie rozszerza się do string ani do wzorca `on${string}` – literały są zachowane, a Capitalize nie daje małych liter."
+    },
+    {
+      "id": "tsrx-sq002",
+      "topic": "Wariancja",
+      "level": 3,
+      "q": "W strict mode które przypisanie kompilator odrzuci?",
+      "code": "interface Animal { name: string }\ninterface Dog extends Animal { bark(): void }\n\ninterface ByMethod   { handle(a: Animal): void }\ninterface ByProperty { handle: (a: Animal) => void }\n\nconst a: ByMethod   = { handle: (d: Dog) => d.bark() };\nconst b: ByProperty = { handle: (d: Dog) => d.bark() };",
+      "lang": "typescript",
+      "options": [
+        "Oba się kompilują",
+        "Oba zostaną odrzucone",
+        "Tylko a – metody są sprawdzane kontrawariantnie",
+        "Tylko b – właściwość typu funkcyjnego jest sprawdzana kontrawariantnie"
+      ],
+      "correct": 3,
+      "why": "strictFunctionTypes sprawdza kontrawariantnie parametry tylko dla typów funkcyjnych zadeklarowanych jako właściwość. Składnia metody (handle(a): void) pozostaje biwariantna dla kompatybilności, więc przypisanie a przechodzi, mimo że handler oczekuje Doga i wywoła bark() na dowolnym Animal. Dlatego w kontraktach callbacków lepiej używać składni właściwości."
+    },
+    {
+      "id": "tsrx-sq003",
+      "topic": "Branded types",
+      "level": 2,
+      "q": "Zespół wprowadził type UserId = string & { readonly __brand: 'UserId' }. Co jest prawdą?",
+      "code": "type UserId = string & { readonly __brand: 'UserId' };\ndeclare function getUser(id: UserId): Promise<User>;\n\ngetUser('abc');",
+      "lang": "typescript",
+      "options": [
+        "getUser('abc') się nie skompiluje; wartość UserId trzeba utworzyć przez funkcję walidującą (z rzutowaniem as) – w runtime to nadal zwykły string",
+        "Każde użycie UserId dodaje w runtime pole __brand do stringa, co zwiększa zużycie pamięci",
+        "Brand działa także w runtime, więc JSON.parse automatycznie zwróci UserId dla pól id",
+        "Brand nie działa przy structural typing – TypeScript i tak zaakceptuje dowolny string"
+      ],
+      "correct": 0,
+      "why": "Brand to fantomowa właściwość istniejąca tylko w systemie typów: zwykły literał string nie ma pola __brand, więc nie spełnia intersekcji i kompilacja się nie powiedzie. Po kompilacji nic nie zostaje, więc nie ma narzutu, ale też dane z JSON nie są automatycznie brandowane – trzeba je przepuścić przez fabrykę/parser na granicy systemu."
+    },
+    {
+      "id": "tsrx-sq004",
+      "topic": "Declaration merging",
+      "level": 3,
+      "q": "Plik src/globals.d.ts nie ma żadnego import ani export. Kompilator zgłasza błąd przy declare global. Dlaczego?",
+      "code": "// src/globals.d.ts\ndeclare global {\n  interface Window { __APP_CONFIG__: { apiUrl: string } }\n}",
+      "lang": "typescript",
+      "options": [
+        "declare global działa tylko w plikach .ts, nie .d.ts",
+        "Interfejsu Window nie da się rozszerzać, trzeba użyć type Window = Window & {...}",
+        "Augmentacja zakresu globalnego jest dozwolona tylko w module; plik bez import/export jest skryptem – wystarczy dodać export {} albo zadeklarować interface Window bez declare global",
+        "Trzeba włączyć flagę allowGlobalAugmentation w tsconfig"
+      ],
+      "correct": 2,
+      "why": "Kompilator wymaga, by declare global było zagnieżdżone w module zewnętrznym lub ambient module declaration. Plik bez importów i eksportów jest skryptem, którego deklaracje i tak są globalne – można więc pisać interface Window {...} bezpośrednio albo zamienić plik w moduł przez export {}. Aliasy type się nie łączą, a flaga z opcji D nie istnieje."
+    },
+    {
+      "id": "tsrx-sq005",
+      "topic": "Module resolution",
+      "level": 2,
+      "q": "Biblioteka Node (bez bundlera) ma w tsconfig paths: { \"@app/*\": [\"src/*\"] }. tsc kompiluje bez błędów, ale node dist/index.js rzuca „Cannot find module '@app/utils'”. Co jest przyczyną?",
+      "options": [
+        "paths jest tylko wskazówką dla kompilatora przy rozwiązywaniu typów – TypeScript nie przepisuje specyfikatorów importów w emitowanym JS",
+        "Brak flagi esModuleInterop",
+        "Node nie obsługuje znaku @ w nazwach modułów",
+        "Trzeba ustawić baseUrl na dist, wtedy tsc przepisze ścieżki"
+      ],
+      "correct": 0,
+      "why": "TypeScript z zasady nie przepisuje ścieżek importów: paths mówi tylko kompilatorowi, gdzie szukać typów. W runtime alias musi rozwiązać bundler, loader (np. tsconfig-paths), pole imports w package.json (#app/*) albo trzeba używać importów względnych. Paczki ze scope'em @ działają w Node normalnie, a baseUrl niczego nie przepisuje."
+    },
+    {
+      "id": "tsrx-sq006",
+      "topic": "shareReplay",
+      "level": 3,
+      "q": "Serwis providedIn: 'root' ma readonly profile$ = this.http.get<Profile>('/api/me').pipe(shareReplay(1)). Użytkownik A się wylogowuje, użytkownik B loguje się w tej samej karcie (SPA bez przeładowania). Co zobaczy B na stronie profilu?",
+      "options": [
+        "Profil A – zakończona odpowiedź jest odtwarzana z ReplaySubjecta, cache trzeba unieważnić jawnie (np. strumień refresh lub reset przy logout)",
+        "Profil B – shareReplay odświeża dane przy każdej nowej subskrypcji",
+        "Błąd – po complete źródła shareReplay nie przyjmuje nowych subskrybentów",
+        "Profil B, ale dopiero po upływie domyślnego TTL shareReplay"
+      ],
+      "correct": 0,
+      "why": "shareReplay ma resetOnComplete: false, więc po zakończeniu żądania HTTP ReplaySubject zostaje i każdy nowy subskrybent dostaje zapamiętaną wartość – singleton w root żyje przez cały czas działania SPA. To klasyczny wyciek danych między sesjami. shareReplay nie ma domyślnego TTL (windowTime jest opcjonalny), a nowe subskrypcje po complete po prostu dostają replay."
+    },
+    {
+      "id": "tsrx-sq007",
+      "topic": "Schedulery",
+      "level": 3,
+      "q": "W jakiej kolejności pojawią się logi w konsoli (RxJS 7)?",
+      "code": "console.log('A');\nof(1).pipe(observeOn(asyncScheduler)).subscribe(v => console.log(v));\nPromise.resolve().then(() => console.log('P'));\nconsole.log('B');",
+      "lang": "typescript",
+      "options": [
+        "A, 1, B, P",
+        "A, B, 1, P",
+        "A, B, P, 1",
+        "A, P, B, 1"
+      ],
+      "correct": 2,
+      "why": "Kod synchroniczny wykonuje się najpierw (A, B). observeOn(asyncScheduler) planuje emisję jako macrotask (setTimeout), a then Promise trafia do kolejki microtasków, która jest opróżniana przed kolejnym macrotaskiem. Stąd P przed 1. Gdyby użyć asapScheduler, 1 trafiłoby do microtasków."
+    },
+    {
+      "id": "tsrx-sq008",
+      "topic": "Backpressure i buffering",
+      "level": 3,
+      "q": "Autozapis: każda zmiana formularza (kilka na sekundę) wywołuje concatMap(v => this.api.save(v)). Pod obciążeniem serwer odpowiada po 2 s. Co się dzieje po kilku minutach intensywnej edycji?",
+      "options": [
+        "concatMap automatycznie pomija nadmiarowe wartości, więc zapisywana jest tylko ostatnia",
+        "RxJS sygnalizuje producentowi backpressure i formularz przestaje emitować zmiany",
+        "concatMap uruchamia żądania równolegle, więc serwer dostaje je w losowej kolejności",
+        "Kolejka w concatMap rośnie bez ograniczeń: zapisy są coraz bardziej opóźnione, rośnie pamięć, a serwer dostaje setki przestarzałych wersji; lepiej debounceTime + switchMap/exhaustMap albo zapis ostatniego stanu"
+      ],
+      "correct": 3,
+      "why": "concatMap gwarantuje kolejność i nie gubi wartości, ale robi to buforując wszystkie czekające emisje. Gdy producent jest szybszy niż konsument, kolejka i opóźnienie rosną liniowo w czasie. RxJS nie ma pull-based backpressure, więc trzeba wybrać strategię stratną (debounce, audit, exhaustMap) lub batching. Równoległość to cecha mergeMap, nie concatMap."
+    },
+    {
+      "id": "tsrx-sq009",
+      "topic": "Marble testing",
+      "level": 3,
+      "q": "Co wyemituje wynikowy strumień (TestScheduler.run, 1 znak = 1 ms)?",
+      "code": "const src = cold('-a-b-----c|');\nexpectObservable(src.pipe(debounceTime(3))).toBe(/* ? */);",
+      "lang": "typescript",
+      "options": [
+        "'----a----c|'",
+        "'------b---(c|)'",
+        "'----b----c|'",
+        "'------b----c|'"
+      ],
+      "correct": 1,
+      "why": "a (klatka 1) zostaje zresetowane przez b (klatka 3), więc b wychodzi po 3 ms ciszy – w klatce 6. c pojawia się w klatce 9, ale źródło kończy się w klatce 10, zanim minie 3 ms; debounceTime przy complete natychmiast emituje oczekującą wartość, więc c i | są w tej samej klatce 10 – zapis (c|)."
+    },
+    {
+      "id": "tsrx-sq010",
+      "topic": "Interop z sygnałami",
+      "level": 3,
+      "q": "Po migracji komponent w handlerze kliknięcia wywołuje this.result = toSignal(this.api.load()). W runtime pojawia się błąd NG0203. Jak to poprawnie rozwiązać?",
+      "options": [
+        "Zamienić toSignal na toObservable",
+        "Dodać { requireSync: true } do opcji toSignal",
+        "toSignal wymaga injection context – przenieść wywołanie do pola/konstruktora (np. sygnał parametrów + switchMap/resource) albo przekazać injector w opcjach; w handlerze tylko zmieniać sygnał wejściowy",
+        "Owinąć wywołanie w setTimeout, żeby wykonało się po change detection"
+      ],
+      "correct": 2,
+      "why": "NG0203 oznacza wywołanie API wymagającego injection context poza nim. toSignal rejestruje sprzątanie przez DestroyRef, więc musi powstać w polu klasy, konstruktorze albo dostać injector. Tworzenie nowego sygnału przy każdym kliknięciu to też antywzorzec – lepiej mieć jeden sygnał wyzwalający i potok switchMap lub resource. requireSync dotyczy synchronicznej pierwszej wartości, a setTimeout nie daje kontekstu wstrzykiwania."
+    }
+  ]
+}

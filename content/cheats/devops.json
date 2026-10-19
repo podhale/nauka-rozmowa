@@ -1,0 +1,246 @@
+{
+  "cat": "devops",
+  "sheets": [
+    {
+      "topic": "Docker – podstawy",
+      "points": [
+        "**Obraz** = read-only warstwy + metadane; **kontener** = proces z obrazu + cienka zapisywalna warstwa, znika po `docker rm`.",
+        "Kontener to nie VM: współdzieli kernel hosta (namespaces + cgroups), startuje w ms.",
+        "Każdy `RUN`/`COPY`/`ADD` to warstwa; pierwsza zmieniona instrukcja unieważnia cache wszystkich następnych – rzadko zmieniane rzeczy na górę.",
+        "`ENTRYPOINT` = program, `CMD` = domyślne argumenty; zawsze **forma exec** `[\"dotnet\",\"Api.dll\"]`, żeby proces był PID 1 i dostał SIGTERM.",
+        "`COPY` domyślnie; `ADD` tylko świadomie (URL, auto-rozpakowanie tar).",
+        "Dane trwałe: **volume** (zarządzany przez Dockera); **bind mount** do podmontowania plików hosta w dev; tmpfs w pamięci.",
+        "W sieci compose/user-defined bridge kontenery widzą się **po nazwie usługi**; `localhost` w kontenerze to on sam.",
+        "`.dockerignore`: `bin/`, `obj/`, `node_modules/`, `.git`, `.env` – szybszy build, stabilny cache, brak wycieku sekretów."
+      ],
+      "pitfalls": [
+        "`COPY . .` przed `dotnet restore`/`npm ci` – każda zmiana kodu pobiera zależności od nowa.",
+        "Forma shell `ENTRYPOINT dotnet Api.dll` – brak graceful shutdown, SIGKILL po timeoucie.",
+        "Connection string z `localhost` zamiast nazwy usługi bazy."
+      ],
+      "say": "Obraz to niezmienny, warstwowy szablon, kontener to uruchomiony z niego izolowany proces. Dockerfile układam pod cache warstw, ENTRYPOINT w formie exec, a stan trzymam w volume'ach lub usługach zewnętrznych."
+    },
+    {
+      "topic": "Dockerfile dla .NET",
+      "points": [
+        "Multi-stage: `sdk` (restore + publish) → `aspnet` (tylko wynik publish); bez SDK i źródeł w obrazie.",
+        "Obrazy: `sdk` build/test, `aspnet` Web API, `runtime` konsola/worker, `runtime-deps` self-contained i Native AOT.",
+        "Od .NET 8: domyślny port **8080** (`ASPNETCORE_HTTP_PORTS`), użytkownik non-root **`app`** – `USER $APP_UID`.",
+        "**Chiseled** (`10.0-noble-chiseled`): bez shella i menedżera pakietów, non-root, mniej CVE; `-extra` dodaje ICU i tzdata.",
+        "Bez Dockerfile: `dotnet publish /t:PublishContainer` + `ContainerRepository`, `ContainerImageTags`, `ContainerFamily`.",
+        "Szybki build: COPY csproj/`Directory.Packages.props` → restore → kod; BuildKit `--mount=type=cache` na NuGet; w CI cache warstw (gha/registry).",
+        "Native AOT (`PublishAot`): szybki start, mało RAM, mały obraz na `runtime-deps` – tylko Minimal API, bez MVC, ograniczona refleksja.",
+        "Multi-arch: `FROM --platform=$BUILDPLATFORM` + `dotnet publish -a $TARGETARCH` zamiast emulacji QEMU."
+      ],
+      "pitfalls": [
+        "Mapowanie `-p 8080:80` po migracji z .NET 6/7 – aplikacja słucha na 8080.",
+        "Chiseled bez ICU/tzdata – wyjątki stref czasowych i brak kultur; `apt-get` tam nie zadziała.",
+        "Obraz `sdk` jako runtime produkcyjny – setki MB i zbędna powierzchnia ataku."
+      ],
+      "code": "FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build\nWORKDIR /src\nCOPY [\"Api/Api.csproj\", \"Api/\"]\nRUN dotnet restore \"Api/Api.csproj\"\nCOPY . .\nRUN dotnet publish Api/Api.csproj -c Release -o /app/publish /p:UseAppHost=false\n\nFROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled\nWORKDIR /app\nCOPY --from=build /app/publish .\nENTRYPOINT [\"dotnet\", \"Api.dll\"]",
+      "lang": "dockerfile",
+      "say": "Buduję multi-stage na sdk i uruchamiam na aspnet, najchętniej chiseled jako non-root na porcie 8080. Dla prostych przypadków wystarczy `dotnet publish /t:PublishContainer`, bez Dockerfile."
+    },
+    {
+      "topic": "Dockerfile dla Angulara",
+      "points": [
+        "Multi-stage: `node` (`npm ci` + `ng build`) → `nginx` serwujący `dist/<projekt>/browser`; brak Node i `node_modules` w obrazie.",
+        "Fallback SPA w nginx: `try_files $uri $uri/ /index.html;` – inaczej odświeżenie głębokiego linku daje 404.",
+        "Cache: bundle z hashem → `Cache-Control: public, immutable` na rok; `index.html` i `config.json` → `no-cache`.",
+        "`environment.ts` jest **build-time** (wkompilowany) – jeden obraz na wszystkie środowiska wymaga konfiguracji runtime.",
+        "Runtime config: `config.json` ładowany w `provideAppInitializer`, generowany z env (envsubst/entrypoint) lub montowany z ConfigMap.",
+        "Oficjalny nginx przetwarza `/etc/nginx/templates/*.template` przez envsubst przy starcie; non-root: `nginx-unprivileged` na 8080.",
+        "Proxy `/api` w nginx (`proxy_pass`) eliminuje CORS; przy SSR obraz to Node uruchamiający `server.mjs`."
+      ],
+      "pitfalls": [
+        "Długi cache index.html – po deployu biała strona i 404 na stare bundle.",
+        "Sekrety w config.json lub environment.ts – wszystko w frontendzie jest publiczne."
+      ],
+      "code": "server {\n  listen 80;\n  root /usr/share/nginx/html;\n  location / {\n    try_files $uri $uri/ /index.html;\n    add_header Cache-Control \"no-cache\";\n  }\n  location ~* \\.(js|css|woff2)$ {\n    add_header Cache-Control \"public, max-age=31536000, immutable\";\n  }\n}",
+      "lang": "text",
+      "say": "Angulara buduję w stage'u node i serwuję statycznie z nginx z fallbackiem do index.html. Adresy i flagi środowiskowe ładuję w runtime z config.json, żeby ten sam obraz szedł na każde środowisko."
+    },
+    {
+      "topic": "Konfiguracja i bezpieczeństwo kontenerów",
+      "points": [
+        "Konfiguracja przez env vars: `ConnectionStrings__Db`, `ASPNETCORE_ENVIRONMENT`; `__` = separator sekcji.",
+        "Sekrety **nigdy** w obrazie: `ARG`/`ENV` widać w `docker history`/`inspect`, usunięty plik zostaje w niższej warstwie.",
+        "Sekret przy buildzie: `RUN --mount=type=secret,id=...` (BuildKit) – dostępny tylko w jednym RUN.",
+        "Sekret w runtime: Kubernetes Secret (najlepiej jako plik), Key Vault + Managed Identity, w dev user-secrets / `.env` poza repo.",
+        "Health: `/health/live` (bez zależności) i `/health/ready` (zależności); Kubernetes ignoruje `HEALTHCHECK` z Dockerfile.",
+        "Mały obraz = szybszy pull i mniej CVE: multi-stage, chiseled/Alpine, `.dockerignore`, `docker history` do analizy.",
+        "Supply chain: pin wersji/digestu + Renovate/Dependabot, skan (Trivy, Docker Scout, Defender) w CI, SBOM, podpis (cosign/Notation).",
+        "Runtime hardening: non-root, `readOnlyRootFilesystem`, `allowPrivilegeEscalation: false`, drop capabilities."
+      ],
+      "pitfalls": [
+        "`ARG DB_PASSWORD` lub `COPY appsettings.Production.json` z hasłem do obrazu.",
+        "Tag `latest` w produkcji – brak powtarzalności i niejasny rollback.",
+        "HEALTHCHECK z curl na obrazie chiseled (brak shella i curl)."
+      ],
+      "code": "# syntax=docker/dockerfile:1\nRUN --mount=type=secret,id=nugettoken \\\n    NUGET_TOKEN=$(cat /run/secrets/nugettoken) && dotnet restore\n# docker build --secret id=nugettoken,env=NUGET_TOKEN .",
+      "lang": "dockerfile",
+      "say": "Konfigurację podaję przez zmienne środowiskowe, a sekrety wstrzykuje platforma albo zastępuje je Managed Identity – nigdy nie trafiają do warstw obrazu. Obrazy przypinam, skanuję w CI i uruchamiam jako non-root."
+    },
+    {
+      "topic": "Docker Compose",
+      "points": [
+        "`docker compose` (v2) opisuje usługi, sieci, volume'y; `up -d --build`, `logs -f api`, `down` (`-v` kasuje volume'y).",
+        "Główne zastosowanie: lokalne środowisko dev (API + Postgres/SQL Server + Redis) i testy integracyjne.",
+        "`depends_on` w krótkiej formie = tylko kolejność startu; gotowość: `healthcheck` + `condition: service_healthy`.",
+        "Healthchecki: Postgres `pg_isready`, SQL Server `/opt/mssql-tools18/bin/sqlcmd -C -Q \"SELECT 1\"`, Redis `redis-cli ping`.",
+        "Sekrety z `.env` (poza repo; w repo `.env.example`); interpolacja `${DB_PASSWORD}`.",
+        "`compose.override.yaml` dla dev (bind mount, hot reload), `profiles` dla opcjonalnych narzędzi, `service_completed_successfully` dla kontenera migracji.",
+        "Klucz `version:` jest zbędny; w testach .NET alternatywą są Testcontainers."
+      ],
+      "pitfalls": [
+        "Brak retry w aplikacji – baza może zniknąć także po starcie, healthcheck tego nie załatwia.",
+        "`down -v` przez pomyłkę – utrata lokalnych danych."
+      ],
+      "code": "depends_on:\n  db: { condition: service_healthy }\n# ...\ndb:\n  image: postgres:17\n  healthcheck:\n    test: [\"CMD-SHELL\", \"pg_isready -U app -d app\"]\n    interval: 5s\n    retries: 10",
+      "lang": "yaml",
+      "say": "Compose używam do lokalnego środowiska: API, baza i Redis jednym poleceniem. Kolejność zapewniam healthcheckiem i `service_healthy`, ale aplikacja i tak ma retry na połączeniu."
+    },
+    {
+      "topic": "Kubernetes",
+      "points": [
+        "**Pod** – efemeryczna jednostka (1+ kontenerów, jedno IP); **Deployment** – pożądany stan i rollout; **Service** – stabilny DNS/VIP po labelach.",
+        "Service: ClusterIP (wewnętrzny), NodePort, LoadBalancer (L4); **Ingress** = routing L7 (host/ścieżka/TLS); następca: Gateway API.",
+        "ConfigMap – konfiguracja, Secret – dane wrażliwe (tylko base64!); env vars czytane przy starcie, pliki aktualizują się z opóźnieniem.",
+        "Probes: **startup** (wolny start), **liveness** (restart, płytki), **readiness** (ruch, może sprawdzać zależności).",
+        "**requests** = scheduling i baza HPA; **limits**: pamięć → OOMKilled, CPU → throttling; .NET respektuje limity cgroup.",
+        "HPA (autoscaling/v2): CPU/pamięć jako % requests albo metryki custom; KEDA do skalowania po zdarzeniach i do zera.",
+        "RollingUpdate: `maxSurge`/`maxUnavailable`; zero-downtime = readiness + SIGTERM + `preStop` sleep + kompatybilny schemat; `kubectl rollout undo`.",
+        "Debug: `kubectl logs`, `describe pod`, `get events`, `kubectl debug` (ephemeral container dla obrazów bez shella)."
+      ],
+      "pitfalls": [
+        "Liveness sprawdzający bazę – awaria zależności restartuje wszystkie pody (kaskada).",
+        "Brak requests – HPA pokazuje `<unknown>`, pod w klasie BestEffort.",
+        "Zmiana ConfigMap bez restartu – pody dalej mają stare env vars."
+      ],
+      "code": "readinessProbe:\n  httpGet: { path: /health/ready, port: 8080 }\nlivenessProbe:\n  httpGet: { path: /health/live, port: 8080 }\nresources:\n  requests: { cpu: \"250m\", memory: \"512Mi\" }\n  limits:   { memory: \"512Mi\" }\nlifecycle:\n  preStop: { sleep: { seconds: 5 } }",
+      "lang": "yaml",
+      "say": "Jako developer dbam, żeby aplikacja była dobrym obywatelem klastra: rozdzielone probes, realne requests/limits z metryk, graceful shutdown na SIGTERM. Deployment i Service opisują stan docelowy, a HPA skaluje repliki."
+    },
+    {
+      "topic": "CI/CD",
+      "points": [
+        "**CI** – build i testy przy każdym PR; **Continuous Delivery** – zawsze gotowy artefakt, prod po approval; **Continuous Deployment** – prod automatycznie.",
+        "**Build once, deploy many**: ten sam obraz (tag = SHA/SemVer) promowany dev → staging → prod; zmienia się tylko konfiguracja.",
+        "Cache zależności po hashu lock file (NuGet `packages.lock.json`, npm `package-lock.json`); `npm ci`, nie `npm install`.",
+        "Artefakt ≠ cache: artefakt to wersjonowany produkt (publish, obraz w ACR/GHCR, raport testów), cache to tylko optymalizacja.",
+        "Środowiska: GitHub `environment:` z required reviewers / Azure DevOps Environments z approvals and checks.",
+        "Logowanie do chmury przez **OIDC / workload identity federation** – bez długowiecznych client secretów.",
+        "Migracje EF: osobny krok (`migrations script --idempotent` lub `migrations bundle`), przed deployem aplikacji, wg expand/contract.",
+        "Akcje zewnętrzne pinowane do SHA; branch protection wymaga zielonych checków."
+      ],
+      "pitfalls": [
+        "`Database.Migrate()` przy starcie przy wielu replikach – wyścig i uprawnienia DDL dla aplikacji.",
+        "Rebuild obrazu per środowisko – testowano inny artefakt niż wdrożony.",
+        "Destrukcyjna migracja (rename/drop) w tym samym release co zmiana kodu."
+      ],
+      "code": "deploy-prod:\n  needs: deploy-staging\n  environment: production\n  permissions: { id-token: write, contents: read }\n  steps:\n    - uses: azure/login@v2\n      with:\n        client-id: ${{ vars.AZURE_CLIENT_ID }}\n        tenant-id: ${{ vars.AZURE_TENANT_ID }}\n        subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}",
+      "lang": "yaml",
+      "say": "Pipeline buduje i testuje każdy PR, a z main powstaje jeden obraz promowany przez środowiska z zatwierdzeniem przed produkcją. Do chmury loguję się przez OIDC, a migracje bazy idą osobnym krokiem i są wstecznie kompatybilne."
+    },
+    {
+      "topic": "Strategie wdrożeń",
+      "points": [
+        "**Rolling** – stopniowa wymiana instancji, tanio, obie wersje współistnieją.",
+        "**Blue-green** – dwa środowiska, przełączenie całego ruchu, natychmiastowy rollback, podwójne zasoby (App Service: deployment slots + swap).",
+        "**Canary** – mały % ruchu na nową wersję, automatyczne kryteria (error rate, p99), stopniowe zwiększanie (Container Apps revisions, Argo Rollouts/Flagger).",
+        "Każda strategia wymaga wstecznej kompatybilności API i schematu bazy (expand/contract).",
+        "**Feature flags** oddzielają deploy od release: kill switch, stopniowe udostępnianie, A/B; podstawa trunk-based.",
+        "W .NET: `Microsoft.FeatureManagement` (+ Azure App Configuration), standard dostawców: OpenFeature."
+      ],
+      "pitfalls": [
+        "Canary bez observability – nie ma podstaw do decyzji o promocji lub rollbacku.",
+        "Niesprzątane feature flagi – dług techniczny i eksplozja kombinacji do testów.",
+        "Ustawienia slotu w App Service nieoznaczone jako slot setting – connection string „przeskakuje” przy swapie."
+      ],
+      "code": "builder.Services.AddFeatureManagement();\nif (await featureManager.IsEnabledAsync(\"NewCheckout\"))\n{\n    // nowa ścieżka\n}",
+      "lang": "csharp",
+      "say": "Domyślnie rolling update plus feature flags; blue-green, gdy potrzebny natychmiastowy rollback, a canary, gdy ryzyko jest duże i mamy dobre metryki. Warunkiem każdej strategii jest kompatybilność wsteczna API i bazy."
+    },
+    {
+      "topic": "Git",
+      "points": [
+        "**Merge** zachowuje historię (merge commit); **rebase** przepisuje commity na nowe SHA, daje liniową historię.",
+        "Rebase tylko na prywatnych gałęziach; po rebase `git push --force-with-lease`, nigdy `--force` na wspólnych.",
+        "**Squash merge** – jeden commit na PR na main: czytelna historia, łatwy revert.",
+        "**Conventional commits**: `feat(scope): ...`, `fix`, `refactor`, `chore`; `!` / `BREAKING CHANGE:` → automatyczny changelog i SemVer.",
+        "**Trunk-based**: krótkie gałęzie, małe PR, main zawsze deployowalny, feature flags; **GitFlow**: develop/release/hotfix dla produktów wersjonowanych.",
+        "`revert` – bezpieczne cofnięcie na wspólnej gałęzi; `reset --soft/--mixed/--hard` – tylko lokalnie; `cherry-pick` – pojedynczy commit (hotfix na release).",
+        "`git reflog` ratuje po nieudanym reset/rebase; konflikty: rozwiąż → `git add` → `--continue` → build i testy.",
+        "Dobry PR: mały (do ~400 linii), jeden cel, opis „dlaczego”, zielone CI przed review."
+      ],
+      "pitfalls": [
+        "Rebase gałęzi współdzielonej z innymi i force push.",
+        "`git reset --hard` + force push na main zamiast `git revert`.",
+        "Ręczna edycja konfliktu w package-lock.json zamiast regeneracji."
+      ],
+      "code": "git fetch origin\ngit rebase origin/main\ngit push --force-with-lease\ngit revert a1b2c3d          # cofnięcie na main\ngit cherry-pick 9f8e7d6     # hotfix na release",
+      "lang": "bash",
+      "say": "Na swojej gałęzi rebase na main dla czystej historii, do main squash merge przez PR. Wspólnej historii nie przepisuję – błędy na main cofam przez revert; preferuję trunk-based z feature flagami."
+    },
+    {
+      "topic": "Azure dla .NET",
+      "points": [
+        "**App Service** – PaaS dla web/API (kod lub kontener), sloty, prosty start; **Container Apps** – serverless kontenery (KEDA, revisions, scale-to-zero).",
+        "**AKS** – pełny Kubernetes, kontrola kosztem ops; **Functions** – event-driven (isolated worker, plan Flex Consumption).",
+        "**Managed Identity** + `Azure.Identity`: dostęp do Key Vault, SQL, Storage, Service Bus bez sekretów (RBAC).",
+        "Key Vault jako źródło konfiguracji: `AddAzureKeyVault`; nazwa `ConnectionStrings--Db` → klucz `ConnectionStrings:Db`.",
+        "W produkcji konkretny credential (`ManagedIdentityCredential`), `DefaultAzureCredential` wygodny w dev.",
+        "**Application Insights** przez Azure Monitor OpenTelemetry Distro: `AddOpenTelemetry().UseAzureMonitor()`; uwaga na koszty – sampling.",
+        "Azure SQL (zarządzany SQL Server), Blob Storage (pliki, SAS/RBAC), **Service Bus** (kolejki/topiki, DLQ, sesje, duplicate detection, at-least-once).",
+        "AWS: Beanstalk / ECS Fargate / EKS / Lambda, Secrets Manager, IAM roles, RDS, S3, SQS+SNS, CloudWatch+X-Ray, ECR."
+      ],
+      "pitfalls": [
+        "Client secret w konfiguracji zamiast Managed Identity.",
+        "Tworzenie `ServiceBusClient` per request – musi być singletonem.",
+        "Konsument Service Bus bez idempotencji – duplikaty przy ponownym dostarczeniu."
+      ],
+      "code": "builder.Configuration.AddAzureKeyVault(\n    new Uri(\"https://kv-shop-prod.vault.azure.net/\"),\n    new ManagedIdentityCredential(ManagedIdentityId.SystemAssigned));\nbuilder.Services.AddOpenTelemetry().UseAzureMonitor();",
+      "lang": "csharp",
+      "say": "Hosting dobieram do zespołu i ruchu: App Service dla pojedynczego API, Container Apps dla kilku serwisów w kontenerach, AKS przy potrzebie pełnej kontroli. Dostęp do zasobów robię przez Managed Identity, a telemetrię przez OpenTelemetry do Application Insights."
+    },
+    {
+      "topic": "Observability i 12-factor",
+      "points": [
+        "12-factor: config w env, bezstanowe procesy, backing services jako zasoby, build/release/run, disposability, logi na stdout, parytet dev/prod.",
+        "Logi: stdout/stderr, strukturalnie (`AddJsonConsole`), message templates `{OrderId}`; platforma zbiera i wysyła.",
+        "Trzy sygnały: **trace'y** (diagnoza requestu), **metryki** (alerty, RED/USE), **logi** (szczegóły) – łączy je TraceId.",
+        "OpenTelemetry w .NET: `ActivitySource` (trace), `Meter` (metryki), `ILogger` (logi); instrumentacja ASP.NET Core/HttpClient/EF Core.",
+        "Eksport OTLP (`UseOtlpExporter()`, `OTEL_EXPORTER_OTLP_ENDPOINT`), często przez OpenTelemetry Collector (sidecar/DaemonSet).",
+        "Propagacja kontekstu: nagłówek W3C `traceparent`; sampling head-based vs tail-based (w kolektorze).",
+        "Metryki z tagami o niskiej kardynalności (endpoint, status), nie userId/orderId."
+      ],
+      "pitfalls": [
+        "Logi do plików w kontenerze – giną z kontenerem i zapychają dysk.",
+        "Interpolacja `$\"...\"` w logach – utrata struktury.",
+        "Wysoka kardynalność tagów metryk – eksplozja kosztów."
+      ],
+      "code": "builder.Services.AddOpenTelemetry()\n    .ConfigureResource(r => r.AddService(\"orders-api\"))\n    .WithTracing(t => t.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation())\n    .WithMetrics(m => m.AddAspNetCoreInstrumentation().AddRuntimeInstrumentation())\n    .UseOtlpExporter();",
+      "lang": "csharp",
+      "say": "Aplikacja jest bezstanowa, konfigurowana przez środowisko i loguje strukturalnie na stdout. Trace'y, metryki i logi zbieram przez OpenTelemetry i OTLP, więc backend – Application Insights czy Grafana – jest wymienny."
+    },
+    {
+      "topic": ".NET Aspire",
+      "points": [
+        "Aspire = orkiestracja dev-time + model aplikacji w C# (projekt **AppHost**) + **ServiceDefaults** (OTel, health checks, resilience, service discovery).",
+        "`AddPostgres(...).AddDatabase(...)`, `AddRedis(...)`, `AddProject<Projects.X>(...)` – zależności jako kontenery lokalnie.",
+        "`WithReference(db)` wstrzykuje connection string / adresy; `WaitFor(db)` czeka na zdrowy zasób (jak `service_healthy`).",
+        "Dashboard: logi, trace'y i metryki wszystkich usług przez OTLP – bez stawiania Jaegera/Grafany.",
+        "W API: `builder.AddServiceDefaults()`, `app.MapDefaultEndpoints()`, integracje klienckie np. `AddNpgsqlDbContext<T>(\"shopdb\")`.",
+        "Nie jest runtime'em produkcyjnym: deployment przez azd/`aspire deploy` (np. Container Apps) lub generowane manifesty.",
+        "Od wersji 13 marka „Aspire” i wsparcie aplikacji JavaScript/Python; testy przez `DistributedApplicationTestingBuilder`."
+      ],
+      "pitfalls": [
+        "Traktowanie AppHost jak orkiestratora produkcyjnego.",
+        "Hardcodowane connection stringi w API zamiast nazw zasobów z AppHost."
+      ],
+      "code": "var builder = DistributedApplication.CreateBuilder(args);\nvar db = builder.AddPostgres(\"pg\").AddDatabase(\"shopdb\");\nvar cache = builder.AddRedis(\"cache\");\nbuilder.AddProject<Projects.Shop_Api>(\"api\")\n    .WithReference(db).WaitFor(db)\n    .WithReference(cache);\nbuilder.Build().Run();",
+      "lang": "csharp",
+      "say": "Aspire zastępuje mi docker-compose w dev: w C# opisuję API, bazę i Redisa, dostaję service discovery i dashboard z telemetrią. Na produkcję generuję z tego modelu wdrożenie, np. do Container Apps."
+    }
+  ]
+}

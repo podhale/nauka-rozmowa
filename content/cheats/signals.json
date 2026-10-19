@@ -1,0 +1,454 @@
+{
+ "cat": "signals",
+ "sheets": [
+  {
+   "topic": "Podstawy",
+   "points": [
+    "Signal = opakowanie na wartość, które **wie, kto je czyta**, i powiadamia zależnych konsumentów o zmianie.",
+    "Odczyt to wywołanie funkcji `count()` – w tym momencie Angular rejestruje zależność, bez ręcznych subskrypcji.",
+    "Sygnały są **synchroniczne i zawsze mają wartość** – w przeciwieństwie do Observable.",
+    "Rozwiązują problem 'co się zmieniło?': zamiast sprawdzać całe drzewo (Zone.js + dirty checking) Angular wie, które widoki czytały zmieniony signal.",
+    "Fundament OnPush bez wysiłku i trybu **zoneless** (domyślny w nowych projektach od v21).",
+    "Stabilność: `signal`/`computed` od v17; `effect`, `linkedSignal`, `toSignal`/`toObservable` od v20; rodzina `resource` – experimental.",
+    "Odczyt sygnału w szablonie jest tani (zwraca zapamiętaną wartość) – zasada 'nie wołaj funkcji w szablonie' sygnałów nie dotyczy."
+   ],
+   "pitfalls": [
+    "Mylenie sygnałów z Observable: signal nie ma 'zdarzeń w czasie', tylko aktualną wartość – kilka set() pod rząd konsument widzi jako jedną zmianę.",
+    "Zapominanie nawiasów w szablonie (`{{ count }}` wyświetli kod funkcji zamiast wartości)."
+   ],
+   "code": "count = signal(0);\ndouble = computed(() => this.count() * 2);\ninc() { this.count.update(c => c + 1); }\n// szablon: {{ count() }} / {{ double() }}",
+   "lang": "typescript",
+   "say": "Signal to reaktywny kontener na wartość: odczyt przez wywołanie rejestruje zależność, więc Angular wie dokładnie, które widoki odświeżyć – to podstawa OnPush bez wysiłku i zoneless."
+  },
+  {
+   "topic": "Model reaktywności",
+   "points": [
+    "Graf: **producer** (signal, computed) trzyma wartość, **consumer** (computed, effect, szablon) ją czyta.",
+    "**Push-pull**: zmiana wysyła w górę grafu tylko lekkie 'jesteś nieaktualny' (push), wartość liczona jest przy odczycie (pull).",
+    "Każdy węzeł ma **wersję** wartości; consumer przed przeliczeniem sprawdza, czy wersje zależności faktycznie się zmieniły.",
+    "**Glitch-free**: odczyt zawsze widzi spójny stan – brak niespójnych wartości pośrednich jak w `combineLatest` przy diamentowych zależnościach.",
+    "Batching naturalny: kilka synchronicznych `set()` tylko unieważnia graf; efekty i CD wykonają się raz, widząc stan końcowy.",
+    "Nie ma osobnego API 'batch' – zmiany w jednym handlerze zdarzenia są łączone automatycznie."
+   ],
+   "pitfalls": [
+    "Oczekiwanie, że effect uruchomi się po każdym `set()` – zobaczy tylko ostatnią wartość z danego 'ticku'.",
+    "Utożsamianie push w sygnałach z push w RxJS: w sygnałach pushowana jest tylko informacja o nieaktualności, nie wartość."
+   ],
+   "say": "Sygnały działają push-pull: zmiana tylko oznacza zależnych jako nieaktualnych, a wartości są liczone leniwie przy odczycie z kontrolą wersji – dzięki temu są glitch-free i naturalnie batchowane."
+  },
+  {
+   "topic": "signal()",
+   "points": [
+    "`signal(initial)` zwraca `WritableSignal<T>`.",
+    "`set(v)` – nowa wartość wprost; `update(fn)` – nowa wartość z poprzedniej (liczniki, niemutowalne aktualizacje).",
+    "Konsumenci są powiadamiani tylko, gdy nowa wartość jest różna wg `equal` (domyślnie `Object.is`).",
+    "`mutate()` z developer preview **usunięto** przed stabilizacją – stan zmieniamy niemutowalnie.",
+    "Opcje: `equal` (własne porównanie) i `debugName` (pomoc w debugowaniu).",
+    "Signal można tworzyć wszędzie (także poza injection context) – w przeciwieństwie do `effect`."
+   ],
+   "pitfalls": [
+    "`items().push(x)` zamiast `items.update(l => [...l, x])` – brak powiadomienia.",
+    "Pytanie o `mutate()` – poprawna odpowiedź: był w preview, usunięty."
+   ],
+   "code": "todos = signal<Todo[]>([]);\nadd(t: Todo) { this.todos.update(list => [...list, t]); }\ntoggle(id: number) {\n  this.todos.update(l => l.map(t => t.id === id ? { ...t, done: !t.done } : t));\n}",
+   "lang": "typescript",
+   "say": "WritableSignal zmieniam przez set albo update – zawsze tworząc nową referencję, bo powiadomienie zależy od porównania Object.is."
+  },
+  {
+   "topic": "WritableSignal vs Signal",
+   "points": [
+    "`Signal<T>` – tylko getter; `WritableSignal<T>` dodaje `set`, `update`, `asReadonly()`.",
+    "`asReadonly()` zwraca widok tylko do odczytu na **ten sam** stan – do wystawiania stanu z serwisu.",
+    "`computed()` zawsze zwraca `Signal` (read-only).",
+    "`input()` zwraca `InputSignal` – też read-only z perspektywy komponentu.",
+    "Wzorzec: `private readonly _state = signal(...)`, `readonly state = this._state.asReadonly()`."
+   ],
+   "pitfalls": [
+    "Wystawienie publicznego WritableSignal z serwisu – każdy komponent może zmienić stan 'z boku'.",
+    "Rzutowanie `Signal` na `WritableSignal` w TS – działa w runtime, ale łamie enkapsulację."
+   ],
+   "say": "Na zewnątrz serwisu wystawiam tylko Signal przez asReadonly albo computed, a zmiany idą przez metody – to daje jednokierunkowy przepływ danych."
+  },
+  {
+   "topic": "computed()",
+   "points": [
+    "`computed(fn)` – read-only signal pochodny; zależności śledzone automatycznie.",
+    "**Lazy**: nie liczy się, dopóki nikt nie czyta; **memoizowany**: wynik w cache do zmiany zależności.",
+    "**Dynamiczne zależności**: śledzone jest tylko to, co odczytano w danym przebiegu (gałęzie `if`).",
+    "Ma funkcję równości – gdy wynik jest równy poprzedniemu, konsumenci dalej **nie są przeliczani** (equality cutoff).",
+    "Musi być czysty: zapis do sygnału w computed rzuca **NG0600**; side-effecty – do `effect()` lub handlerów.",
+    "Zasada: jeśli coś da się wyliczyć ze stanu – computed, nie osobny signal synchronizowany ręcznie."
+   ],
+   "pitfalls": [
+    "HTTP lub logowanie w computed – nie wiadomo kiedy i ile razy się wykona (może wcale); do async jest resource.",
+    "Computed zwracający nowy obiekt/tablicę za każdym razem przy bardzo częstych zmianach – brak cutoff; rozważ `equal`."
+   ],
+   "code": "filter = signal<'all' | 'done'>('all');\nvisible = computed(() =>\n  this.filter() === 'all' ? this.todos() : this.todos().filter(t => t.done)\n);",
+   "lang": "typescript",
+   "say": "computed to czysta, leniwa i memoizowana pochodna – liczy się tylko przy odczycie i tylko gdy zależności faktycznie się zmieniły."
+  },
+  {
+   "topic": "effect()",
+   "points": [
+    "`effect(fn)` – wykonuje się co najmniej raz i ponownie po zmianie odczytanych sygnałów; wykonanie jest **asynchroniczne/batchowane**.",
+    "Do synchronizacji ze światem zewnętrznym: localStorage, analityka, biblioteki spoza Angulara, ręczny DOM.",
+    "**Nie** do propagacji stanu między sygnałami – zamiast tego `computed` / `linkedSignal`.",
+    "`onCleanup` – sprzątanie przed kolejnym uruchomieniem i przy zniszczeniu (timery, listenery, abort).",
+    "Wymaga **injection context** (DestroyRef); poza nim `effect(fn, { injector })`; zwraca `EffectRef.destroy()`.",
+    "v19: **component effects** wykonują się w trakcie CD (przed renderem widoku), **root effects** (serwisy) – przed CD; `allowSignalWrites` jest zbędne (deprecated).",
+    "Stabilne od v20."
+   ],
+   "pitfalls": [
+    "Tworzenie efektu w handlerze kliknięcia – efekty się kumulują aż do zniszczenia komponentu.",
+    "effect w `ngOnInit` bez `injector` → NG0203.",
+    "Efekt czytający i zapisujący ten sam signal – ryzyko pętli."
+   ],
+   "code": "constructor() {\n  effect(onCleanup => {\n    const theme = this.theme();\n    localStorage.setItem('theme', theme);\n    const t = setTimeout(() => this.analytics.track('theme', theme), 500);\n    onCleanup(() => clearTimeout(t));\n  });\n}",
+   "lang": "typescript",
+   "say": "effect to ostatnia deska ratunku do side-effectów poza grafem sygnałów; stan pochodny robię computed albo linkedSignal, a sprzątanie przez onCleanup."
+  },
+  {
+   "topic": "untracked()",
+   "points": [
+    "`untracked(fn)` wykonuje kod/odczyt **bez rejestrowania zależności** w bieżącym kontekście reaktywnym.",
+    "Użycie: w effect/computed chcę aktualną wartość sygnału, ale jego zmiana nie ma restartować efektu.",
+    "Owijaj wywołania zewnętrznego kodu w efekcie – serwis może wewnętrznie czytać sygnały i dodać ukryte zależności.",
+    "Typowy wzorzec: efekt reaguje na `userId()`, a `settings()` czyta w `untracked`.",
+    "Nie zmienia to wartości – to tylko wyłączenie śledzenia."
+   ],
+   "pitfalls": [
+    "Nadużywanie untracked, by 'uciszyć' pętlę – zwykle problemem jest effect zamiast computed."
+   ],
+   "code": "effect(() => {\n  const id = this.userId();                       // zależność\n  const cfg = untracked(() => this.settings());   // bez zależności\n  untracked(() => this.logger.log(id, cfg));      // zewnętrzny kod\n});",
+   "lang": "typescript",
+   "say": "untracked pozwala odczytać sygnał bez tworzenia zależności – używam go w efektach, by jawnie określić, na co efekt reaguje."
+  },
+  {
+   "topic": "Equality",
+   "points": [
+    "Domyślne porównanie: `Object.is` – dla obiektów **po referencji**.",
+    "Gdy nowa wartość jest 'równa', konsumenci nie są powiadamiani (signal) lub dalsza propagacja jest ucinana (computed).",
+    "Własna funkcja: opcja `equal` w `signal`, `computed`, `linkedSignal`.",
+    "Przydatne, gdy obiekt odtwarzany z serwera, a liczy się `id`/wersja, albo do płytkiego porównania tablic.",
+    "Nowy obiekt o identycznej treści **zawsze** powiadomi przy domyślnym equal."
+   ],
+   "pitfalls": [
+    "Zbyt luźny `equal` (np. tylko po `id`) – zmiany innych pól są cicho ignorowane.",
+    "Kosztowne deep-equal na dużych strukturach przy każdym zapisie."
+   ],
+   "code": "const user = signal<User>(initial, {\n  equal: (a, b) => a.id === b.id && a.version === b.version,\n});",
+   "lang": "typescript",
+   "say": "Sygnały porównują przez Object.is; własny equal stosuję świadomie, gdy chcę ograniczyć propagację, pamiętając, że zbyt luźny ukryje zmiany."
+  },
+  {
+   "topic": "linkedSignal()",
+   "points": [
+    "Zapisywalny signal **resetowany** na podstawie źródła, ale możliwy do ręcznego nadpisania (`set`/`update`).",
+    "Przypadek 'stan zależny, ale edytowalny': wybrana opcja wraca do pierwszej po zmianie listy opcji.",
+    "Forma krótka: `linkedSignal(() => options()[0])`.",
+    "Forma pełna: `{ source, computation(source, previous) }` – `previous?.source`, `previous?.value` pozwalają zachować wybór użytkownika.",
+    "Zastępuje antywzorzec 'signal + effect kopiujący stan' – brak dodatkowego cyklu i okna z nieaktualną wartością.",
+    "Wprowadzony w v19 (developer preview), stabilny od v20."
+   ],
+   "pitfalls": [
+    "Mylenie z computed – computed jest read-only.",
+    "Zapomnienie, że po zmianie źródła ręczna wartość jest nadpisywana wynikiem computation."
+   ],
+   "code": "selected = linkedSignal<Item[], Item | undefined>({\n  source: this.items,\n  computation: (items, prev) =>\n    items.find(i => i.id === prev?.value?.id) ?? items[0],\n});",
+   "lang": "typescript",
+   "say": "linkedSignal to edytowalny stan, który resetuje się po zmianie źródła – zastępuje efekty kopiujące stan."
+  },
+  {
+   "topic": "resource()",
+   "points": [
+    "Łączy sygnały z async: przy zmianie `params` wywołuje `loader` i wystawia wynik jako sygnały.",
+    "API: `value()`, `status()`, `error()`, `isLoading()`, `hasValue()`, `reload()`; `value` można ustawić lokalnie (status 'local').",
+    "Statusy (od v20 string union): 'idle', 'loading', 'reloading', 'resolved', 'error', 'local'.",
+    "v20: `request` → **`params`**; loader dostaje `{ params, abortSignal, previous }`.",
+    "`params` zwraca `undefined` → status 'idle', loader się nie wykonuje.",
+    "Przy zmianie params/zniszczeniu poprzedni loader dostaje abort – przekaż `abortSignal` do `fetch`.",
+    "Całość **experimental** – sprawdzaj status w dokumentacji używanej wersji."
+   ],
+   "pitfalls": [
+    "Nieprzekazanie `abortSignal` do fetch – stare żądania lecą dalej.",
+    "Używanie resource do mutacji (POST/PUT) – służy do odczytu.",
+    "Kod z tutoriali v19 (`request`) w projekcie v20+."
+   ],
+   "code": "user = resource({\n  params: () => ({ id: this.userId() }),\n  loader: ({ params, abortSignal }) =>\n    fetch(`/api/users/${params.id}`, { signal: abortSignal }).then(r => r.json()),\n});",
+   "lang": "typescript",
+   "say": "resource to deklaratywne, reaktywne ładowanie danych: params z sygnałów, loader async, wynik i status jako sygnały, z anulowaniem poprzednich żądań przez abortSignal."
+  },
+  {
+   "topic": "rxResource()",
+   "points": [
+    "`rxResource` z `@angular/core/rxjs-interop` – jak resource, ale funkcja ładująca zwraca **Observable**.",
+    "Od v20 funkcja nazywa się **`stream`** (w v19 `loader`); parametry w `params` (w v19 `request`).",
+    "Przy zmianie params poprzednia subskrypcja jest odpinana – HTTP anulowany jak w `switchMap`.",
+    "Wygodny, gdy serwisy już zwracają Observable z HttpClient i operatorami.",
+    "Experimental, jak cała rodzina resource."
+   ],
+   "pitfalls": [
+    "Po aktualizacji v19 → v20 pozostawione `loader`/`request` w rxResource.",
+    "Oczekiwanie semantyki concat/exhaust – rxResource zawsze anuluje poprzednie (switch)."
+   ],
+   "code": "orders = rxResource({\n  params: () => ({ page: this.page() }),\n  stream: ({ params }) => this.api.getOrders(params.page),\n});",
+   "lang": "typescript",
+   "say": "rxResource to resource dla świata RxJS: stream zwraca Observable, a zmiana parametrów odpina poprzednią subskrypcję jak switchMap."
+  },
+  {
+   "topic": "httpResource()",
+   "points": [
+    "`httpResource()` z `@angular/common/http` (od v19.2, **experimental**) – resource zbudowany na HttpClient.",
+    "Podajesz reaktywną funkcję zwracającą URL lub obiekt żądania; GET wykonuje się przy zmianie sygnałów.",
+    "Idzie przez HttpClient → działają **interceptory**, `HttpTestingController`, transfer cache przy SSR.",
+    "Dodatkowo: `headers()`, `statusCode()`, `progress()`; warianty `.text()`, `.blob()`, `.arrayBuffer()`.",
+    "Funkcja zwraca `undefined` → brak żądania (idle).",
+    "Opcja `parse` pozwala zwalidować/przemapować odpowiedź (np. schematem Zod)."
+   ],
+   "pitfalls": [
+    "Używanie do POST/mutacji – służy do pobierania danych.",
+    "Budowanie URL ze sklejania stringów bez obsługi `undefined` – żądanie z '/api/users/undefined'."
+   ],
+   "code": "user = httpResource<User>(() =>\n  this.id() ? `/api/users/${this.id()}` : undefined\n);\n// user.value(), user.isLoading(), user.error(), user.statusCode()",
+   "lang": "typescript",
+   "say": "httpResource to resource na HttpClient – reaktywny GET z interceptorami i wsparciem SSR; mutacje dalej robię zwykłym HttpClient."
+  },
+  {
+   "topic": "input()",
+   "points": [
+    "`input()` – signal-based następca `@Input()`; zwraca read-only `InputSignal<T>`.",
+    "`input(default)`, `input<T>()` → `T | undefined`, `input.required<T>()` – błąd kompilacji szablonu, gdy rodzic nie poda.",
+    "Odczyt required inputu przed ustawieniem (np. w konstruktorze) rzuca błąd.",
+    "Pochodne liczymy `computed` zamiast `ngOnChanges`; edytowalna kopia – `linkedSignal`.",
+    "`transform`: `booleanAttribute`, `numberAttribute`; `alias` zmienia publiczną nazwę.",
+    "Stabilne od v19; migracja: `ng generate @angular/core:signal-input-migration`."
+   ],
+   "pitfalls": [
+    "Próba `this.value.set(...)` – InputSignal nie ma set; do two-way jest `model()`.",
+    "W testach przypisywanie pola zamiast `fixture.componentRef.setInput()`."
+   ],
+   "code": "user = input.required<User>();\ndisabled = input(false, { transform: booleanAttribute });\nfullName = computed(() => `${this.user().first} ${this.user().last}`);",
+   "lang": "typescript",
+   "say": "input() to read-only signal z wartością od rodzica – pochodne liczę przez computed, a gdy komponent ma zmieniać wartość, używam model."
+  },
+  {
+   "topic": "output()",
+   "points": [
+    "`output<T>()` zwraca `OutputEmitterRef<T>` z metodą `emit()`.",
+    "To **nie** Observable/Subject – brak `pipe`/`next`, mniej zależności od RxJS.",
+    "Subskrypcje sprzątane automatycznie przy zniszczeniu komponentu.",
+    "Most z RxJS: `outputFromObservable(obs$)` i `outputToObservable(ref)` z `@angular/core/rxjs-interop`.",
+    "Stabilne od v19; migracja: `ng generate @angular/core:output-migration`."
+   ],
+   "pitfalls": [
+    "Wywoływanie `.next()` lub `.pipe()` na output – kompilacja nie przejdzie."
+   ],
+   "code": "saved = output<Order>();\nsave() { this.saved.emit(this.form.getRawValue()); }\n// <app-order-form (saved)=\"onSaved($event)\" />",
+   "lang": "typescript",
+   "say": "output() to lekki emiter zdarzeń bez RxJS – emit w dziecku, (event) w rodzicu, a mosty do Observable są w rxjs-interop."
+  },
+  {
+   "topic": "model()",
+   "points": [
+    "`model()` – zapisywalny signal, który jest jednocześnie inputem i outputem.",
+    "`value = model()` generuje input `value` i output `valueChange` → rodzic używa `[(value)]`.",
+    "Komponent zmienia przez `set`/`update` – zdarzenie do rodzica emitowane automatycznie.",
+    "Rodzic może podpiąć pod `[(value)]` pole albo bezpośrednio WritableSignal.",
+    "`model.required()` wymusza binding."
+   ],
+   "pitfalls": [
+    "Używanie model wszędzie zamiast input + output – model tylko dla komponentów-kontrolek edytujących wartość rodzica."
+   ],
+   "code": "// dziecko\nchecked = model(false);\ntoggle() { this.checked.update(v => !v); }\n// rodzic: <app-toggle [(checked)]=\"isOn\" />  // isOn = signal(true)",
+   "lang": "typescript",
+   "say": "model() to two-way binding oparty o sygnały: input plus output valueChange, idealny dla własnych kontrolek."
+  },
+  {
+   "topic": "Zapytania o widok",
+   "points": [
+    "`viewChild`, `viewChildren`, `contentChild`, `contentChildren` – sygnałowe następcy dekoratorów.",
+    "`viewChild('ref')` → `Signal<T | undefined>`; aktualizuje się, gdy element pojawia się/znika (`@if`).",
+    "`viewChild.required()` → `Signal<T>`; odczyt bez wyniku rzuca błąd.",
+    "`viewChildren()` → `Signal<readonly T[]>` zamiast `QueryList.changes`.",
+    "Opcje: `read` (np. `ElementRef`), `descendants` dla content queries.",
+    "Można na nich budować computed/effect zamiast `ngAfterViewInit`; stabilne od v19."
+   ],
+   "pitfalls": [
+    "Odczyt wyniku w konstruktorze – widok jeszcze nie istnieje (undefined / błąd przy required).",
+    "Odwołanie przez viewChild do komponentu z bloku `@defer` blokuje wydzielenie chunka."
+   ],
+   "code": "input = viewChild.required<ElementRef<HTMLInputElement>>('search');\nconstructor() {\n  afterNextRender(() => this.input().nativeElement.focus());\n}",
+   "lang": "typescript",
+   "say": "Signal queries zwracają wynik jako sygnał, który sam się aktualizuje – zamiast lifecycle hooków i QueryList buduję na nich computed albo afterRenderEffect."
+  },
+  {
+   "topic": "toSignal()",
+   "points": [
+    "`toSignal(obs$)` subskrybuje **od razu** i wystawia ostatnią wartość; odpina przy zniszczeniu kontekstu.",
+    "Typ bez opcji: `T | undefined`; `initialValue` daje wartość startową.",
+    "`requireSync: true` – typ `T`, ale brak synchronicznej emisji rzuca błąd (OK dla BehaviorSubject, nie dla HTTP).",
+    "Wymaga injection context lub opcji `injector`; jest też `manualCleanup`.",
+    "Błąd z Observable jest rzucany przy **odczycie** sygnału – obsłuż `catchError` w strumieniu.",
+    "Każde wywołanie = osobna subskrypcja (zimne HTTP → osobne żądanie)."
+   ],
+   "pitfalls": [
+    "toSignal w metodzie/handlerze – nowe subskrypcje przy każdym wywołaniu + NG0203.",
+    "`requireSync` dla HTTP → błąd w runtime."
+   ],
+   "code": "private route = inject(ActivatedRoute);\nid = toSignal(this.route.paramMap.pipe(map(p => p.get('id'))), {\n  initialValue: null,\n});",
+   "lang": "typescript",
+   "say": "toSignal to gorący most Observable → signal: subskrybuje od razu, sprząta przy zniszczeniu, a typ zależy od initialValue lub requireSync."
+  },
+  {
+   "topic": "toObservable()",
+   "points": [
+    "`toObservable(sig)` zamienia signal w Observable – by użyć `debounceTime`, `switchMap` itp.",
+    "Pod spodem **effect** – emisje asynchroniczne; kilka synchronicznych zmian = jedna emisja ostatniej wartości.",
+    "Pierwsza wartość też przychodzi asynchronicznie.",
+    "Wymaga injection context (lub `injector`).",
+    "Klasyczny wzorzec: signal → `toObservable` → operatory RxJS → `toSignal`."
+   ],
+   "pitfalls": [
+    "Oczekiwanie, że każda pośrednia wartość sygnału zostanie wyemitowana.",
+    "Wywołanie w ngOnInit bez injectora."
+   ],
+   "code": "results = toSignal(\n  toObservable(this.query).pipe(\n    debounceTime(300),\n    switchMap(q => this.api.search(q)),\n  ),\n  { initialValue: [] },\n);",
+   "lang": "typescript",
+   "say": "toObservable przenosi sygnał do RxJS przez efekt – dostaję ostatnie wartości asynchronicznie, co wystarcza do debounce i anulowania."
+  },
+  {
+   "topic": "Signals vs RxJS",
+   "points": [
+    "**Sygnały**: stan synchroniczny z wartością – stan komponentu/UI, pochodne, dane do szablonu.",
+    "**RxJS**: zdarzenia w czasie i orkiestracja async – debounce/throttle, anulowanie (`switchMap`), retry, websockety, łączenie strumieni.",
+    "Zasada: RxJS na brzegu (I/O, zdarzenia), sygnały do stanu i widoku.",
+    "Mosty: `toSignal`, `toObservable`, `rxResource`, `outputFromObservable`.",
+    "Sygnały zastępują RxJS tam, gdzie był 'kontenerem na stan' (BehaviorSubject), nie wszędzie."
+   ],
+   "pitfalls": [
+    "Przepisywanie złożonych przepływów (retry, concatMap, websocket) na efekty – utrata semantyki anulowania i kolejności.",
+    "Trzymanie stanu w Subjectach i ręczne subskrypcje w komponentach w nowym kodzie."
+   ],
+   "say": "RxJS do zdarzeń i asynchroniczności, sygnały do stanu i widoku, a toSignal/toObservable jako mosty na granicy."
+  },
+  {
+   "topic": "Change detection",
+   "points": [
+    "Szablon czytający signal staje się jego konsumentem – zmiana planuje CD, **także w OnPush**, bez `markForCheck`.",
+    "Od v17 signal oznacza do odświeżenia tylko **konkretny widok**, przodków flagą 'ma potomków do odświeżenia'.",
+    "`markForCheck` oznacza komponent i **wszystkich przodków**; signal – tylko konsumenta.",
+    "W drzewie OnPush daje to aktualizacje bliskie fine-grained (granularność: widok, nie węzeł DOM).",
+    "W zoneless CD wyzwalają: sygnały czytane w szablonie, `markForCheck` (async pipe), `setInput`, zdarzenia z szablonu.",
+    "Zwykłe pole zmienione w `setTimeout` w zoneless **nie** odświeży widoku – signal tak."
+   ],
+   "pitfalls": [
+    "Czytanie sygnału tylko w kodzie TS (np. w metodzie wywołanej z setTimeout) i oczekiwanie odświeżenia – liczy się odczyt w szablonie/computed użytym w szablonie."
+   ],
+   "say": "Sygnał czytany w szablonie sam planuje change detection i oznacza tylko ten widok – dlatego OnPush plus sygnały daje prawie fine-grained aktualizacje i umożliwia zoneless."
+  },
+  {
+   "topic": "Zarządzanie stanem",
+   "points": [
+    "Wzorzec serwisu: prywatny `WritableSignal` jako źródło prawdy, publicznie `asReadonly()` + `computed()`.",
+    "Zmiany tylko przez metody-intencje (`addItem`, `setFilter`) – jednokierunkowy przepływ.",
+    "Aktualizacje niemutowalne przez `update`.",
+    "Async: metody z HttpClient albo resource/rxResource/httpResource.",
+    "Dla małych i średnich aplikacji często wystarcza zamiast NgRx; gdy wzorce się powtarzają – SignalStore.",
+    "Stan lokalny zostaje w komponencie – nie wszystko musi być globalne."
+   ],
+   "pitfalls": [
+    "Publiczny WritableSignal w serwisie.",
+    "Jeden ogromny signal z całym stanem aplikacji – każda zmiana nowa referencja i masowe przeliczenia."
+   ],
+   "code": "@Injectable({ providedIn: 'root' })\nexport class CartStore {\n  private readonly _items = signal<CartItem[]>([]);\n  readonly items = this._items.asReadonly();\n  readonly total = computed(() => this._items().reduce((s, i) => s + i.price * i.qty, 0));\n  add(item: CartItem) { this._items.update(l => [...l, item]); }\n}",
+   "lang": "typescript",
+   "say": "Stan trzymam w prywatnych sygnałach serwisu, na zewnątrz wystawiam readonly i computed, a zmieniam przez metody – prosto, testowalnie i bez dodatkowych bibliotek."
+  },
+  {
+   "topic": "NgRx SignalStore",
+   "points": [
+    "`@ngrx/signals`: funkcyjny store z features: `withState`, `withComputed`, `withMethods`, `withHooks`.",
+    "Stan zmienia się przez `patchState(store, partial | updater)`; od NgRx 18 stan jest domyślnie **chroniony** (patchState tylko wewnątrz store'a).",
+    "`rxMethod` (z `@ngrx/signals/rxjs-interop`) – metoda przyjmująca wartość, signal lub Observable i przepływ RxJS.",
+    "`withEntities` (`@ngrx/signals/entities`) – kolekcje z updaterami `setAllEntities`, `addEntity`, `updateEntity`, `removeEntity`.",
+    "`signalStoreFeature` – własne, reużywalne features (np. status ładowania).",
+    "Zakres: `{ providedIn: 'root' }` albo w `providers` komponentu/trasy (instancja per komponent/feature).",
+    "Mniej ceremonii niż klasyczny NgRx Store (brak akcji/reducerów jako osobnych bytów)."
+   ],
+   "pitfalls": [
+    "Wołanie `patchState` z komponentu – przy chronionym stanie nie przejdzie; wystaw metodę.",
+    "Jeden globalny store na całą aplikację zamiast store'ów per domena."
+   ],
+   "code": "export const TodoStore = signalStore(\n  { providedIn: 'root' },\n  withState({ todos: [] as Todo[], filter: 'all' as Filter }),\n  withComputed(({ todos }) => ({ left: computed(() => todos().filter(t => !t.done).length) })),\n  withMethods(store => ({\n    setFilter(filter: Filter) { patchState(store, { filter }); },\n  })),\n);",
+   "lang": "typescript",
+   "say": "SignalStore to ustandaryzowany store na sygnałach: stan, pochodne, metody i hooki jako features, rxMethod dla RxJS i withEntities dla kolekcji."
+  },
+  {
+   "topic": "Signal Forms",
+   "points": [
+    "`@angular/forms/signals` – **experimental** w v21 API formularzy opartych na sygnałach.",
+    "Model danych to zwykły `WritableSignal`; `form(model, schema)` tworzy drzewo pól.",
+    "Każde pole wystawia stan jako sygnały: wartość, `valid()`, `errors()`, `touched()`, `dirty()`.",
+    "Walidacja w schemacie funkcjami (`required`, `email`, `minLength`), także warunkowa i asynchroniczna.",
+    "Pole wiąże się z inputem dyrektywą (`[formField]` od v21.1; w v21.0 `[field]`) – nazwy mogą się jeszcze zmienić.",
+    "Produkcyjnie domyślnym wyborem pozostają **Reactive Forms**."
+   ],
+   "pitfalls": [
+    "Twierdzenie, że Signal Forms zastąpiły Reactive Forms."
+   ],
+   "say": "Signal Forms to eksperymentalne w v21 formularze, w których model jest sygnałem, a stan pól i walidacja są sygnałami – obserwuję je, ale produkcyjnie używam Reactive Forms."
+  },
+  {
+   "topic": "Pułapki",
+   "points": [
+    "Mutacja obiektu/tablicy w sygnale (`push`, przypisanie pola) – brak powiadomienia, bo referencja ta sama.",
+    "Odczyt po `await`, w `setTimeout`, `.then()`, subskrypcji – **nie jest śledzony** (tracking tylko synchronicznie).",
+    "Effect tworzony wielokrotnie (handler, pętla) – kumulacja efektów do zniszczenia komponentu.",
+    "Effect czytający i zapisujący ten sam signal – pętla.",
+    "Łańcuchy efektów A → B → C – zastąp computed/linkedSignal.",
+    "Wywołanie zewnętrznego kodu w efekcie bez `untracked` – ukryte zależności."
+   ],
+   "pitfalls": [
+    "Odczytuj wszystkie sygnały na początku efektu/computed, przed jakimkolwiek kodem asynchronicznym."
+   ],
+   "code": "// źle: odczyt po await nie jest śledzony\neffect(async () => { await delay(); console.log(this.user()); });\n// dobrze: odczyt synchroniczny na początku\neffect(() => { const u = this.user(); queueMicrotask(() => console.log(u)); });",
+   "lang": "typescript",
+   "say": "Najczęstsze pułapki to mutacje zamiast nowych referencji, odczyty po await, które nie są śledzone, oraz efekty używane do propagacji stanu."
+  },
+  {
+   "topic": "afterRenderEffect()",
+   "points": [
+    "Efekt reaktywny na sygnały, wykonywany **po renderze**, gdy DOM jest zaktualizowany.",
+    "Do pomiarów layoutu, bibliotek rysujących (canvas, wykresy), scrolla.",
+    "Fazy: `earlyRead`, `write`, `mixedReadWrite`, `read` – unikanie layout thrashingu; wynik fazy trafia jako signal do kolejnej.",
+    "W przeciwieństwie do `afterNextRender`/`afterEveryRender` uruchamia się ponownie tylko przy zmianie zależności.",
+    "**Nie działa na serwerze** (SSR) – bezpieczne miejsce na kod przeglądarkowy.",
+    "Wprowadzony w v19, stabilny od v20."
+   ],
+   "pitfalls": [
+    "Używanie zwykłego `effect` do odczytu DOM – może wykonać się przed aktualizacją widoku."
+   ],
+   "code": "constructor() {\n  afterRenderEffect({\n    write: () => this.chart.update(this.data()),\n  });\n}",
+   "lang": "typescript",
+   "say": "afterRenderEffect to effect dla DOM: reaguje na sygnały, ale wykonuje się po renderze i nie na serwerze, z fazami odczytu i zapisu."
+  },
+  {
+   "topic": "Testowanie",
+   "points": [
+    "Signal inputs: `fixture.componentRef.setInput('name', v)` – nie przypisuj pola (InputSignal jest read-only).",
+    "Po zmianach: `fixture.detectChanges()` albo `await fixture.whenStable()` (zalecane w zoneless).",
+    "computed testuj bez TestBed: ustaw signal, odczytaj computed.",
+    "Efekty są asynchroniczne – wymuś przez `TestBed.tick()` (od v20; wcześniej `TestBed.flushEffects()`).",
+    "Kod wymagający injection context: `TestBed.runInInjectionContext(() => ...)`.",
+    "httpResource testuj przez `HttpTestingController`; v21 – domyślnie **Vitest**."
+   ],
+   "pitfalls": [
+    "Asercja zaraz po `set()` na efekt, który jeszcze się nie wykonał.",
+    "`fakeAsync` w projekcie bez zone.js – wymaga zone.js; w Vitest używaj fake timers."
+   ],
+   "code": "fixture.componentRef.setInput('user', { id: 1, name: 'Ala' });\nawait fixture.whenStable();\nexpect(fixture.nativeElement.textContent).toContain('Ala');",
+   "lang": "typescript",
+   "say": "Inputy ustawiam przez setInput, efekty wymuszam TestBed.tick lub whenStable, a computed i serwisy z sygnałami testuję jak czyste funkcje."
+  }
+ ]
+}

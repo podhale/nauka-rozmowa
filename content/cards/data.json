@@ -1,0 +1,712 @@
+{
+  "cat": "data",
+  "name": "EF Core i SQL",
+  "cards": [
+    {
+      "id": "data-001",
+      "topic": "DbContext",
+      "level": 1,
+      "q": "Jaki lifetime ma DbContext zarejestrowany przez AddDbContext i dlaczego właśnie taki?",
+      "a": "Domyślnie scoped, czyli jedna instancja na request HTTP. DbContext jest lekką jednostką pracy (unit of work): trzyma change tracker i połączenie tylko na czas jednej operacji biznesowej. Singleton byłby błędem – kontekst rósłby w nieskończoność, trzymał nieaktualne dane i byłby współdzielony między wątkami. Transient też bywa problemem, bo dwa serwisy w jednym requeście dostałyby różne konteksty i nie zapisałyby zmian w jednym SaveChanges.",
+      "code": "builder.Services.AddDbContext<AppDbContext>(o =>\n    o.UseSqlServer(builder.Configuration.GetConnectionString(\"Default\")));",
+      "lang": "csharp",
+      "tip": "Follow-up: co jeśli wstrzykniesz DbContext do singletona (np. BackgroundService)? To captive dependency – trzeba utworzyć scope przez IServiceScopeFactory albo użyć IDbContextFactory."
+    },
+    {
+      "id": "data-002",
+      "topic": "DbContext",
+      "level": 2,
+      "q": "Czy DbContext jest thread-safe? Co się stanie przy Task.WhenAll na jednym kontekście?",
+      "a": "Nie jest. Jedna instancja może wykonywać tylko jedną operację naraz – przy równoległych zapytaniach EF rzuca InvalidOperationException („A second operation was started on this context instance before a previous operation completed”). Dlatego każde wywołanie async trzeba await-ować przed kolejnym, a do równoległości używać osobnych instancji, np. z IDbContextFactory.",
+      "tip": "Typowy błąd: wywołanie async bez await (fire-and-forget) albo Parallel.ForEach na wspólnym kontekście."
+    },
+    {
+      "id": "data-003",
+      "topic": "DbContext",
+      "level": 2,
+      "q": "Kiedy używać IDbContextFactory<T> zamiast wstrzykiwania DbContext?",
+      "a": "Gdy scope DI nie pokrywa się z jednostką pracy: Blazor Server (circuit żyje długo), BackgroundService/hosted services, równoległe zapytania, długo żyjące komponenty. Fabryka tworzy nowy kontekst na żądanie, a my odpowiadamy za jego dispose (using).",
+      "code": "builder.Services.AddDbContextFactory<AppDbContext>(o => o.UseNpgsql(cs));\n\npublic class ReportJob(IDbContextFactory<AppDbContext> factory)\n{\n    public async Task RunAsync(CancellationToken ct)\n    {\n        await using var db = await factory.CreateDbContextAsync(ct);\n        var count = await db.Orders.CountAsync(ct);\n    }\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "data-004",
+      "topic": "DbContext",
+      "level": 3,
+      "q": "Czym jest DbContext pooling i jakie ma pułapki?",
+      "a": "AddDbContextPool (lub AddPooledDbContextFactory) trzyma pulę instancji kontekstu i zamiast tworzyć nową, resetuje stan używanej (change tracker itd.). Oszczędza alokacje i koszt inicjalizacji – zauważalne przy bardzo wysokim RPS. Pułapka: kontekst jest de facto współdzielony między requestami, więc nie wolno trzymać w nim własnego stanu (np. pola TenantId ustawianego w konstruktorze) ani wstrzykiwać serwisów do jego konstruktora – poolowany kontekst musi mieć publiczny konstruktor przyjmujący tylko DbContextOptions (inaczej EF rzuci InvalidOperationException), a konstruktor i tak nie jest wołany przy każdym wypożyczeniu.",
+      "tip": "Dla multi-tenancy z poolingiem stan tenanta ustawia się po wypożyczeniu (np. przez fabrykę/IDbContextFactory wrapper) albo odczytuje z serwisu w filtrze, a nie w konstruktorze."
+    },
+    {
+      "id": "data-005",
+      "topic": "Change tracking",
+      "level": 1,
+      "q": "Jak działa change tracking w EF Core?",
+      "a": "Każda encja pobrana przez trackujące zapytanie trafia do change trackera ze stanem (Unchanged, Modified, Added, Deleted, Detached) i snapshotem oryginalnych wartości. Przy SaveChanges EF wywołuje DetectChanges, porównuje bieżące wartości ze snapshotem i generuje tylko potrzebne INSERT/UPDATE/DELETE. Dzięki temu nie trzeba wołać Update() na encjach pobranych z tego samego kontekstu.",
+      "code": "var order = await db.Orders.FirstAsync(o => o.Id == id);\norder.Status = OrderStatus.Paid;   // tylko zmiana w pamięci\nawait db.SaveChangesAsync();       // UPDATE ... SET Status = @p0 WHERE Id = @p1",
+      "lang": "csharp",
+      "tip": "db.Update(entity) oznacza WSZYSTKIE kolumny jako zmienione – przy encjach trackowanych to zbędne i generuje szerszy UPDATE."
+    },
+    {
+      "id": "data-006",
+      "topic": "Change tracking",
+      "level": 2,
+      "q": "Czym różni się AsNoTracking od AsNoTrackingWithIdentityResolution?",
+      "a": "AsNoTracking pomija change tracker – szybciej i mniej pamięci, idealne do odczytów (np. GET w API). Ale jeśli ten sam rekord pojawia się w wyniku kilka razy (np. ten sam Customer przy wielu Orders z Include), dostaniesz kilka osobnych instancji. AsNoTrackingWithIdentityResolution też nie trackuje, ale w ramach jednego zapytania deduplikuje instancje po kluczu, więc graf obiektów jest spójny.",
+      "code": "var orders = await db.Orders\n    .AsNoTrackingWithIdentityResolution()\n    .Include(o => o.Customer)\n    .ToListAsync();",
+      "lang": "csharp",
+      "tip": "Można też ustawić domyślnie: optionsBuilder.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking) i włączać AsTracking() tam, gdzie zapisujemy."
+    },
+    {
+      "id": "data-007",
+      "topic": "Wydajność zapytań",
+      "level": 1,
+      "q": "Co to jest problem N+1 i jak go wykryć oraz naprawić w EF Core?",
+      "a": "To sytuacja, gdy pobierasz listę N rekordów jednym zapytaniem, a potem dla każdego wykonujesz dodatkowe zapytanie o powiązane dane – razem N+1 round-tripów. Najczęściej wynika z lazy loadingu w pętli. Wykrywa się go w logach SQL / profilerze (dużo identycznych zapytań). Naprawa: eager loading (Include) albo – najlepiej – projekcja Select do DTO, która pobiera wszystko jednym zapytaniem.",
+      "code": "// N+1 przy lazy loadingu:\nforeach (var o in await db.Orders.ToListAsync())\n    Console.WriteLine(o.Customer.Name); // osobne zapytanie per zamówienie\n\n// Jedno zapytanie:\nvar rows = await db.Orders\n    .Select(o => new { o.Id, CustomerName = o.Customer.Name })\n    .ToListAsync();",
+      "lang": "csharp"
+    },
+    {
+      "id": "data-008",
+      "topic": "Ładowanie danych",
+      "level": 2,
+      "q": "Porównaj eager, explicit i lazy loading w EF Core.",
+      "a": "Eager – Include/ThenInclude, dane powiązane w tym samym zapytaniu; przewidywalne, ale łatwo pobrać za dużo. Explicit – najpierw encja, potem świadomie db.Entry(x).Collection(...).LoadAsync(); przydatne warunkowo. Lazy – nawigacja ładuje się przy pierwszym dostępie (pakiet Proxies + virtual albo ILazyLoader); wygodne, ale ukrywa zapytania, prowadzi do N+1 i nie działa po zamknięciu kontekstu. W API zwykle unika się lazy loadingu.",
+      "code": "var blog = await db.Blogs.Include(b => b.Posts).FirstAsync();          // eager\nawait db.Entry(blog).Collection(b => b.Posts).LoadAsync();             // explicit\noptions.UseLazyLoadingProxies();                                        // lazy",
+      "lang": "csharp",
+      "tip": "Lazy loading przy serializacji do JSON potrafi wyzwolić lawinę zapytań lub cykle – kolejny argument za DTO."
+    },
+    {
+      "id": "data-009",
+      "topic": "Ładowanie danych",
+      "level": 2,
+      "q": "Include czy projekcja Select do DTO – co wybrać w endpointach do odczytu?",
+      "a": "Do odczytu preferuję projekcję: SQL pobiera tylko potrzebne kolumny, nie ma trackowania, nie wyciekają encje domenowe do API, a zagnieżdżone dane (np. liczba pozycji) liczy baza. Include ładuje całe encje ze wszystkimi kolumnami – ma sens, gdy chcę zmodyfikować agregat i zapisać go przez change tracker. Przy projekcji Include jest ignorowany, bo EF sam dołącza to, czego użyto w Select.",
+      "code": "var dto = await db.Orders\n    .Where(o => o.Id == id)\n    .Select(o => new OrderDto(o.Id, o.Customer.Name, o.Lines.Count, o.Lines.Sum(l => l.Price)))\n    .SingleOrDefaultAsync();",
+      "lang": "csharp"
+    },
+    {
+      "id": "data-010",
+      "topic": "Wydajność zapytań",
+      "level": 3,
+      "q": "Czym jest cartesian explosion i kiedy użyć AsSplitQuery?",
+      "a": "Gdy w jednym zapytaniu dołączamy kilka kolekcji (Include(Posts).Include(Tags)), JOIN-y mnożą wiersze: 10 postów × 20 tagów = 200 wierszy z powieloną kolumnami bloga. AsSplitQuery wykonuje osobne zapytanie dla każdej kolekcji i składa wynik w pamięci. Koszt: więcej round-tripów i brak gwarancji spójności między zapytaniami (dane mogą się zmienić pomiędzy, chyba że jest transakcja z odpowiednią izolacją). Dla stronicowania z split query potrzebny jest deterministyczny OrderBy.",
+      "code": "var blogs = await db.Blogs\n    .Include(b => b.Posts)\n    .Include(b => b.Tags)\n    .AsSplitQuery()\n    .ToListAsync();",
+      "lang": "csharp",
+      "tip": "Można ustawić globalnie UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery) i wymuszać AsSingleQuery() lokalnie."
+    },
+    {
+      "id": "data-011",
+      "topic": "LINQ",
+      "level": 1,
+      "q": "IQueryable vs IEnumerable – gdzie wykona się filtr?",
+      "a": "IQueryable buduje drzewo wyrażeń, które provider (EF) tłumaczy na SQL – Where, OrderBy, Take wykonają się w bazie. IEnumerable to LINQ to Objects – operatory działają w pamięci na już pobranych danych. Jeśli metoda repozytorium zwróci IEnumerable (albo zrobimy AsEnumerable/ToList za wcześnie), dalsze Where pobierze całą tabelę i odfiltruje w aplikacji.",
+      "code": "IEnumerable<User> all = db.Users;                 // typ statyczny IEnumerable\nvar active = all.Where(u => u.IsActive).ToList(); // SELECT * FROM Users, filtr w RAM\n\nIQueryable<User> q = db.Users;\nvar active2 = q.Where(u => u.IsActive).ToList();  // WHERE IsActive = 1 w SQL",
+      "lang": "csharp"
+    },
+    {
+      "id": "data-012",
+      "topic": "Migracje",
+      "level": 1,
+      "q": "Jak działają migracje w EF Core?",
+      "a": "dotnet ef migrations add Nazwa porównuje bieżący model z ModelSnapshot i generuje klasę migracji z Up/Down oraz aktualizuje snapshot. dotnet ef database update aplikuje brakujące migracje; zastosowane są zapisane w tabeli __EFMigrationsHistory. Wygenerowany kod warto przejrzeć – np. zmiana nazwy kolumny bywa wykryta jako drop + add, co kasuje dane.",
+      "code": "dotnet ef migrations add AddOrderStatus\ndotnet ef database update\ndotnet ef migrations remove   # cofnięcie ostatniej niezastosowanej",
+      "lang": "bash"
+    },
+    {
+      "id": "data-013",
+      "topic": "Migracje",
+      "level": 2,
+      "q": "Jak pracować z migracjami w zespole, gdy dwie osoby dodały migracje równolegle?",
+      "a": "Konflikt objawia się głównie w pliku ModelSnapshot. Bezpieczna procedura: po merge/rebase usunąć swoją migrację (jeśli nie trafiła jeszcze na wspólne środowisko), pobrać zmiany i wygenerować ją ponownie na aktualnym snapshocie. Jeśli obie są już zastosowane, rozwiązać konflikt w snapshocie ręcznie i sprawdzić, że kolejna pusta migracja nic nie generuje. Zasady: małe migracje, nie edytować migracji już wdrożonych, review kodu migracji jak każdego innego kodu.",
+      "tip": "Rekruter lubi usłyszeć: „nigdy nie modyfikuję migracji, która poszła na wspólne środowisko – dokładam nową”."
+    },
+    {
+      "id": "data-014",
+      "topic": "Migracje",
+      "level": 3,
+      "q": "Jak wdrażać migracje w CI/CD? Czemu nie Database.Migrate() przy starcie aplikacji?",
+      "a": "Migrate() przy starcie jest wygodne lokalnie, ale na produkcji ryzykowne: kilka instancji może migrować naraz, aplikacja potrzebuje uprawnień DDL, a błąd migracji blokuje start. Lepiej zrobić migrację osobnym krokiem pipeline'u: idempotentny skrypt SQL (--idempotent sprawdza __EFMigrationsHistory, więc można go odpalić na dowolnej wersji bazy) przejrzany przez DBA albo migration bundle (samodzielny plik wykonywalny). Zmiany powinny być wstecznie kompatybilne (expand/contract), żeby stara i nowa wersja aplikacji działały na tym samym schemacie podczas rolling deploy.",
+      "code": "dotnet ef migrations script --idempotent -o migrate.sql\ndotnet ef migrations bundle -o efbundle\n./efbundle --connection \"$CONN_STR\"",
+      "lang": "bash",
+      "tip": "Expand/contract: najpierw dodaj nową kolumnę i pisz do obu, wdroż, przenieś dane, dopiero w kolejnym release usuń starą."
+    },
+    {
+      "id": "data-015",
+      "topic": "Konfiguracja modelu",
+      "level": 1,
+      "q": "Fluent API czy data annotations do konfiguracji modelu?",
+      "a": "Atrybuty ([Key], [MaxLength], [Required]) są szybkie, ale mieszają szczegóły persystencji z modelem i nie wszystko da się nimi wyrazić (klucze złożone, indeksy z filtrami, owned types, konwersje, filtry). Fluent API jest pełniejsze i ma pierwszeństwo przy konflikcie. W praktyce konfigurację trzymam w klasach IEntityTypeConfiguration<T> i ładuję ApplyConfigurationsFromAssembly – encje domenowe zostają czyste.",
+      "code": "public class OrderConfig : IEntityTypeConfiguration<Order>\n{\n    public void Configure(EntityTypeBuilder<Order> b)\n    {\n        b.HasKey(o => o.Id);\n        b.Property(o => o.Number).HasMaxLength(20).IsRequired();\n        b.HasIndex(o => o.Number).IsUnique();\n    }\n}\n// OnModelCreating: modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);",
+      "lang": "csharp"
+    },
+    {
+      "id": "data-016",
+      "topic": "Relacje",
+      "level": 2,
+      "q": "Jak EF Core modeluje relacje 1-n i n-n oraz co z cascade delete?",
+      "a": "1-n: nawigacja kolekcji po stronie „jeden” i klucz obcy po stronie „wiele” (HasMany().WithOne().HasForeignKey()). n-n: od EF5 wystarczą dwie kolekcje – EF sam tworzy tabelę łączącą (skip navigations); jawna encja łącząca jest potrzebna, gdy relacja ma własne dane (np. data dodania). Domyślnie wymagane relacje mają cascade delete – usuwając rodzica, usuniemy dzieci; często świadomie ustawia się OnDelete(DeleteBehavior.Restrict), żeby nie skasować przypadkiem dużej ilości danych.",
+      "code": "modelBuilder.Entity<Order>()\n    .HasMany(o => o.Lines)\n    .WithOne(l => l.Order)\n    .HasForeignKey(l => l.OrderId)\n    .OnDelete(DeleteBehavior.Cascade);",
+      "lang": "csharp",
+      "tip": "SQL Server nie pozwala na wiele ścieżek kaskadowych do tej samej tabeli (multiple cascade paths) – wtedy trzeba zmienić DeleteBehavior."
+    },
+    {
+      "id": "data-017",
+      "topic": "Konfiguracja modelu",
+      "level": 3,
+      "q": "Owned types vs complex types – czym się różnią?",
+      "a": "Oba służą do mapowania value objectów (np. Address, Money) bez osobnej tożsamości. Owned types (OwnsOne/OwnsMany) to technicznie encje z ukrytym kluczem – domyślnie w tej samej tabeli, OwnsMany w osobnej, mogą też być mapowane do JSON. Complex types (od EF8, ComplexProperty) to prawdziwe typy wartościowe: brak klucza, porównywanie po wartości, ta sama instancja może być użyta w kilku miejscach, mogą być rekordami/strukturami. Dla nowych value objectów complex types są bliższe semantyce DDD; owned types wciąż są potrzebne w scenariuszach, których complex types nie obsługują w danej wersji EF.",
+      "code": "modelBuilder.Entity<Customer>(b =>\n{\n    b.ComplexProperty(c => c.Address);   // kolumny Address_Street, Address_City...\n    b.OwnsMany(c => c.Phones);           // osobna tabela z ukrytym kluczem\n});",
+      "lang": "csharp",
+      "tip": "Zakres obsługi complex types (opcjonalne, kolekcje, JSON) rozszerzał się w EF8–EF10 – warto powiedzieć, że sprawdza się to dla konkretnej wersji."
+    },
+    {
+      "id": "data-018",
+      "topic": "Concurrency",
+      "level": 2,
+      "q": "Jak zaimplementować optimistic concurrency w EF Core?",
+      "a": "Dodaję token współbieżności – w SQL Server najczęściej kolumnę rowversion ([Timestamp] / IsRowVersion()), którą baza zmienia przy każdym UPDATE. EF dodaje ją do WHERE w UPDATE/DELETE; jeśli zmieniono 0 wierszy, rzuca DbUpdateConcurrencyException. Obsługa: odświeżyć dane i zwrócić 409 Conflict albo zastosować strategię (client wins / store wins / merge). W API wersję przekazuje się klientowi (np. w DTO albo w ETag) i wraca z nią przy PUT.",
+      "code": "public class Product\n{\n    public int Id { get; set; }\n    public decimal Price { get; set; }\n    [Timestamp] public byte[] RowVersion { get; set; } = default!;\n}\ntry { await db.SaveChangesAsync(); }\ncatch (DbUpdateConcurrencyException) { return Results.Conflict(); }",
+      "lang": "csharp",
+      "tip": "Pessimistic locking (SELECT ... WITH (UPDLOCK)) ma sens przy bardzo dużej kontencji, ale blokuje i skaluje się gorzej."
+    },
+    {
+      "id": "data-019",
+      "topic": "Transakcje",
+      "level": 2,
+      "q": "Czy SaveChanges jest transakcyjne? Kiedy potrzebujesz jawnej transakcji?",
+      "a": "Tak – jedno SaveChanges wykonuje wszystkie zmiany w jednej transakcji (wszystko albo nic). Jawna transakcja (BeginTransactionAsync) jest potrzebna, gdy w jednej operacji robisz kilka SaveChanges, mieszasz EF z ExecuteUpdate/raw SQL albo potrzebujesz konkretnego poziomu izolacji. Przy włączonym retry (EnableRetryOnFailure) ręczną transakcję trzeba owinąć w execution strategy, inaczej EF rzuci wyjątek.",
+      "code": "var strategy = db.Database.CreateExecutionStrategy();\nawait strategy.ExecuteAsync(async () =>\n{\n    await using var tx = await db.Database.BeginTransactionAsync();\n    db.Orders.Add(order);\n    await db.SaveChangesAsync();\n    await db.Stock.Where(s => s.ProductId == pid)\n        .ExecuteUpdateAsync(s => s.SetProperty(x => x.Qty, x => x.Qty - 1));\n    await tx.CommitAsync();\n});",
+      "lang": "csharp"
+    },
+    {
+      "id": "data-020",
+      "topic": "Bulk operations",
+      "level": 2,
+      "q": "Do czego służą ExecuteUpdate i ExecuteDelete i na co uważać?",
+      "a": "Od EF7 pozwalają wykonać UPDATE/DELETE bezpośrednio w bazie na podstawie zapytania LINQ, bez ładowania encji – jedno zapytanie zamiast tysięcy. Ale omijają change tracker: wykonują się natychmiast (nie przy SaveChanges), nie aktualizują już śledzonych encji w pamięci, nie odpalają SaveChanges interceptorów ani logiki audytu/soft delete opartej na SaveChanges, nie sprawdzają też concurrency tokenów automatycznie.",
+      "code": "await db.Sessions\n    .Where(s => s.ExpiresAt < DateTime.UtcNow)\n    .ExecuteDeleteAsync();\n\nawait db.Products\n    .Where(p => p.CategoryId == 5)\n    .ExecuteUpdateAsync(s => s.SetProperty(p => p.Price, p => p.Price * 1.1m));",
+      "lang": "csharp"
+    },
+    {
+      "id": "data-021",
+      "topic": "Wydajność zapytań",
+      "level": 3,
+      "q": "Czym są compiled queries i kiedy mają sens?",
+      "a": "EF przy każdym zapytaniu musi przetworzyć drzewo wyrażeń; ma cache, ale samo wyszukanie w cache i parametryzacja kosztują. EF.CompileAsyncQuery kompiluje zapytanie raz do delegata, co daje zysk przy bardzo gorących ścieżkach (tysiące wywołań/s). W typowej aplikacji zysk jest mały – używam ich dopiero po pomiarze (BenchmarkDotNet, profilowanie).",
+      "code": "private static readonly Func<AppDbContext, int, Task<Product?>> GetById =\n    EF.CompileAsyncQuery((AppDbContext db, int id) =>\n        db.Products.AsNoTracking().FirstOrDefault(p => p.Id == id));\n\nvar p = await GetById(db, 42);",
+      "lang": "csharp"
+    },
+    {
+      "id": "data-022",
+      "topic": "Raw SQL",
+      "level": 2,
+      "q": "Jak bezpiecznie wykonać surowy SQL w EF Core? FromSql vs FromSqlRaw.",
+      "a": "FromSql (i ExecuteSql, SqlQuery<T>) przyjmuje FormattableString – interpolowane wartości są zamieniane na parametry DbParameter, więc jest to bezpieczne przed SQL injection. FromSqlRaw przyjmuje zwykły string; jeśli zbudujesz go konkatenacją lub interpolacją z danymi użytkownika, masz SQL injection – parametry trzeba przekazać osobno. Na wyniku FromSql można dalej komponować LINQ (Where, OrderBy).",
+      "code": "// bezpieczne – parametr @p0\nvar users = await db.Users\n    .FromSql($\"SELECT * FROM Users WHERE Email = {email}\")\n    .ToListAsync();\n\n// NIEBEZPIECZNE – string sklejony przed wywołaniem\ndb.Users.FromSqlRaw(\"SELECT * FROM Users WHERE Email = '\" + email + \"'\");",
+      "lang": "csharp",
+      "tip": "Nazw kolumn/tabel nie da się sparametryzować – dynamiczne ORDER BY rozwiązuje się whitelistą dozwolonych wartości."
+    },
+    {
+      "id": "data-023",
+      "topic": "Global query filters",
+      "level": 2,
+      "q": "Do czego służą global query filters i jakie mają pułapki?",
+      "a": "HasQueryFilter dodaje warunek do każdego zapytania o dany typ – typowo soft delete (!IsDeleted) i multi-tenancy (TenantId == bieżący tenant). Pułapki: łatwo zapomnieć, że filtr działa, i szukać „zgubionych” danych; IgnoreQueryFilters wyłącza go dla zapytania; filtr na encji z wymaganą relacją może dziwnie odfiltrować rodziców/dzieci; ExecuteDelete nie zamieni się sam w soft delete. Przy multi-tenancy filtr musi czytać tenant z pola/serwisu kontekstu, a nie stałej.",
+      "code": "modelBuilder.Entity<Order>()\n    .HasQueryFilter(o => !o.IsDeleted && o.TenantId == _tenantId);\n\nvar all = await db.Orders.IgnoreQueryFilters().ToListAsync();",
+      "lang": "csharp",
+      "tip": "W EF Core 10 doszły nazwane filtry, dzięki którym można wyłączyć tylko wybrany filtr (np. soft delete), zostawiając tenant filter."
+    },
+    {
+      "id": "data-024",
+      "topic": "Interceptory",
+      "level": 3,
+      "q": "Czym są interceptory w EF Core i do czego ich używasz?",
+      "a": "To punkty rozszerzeń wywoływane przez EF przy operacjach niskiego poziomu: SaveChangesInterceptor (przed/po SaveChanges – audyt CreatedAt/ModifiedBy, zamiana Delete na soft delete, publikacja domain events / zapis do outboxa), DbCommandInterceptor (podgląd/modyfikacja SQL, hinty), DbConnectionInterceptor (np. ustawienie tokenu dostępu). Rejestruje się je przez AddInterceptors, mogą korzystać z DI.",
+      "code": "public class AuditInterceptor(TimeProvider clock) : SaveChangesInterceptor\n{\n    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(\n        DbContextEventData e, InterceptionResult<int> result, CancellationToken ct = default)\n    {\n        foreach (var entry in e.Context!.ChangeTracker.Entries<IAuditable>())\n            if (entry.State is EntityState.Added or EntityState.Modified)\n                entry.Entity.UpdatedAt = clock.GetUtcNow();\n        return base.SavingChangesAsync(e, result, ct);\n    }\n}",
+      "lang": "csharp",
+      "tip": "Pamiętaj: ExecuteUpdate/ExecuteDelete nie przechodzą przez SaveChangesInterceptor."
+    },
+    {
+      "id": "data-025",
+      "topic": "Dapper vs EF",
+      "level": 2,
+      "q": "Dapper czy EF Core – kiedy co?",
+      "a": "EF Core: produktywność, change tracking, migracje, LINQ, dobre dla logiki zapisu i typowego CRUD-a/agregatów. Dapper: micro-ORM, piszesz SQL ręcznie, mapuje wynik na obiekty z minimalnym narzutem – dobry do złożonych raportów, zapytań zoptymalizowanych pod konkretny plan, procedur. Nowoczesny EF z AsNoTracking i projekcją jest już bardzo szybki, więc wybór to raczej kontrola nad SQL niż surowa wydajność. Często łączy się oba: EF do komend, Dapper (lub SqlQuery<T>) do ciężkich odczytów – pasuje to do CQRS.",
+      "code": "using var conn = new SqlConnection(cs);\nvar top = await conn.QueryAsync<SalesRow>(\n    \"SELECT TOP (@n) ProductId, SUM(Qty) AS Total FROM Sales GROUP BY ProductId ORDER BY Total DESC\",\n    new { n = 10 });",
+      "lang": "csharp"
+    },
+    {
+      "id": "data-026",
+      "topic": "Repository",
+      "level": 3,
+      "q": "Czy warto pisać repository nad EF Core? Argumenty za i przeciw.",
+      "a": "Przeciw: DbContext już jest Unit of Work, a DbSet repozytorium; generyczne IRepository<T> z GetAll/Find tylko ukrywa możliwości EF (Include, projekcje, AsNoTracking) i często kończy się zwracaniem IQueryable, co i tak przecieka abstrakcję. Za: w DDD repozytorium per agregat (IOrderRepository.GetAsync(id)) definiuje kontrakt domeny, zapewnia ładowanie całego agregatu, ułatwia testy jednostkowe warstwy aplikacji i izoluje ją od ORM. Moje stanowisko: brak generycznego repo; repozytoria agregatów dla zapisu, a odczyty bezpośrednio przez DbContext/projekcje.",
+      "tip": "Do testów zapytań i tak potrzebna jest prawdziwa baza (Testcontainers) – InMemory provider zachowuje się inaczej niż SQL i nie jest rekomendowany do testowania."
+    },
+    {
+      "id": "data-027",
+      "topic": "SQL – JOIN",
+      "level": 1,
+      "q": "Omów rodzaje JOIN-ów: INNER, LEFT, RIGHT, FULL, CROSS.",
+      "a": "INNER JOIN zwraca tylko pary pasujące po warunku. LEFT JOIN – wszystkie wiersze z lewej tabeli, a z prawej pasujące lub NULL. RIGHT – symetrycznie (rzadko używany, zwykle zamienia się kolejność tabel). FULL OUTER – wszystkie z obu stron z NULL-ami tam, gdzie brak pary. CROSS JOIN – iloczyn kartezjański. Typowy use case LEFT JOIN: „klienci bez zamówień” przez WHERE o.Id IS NULL.",
+      "code": "SELECT c.Id, c.Name\nFROM Customers c\nLEFT JOIN Orders o ON o.CustomerId = c.Id\nWHERE o.Id IS NULL;   -- klienci bez zamówień",
+      "lang": "sql",
+      "tip": "Pułapka: warunek na prawej tabeli w WHERE zamienia LEFT JOIN w praktyce w INNER JOIN – trzeba go przenieść do ON."
+    },
+    {
+      "id": "data-028",
+      "topic": "SQL – agregacja",
+      "level": 1,
+      "q": "Czym różni się WHERE od HAVING i jaka jest logiczna kolejność wykonania zapytania?",
+      "a": "WHERE filtruje wiersze przed grupowaniem, HAVING filtruje grupy po agregacji, więc tylko w HAVING można użyć COUNT/SUM. Logiczna kolejność: FROM/JOIN → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → OFFSET/FETCH (TOP). Stąd np. alias z SELECT działa w ORDER BY, ale nie w WHERE.",
+      "code": "SELECT CustomerId, COUNT(*) AS Cnt\nFROM Orders\nWHERE Status = 'Paid'\nGROUP BY CustomerId\nHAVING COUNT(*) > 5\nORDER BY Cnt DESC;",
+      "lang": "sql"
+    },
+    {
+      "id": "data-029",
+      "topic": "SQL – indeksy",
+      "level": 2,
+      "q": "Indeks clustered vs non-clustered – czym się różnią?",
+      "a": "Clustered index określa fizyczny porządek danych – liście drzewa B+ to same wiersze tabeli, więc może być tylko jeden (w SQL Server domyślnie na kluczu głównym). Non-clustered to osobna struktura z kluczem indeksu i wskaźnikiem do wiersza (kluczem clustered); może ich być wiele. Jeśli zapytanie potrzebuje kolumn spoza indeksu non-clustered, silnik robi key lookup do indeksu clustered. Dobry klucz clustered: wąski, unikalny, rosnący, niezmienny (np. int identity); losowy GUID powoduje fragmentację i page splits.",
+      "tip": "W PostgreSQL tabela to heap i wszystkie indeksy są „non-clustered”; CLUSTER jednorazowo porządkuje dane, ale nie utrzymuje kolejności."
+    },
+    {
+      "id": "data-030",
+      "topic": "SQL – indeksy",
+      "level": 2,
+      "q": "Co to jest covering index i kiedy indeksy szkodzą?",
+      "a": "Covering index zawiera wszystkie kolumny potrzebne zapytaniu (w kluczu lub w INCLUDE), więc silnik nie musi sięgać do tabeli – brak key lookupów. Kolejność kolumn w kluczu ma znaczenie: indeks (A, B) obsłuży filtr po A albo po A i B, ale nie samo B. Indeksy szkodzą, bo każdy INSERT/UPDATE/DELETE musi je aktualizować, zajmują miejsce i pamięć, a nadmiarowe lub nieużywane spowalniają zapis. Na tabelach intensywnie zapisywanych i na kolumnach o niskiej selektywności (np. bool) zysk bywa żaden.",
+      "code": "CREATE NONCLUSTERED INDEX IX_Orders_Customer_Date\nON Orders (CustomerId, CreatedAt DESC)\nINCLUDE (Total, Status);",
+      "lang": "sql"
+    },
+    {
+      "id": "data-031",
+      "topic": "SQL – wydajność",
+      "level": 3,
+      "q": "Jak czytasz plan wykonania i czego w nim szukasz?",
+      "a": "Patrzę na rzeczywisty (actual) plan, nie tylko szacowany: operacje o największym koszcie, Index Scan/Table Scan tam, gdzie spodziewam się Seek, Key Lookup w pętli (kandydat na covering index), duże rozbieżności między estimated a actual rows (nieaktualne statystyki, parameter sniffing), sorty i hash join-y rozlewające się do tempdb (spills), implicit conversion psujący użycie indeksu. Do tego SET STATISTICS IO/TIME albo EXPLAIN (ANALYZE, BUFFERS) w PostgreSQL. Z EF biorę SQL z logów lub ToQueryString() i analizuję go bezpośrednio.",
+      "code": "var sql = db.Orders.Where(o => o.CustomerId == id).ToQueryString();",
+      "lang": "csharp",
+      "tip": "Parameter sniffing: plan zbudowany dla pierwszej wartości parametru bywa zły dla innych – rozwiązania: OPTION (RECOMPILE), lepsze indeksy, w nowszych SQL Server Parameter Sensitive Plan optimization."
+    },
+    {
+      "id": "data-032",
+      "topic": "SQL – transakcje",
+      "level": 2,
+      "q": "Wymień poziomy izolacji transakcji i anomalie, przed którymi chronią.",
+      "a": "Anomalie: dirty read (czytam niezatwierdzone zmiany), non-repeatable read (ten sam wiersz czytany dwa razy ma inne wartości), phantom read (ponowne zapytanie zwraca nowe wiersze), lost update. Poziomy ANSI: Read Uncommitted (dopuszcza wszystko), Read Committed (blokuje dirty reads – domyślny w SQL Server i PostgreSQL), Repeatable Read (dodatkowo non-repeatable reads), Serializable (też phantomy, jak wykonanie sekwencyjne). Snapshot/RCSI w SQL Server używa wersjonowania wierszy zamiast blokad odczytu – czytelnicy nie blokują piszących.",
+      "tip": "Wyższa izolacja = więcej blokad/konfliktów i gorsza współbieżność; dobiera się ją per operacja, a nie globalnie."
+    },
+    {
+      "id": "data-033",
+      "topic": "SQL – modelowanie",
+      "level": 1,
+      "q": "Czym jest normalizacja (1NF, 2NF, 3NF) i kiedy się denormalizuje?",
+      "a": "Normalizacja usuwa redundancję i anomalie modyfikacji. 1NF – wartości atomowe, brak powtarzających się grup. 2NF – 1NF i każdy atrybut niekluczowy zależy od całego klucza (ważne przy kluczach złożonych). 3NF – 2NF i brak zależności przechodnich (atrybut niekluczowy nie zależy od innego niekluczowego, np. CityName przez ZipCode). Denormalizacja to świadoma redundancja dla odczytów – raporty, read modele w CQRS, liczniki – za cenę trudniejszego utrzymania spójności.",
+      "tip": "Dobra odpowiedź: „domyślnie 3NF dla OLTP, denormalizacja punktowo i świadomie, gdy pomiar pokazuje problem z odczytami”."
+    },
+    {
+      "id": "data-034",
+      "topic": "SQL – transakcje",
+      "level": 3,
+      "q": "Co to jest deadlock, jak go diagnozować i jak mu zapobiegać?",
+      "a": "Deadlock to cykl oczekiwań: transakcja A trzyma blokadę na X i czeka na Y, a B trzyma Y i czeka na X. Silnik wykrywa cykl i zabija jedną transakcję (ofiarę), w SQL Server błąd 1205. Diagnoza: deadlock graph (Extended Events, system_health). Zapobieganie: dostęp do zasobów zawsze w tej samej kolejności, krótkie transakcje (bez I/O i wywołań HTTP w środku), odpowiednie indeksy (mniej skanów = mniej blokad), RCSI/snapshot dla odczytów. Aplikacja powinna umieć ponowić transakcję – EF execution strategy z retry obsługuje m.in. deadlocki.",
+      "tip": "Częste źródło w EF: długa transakcja obejmująca kilka SaveChanges i wywołania zewnętrznych serwisów."
+    },
+    {
+      "id": "data-035",
+      "topic": "SQL vs NoSQL",
+      "level": 2,
+      "q": "SQL czy NoSQL – jak uzasadnić wybór?",
+      "a": "Relacyjna baza: silny schemat, transakcje ACID, JOIN-y, złożone zapytania ad hoc – domyślny wybór dla danych biznesowych. NoSQL to różne modele: dokumentowe (MongoDB, Cosmos DB) dla agregatów czytanych w całości i elastycznego schematu; key-value (Redis) dla cache/sesji; kolumnowe (Cassandra) dla ogromnych zapisów; grafowe dla relacji wielu-do-wielu. Często łatwiej skalują się horyzontalnie kosztem spójności (BASE, eventual consistency). Wybór zależy od wzorców dostępu, wymagań spójności i skali – nie od mody; częsty jest też polyglot persistence.",
+      "tip": "PostgreSQL z kolumnami JSONB często pokrywa potrzeby „dokumentowe” bez dokładania nowej bazy."
+    },
+    {
+      "id": "data-036",
+      "topic": "SQL – paginacja",
+      "level": 2,
+      "q": "Paginacja offset vs keyset (seek) – różnice i kiedy którą wybrać?",
+      "a": "Offset (OFFSET/FETCH, Skip/Take) jest prosty i pozwala skoczyć na dowolną stronę, ale baza musi przeczytać i odrzucić wszystkie pominięte wiersze – strona 10 000 jest wolna; przy wstawieniach w trakcie przeglądania wiersze się dublują lub znikają. Keyset używa ostatniego klucza: WHERE (CreatedAt, Id) < (@lastDate, @lastId) ORDER BY ... – stały koszt dzięki indeksowi, stabilny wynik, ale tylko „następna/poprzednia”, bez skoku na stronę N. Keyset do infinite scroll i dużych zbiorów, offset do małych tabel z numerami stron.",
+      "code": "var page = await db.Posts\n    .Where(p => p.CreatedAt < lastDate || (p.CreatedAt == lastDate && p.Id < lastId))\n    .OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id)\n    .Take(20)\n    .ToListAsync();",
+      "lang": "csharp",
+      "tip": "Sortowanie musi być deterministyczne – dodaj unikalny tie-breaker (Id)."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "data-q001",
+      "topic": "DbContext",
+      "level": 2,
+      "q": "Co się stanie po wykonaniu tego kodu w kontrolerze (db to wstrzyknięty AppDbContext)?",
+      "code": "var usersTask = db.Users.CountAsync();\nvar ordersTask = db.Orders.CountAsync();\nawait Task.WhenAll(usersTask, ordersTask);",
+      "lang": "csharp",
+      "options": [
+        "Oba zapytania wykonają się równolegle na jednym połączeniu i skrócą czas odpowiedzi",
+        "Najpewniej InvalidOperationException – DbContext nie obsługuje równoległych operacji na jednej instancji",
+        "EF automatycznie zserializuje zapytania i wykona je jedno po drugim",
+        "Zadziała, ale tylko jeśli connection string ma MultipleActiveResultSets=true"
+      ],
+      "correct": 1,
+      "why": "DbContext nie jest thread-safe i wykrywa równoległe użycie, rzucając InvalidOperationException. EF nie kolejkuje zapytań sam. MARS w SQL Server dotyczy wielu otwartych readerów na jednym połączeniu, a nie bezpieczeństwa wątkowego kontekstu. Rozwiązanie: await po kolei albo osobne konteksty z IDbContextFactory."
+    },
+    {
+      "id": "data-q002",
+      "topic": "Wydajność zapytań",
+      "level": 2,
+      "q": "Lazy loading jest włączony (proxies). Ile zapytań SQL wykona ten kod dla 100 zamówień, każde z innym klientem?",
+      "code": "var orders = await db.Orders.ToListAsync();\nforeach (var o in orders)\n    Console.WriteLine(o.Customer.Name);",
+      "lang": "csharp",
+      "options": [
+        "101 – jedno po zamówienia i po jednym na każdego klienta",
+        "1 – EF połączy wszystko w jeden JOIN",
+        "2 – jedno po zamówienia i jedno zbiorcze po klientów",
+        "100 – po jednym na każde zamówienie razem z klientem"
+      ],
+      "correct": 0,
+      "why": "To klasyczne N+1: ToListAsync pobiera zamówienia, a pierwszy dostęp do o.Customer w pętli wyzwala osobne zapytanie dla każdego niezaładowanego klienta. EF nie batchuje lazy loadingu. Naprawa: Include albo projekcja Select."
+    },
+    {
+      "id": "data-q003",
+      "topic": "LINQ",
+      "level": 2,
+      "q": "Gdzie wykona się filtr IsActive w tym kodzie?",
+      "code": "public IEnumerable<User> GetUsers() => _db.Users;\n\nvar active = repo.GetUsers().Where(u => u.IsActive).ToList();",
+      "lang": "csharp",
+      "options": [
+        "W bazie – EF rozpozna, że źródłem jest DbSet, i doda WHERE",
+        "W bazie, ale dopiero po wywołaniu ToList()",
+        "Kod się nie skompiluje, bo DbSet nie implementuje IEnumerable",
+        "W pamięci aplikacji – metoda zwraca IEnumerable, więc Where to LINQ to Objects, a SQL pobierze wszystkich użytkowników"
+      ],
+      "correct": 3,
+      "why": "Typ statyczny decyduje o wybranym przeciążeniu Where: na IEnumerable<T> wybierany jest Enumerable.Where z delegatem, nie Queryable.Where z wyrażeniem. Zapytanie SQL wykona się bez WHERE przy enumeracji, a filtr zadziała w RAM. DbSet implementuje zarówno IQueryable, jak i IEnumerable."
+    },
+    {
+      "id": "data-q004",
+      "topic": "Change tracking",
+      "level": 1,
+      "q": "Jaki będzie efekt tego kodu?",
+      "code": "var p = await db.Products.AsNoTracking().FirstAsync(x => x.Id == 1);\np.Price = 99m;\nawait db.SaveChangesAsync();",
+      "lang": "csharp",
+      "options": [
+        "Cena zostanie zaktualizowana, bo EF zawsze porównuje encje z bazą",
+        "SaveChanges rzuci wyjątek, że encja nie jest śledzona",
+        "Nic nie zostanie zapisane – encja nie jest śledzona, więc SaveChanges nie widzi zmiany",
+        "Zostanie wstawiony nowy produkt z nową ceną"
+      ],
+      "correct": 2,
+      "why": "AsNoTracking oznacza, że encja nie trafia do change trackera. SaveChanges zapisuje tylko zmiany śledzonych encji, więc zwraca 0 bez błędu. Żeby zapisać, trzeba ją dołączyć (Attach/Update) albo pobrać trackująco."
+    },
+    {
+      "id": "data-q005",
+      "topic": "Raw SQL",
+      "level": 2,
+      "q": "Co jest nie tak z tym kodem?",
+      "code": "var name = Request.Query[\"name\"];\nvar users = db.Users\n    .FromSqlRaw($\"SELECT * FROM Users WHERE Name = '{name}'\")\n    .ToList();",
+      "lang": "csharp",
+      "options": [
+        "Nic – FromSqlRaw zawsze parametryzuje interpolowane wartości",
+        "Interpolacja jest wykonana przed przekazaniem stringa do FromSqlRaw, więc wartość trafia do SQL bez parametryzacji – SQL injection",
+        "FromSqlRaw nie pozwala na klauzulę WHERE, trzeba użyć LINQ",
+        "Jedynym problemem jest brak AsNoTracking"
+      ],
+      "correct": 1,
+      "why": "FromSqlRaw przyjmuje zwykły string, więc wyrażenie $\"...\" zostaje sformatowane do stringa przed wywołaniem i parametry nie powstają. Bezpieczna wersja to FromSql($\"... {name}\") (FormattableString zamieniany na DbParameter) albo FromSqlRaw z placeholderem {0} i osobno przekazanym argumentem."
+    },
+    {
+      "id": "data-q006",
+      "topic": "Bulk operations",
+      "level": 3,
+      "q": "Encja Product o Id=5 jest już śledzona w kontekście z Price = 10. Co wypisze kod?",
+      "code": "await db.Products.Where(p => p.Id == 5)\n    .ExecuteUpdateAsync(s => s.SetProperty(p => p.Price, 20m));\nvar tracked = db.Products.Local.First(p => p.Id == 5);\nConsole.WriteLine(tracked.Price);",
+      "lang": "csharp",
+      "options": [
+        "10 – ExecuteUpdate zmienia dane w bazie z pominięciem change trackera, encja w pamięci ma starą wartość",
+        "20 – EF odświeża śledzone encje po ExecuteUpdate",
+        "20 – ale dopiero po wywołaniu SaveChanges",
+        "Kod rzuci wyjątek, bo nie można użyć ExecuteUpdate na śledzonej encji"
+      ],
+      "correct": 0,
+      "why": "ExecuteUpdate wykonuje UPDATE od razu w bazie i nie synchronizuje change trackera. Śledzona instancja dalej ma Price = 10; co gorsza, późniejsze SaveChanges z jej zmianami może nadpisać nową wartość. Po bulk operacjach warto użyć nowego kontekstu lub przeładować encje."
+    },
+    {
+      "id": "data-q007",
+      "topic": "Migracje",
+      "level": 2,
+      "q": "API działa w 4 instancjach na Kubernetes, a w Program.cs jest db.Database.Migrate(). Jakie podejście jest najlepsze na produkcję?",
+      "options": [
+        "Zostawić Migrate() – EF blokuje tabelę historii, więc wiele instancji to żaden problem w żadnej wersji",
+        "Wywołać EnsureCreated() zamiast Migrate(), bo jest szybsze",
+        "Generować migracje automatycznie przy starcie na podstawie modelu",
+        "Osobny krok w pipeline: idempotentny skrypt SQL lub migration bundle uruchamiany raz przed wdrożeniem aplikacji"
+      ],
+      "correct": 3,
+      "why": "Migracja jako osobny, kontrolowany krok oddziela uprawnienia DDL od aplikacji, działa raz i jest przewidywalna przy rolling deploy. EnsureCreated omija migracje i nie aktualizuje istniejącego schematu. Automatyczne generowanie migracji w runtime nie istnieje w EF Core. Choć nowsze wersje EF dodały blokadę przy Migrate(), nadal nie usuwa to pozostałych wad migracji przy starcie."
+    },
+    {
+      "id": "data-q008",
+      "topic": "Concurrency",
+      "level": 2,
+      "q": "Kiedy EF Core rzuca DbUpdateConcurrencyException?",
+      "options": [
+        "Gdy dwa wątki używają tego samego DbContext jednocześnie",
+        "Gdy transakcja zostanie wybrana jako ofiara deadlocka",
+        "Gdy UPDATE/DELETE z warunkiem na concurrency token zmieni inną liczbę wierszy niż oczekiwana (np. 0, bo ktoś zmienił rowversion)",
+        "Gdy w bazie istnieje już rekord o tym samym kluczu głównym"
+      ],
+      "correct": 2,
+      "why": "Optimistic concurrency polega na dodaniu tokenu do WHERE. Jeśli inny proces zmienił wiersz (lub go usunął), UPDATE dotknie 0 wierszy i EF zgłasza konflikt. Równoległe użycie kontekstu to InvalidOperationException, deadlock to DbUpdateException/SqlException 1205, a duplikat klucza – DbUpdateException z naruszeniem ograniczenia."
+    },
+    {
+      "id": "data-q009",
+      "topic": "Wydajność zapytań",
+      "level": 3,
+      "q": "Blog ma średnio 50 postów i 30 tagów. Zapytanie poniżej zwraca 100 blogów i działa bardzo wolno. Co jest najbardziej prawdopodobną przyczyną i rozwiązaniem?",
+      "code": "var blogs = await db.Blogs\n    .Include(b => b.Posts)\n    .Include(b => b.Tags)\n    .Take(100)\n    .ToListAsync();",
+      "lang": "csharp",
+      "options": [
+        "Brak AsNoTracking – change tracker spowalnia zapytanie kilkaset razy",
+        "Cartesian explosion przez dwie kolekcje w jednym JOIN-ie – AsSplitQuery() lub projekcja tylko potrzebnych danych",
+        "N+1 – Include powoduje osobne zapytanie dla każdego bloga",
+        "Brak compiled query – trzeba użyć EF.CompileAsyncQuery"
+      ],
+      "correct": 1,
+      "why": "Dwa Include kolekcji w single query dają ok. 50 × 30 = 1500 wierszy na blog, czyli ~150 000 wierszy z powielonymi danymi. AsSplitQuery rozbija to na 3 zapytania. Include nie powoduje N+1, a AsNoTracking i compiled queries dają zyski rzędu procentów, nie rzędów wielkości."
+    },
+    {
+      "id": "data-q010",
+      "topic": "Global query filters",
+      "level": 1,
+      "q": "Encja Order ma filtr HasQueryFilter(o => !o.IsDeleted). Panel admina ma pokazać również usunięte zamówienia. Co robisz?",
+      "options": [
+        "Używam IgnoreQueryFilters() w tym jednym zapytaniu",
+        "Dodaję .Where(o => o.IsDeleted || !o.IsDeleted)",
+        "Usuwam filtr i dopisuję warunek ręcznie we wszystkich innych zapytaniach",
+        "Tworzę osobny DbContext bez OnModelCreating"
+      ],
+      "correct": 0,
+      "why": "IgnoreQueryFilters wyłącza filtry globalne dla danego zapytania. Dodatkowy Where jest łączony z filtrem przez AND, więc nic nie zmieni. Usunięcie filtra albo osobny kontekst bez konfiguracji to dużo większe i ryzykowne zmiany."
+    },
+    {
+      "id": "data-q011",
+      "topic": "DbContext",
+      "level": 2,
+      "q": "Serwis zarejestrowany jako Singleton przyjmuje AppDbContext w konstruktorze. Jaki to problem?",
+      "options": [
+        "Żaden – DbContext jest lekki, więc może być singletonem",
+        "Tylko wydajnościowy – kontekst będzie tworzony przy każdym wywołaniu",
+        "Problem pojawi się wyłącznie przy AsNoTracking",
+        "Captive dependency – scoped DbContext żyje tyle co singleton, jest współdzielony między requestami i wątkami"
+      ],
+      "correct": 3,
+      "why": "Singleton złapie jedną instancję scoped kontekstu na zawsze: change tracker rośnie, dane są nieaktualne, a równoległe requesty doprowadzą do wyjątków wątkowych. W Development z włączoną walidacją scope'ów ASP.NET Core zgłosi błąd przy rozwiązywaniu. Rozwiązanie: IServiceScopeFactory lub IDbContextFactory."
+    },
+    {
+      "id": "data-q012",
+      "topic": "DbContext",
+      "level": 3,
+      "q": "Aplikacja rejestruje poniższy kontekst przez AddDbContextPool. Co się stanie przy pierwszej próbie jego użycia?",
+      "code": "public class AppDbContext : DbContext\n{\n    private readonly string _tenantId;\n    public AppDbContext(DbContextOptions<AppDbContext> o, ITenantProvider t) : base(o)\n        => _tenantId = t.TenantId;\n\n    protected override void OnModelCreating(ModelBuilder mb)\n        => mb.Entity<Order>().HasQueryFilter(x => x.TenantId == _tenantId);\n}",
+      "lang": "csharp",
+      "options": [
+        "Pooling nie wspiera global query filters",
+        "ITenantProvider nie może być wstrzyknięty do żadnego DbContext",
+        "InvalidOperationException – poolowany kontekst musi mieć konstruktor przyjmujący tylko DbContextOptions, więc nie da się wstrzyknąć ITenantProvider; tenanta ustawia się po wypożyczeniu instancji",
+        "Filtr jest kompilowany raz i zawsze używa tenantu z pierwszego zapytania w aplikacji, niezależnie od poolingu"
+      ],
+      "correct": 2,
+      "why": "DbContext pooling tworzy instancje poza DI i wymaga publicznego konstruktora z jednym parametrem DbContextOptions – przy innym konstruktorze EF zgłasza błąd („cannot be pooled because it does not have a public constructor accepting a single parameter of type DbContextOptions”). Nawet gdyby to przeszło, instancje z puli są resetowane i używane ponownie, więc stan ustawiony w konstruktorze pochodziłby z innego requestu. Rozwiązanie: kontekst tylko z DbContextOptions i właściwością TenantId ustawianą po wypożyczeniu (np. scoped fabryka opakowująca IDbContextFactory z AddPooledDbContextFactory). Bez poolingu oryginalny kod by działał – filtry odwołujące się do pola kontekstu są parametryzowane per instancja."
+    },
+    {
+      "id": "data-q013",
+      "topic": "SQL – agregacja",
+      "level": 1,
+      "q": "Dlaczego to zapytanie zwraca błąd?",
+      "code": "SELECT CustomerId, COUNT(*)\nFROM Orders\nWHERE COUNT(*) > 5\nGROUP BY CustomerId;",
+      "lang": "sql",
+      "options": [
+        "Brakuje aliasu dla COUNT(*) w SELECT",
+        "Funkcji agregującej nie można użyć w WHERE – filtr po agregacie należy przenieść do HAVING",
+        "GROUP BY musi występować przed WHERE",
+        "COUNT(*) nie działa z GROUP BY, trzeba użyć COUNT(CustomerId)"
+      ],
+      "correct": 1,
+      "why": "WHERE działa na pojedynczych wierszach przed grupowaniem, więc agregat nie jest jeszcze policzony. Warunek na wynik agregacji należy do HAVING. Alias jest opcjonalny, a kolejność klauzul to WHERE przed GROUP BY."
+    },
+    {
+      "id": "data-q014",
+      "topic": "SQL – JOIN",
+      "level": 2,
+      "q": "Intencją było pokazanie WSZYSTKICH klientów i ich opłaconych zamówień (jeśli są). Co jest nie tak?",
+      "code": "SELECT c.Name, o.Id\nFROM Customers c\nLEFT JOIN Orders o ON o.CustomerId = c.Id\nWHERE o.Status = 'Paid';",
+      "lang": "sql",
+      "options": [
+        "Warunek o.Status w WHERE odrzuca wiersze z NULL po prawej stronie, więc LEFT JOIN zachowuje się jak INNER JOIN – warunek powinien być w ON",
+        "LEFT JOIN nie może łączyć po kluczu obcym",
+        "Należy użyć RIGHT JOIN, bo zamówienia są po prawej",
+        "Zapytanie jest poprawne – LEFT JOIN zawsze zwraca wszystkie wiersze z lewej tabeli"
+      ],
+      "correct": 0,
+      "why": "Dla klientów bez zamówień o.Status jest NULL, a NULL = 'Paid' daje UNKNOWN, więc WHERE ich odrzuca. Przeniesienie warunku do ON (LEFT JOIN Orders o ON o.CustomerId = c.Id AND o.Status = 'Paid') zachowuje wszystkich klientów."
+    },
+    {
+      "id": "data-q015",
+      "topic": "SQL – indeksy",
+      "level": 2,
+      "q": "Istnieje indeks IX_Users_Name na (LastName, FirstName). Które zapytanie NIE skorzysta z niego efektywnie (index seek)?",
+      "options": [
+        "WHERE LastName = 'Nowak'",
+        "WHERE LastName = 'Nowak' AND FirstName = 'Anna'",
+        "WHERE LastName LIKE 'Now%'",
+        "WHERE FirstName = 'Anna'"
+      ],
+      "correct": 3,
+      "why": "Indeks złożony jest posortowany najpierw po LastName, potem po FirstName – działa jak książka telefoniczna. Seek jest możliwy, gdy filtr obejmuje prefiks klucza (LastName, ewentualnie z FirstName). LIKE z prefiksem bez wiodącego % też da seek. Sam FirstName wymaga skanu."
+    },
+    {
+      "id": "data-q016",
+      "topic": "SQL – indeksy",
+      "level": 2,
+      "q": "Na kolumnie CreatedAt jest indeks, ale zapytanie robi Index Scan. Dlaczego?",
+      "code": "SELECT Id, Total FROM Orders\nWHERE YEAR(CreatedAt) = 2025;",
+      "lang": "sql",
+      "options": [
+        "Indeksy nie działają na kolumnach typu datetime",
+        "Optymalizator zawsze wybiera scan dla zapytań z SELECT *",
+        "Funkcja na kolumnie czyni predykat non-sargable – lepiej: WHERE CreatedAt >= '2025-01-01' AND CreatedAt < '2026-01-01'",
+        "Indeks wymaga statystyk, a te tworzy się tylko ręcznie"
+      ],
+      "correct": 2,
+      "why": "Owinięcie kolumny funkcją (YEAR, CAST, ISNULL itp.) uniemożliwia wyszukanie zakresu w drzewie indeksu, więc silnik musi przejrzeć wszystkie wpisy. Przepisanie na zakres zachowuje semantykę i pozwala na seek. To samo dotyczy niejawnych konwersji typów."
+    },
+    {
+      "id": "data-q017",
+      "topic": "SQL – transakcje",
+      "level": 2,
+      "q": "Transakcja A (Read Committed) czyta saldo konta = 100. Transakcja B zmienia je na 50 i commituje. A ponownie czyta to samo konto i dostaje 50. Jak nazywa się ta anomalia?",
+      "options": [
+        "Dirty read",
+        "Non-repeatable read",
+        "Phantom read",
+        "Lost update"
+      ],
+      "correct": 1,
+      "why": "Ten sam wiersz odczytany dwa razy w jednej transakcji ma różne wartości, bo inna transakcja zatwierdziła zmianę pomiędzy – to non-repeatable read, dopuszczalny w Read Committed. Dirty read dotyczyłby niezatwierdzonych danych, phantom – nowych wierszy pasujących do warunku, lost update – nadpisania cudzej zmiany."
+    },
+    {
+      "id": "data-q018",
+      "topic": "SQL – transakcje",
+      "level": 3,
+      "q": "Raport w transakcji liczy SELECT COUNT(*) FROM Orders WHERE Status='New' dwa razy i wynik musi być identyczny, mimo równoległych INSERT-ów. Który najniższy poziom izolacji ANSI to gwarantuje?",
+      "options": [
+        "Serializable",
+        "Repeatable Read",
+        "Read Committed",
+        "Read Uncommitted"
+      ],
+      "correct": 0,
+      "why": "Nowe wiersze pasujące do warunku to phantomy. Repeatable Read w definicji ANSI (i w implementacji SQL Server) blokuje zmiany już odczytanych wierszy, ale nie wstawienie nowych. Serializable blokuje zakres (key-range locks). Uwaga: w PostgreSQL Repeatable Read działa na snapshocie i w praktyce też nie pokazuje phantomów, a w SQL Server podobny efekt da Snapshot isolation."
+    },
+    {
+      "id": "data-q019",
+      "topic": "SQL – paginacja",
+      "level": 2,
+      "q": "Który fragment poprawnie implementuje keyset pagination (najnowsze najpierw, sortowanie po CreatedAt z Id jako tie-breaker)?",
+      "options": [
+        "ORDER BY CreatedAt DESC OFFSET @page * 20 ROWS FETCH NEXT 20 ROWS ONLY",
+        "WHERE Id > @lastId ORDER BY CreatedAt DESC",
+        "WHERE CreatedAt < @lastDate ORDER BY CreatedAt DESC",
+        "WHERE CreatedAt < @lastDate OR (CreatedAt = @lastDate AND Id < @lastId) ORDER BY CreatedAt DESC, Id DESC"
+      ],
+      "correct": 3,
+      "why": "Keyset filtruje po ostatnio widzianej wartości klucza sortowania i ma porządek zgodny z filtrem. Sam CreatedAt bez tie-breakera pominie wiersze o tej samej dacie, filtr po Id przy sortowaniu po dacie miesza dwa porządki, a OFFSET/FETCH to paginacja offsetowa."
+    },
+    {
+      "id": "data-q020",
+      "topic": "SQL – transakcje",
+      "level": 3,
+      "q": "Dwa endpointy: Transfer(A→B) aktualizuje najpierw konto A, potem B; Transfer(B→A) – najpierw B, potem A. Pod obciążeniem pojawiają się błędy 1205. Najlepsza poprawka?",
+      "options": [
+        "Podnieść poziom izolacji do Serializable",
+        "Usunąć indeks z kolumny Id, żeby uniknąć blokad na indeksie",
+        "Zawsze blokować/aktualizować konta w ustalonej kolejności (np. rosnąco po Id) niezależnie od kierunku przelewu",
+        "Wydłużyć timeout komendy SQL"
+      ],
+      "correct": 2,
+      "why": "1205 to deadlock wynikający z przeciwnej kolejności zakładania blokad. Stała kolejność dostępu likwiduje cykl. Serializable dokłada blokad i zwykle pogarsza sytuację, usunięcie indeksu powoduje skany i więcej blokad, a timeout nie ma związku z wykrywaniem deadlocków. Dodatkowo warto mieć retry na 1205."
+    },
+    {
+      "id": "data-q021",
+      "topic": "Konfiguracja modelu",
+      "level": 2,
+      "q": "Jak domyślnie zostanie zapisany owned type skonfigurowany przez OwnsOne(c => c.Address)?",
+      "options": [
+        "W osobnej tabeli Addresses z kluczem obcym do Customers",
+        "W tej samej tabeli co właściciel, jako kolumny z prefiksem (np. Address_Street)",
+        "Jako jedna kolumna JSON, bez dodatkowej konfiguracji",
+        "Nie zostanie zapisany – owned types są tylko w pamięci"
+      ],
+      "correct": 1,
+      "why": "OwnsOne domyślnie mapuje właściwości do tabeli właściciela (table splitting). Osobną tabelę daje ToTable(...) lub OwnsMany, a mapowanie do JSON wymaga jawnego ToJson()."
+    },
+    {
+      "id": "data-q022",
+      "topic": "Dapper vs EF",
+      "level": 1,
+      "q": "Zespół ma aplikację na EF Core. Pojawia się złożony raport z CTE i funkcjami okna, który trudno wyrazić w LINQ. Rozsądne podejście?",
+      "options": [
+        "Napisać ten raport w SQL i wykonać go przez Dapper lub db.Database.SqlQuery<T>, zostawiając EF dla reszty",
+        "Przepisać całą aplikację na Dapper",
+        "Wczytać wszystkie potrzebne tabele przez ToList() i policzyć raport w LINQ to Objects",
+        "Przenieść logikę raportu do triggerów, żeby EF go nie widział"
+      ],
+      "correct": 0,
+      "why": "EF i Dapper/surowy SQL dobrze współistnieją – ręczny SQL tam, gdzie daje przewagę, EF dla zwykłego CRUD i zapisu. Przepisywanie całości jest nieproporcjonalne, liczenie w pamięci nie skaluje się, a triggery ukrywają logikę."
+    },
+    {
+      "id": "data-q023",
+      "topic": "Ładowanie danych",
+      "level": 3,
+      "q": "Jakie SQL wygeneruje EF dla tego zapytania?",
+      "code": "var rows = await db.Orders\n    .Include(o => o.Lines)\n    .Select(o => new { o.Id, o.Customer.Name })\n    .ToListAsync();",
+      "lang": "csharp",
+      "options": [
+        "SELECT wszystkich kolumn Orders, Customers i Lines, bo Include ma pierwszeństwo przed Select",
+        "Dwa zapytania: jedno po zamówienia, drugie po Lines",
+        "Wyjątek – nie można łączyć Include z Select",
+        "SELECT tylko Id i Name klienta (z JOIN-em) – Include jest ignorowany, bo wynik to projekcja"
+      ],
+      "correct": 3,
+      "why": "Include dotyczy encji zwracanych przez zapytanie. Gdy wynik jest projekcją do typu anonimowego/DTO, EF pobiera tylko kolumny użyte w Select (dołączając potrzebne tabele) i pomija Include. Dlatego do odczytów zwykle wystarczy sama projekcja."
+    },
+    {
+      "id": "data-q024",
+      "topic": "SQL – indeksy",
+      "level": 2,
+      "q": "Zapytanie SELECT Total, Status FROM Orders WHERE CustomerId = @id robi Index Seek na IX(CustomerId), a potem tysiące Key Lookup. Co pomoże najbardziej?",
+      "options": [
+        "Zamienić indeks na clustered na CustomerId bez zmiany klucza głównego",
+        "Dodać osobne indeksy na Total i na Status",
+        "Dodać Total i Status do INCLUDE indeksu, czyniąc go covering",
+        "Przebudować indeks (REBUILD), aby usunąć fragmentację"
+      ],
+      "correct": 2,
+      "why": "Key Lookup oznacza dociąganie brakujących kolumn z indeksu clustered dla każdego wiersza. Kolumny w INCLUDE są przechowywane w liściach indeksu non-clustered, więc lookupy znikają. Osobne indeksy na Total/Status nie pomogą temu zapytaniu, a defragmentacja nie usuwa lookupów."
+    },
+    {
+      "id": "data-q025",
+      "topic": "SQL – modelowanie",
+      "level": 1,
+      "q": "Tabela Orders ma kolumny: Id, CustomerId, CustomerEmail, Total. Którą zasadę normalizacji to narusza i dlaczego?",
+      "options": [
+        "1NF – email nie jest wartością atomową",
+        "3NF – CustomerEmail zależy od CustomerId (zależność przechodnia), a nie bezpośrednio od klucza zamówienia",
+        "2NF – tabela ma klucz złożony",
+        "Nie narusza żadnej – każda kolumna ma jedną wartość"
+      ],
+      "correct": 1,
+      "why": "Email klienta jest określony przez CustomerId, więc w zamówieniu jest redundantny i przy zmianie emaila trzeba aktualizować wiele wierszy (anomalia modyfikacji). Klucz jest prosty (Id), więc 2NF nie ma tu zastosowania, a email jest wartością atomową. Wyjątek: jeśli to celowy snapshot emaila z chwili zamówienia, to świadoma decyzja biznesowa, a nie błąd."
+    }
+  ]
+}

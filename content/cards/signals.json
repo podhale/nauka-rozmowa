@@ -1,0 +1,853 @@
+{
+  "cat": "signals",
+  "name": "Angular Signals",
+  "cards": [
+    {
+      "id": "signals-001",
+      "topic": "Podstawy",
+      "level": 1,
+      "q": "Czym jest signal w Angularze i jaki problem rozwiązuje?",
+      "a": "Signal to opakowanie na wartość, które wie, kto ją czyta, i powiadamia zależnych konsumentów, gdy wartość się zmieni. Odczyt to wywołanie funkcji (`count()`), dzięki czemu Angular automatycznie śledzi zależności – bez ręcznych subskrypcji. Rozwiązuje problem \"skąd framework ma wiedzieć, co się zmieniło\": zamiast sprawdzać całe drzewo komponentów (Zone.js + dirty checking), Angular wie dokładnie, które widoki czytały zmieniony signal. To fundament fine-grained reactivity, OnPush bez wysiłku i trybu zoneless.",
+      "code": "import { signal, computed } from '@angular/core';\n\nconst count = signal(0);\nconst double = computed(() => count() * 2);\n\ncount.set(5);\nconsole.log(double()); // 10",
+      "lang": "typescript",
+      "tip": "Dobrze powiedzieć, że signals są synchroniczne i zawsze mają wartość (w przeciwieństwie do Observable). Od v17 signal/computed są stabilne, od v20 stabilne są też effect, linkedSignal i toSignal/toObservable."
+    },
+    {
+      "id": "signals-002",
+      "topic": "Model reaktywności",
+      "level": 2,
+      "q": "Opisz model reaktywności sygnałów: producer/consumer, push-pull i glitch-free.",
+      "a": "Sygnały tworzą graf zależności: producer (signal, computed) ma wartość, consumer (computed, effect, szablon) ją czyta. Gdy producer się zmienia, w górę grafu idzie tylko lekkie powiadomienie \"jesteś nieaktualny\" (push), a nowa wartość jest liczona dopiero, gdy ktoś ją odczyta (pull). Dzięki temu computed nie liczy się niepotrzebnie, a odczyt zawsze widzi spójny stan – nie ma \"glitchy\", czyli chwilowych niespójnych wartości pośrednich (jak np. w `combineLatest`, gdy dwa źródła zależą od jednego). Każdy węzeł trzyma wersję wartości, więc consumer sprawdza, czy zależności faktycznie się zmieniły, zanim przeliczy.",
+      "tip": "Kontrast z RxJS: tam wartości są pchane (push) przez strumień i diamentowe zależności mogą dać podwójną emisję z niespójnym stanem pośrednim. Sygnały tego nie mają."
+    },
+    {
+      "id": "signals-003",
+      "topic": "signal()",
+      "level": 1,
+      "q": "Jak tworzy się i modyfikuje WritableSignal? Czym różni się set od update?",
+      "a": "`signal(initial)` zwraca `WritableSignal<T>`. `set(value)` ustawia nową wartość wprost, `update(fn)` liczy nową wartość na podstawie poprzedniej – przydatne przy licznikach i niemutującej aktualizacji obiektów/tablic. Obie metody powiadamiają konsumentów tylko, jeśli nowa wartość jest różna wg funkcji równości (domyślnie `Object.is`). Metoda `mutate()` z wersji developer preview została usunięta – stan zmieniamy niemutowalnie.",
+      "code": "const todos = signal<Todo[]>([]);\n\ntodos.set([]);                                   // nowa wartość wprost\ntodos.update(list => [...list, newTodo]);        // na bazie poprzedniej\ntodos.update(list => list.filter(t => !t.done));",
+      "lang": "typescript",
+      "tip": "Rekruter często pyta o `mutate()` – był w developer preview, usunięty przed stabilizacją. Odpowiedź: niemutowalne aktualizacje przez update."
+    },
+    {
+      "id": "signals-004",
+      "topic": "WritableSignal vs Signal",
+      "level": 1,
+      "q": "Czym różni się WritableSignal od Signal i do czego służy asReadonly()?",
+      "a": "`Signal<T>` to tylko getter – można go czytać, ale nie zmieniać. `WritableSignal<T>` dodaje `set`, `update` i `asReadonly()`. `asReadonly()` zwraca widok tylko do odczytu na ten sam stan – używamy go, by z serwisu wystawić stan na zewnątrz bez możliwości modyfikacji poza serwisem (enkapsulacja). `computed()` zawsze zwraca `Signal`, więc też jest read-only.",
+      "code": "@Injectable({ providedIn: 'root' })\nexport class CartStore {\n  private readonly _items = signal<CartItem[]>([]);\n  readonly items = this._items.asReadonly();\n  readonly total = computed(() =>\n    this._items().reduce((s, i) => s + i.price * i.qty, 0));\n\n  add(item: CartItem) { this._items.update(l => [...l, item]); }\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-005",
+      "topic": "computed()",
+      "level": 1,
+      "q": "Czym jest computed() i kiedy go używać?",
+      "a": "`computed()` tworzy sygnał pochodny – read-only wartość wyliczaną z innych sygnałów. Angular sam śledzi, które sygnały zostały odczytane w funkcji, i przelicza ją tylko, gdy któryś z nich się zmieni. Używamy go do każdego stanu, który da się wyliczyć z innego stanu: filtrowane listy, sumy, flagi typu `isValid`, sformatowane teksty. Zasada: jeśli coś można wyliczyć – computed, nie osobny signal synchronizowany ręcznie.",
+      "code": "firstName = signal('Jan');\nlastName = signal('Kowalski');\nfullName = computed(() => `${this.firstName()} ${this.lastName()}`);",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-006",
+      "topic": "computed()",
+      "level": 2,
+      "q": "Co znaczy, że computed jest lazy i memoizowany?",
+      "a": "Lazy: funkcja computed nie wykona się, dopóki ktoś nie odczyta wartości – nawet po zmianie zależności. Memoizowany: wynik jest cache'owany; kolejne odczyty bez zmian w zależnościach zwracają zapamiętaną wartość bez ponownego liczenia. Gdy zależność się zmieni, computed jest tylko oznaczany jako nieaktualny, a przelicza się przy następnym odczycie. Dzięki temu można bezpiecznie trzymać kosztowne obliczenia (filtrowanie, sortowanie) w computed i czytać je wielokrotnie w szablonie.",
+      "code": "const items = signal([3, 1, 2]);\nconst sorted = computed(() => {\n  console.log('sort!');\n  return [...items()].sort();\n});\n\nitems.set([5, 4]);\nitems.set([9, 8]);   // nic się nie loguje – nikt nie czyta\nsorted(); sorted();  // 'sort!' tylko raz",
+      "lang": "typescript",
+      "tip": "computed też ma funkcję równości – jeśli nowa wartość jest równa starej, konsumenci dalej w grafie nie są przeliczani."
+    },
+    {
+      "id": "signals-007",
+      "topic": "computed()",
+      "level": 2,
+      "q": "Czym są dynamiczne zależności w computed?",
+      "a": "Zależności są ustalane przy każdym wykonaniu – liczy się tylko to, co faktycznie zostało odczytane w danym przebiegu. Jeśli w gałęzi `if` nie odczytano jakiegoś sygnału, jego zmiana nie spowoduje przeliczenia. To optymalizacja (mniej przeliczeń), ale też pułapka: sygnał czytany tylko w niektórych gałęziach jest śledzony warunkowo. Np. przy `showDetails() ? details() : null`, gdy `showDetails` jest false, zmiany `details` są ignorowane – i to jest poprawne, bo wynik od nich nie zależy.",
+      "code": "const showDetails = signal(false);\nconst details = signal('...');\n\nconst view = computed(() =>\n  showDetails() ? details() : 'ukryte'\n);\n// gdy showDetails() === false, zmiana details NIE przelicza view",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-008",
+      "topic": "computed()",
+      "level": 2,
+      "q": "Dlaczego w computed nie robi się side-effectów i nie ustawia sygnałów?",
+      "a": "computed ma być czystą funkcją: ta sama wartość wejść → ten sam wynik. Ponieważ jest lazy i memoizowany, nie wiadomo, kiedy ani ile razy się wykona (może wcale), więc efekty uboczne byłyby nieprzewidywalne. Zapis do sygnału wewnątrz computed jest zabroniony – Angular rzuca błąd NG0600 (\"Writing to signals is not allowed in a computed\"). Side-effecty (logowanie, localStorage, wywołania API, manipulacja DOM) należą do `effect()` lub do handlerów zdarzeń.",
+      "tip": "Wywoływanie HTTP w computed to częsty błąd juniorów. Do asynchronicznego pobierania danych zależnego od sygnałów służy resource()/httpResource()."
+    },
+    {
+      "id": "signals-009",
+      "topic": "effect()",
+      "level": 1,
+      "q": "Czym jest effect() i do czego służy?",
+      "a": "`effect()` rejestruje funkcję, która wykonuje się co najmniej raz i ponownie po każdej zmianie odczytanych w niej sygnałów. Służy do synchronizacji stanu sygnałów ze światem zewnętrznym: zapis do localStorage, logowanie/analityka, integracja z bibliotekami spoza Angulara (np. wykresy, mapy), ręczne operacje na DOM. Efekty są wykonywane asynchronicznie (batchowane), nie natychmiast przy każdym `set()`. Od Angular 20 `effect()` jest stabilne.",
+      "code": "export class SettingsComponent {\n  theme = signal<'light' | 'dark'>('light');\n\n  constructor() {\n    effect(() => {\n      localStorage.setItem('theme', this.theme());\n    });\n  }\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-010",
+      "topic": "effect()",
+      "level": 2,
+      "q": "Kiedy NIE używać effect()?",
+      "a": "Effect nie służy do propagowania stanu między sygnałami. Jeśli w efekcie czytasz signal A i ustawiasz signal B, prawie zawsze lepszy jest `computed()` (B wyliczalne z A) albo `linkedSignal()` (B zależy od A, ale można go też ręcznie nadpisać). Kopiowanie stanu w efektach daje dodatkowe cykle, ryzyko pętli, trudniejszy debugging i chwilowe niespójności (B jest nieaktualny do czasu uruchomienia efektu). Effect to \"ostatnia deska ratunku\" – do side-effectów poza grafem sygnałów.",
+      "code": "// Antywzorzec\neffect(() => this.fullName.set(`${this.first()} ${this.last()}`));\n\n// Dobrze\nfullName = computed(() => `${this.first()} ${this.last()}`);",
+      "lang": "typescript",
+      "tip": "Od v19 zapis do sygnałów w effect jest dozwolony domyślnie (flaga allowSignalWrites jest zbędna i oznaczona jako deprecated), ale dokumentacja nadal odradza używanie efektów do propagacji stanu."
+    },
+    {
+      "id": "signals-011",
+      "topic": "effect()",
+      "level": 2,
+      "q": "Do czego służy onCleanup w effect()?",
+      "a": "Funkcja efektu dostaje parametr `onCleanup`, w którym rejestruje się sprzątanie. Cleanup wykona się przed kolejnym uruchomieniem efektu oraz przy jego zniszczeniu (np. gdy niszczony jest komponent). Typowe użycia: anulowanie timera, odpięcie listenera, przerwanie żądania, zniszczenie instancji biblioteki zewnętrznej. Bez tego przy każdej zmianie sygnału zostawałyby \"wiszące\" timery/subskrypcje.",
+      "code": "effect((onCleanup) => {\n  const query = this.query();\n  const timer = setTimeout(() => this.search(query), 300);\n  onCleanup(() => clearTimeout(timer));\n});",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-012",
+      "topic": "effect()",
+      "level": 2,
+      "q": "Dlaczego effect() wymaga injection context i jak tworzyć go poza konstruktorem?",
+      "a": "Effect potrzebuje injection context, bo pobiera `DestroyRef` (żeby automatycznie zniszczyć się razem z komponentem/serwisem) i scheduler efektów. Dlatego tworzymy go w konstruktorze lub inicjalizatorze pola. Jeśli trzeba utworzyć efekt później (np. w `ngOnInit`), przekazujemy `{ injector }` z wcześniej wstrzykniętego `Injector`. `effect()` zwraca `EffectRef` z metodą `destroy()` – do ręcznego zatrzymania; opcja `manualCleanup: true` wyłącza automatyczne niszczenie.",
+      "code": "export class ChartComponent implements OnInit {\n  private injector = inject(Injector);\n  data = input.required<number[]>();\n\n  ngOnInit() {\n    effect(() => this.chart.update(this.data()), { injector: this.injector });\n  }\n}",
+      "lang": "typescript",
+      "tip": "Wywołanie effect() w ngOnInit bez injectora kończy się błędem NG0203 (brak injection context)."
+    },
+    {
+      "id": "signals-013",
+      "topic": "effect()",
+      "level": 3,
+      "q": "Co zmieniło się w timingu efektów w Angular 19?",
+      "a": "W v19 efekty podzielono na dwa rodzaje. Component (view) effects – utworzone w komponencie/dyrektywie – wykonują się w trakcie change detection, w ramach odświeżania drzewa komponentów, więc widzą spójny stan przed renderem danego widoku. Root effects – utworzone poza komponentami, np. w serwisach – wykonują się przed change detection, jako osobny etap. Wcześniej efekty były kolejkowane jako mikrozadania, co dawało mniej przewidywalną kolejność. Dodatkowo flaga `allowSignalWrites` stała się zbędna (deprecated, bez efektu) – zapis do sygnałów w efektach jest domyślnie dozwolony.",
+      "tip": "Follow-up: \"co jeśli effect musi czytać DOM po renderze?\" – wtedy afterRenderEffect / afterNextRender, a nie effect."
+    },
+    {
+      "id": "signals-014",
+      "topic": "untracked()",
+      "level": 2,
+      "q": "Do czego służy untracked()?",
+      "a": "`untracked(fn)` wykonuje funkcję (lub odczytuje sygnał) bez rejestrowania zależności w bieżącym kontekście reaktywnym. Używamy go, gdy w effect/computed chcemy przeczytać aktualną wartość sygnału, ale nie chcemy, by jej zmiana powodowała ponowne uruchomienie. Ważne też przy wywoływaniu zewnętrznego kodu w efekcie – serwis może wewnętrznie czytać sygnały i niechcący dodać zależności.",
+      "code": "effect(() => {\n  const user = this.currentUser();          // śledzone\n  untracked(() => {\n    this.logger.log(`user: ${user.name}, cart: ${this.cartSize()}`);\n  });                                       // cartSize NIE jest śledzone\n});",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-015",
+      "topic": "Equality",
+      "level": 2,
+      "q": "Jak działa funkcja równości w sygnałach i kiedy podać własną?",
+      "a": "Domyślnie signal i computed porównują wartości przez `Object.is`. Jeśli nowa wartość jest \"równa\" starej, konsumenci nie są powiadamiani. Własną funkcję podajemy opcją `equal`, np. gdy obiekt jest odtwarzany z serwera, ale liczy się tylko `id`/wersja, albo by porównać tablice płytko. Uwaga: `Object.is` przy obiektach porównuje referencje – nowy obiekt o identycznej treści i tak powiadomi konsumentów.",
+      "code": "const user = signal<User>(initial, {\n  equal: (a, b) => a.id === b.id && a.version === b.version,\n});\n\nconst ids = computed(() => this.items().map(i => i.id), {\n  equal: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]),\n});",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-016",
+      "topic": "linkedSignal()",
+      "level": 2,
+      "q": "Czym jest linkedSignal() i jaki problem rozwiązuje?",
+      "a": "`linkedSignal()` to zapisywalny signal, którego wartość jest resetowana na podstawie innego sygnału (źródła), ale który można też ręcznie nadpisać przez `set`/`update`. Rozwiązuje typowy przypadek \"stan zależny, ale edytowalny\": np. wybrana opcja powinna wrócić do pierwszej, gdy zmieni się lista opcji, a pomiędzy użytkownik może wybierać dowolnie. Wcześniej robiło się to efektem kopiującym stan – antywzorzec. Wprowadzony w v19 (developer preview), stabilny od v20.",
+      "code": "options = input.required<string[]>();\nselected = linkedSignal(() => this.options()[0]);\n\nchoose(o: string) {\n  this.selected.set(o);   // ręczna zmiana – OK\n}\n// gdy zmieni się options(), selected wraca do options()[0]",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-017",
+      "topic": "linkedSignal()",
+      "level": 3,
+      "q": "Jak użyć linkedSignal z source/computation i wartością poprzednią?",
+      "a": "Pełna forma przyjmuje `source` (sygnał źródłowy) i `computation(source, previous)`, gdzie `previous` zawiera poprzednią wartość źródła i poprzednią wartość samego linkedSignal (`previous?.source`, `previous?.value`). Pozwala to zachować wybór użytkownika, jeśli nadal ma sens po zmianie źródła, zamiast zawsze resetować. Opcjonalnie można też podać `equal`.",
+      "code": "selected = linkedSignal<Item[], Item | undefined>({\n  source: this.items,\n  computation: (items, previous) => {\n    const prev = previous?.value;\n    return items.find(i => i.id === prev?.id) ?? items[0];\n  },\n});",
+      "lang": "typescript",
+      "tip": "Różnica względem computed: computed jest read-only. Różnica względem signal + effect: brak dodatkowego cyklu i brak okna z nieaktualną wartością."
+    },
+    {
+      "id": "signals-018",
+      "topic": "resource()",
+      "level": 2,
+      "q": "Czym jest resource() i jakie ma API?",
+      "a": "`resource()` łączy świat sygnałów z asynchronicznością: przy zmianie parametrów (sygnałów) wywołuje asynchroniczny loader i wystawia wynik jako sygnały. Ma m.in. `value()`, `status()`, `error()`, `isLoading()`, `hasValue()` oraz `reload()`; `value` można też ustawić lokalnie (`set`/`update`, status 'local'). Statusy (od v20 jako stringi): 'idle', 'loading', 'reloading', 'resolved', 'error', 'local'. Przy zmianie parametrów poprzednie żądanie jest anulowane. API jest oznaczone jako experimental (wprowadzone w v19) – status trzeba sprawdzić w dokumentacji używanej wersji.",
+      "code": "userId = input.required<number>();\n\nuser = resource({\n  params: () => ({ id: this.userId() }),\n  loader: ({ params, abortSignal }) =>\n    fetch(`/api/users/${params.id}`, { signal: abortSignal })\n      .then(r => r.json() as Promise<User>),\n});\n// @if (user.hasValue()) { {{ user.value().name }} }",
+      "lang": "typescript",
+      "tip": "Resource służy do odczytu danych. Do mutacji (POST/PUT) nadal używa się zwykłego HttpClient/metod serwisu."
+    },
+    {
+      "id": "signals-019",
+      "topic": "resource()",
+      "level": 3,
+      "q": "Jakie zmiany nazw w API resource nastąpiły między v19 a v20 i jak działa anulowanie?",
+      "a": "W v19 parametry podawało się w `request`, a loader dostawał `{ request, abortSignal }`. W v20 `request` przemianowano na `params` (loader dostaje `{ params, abortSignal, previous }`), a w `rxResource` opcja `loader` zmieniła nazwę na `stream`. Statusy z enuma `ResourceStatus` zmieniono na string union. Gdy funkcja `params` zwróci `undefined`, resource przechodzi w stan 'idle' i loader się nie wykonuje – sposób na \"jeszcze nie ładuj\". Przy zmianie parametrów lub zniszczeniu resource poprzedni loader dostaje sygnał przez `abortSignal` – trzeba go przekazać do `fetch`, żeby żądanie faktycznie zostało przerwane.",
+      "code": "results = resource({\n  params: () => this.query() || undefined,   // pusty query -> idle\n  loader: ({ params: q, abortSignal }) =>\n    fetch(`/api/search?q=${q}`, { signal: abortSignal }).then(r => r.json()),\n});",
+      "lang": "typescript",
+      "tip": "Pokazanie, że znasz zmianę request -> params, dobrze świadczy o śledzeniu Angulara na bieżąco, bo dużo tutoriali w sieci ma jeszcze starą składnię."
+    },
+    {
+      "id": "signals-020",
+      "topic": "rxResource()",
+      "level": 2,
+      "q": "Czym różni się rxResource od resource?",
+      "a": "`rxResource` (z `@angular/core/rxjs-interop`) działa jak resource, ale loader zwraca Observable zamiast Promise – wygodne, gdy mamy już serwisy oparte o HttpClient i operatory RxJS. Od v20 funkcja ładująca nazywa się `stream` (w v19 `loader`). Przy zmianie parametrów poprzednia subskrypcja jest odpinana, więc HTTP zostaje anulowany jak przy `switchMap`. Experimental, jak cała rodzina resource.",
+      "code": "import { rxResource } from '@angular/core/rxjs-interop';\n\nproducts = rxResource({\n  params: () => ({ category: this.category() }),\n  stream: ({ params }) =>\n    this.http.get<Product[]>('/api/products', { params }),\n});",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-021",
+      "topic": "httpResource()",
+      "level": 2,
+      "q": "Czym jest httpResource() i czym różni się od resource z fetch?",
+      "a": "`httpResource()` (z `@angular/common/http`, od v19.2, experimental) to resource zbudowany na HttpClient: podajemy reaktywną funkcję zwracającą URL lub obiekt żądania, a Angular sam wykonuje GET przy zmianie sygnałów. Ponieważ idzie przez HttpClient, działają interceptory, testowanie przez HttpTestingController i SSR transfer state. Oprócz statusu i wartości wystawia m.in. `headers()`, `statusCode()` i `progress()`. Są warianty `httpResource.text()`, `.blob()`, `.arrayBuffer()`. Zwrócenie `undefined` z funkcji = brak żądania (idle).",
+      "code": "import { httpResource } from '@angular/common/http';\n\nuserId = input<number>();\nuser = httpResource<User>(() => {\n  const id = this.userId();\n  return id ? `/api/users/${id}` : undefined;\n});",
+      "lang": "typescript",
+      "tip": "Typowe follow-up: \"czy używać httpResource do POST?\" – nie, jest przeznaczony do pobierania danych; mutacje przez HttpClient."
+    },
+    {
+      "id": "signals-022",
+      "topic": "input()",
+      "level": 1,
+      "q": "Jak działa input() i input.required()?",
+      "a": "`input()` to signal-based następca dekoratora `@Input()`. Zwraca `InputSignal<T>` – read-only signal, więc wartość czytamy przez `this.name()`, a pochodne liczymy przez computed zamiast `ngOnChanges`. `input(default)` ma wartość domyślną, `input<T>()` bez wartości daje typ `T | undefined`, a `input.required<T>()` wymusza podanie wartości przez rodzica (błąd kompilacji szablonu, gdy brak). Odczyt required inputu przed jego ustawieniem (np. w konstruktorze) rzuca błąd. Stabilne od v19.",
+      "code": "export class UserCardComponent {\n  user = input.required<User>();\n  size = input<'sm' | 'lg'>('sm');\n  initials = computed(() =>\n    this.user().name.split(' ').map(p => p[0]).join(''));\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-023",
+      "topic": "input()",
+      "level": 2,
+      "q": "Jak używać transform i alias w input()?",
+      "a": "`transform` pozwala przekształcić wartość z szablonu przed zapisaniem w sygnale – typowo `booleanAttribute` (żeby `<app-btn disabled>` dawało true) i `numberAttribute`. Transform powinien być czystą funkcją. `alias` ustawia publiczną nazwę inputu inną niż nazwa pola. Uwaga: InputSignal jest read-only – komponent nie może sam zmienić wartości inputu; jeśli potrzebny jest stan edytowalny i synchronizowany z rodzicem, używa się `model()`, a lokalnie edytowalna kopia – `linkedSignal()`.",
+      "code": "import { booleanAttribute, numberAttribute, input } from '@angular/core';\n\ndisabled = input(false, { transform: booleanAttribute });\npageSize = input(10, { transform: numberAttribute });\nlabel = input('', { alias: 'buttonLabel' });\n// <app-btn disabled pageSize=\"20\" buttonLabel=\"Zapisz\" />",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-024",
+      "topic": "output()",
+      "level": 1,
+      "q": "Czym output() różni się od @Output() z EventEmitter?",
+      "a": "`output()` zwraca `OutputEmitterRef<T>` z metodą `emit()`. W przeciwieństwie do EventEmitter nie jest Observable ani Subject – nie ma `pipe`, `next` itp., co upraszcza API i usuwa zależność od RxJS. Subskrypcje są automatycznie sprzątane przy zniszczeniu komponentu. Do mostu z RxJS służą `outputFromObservable()` (output ze strumienia) i `outputToObservable()` (subskrypcja outputu jako Observable) z `@angular/core/rxjs-interop`. Stabilne od v19.",
+      "code": "export class SearchBoxComponent {\n  search = output<string>();\n  closed = output<void>();\n\n  submit(term: string) { this.search.emit(term); }\n}\n// <app-search-box (search)=\"onSearch($event)\" />",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-025",
+      "topic": "model()",
+      "level": 2,
+      "q": "Jak działa model() i two-way binding?",
+      "a": "`model()` tworzy zapisywalny signal będący jednocześnie inputem i outputem. Dla `value = model()` Angular generuje input `value` i output `valueChange`, więc rodzic może użyć składni `[(value)]`. Komponent zmienia wartość przez `set`/`update`, co automatycznie emituje zdarzenie do rodzica. Rodzic może podpiąć pod `[(value)]` zwykłe pole albo bezpośrednio WritableSignal – wtedy jest aktualizowany sygnał. `model.required()` wymusza binding.",
+      "code": "// child\nexport class RatingComponent {\n  value = model(0);\n  rate(n: number) { this.value.set(n); }\n}\n\n// parent\nrating = signal(3);\n// <app-rating [(value)]=\"rating\" />",
+      "lang": "typescript",
+      "tip": "Kiedy model, a kiedy input + output: model, gdy komponent naprawdę jest kontrolką edytującą wartość rodzica (jak input formularza)."
+    },
+    {
+      "id": "signals-026",
+      "topic": "Zapytania o widok",
+      "level": 2,
+      "q": "Jak działają viewChild(), viewChildren() i contentChild() jako sygnały?",
+      "a": "Signal queries zastępują `@ViewChild`, `@ViewChildren`, `@ContentChild`, `@ContentChildren`. `viewChild('ref')` zwraca `Signal<T | undefined>` – wartość jest dostępna po utworzeniu widoku i aktualizuje się, gdy element pojawia się/znika (np. w `@if`). `viewChild.required()` daje `Signal<T>` i rzuca błąd przy odczycie, gdy wynik nie jest dostępny. `viewChildren()` zwraca `Signal<readonly T[]>`. Opcje: `read` (np. ElementRef), dla content queries `descendants`. Zaleta: można na nich budować computed/effect zamiast `ngAfterViewInit` i QueryList.changes. Stabilne od v19.",
+      "code": "export class FormComponent {\n  nameInput = viewChild.required<ElementRef<HTMLInputElement>>('name');\n  items = viewChildren(ItemComponent);\n  header = contentChild(HeaderDirective);\n\n  count = computed(() => this.items().length);\n  focus() { this.nameInput().nativeElement.focus(); }\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-027",
+      "topic": "toSignal()",
+      "level": 2,
+      "q": "Jak działa toSignal() i jakie ma opcje?",
+      "a": "`toSignal(obs$)` (z `@angular/core/rxjs-interop`) subskrybuje Observable od razu przy wywołaniu i wystawia ostatnią wartość jako signal. Subskrypcja jest automatycznie odpinana przy zniszczeniu kontekstu (komponentu/serwisu). Bez opcji typ to `T | undefined`, bo Observable może jeszcze nic nie wyemitować. `initialValue` podaje wartość startową; `requireSync: true` deklaruje, że Observable emituje synchronicznie (np. BehaviorSubject) – wtedy typ to `T` bez undefined, ale jeśli emisji synchronicznej nie ma, leci błąd. Wymaga injection context albo opcji `injector`; jest też `manualCleanup`.",
+      "code": "private route = inject(ActivatedRoute);\n\nid = toSignal(this.route.paramMap.pipe(map(p => p.get('id'))), {\n  initialValue: null,\n});\nuser = toSignal(this.store.user$, { requireSync: true }); // BehaviorSubject",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-028",
+      "topic": "toSignal()",
+      "level": 3,
+      "q": "Jakie są pułapki toSignal()?",
+      "a": "1) Subskrybuje natychmiast i trzyma subskrypcję do zniszczenia kontekstu – wywołanie toSignal w metodzie przy każdym kliknięciu tworzy nowe subskrypcje (i wymaga injection context). 2) Każde wywołanie toSignal to osobna subskrypcja – dla zimnego HTTP to osobne żądanie. 3) Błąd w Observable jest rzucany przy odczycie sygnału (np. w szablonie), więc błędy lepiej obsłużyć `catchError` w strumieniu. 4) Po `complete` signal trzyma ostatnią wartość. 5) `requireSync` dla asynchronicznego źródła (HTTP) rzuca błąd. Najlepiej wołać toSignal w inicjalizatorze pola.",
+      "tip": "Pokaż świadomość: toSignal nie jest \"leniwy\" jak computed – jest hot od momentu utworzenia."
+    },
+    {
+      "id": "signals-029",
+      "topic": "toObservable()",
+      "level": 2,
+      "q": "Jak działa toObservable() i czym różni się od \"zwykłego\" strumienia?",
+      "a": "`toObservable(sig)` zamienia signal w Observable – przydatne, gdy chcemy użyć operatorów RxJS (debounceTime, switchMap) na zmianach sygnału. Pod spodem używa efektu, więc wartości są emitowane asynchronicznie, a kilka synchronicznych zmian sygnału daje jedną emisję z ostatnią wartością (nie każdą pośrednią). Pierwsza wartość też przychodzi asynchronicznie. Wymaga injection context (lub `injector`).",
+      "code": "query = signal('');\n\nresults = toSignal(\n  toObservable(this.query).pipe(\n    debounceTime(300),\n    distinctUntilChanged(),\n    switchMap(q => this.api.search(q)),\n  ),\n  { initialValue: [] },\n);",
+      "lang": "typescript",
+      "tip": "Ten wzorzec (signal -> RxJS -> signal) jest klasycznym przykładem na rozmowie, gdzie RxJS nadal wygrywa: debounce, anulowanie, łączenie strumieni w czasie."
+    },
+    {
+      "id": "signals-030",
+      "topic": "Signals vs RxJS",
+      "level": 2,
+      "q": "Kiedy używać sygnałów, a kiedy RxJS?",
+      "a": "Sygnały: stan synchroniczny, który zawsze ma wartość – stan komponentu, stan UI, wartości pochodne, dane do szablonu. Są prostsze, nie wymagają subskrypcji i integrują się z change detection. RxJS: zdarzenia rozłożone w czasie i orkiestracja asynchroniczności – debounce/throttle, anulowanie (switchMap), retry, websockety, łączenie wielu strumieni, złożone przepływy. Praktyczna zasada: RxJS na brzegu (I/O, zdarzenia), sygnały do stanu i widoku; most przez toSignal/toObservable i rxResource. Sygnały nie zastępują RxJS całkowicie – zastępują go tam, gdzie był używany jako \"kontener na stan\" (BehaviorSubject)."
+    },
+    {
+      "id": "signals-031",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "Jak sygnały współpracują z change detection, OnPush i zoneless?",
+      "a": "Gdy szablon czyta signal, widok komponentu staje się jego konsumentem. Zmiana sygnału automatycznie oznacza ten widok do odświeżenia i planuje change detection – nawet w komponencie OnPush, bez `markForCheck()` i bez async pipe. To dlatego sygnały są podstawą trybu zoneless (domyślnego w nowych projektach od v21): Angular nie musi polegać na Zone.js, by wiedzieć, że coś się zmieniło. W zoneless CD wyzwalają m.in. zmiany sygnałów czytanych w szablonie, `markForCheck()` (np. async pipe), `setInput` i zdarzenia z szablonu.",
+      "tip": "Zwykłe pole zmienione w setTimeout w aplikacji zoneless nie odświeży widoku – signal tak. To częste pytanie przy migracji do zoneless."
+    },
+    {
+      "id": "signals-032",
+      "topic": "Change detection",
+      "level": 3,
+      "q": "Na czym polega \"lokalna\" change detection przy sygnałach?",
+      "a": "Od v17 zmiana sygnału czytanego w szablonie nie oznacza całej ścieżki przodków jako dirty (jak `markForCheck`), tylko konkretny widok jako wymagający odświeżenia, a przodków oznacza flagą \"ma potomków do odświeżenia\". Change detection przechodzi przez drzewo, ale komponenty OnPush, które same się nie zmieniły, są pomijane i odświeżany jest tylko widok, który faktycznie czytał zmieniony signal. Przy drzewie złożonym z komponentów OnPush daje to aktualizacje bliskie fine-grained, bez sprawdzania szablonów niezmienionych rodziców.",
+      "tip": "Dobrze odróżnić: markForCheck oznacza komponent i wszystkich przodków do sprawdzenia; signal oznacza tylko konsumenta."
+    },
+    {
+      "id": "signals-033",
+      "topic": "Zarządzanie stanem",
+      "level": 2,
+      "q": "Jak zaprojektować serwis ze stanem opartym o sygnały?",
+      "a": "Wzorzec: prywatny `WritableSignal` jako źródło prawdy, publicznie tylko `asReadonly()` i `computed()`, a zmiany wyłącznie przez metody serwisu (intencje typu `addItem`, `setFilter`). Daje to jednokierunkowy przepływ danych i enkapsulację – komponenty nie mogą zmienić stanu \"z boku\". Stan aktualizujemy niemutowalnie przez `update`. Asynchroniczne ładowanie – metody z HttpClient lub resource/rxResource. Dla prostych i średnich aplikacji to często wystarcza zamiast NgRx.",
+      "code": "@Injectable({ providedIn: 'root' })\nexport class TodoStore {\n  private readonly state = signal({ todos: [] as Todo[], filter: 'all' as Filter });\n\n  readonly todos = computed(() => this.state().todos);\n  readonly visible = computed(() => {\n    const { todos, filter } = this.state();\n    return filter === 'all' ? todos : todos.filter(t => t.done === (filter === 'done'));\n  });\n\n  setFilter(filter: Filter) { this.state.update(s => ({ ...s, filter })); }\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-034",
+      "topic": "NgRx SignalStore",
+      "level": 3,
+      "q": "Czym jest NgRx SignalStore i kiedy go wybrać?",
+      "a": "SignalStore (`@ngrx/signals`) to lekki, funkcyjny store oparty na sygnałach. Budujemy go z \"features\": `withState` (stan jako sygnały), `withComputed` (pochodne), `withMethods` (operacje; stan zmienia się przez `patchState`), `withHooks` (onInit/onDestroy), a do tego np. `rxMethod` dla przepływów RxJS i `withEntities` dla kolekcji. Jest mniej ceremonialny niż klasyczny NgRx Store (brak akcji/reducerów/efektów jako osobnych bytów) i można go dostarczać globalnie lub per komponent. Wybieram go, gdy serwisy z sygnałami zaczynają się powtarzać i chcę ustandaryzowanego wzorca, devtools i rozszerzalnych feature'ów.",
+      "code": "export const TodoStore = signalStore(\n  { providedIn: 'root' },\n  withState({ todos: [] as Todo[], loading: false }),\n  withComputed(({ todos }) => ({\n    doneCount: computed(() => todos().filter(t => t.done).length),\n  })),\n  withMethods((store) => ({\n    add(todo: Todo) { patchState(store, { todos: [...store.todos(), todo] }); },\n  })),\n);",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-035",
+      "topic": "Signal Forms",
+      "level": 3,
+      "q": "Czym są Signal Forms w Angular 21?",
+      "a": "Signal Forms (`@angular/forms/signals`) to nowe, eksperymentalne w v21 API formularzy oparte na sygnałach. Model danych jest zwykłym WritableSignal, a `form(model, schema)` tworzy drzewo pól, w którym każde pole wystawia stan jako sygnały (wartość, `valid()`, `errors()`, `touched()`, `dirty()`). Walidację deklaruje się funkcjami w schemacie (np. `required`, `email`, `minLength`), także warunkowo i asynchronicznie. Pole wiąże się z inputem dyrektywą (w v21.0 `[field]`, od v21.1 przemianowaną na `[formField]`). Ponieważ to API experimental, nazwy mogą się jeszcze zmieniać – w produkcji domyślnym wyborem pozostają Reactive Forms.",
+      "code": "import { form, required, email } from '@angular/forms/signals';\n\nlogin = signal({ email: '', password: '' });\nloginForm = form(this.login, (p) => {\n  required(p.email);\n  email(p.email);\n  required(p.password);\n});\n// <input [formField]=\"loginForm.email\" />   (v21.0: [field])",
+      "lang": "typescript",
+      "tip": "Na rozmowie wystarczy wiedzieć, że istnieją, są eksperymentalne i dlaczego powstały (typowanie, brak Observable, integracja z sygnałami). Nie twierdź, że zastąpiły Reactive Forms."
+    },
+    {
+      "id": "signals-036",
+      "topic": "Pułapki",
+      "level": 1,
+      "q": "Dlaczego mutowanie obiektu lub tablicy w sygnale nie działa?",
+      "a": "Signal porównuje wartości przez `Object.is`, czyli dla obiektów po referencji. Jeśli zrobisz `items().push(x)` albo `user().name = 'X'`, referencja się nie zmienia – Angular nie dostaje powiadomienia, computed się nie przelicza, a widok OnPush/zoneless się nie odświeży. Do tego mutacja omija enkapsulację. Rozwiązanie: zawsze tworzyć nową referencję przez `update` (spread, map, filter) albo używać struktur niemutowalnych.",
+      "code": "// Źle – brak powiadomienia\nthis.items().push(newItem);\n\n// Dobrze\nthis.items.update(list => [...list, newItem]);\nthis.user.update(u => ({ ...u, name: 'Anna' }));",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-037",
+      "topic": "Pułapki",
+      "level": 2,
+      "q": "Dlaczego sygnał odczytany po await lub w callbacku nie jest śledzony w effect/computed?",
+      "a": "Śledzenie zależności działa tylko synchronicznie, w trakcie wykonywania funkcji effect/computed. Sygnał odczytany po `await`, w `setTimeout`, w `.then()` czy w subskrypcji jest czytany już poza kontekstem reaktywnym, więc nie staje się zależnością. Rozwiązanie: odczytaj wszystkie potrzebne sygnały na początku, synchronicznie, i dopiero potem uruchamiaj kod asynchroniczny (albo użyj resource, które to porządkuje).",
+      "code": "effect(async () => {\n  const id = this.userId();          // śledzone\n  const user = await this.api.load(id);\n  if (this.showAvatar()) { /* ... */ } // NIE śledzone – po await!\n});",
+      "lang": "typescript",
+      "tip": "Podobna pułapka: wczesny return. Sygnał odczytany dopiero za `if (!flag()) return;` jest śledzony tylko w przebiegach, gdzie do niego doszło – to poprawne, ale warto rozumieć, dlaczego."
+    },
+    {
+      "id": "signals-038",
+      "topic": "Pułapki",
+      "level": 3,
+      "q": "Jakie są pułapki związane z tworzeniem efektów i pętlami?",
+      "a": "1) Tworzenie effect w metodzie wołanej wielokrotnie (np. handler kliknięcia, pętla po elementach) – każdy wywołany effect żyje do zniszczenia komponentu, więc efekty się kumulują (wyciek, wielokrotne side-effecty). Efekty tworzy się raz, w konstruktorze/inicjalizatorze. 2) Effect, który czyta i zapisuje ten sam signal (np. `count.update(c => c + 1)` po odczycie `count()`), ciągle sam się unieważnia – ryzyko pętli. 3) Łańcuchy efektów kopiujących stan (A → B → C) – trudny debugging i dodatkowe cykle; zastąp computed/linkedSignal. 4) Wywoływanie w efekcie kodu, który wewnętrznie czyta sygnały – owiń w `untracked`."
+    },
+    {
+      "id": "signals-039",
+      "topic": "afterRenderEffect()",
+      "level": 3,
+      "q": "Czym jest afterRenderEffect() i czym różni się od effect()?",
+      "a": "`afterRenderEffect()` to efekt reaktywny na sygnały, ale wykonywany po renderze, gdy DOM jest już zaktualizowany. Służy do operacji na DOM zależnych od sygnałów: pomiary layoutu, integracja z bibliotekami rysującymi, ustawianie scrolla. Można podać fazy `earlyRead`, `write`, `mixedReadWrite`, `read`, żeby uniknąć layout thrashingu – wartość zwrócona z fazy trafia jako signal do kolejnej. W przeciwieństwie do `afterNextRender`/`afterEveryRender` uruchamia się ponownie tylko, gdy zmienią się jego zależności. Nie działa na serwerze (SSR). Wprowadzony w v19, stabilny od v20.",
+      "code": "export class ChartComponent {\n  data = input.required<number[]>();\n  canvas = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');\n\n  constructor() {\n    afterRenderEffect(() => {\n      drawChart(this.canvas().nativeElement, this.data());\n    });\n  }\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-040",
+      "topic": "Testowanie",
+      "level": 2,
+      "q": "Jak testować komponenty i serwisy oparte o sygnały?",
+      "a": "Signal inputs ustawia się przez `fixture.componentRef.setInput('name', value)` – nie można przypisać wartości wprost, bo InputSignal jest read-only. Potem `fixture.detectChanges()` lub `await fixture.whenStable()` (w zoneless zalecane). Logikę computed testuje się bez TestBed: ustaw signal, odczytaj computed. Efekty są asynchroniczne – w testach wymusza się ich wykonanie przez `TestBed.tick()` (od v20; wcześniej `TestBed.flushEffects()`) lub change detection. Serwisy z sygnałami testuje się prosto: wywołaj metodę, sprawdź wartość sygnału. W v21 domyślnym runnerem nowych projektów jest Vitest.",
+      "code": "it('shows initials', async () => {\n  const fixture = TestBed.createComponent(UserCardComponent);\n  fixture.componentRef.setInput('user', { name: 'Jan Kowalski' });\n  await fixture.whenStable();\n\n  expect(fixture.nativeElement.textContent).toContain('JK');\n});",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-041",
+      "topic": "Model reaktywności",
+      "level": 2,
+      "q": "Jak sygnały są \"batchowane\" – co się dzieje przy wielu set() pod rząd?",
+      "a": "Kilka synchronicznych `set()`/`update()` pod rząd nie powoduje kilku renderów ani kilku uruchomień efektu. Zmiany tylko unieważniają graf; efekty i change detection są zaplanowane i wykonają się raz, widząc ostateczny stan. computed przeliczy się raz przy następnym odczycie. Dlatego nie potrzeba specjalnego API typu \"batch\" – kolejne zmiany w jednym handlerze zdarzenia są naturalnie łączone.",
+      "code": "onReset() {\n  this.page.set(1);\n  this.filter.set('');\n  this.sort.set('name');\n  // effect zależny od wszystkich trzech uruchomi się raz\n}",
+      "lang": "typescript"
+    },
+    {
+      "id": "signals-042",
+      "topic": "Podstawy",
+      "level": 1,
+      "q": "Jak czytać sygnały w szablonie i czy wywoływanie ich jako funkcji jest kosztowne?",
+      "a": "W szablonie sygnał czyta się przez wywołanie: `{{ count() }}`, `@if (user(); as u)`. Przy zwykłych metodach wywołania w szablonie są złą praktyką (wykonują się w każdym cyklu CD), ale odczyt sygnału to tylko zwrócenie zapamiętanej wartości i rejestracja zależności – jest tani. computed również zwraca wartość z cache, jeśli zależności się nie zmieniły. Dlatego \"nie wywołuj funkcji w szablonie\" nie dotyczy sygnałów.",
+      "code": "<h2>{{ user().name }}</h2>\n@if (items().length) {\n  <p>Razem: {{ total() }}</p>\n}",
+      "lang": "typescript"
+    }
+  ],
+  "quiz": [
+    {
+      "id": "signals-q001",
+      "topic": "computed()",
+      "level": 1,
+      "q": "Co wypisze ten kod?",
+      "code": "const a = signal(1);\nconst b = computed(() => a() * 2);\na.set(5);\nconsole.log(b());",
+      "lang": "typescript",
+      "options": [
+        "2",
+        "10",
+        "undefined",
+        "Błąd – computed nie można odczytać poza komponentem"
+      ],
+      "correct": 1,
+      "why": "computed jest lazy: przy odczycie po `a.set(5)` przelicza się z aktualną wartością a, więc wynik to 5 * 2 = 10. Signals i computed działają też poza komponentami – nie wymagają injection context."
+    },
+    {
+      "id": "signals-q002",
+      "topic": "computed()",
+      "level": 2,
+      "q": "Ile razy pojawi się w konsoli 'calc'?",
+      "code": "const a = signal(1);\nconst c = computed(() => { console.log('calc'); return a() * 2; });\na.set(2);\na.set(3);\nc();\nc();",
+      "lang": "typescript",
+      "options": [
+        "0",
+        "1",
+        "2",
+        "4"
+      ],
+      "correct": 1,
+      "why": "computed nie liczy się przy zmianach zależności, tylko przy odczycie (lazy). Dwa set() tylko unieważniają wartość. Pierwszy odczyt przelicza (1 log), drugi zwraca wartość z cache (memoizacja)."
+    },
+    {
+      "id": "signals-q003",
+      "topic": "Pułapki",
+      "level": 1,
+      "q": "Komponent wyświetla `{{ count() }}` z computed liczącego długość tablicy. Po kliknięciu wykonuje się poniższy kod. Co się stanie?",
+      "code": "const items = signal([1, 2, 3]);\nconst count = computed(() => items().length);\n\nadd() {\n  items().push(4);\n  items.set(items());\n}",
+      "lang": "typescript",
+      "options": [
+        "Licznik zwiększy się o 1, bo set() zawsze powiadamia konsumentów",
+        "Angular rzuci błąd o mutacji sygnału",
+        "Licznik zwiększy się dopiero po ręcznym markForCheck()",
+        "Licznik w widoku się nie zmieni, bo referencja tablicy jest ta sama i Object.is uznaje wartość za niezmienioną"
+      ],
+      "correct": 3,
+      "why": "`push` mutuje istniejącą tablicę, a `set` z tą samą referencją nie przechodzi porównania Object.is – konsumenci nie są powiadamiani. Angular nie wykrywa mutacji i nie rzuca błędu. Poprawnie: `items.update(l => [...l, 4])`."
+    },
+    {
+      "id": "signals-q004",
+      "topic": "Equality",
+      "level": 2,
+      "q": "Co zrobi poniższy kod z efektem, który loguje `user().name`?",
+      "code": "const user = signal({ id: 1, name: 'Jan' }, {\n  equal: (a, b) => a.id === b.id,\n});\nuser.set({ id: 1, name: 'Anna' });",
+      "lang": "typescript",
+      "options": [
+        "Efekt uruchomi się, bo nowy obiekt ma inną referencję",
+        "Efekt nie uruchomi się ponownie, bo funkcja equal uznaje obiekty za równe",
+        "Efekt uruchomi się dwa razy",
+        "Kod się nie skompiluje – opcja equal jest dostępna tylko w computed"
+      ],
+      "correct": 1,
+      "why": "Własna funkcja `equal` zastępuje Object.is. Skoro id jest takie samo, signal uznaje wartość za niezmienioną i nie powiadamia konsumentów – zmiana name zostanie pominięta. To częsta przyczyna błędów przy zbyt luźnym equal. Opcja equal jest dostępna i w signal, i w computed."
+    },
+    {
+      "id": "signals-q005",
+      "topic": "computed()",
+      "level": 2,
+      "q": "Gdy `show()` zwraca false, a zmieni się `name`, co stanie się z `label`?",
+      "code": "const label = computed(() => show() ? name() : '—');",
+      "lang": "typescript",
+      "options": [
+        "Zostanie przeliczony, bo computed śledzi wszystkie sygnały występujące w kodzie funkcji",
+        "Zostanie przeliczony dopiero przy następnej change detection",
+        "Rzuci błąd, bo zależności computed nie mogą być warunkowe",
+        "Nie zostanie przeliczony, bo w ostatnim przebiegu name nie był odczytany, więc nie jest zależnością"
+      ],
+      "correct": 3,
+      "why": "Zależności są dynamiczne: rejestrowane są tylko sygnały faktycznie odczytane w danym wykonaniu. Gałąź z name nie wykonała się, więc zmiana name nie unieważnia label – i to jest poprawne, bo wynik od niej nie zależy."
+    },
+    {
+      "id": "signals-q006",
+      "topic": "effect()",
+      "level": 2,
+      "q": "Jak najlepiej poprawić ten kod?",
+      "code": "total = signal(0);\nconstructor() {\n  effect(() => {\n    this.total.set(this.items().reduce((s, i) => s + i.price, 0));\n  });\n}",
+      "lang": "typescript",
+      "options": [
+        "Zastąpić signal + effect przez computed",
+        "Dodać untracked wokół odczytu items()",
+        "Przenieść effect do ngOnInit",
+        "Zamienić set na update"
+      ],
+      "correct": 0,
+      "why": "Effect kopiuje stan wyliczalny z innego sygnału – klasyczny antywzorzec. `total = computed(() => ...)` jest synchroniczny, zawsze aktualny, memoizowany i nie wymaga dodatkowego cyklu. untracked zepsułby reaktywność, a ngOnInit nie ma injection context."
+    },
+    {
+      "id": "signals-q007",
+      "topic": "effect()",
+      "level": 2,
+      "q": "Co się stanie po uruchomieniu tego komponentu?",
+      "code": "export class Cmp implements OnInit {\n  value = signal(0);\n  ngOnInit() {\n    effect(() => console.log(this.value()));\n  }\n}",
+      "lang": "typescript",
+      "options": [
+        "Effect zadziała normalnie, ngOnInit jest częścią injection context",
+        "Błąd NG0203 – effect() wymaga injection context, a ngOnInit go nie zapewnia",
+        "Effect wykona się raz i nigdy więcej",
+        "Effect zostanie utworzony, ale nie zostanie zniszczony razem z komponentem"
+      ],
+      "correct": 1,
+      "why": "Injection context istnieje w konstruktorze, inicjalizatorach pól i fabrykach – nie w hookach cyklu życia. Rozwiązanie: utworzyć effect w konstruktorze lub przekazać `{ injector }` z wcześniej wstrzykniętego Injector."
+    },
+    {
+      "id": "signals-q008",
+      "topic": "effect()",
+      "level": 2,
+      "q": "Kiedy wykona się funkcja przekazana do onCleanup?",
+      "code": "effect((onCleanup) => {\n  const id = setInterval(() => poll(this.url()), 5000);\n  onCleanup(() => clearInterval(id));\n});",
+      "lang": "typescript",
+      "options": [
+        "Przed każdym kolejnym uruchomieniem efektu oraz przy jego zniszczeniu",
+        "Tylko przy zniszczeniu komponentu",
+        "Zaraz po zakończeniu każdego wykonania efektu",
+        "Tylko gdy wywołamy ręcznie effectRef.destroy()"
+      ],
+      "correct": 0,
+      "why": "onCleanup sprząta zasoby poprzedniego przebiegu (timer, listener, żądanie) zanim efekt wykona się ponownie, oraz przy zniszczeniu efektu (np. razem z komponentem). Dzięki temu nie zostają wiszące timery."
+    },
+    {
+      "id": "signals-q009",
+      "topic": "effect()",
+      "level": 3,
+      "q": "Jak w Angular 19+ działa timing efektu utworzonego w konstruktorze komponentu (component effect)?",
+      "options": [
+        "Wykonuje się synchronicznie przy każdym set() czytanego sygnału",
+        "Wykonuje się w trakcie change detection, jako część odświeżania drzewa komponentów",
+        "Wykonuje się zawsze po zakończeniu renderowania, jak afterNextRender",
+        "Wykonuje się jako zwykły mikrotask, niezależnie od change detection"
+      ],
+      "correct": 1,
+      "why": "Od v19 efekty komponentów są uruchamiane w trakcie change detection (w kolejności drzewa), a root effects (np. z serwisów) przed change detection. Efekty nigdy nie są synchroniczne przy set(). Do pracy z DOM po renderze służy afterRenderEffect."
+    },
+    {
+      "id": "signals-q010",
+      "topic": "untracked()",
+      "level": 2,
+      "q": "Które zmiany spowodują ponowne uruchomienie efektu?",
+      "code": "effect(() => {\n  const u = user();\n  untracked(() => {\n    analytics.track(u.id, theme(), lang());\n  });\n});",
+      "lang": "typescript",
+      "options": [
+        "Tylko zmiana user",
+        "Zmiana user lub theme",
+        "Zmiana dowolnego z trzech sygnałów",
+        "Żadna – untracked wyłącza śledzenie w całym efekcie"
+      ],
+      "correct": 0,
+      "why": "Odczyty wewnątrz untracked nie są rejestrowane jako zależności. user() jest czytany poza untracked, więc tylko on jest zależnością. untracked działa tylko na przekazaną funkcję, nie na cały efekt."
+    },
+    {
+      "id": "signals-q011",
+      "topic": "linkedSignal()",
+      "level": 2,
+      "q": "Użytkownik wybrał 'B' przez selected.set('B'). Następnie options zmienia się na ['X', 'Y']. Jaka jest wartość selected()?",
+      "code": "options = signal(['A', 'B', 'C']);\nselected = linkedSignal(() => this.options()[0]);",
+      "lang": "typescript",
+      "options": [
+        "'B'",
+        "undefined",
+        "'A'",
+        "'X'"
+      ],
+      "correct": 3,
+      "why": "linkedSignal można nadpisać ręcznie, ale gdy zmieni się źródło (options), wartość jest ponownie liczona funkcją – tu options()[0], czyli 'X'. Ręczny wybór obowiązuje tylko do następnej zmiany źródła."
+    },
+    {
+      "id": "signals-q012",
+      "topic": "linkedSignal()",
+      "level": 3,
+      "q": "Co zwraca selected() po zmianie items na nową listę, w której nadal jest element o id wybranym wcześniej przez użytkownika?",
+      "code": "selected = linkedSignal<Item[], Item>({\n  source: this.items,\n  computation: (items, previous) =>\n    items.find(i => i.id === previous?.value.id) ?? items[0],\n});",
+      "lang": "typescript",
+      "options": [
+        "Zawsze pierwszy element nowej listy",
+        "Poprzedni obiekt (stara referencja) bez zmian",
+        "Element z nowej listy o tym samym id (zachowany wybór)",
+        "undefined, bo previous jest dostępny tylko przy pierwszym obliczeniu"
+      ],
+      "correct": 2,
+      "why": "computation dostaje `previous` z poprzednią wartością (`previous.value`) i źródłem. Kod szuka w nowej liście elementu o tym samym id, więc zwraca nowy obiekt odpowiadający wcześniejszemu wyborowi. Fallback do items[0] działa tylko, gdy elementu już nie ma."
+    },
+    {
+      "id": "signals-q013",
+      "topic": "resource()",
+      "level": 2,
+      "q": "Co się dzieje, gdy funkcja params zwraca undefined (pusty query)?",
+      "code": "results = resource({\n  params: () => this.query() || undefined,\n  loader: ({ params }) => fetch(`/api/search?q=${params}`).then(r => r.json()),\n});",
+      "lang": "typescript",
+      "options": [
+        "Loader jest wywoływany z params = undefined",
+        "Resource przechodzi w status 'error'",
+        "Resource przechodzi w status 'idle' i loader nie jest wywoływany",
+        "Resource zachowuje się jak przy reload() z poprzednimi parametrami"
+      ],
+      "correct": 2,
+      "why": "Zwrócenie undefined z params oznacza \"brak żądania\": status 'idle', loader się nie wykonuje. To idiomatyczny sposób na warunkowe ładowanie."
+    },
+    {
+      "id": "signals-q014",
+      "topic": "resource()",
+      "level": 3,
+      "q": "Użytkownik szybko zmienia userId 3 razy. Jak zapewnić, że nieaktualne żądania zostaną przerwane?",
+      "options": [
+        "Nic nie trzeba robić – fetch jest automatycznie przerywany przez Zone.js",
+        "Wywołać ręcznie reload() przed każdą zmianą userId",
+        "Przekazać abortSignal z argumentu loadera do fetch – resource abortuje poprzedni loader przy zmianie params",
+        "Użyć effect z onCleanup zamiast resource, bo resource nie wspiera anulowania"
+      ],
+      "correct": 2,
+      "why": "Resource przy zmianie parametrów wywołuje abort na AbortSignal poprzedniego loadera i ignoruje jego wynik. Żeby żądanie sieciowe faktycznie zostało przerwane, trzeba przekazać ten abortSignal do fetch. rxResource/httpResource robią to automatycznie przez odpięcie subskrypcji."
+    },
+    {
+      "id": "signals-q015",
+      "topic": "rxResource()",
+      "level": 3,
+      "q": "Masz kod z Angular 19 (poniżej). Co trzeba zmienić po aktualizacji do v20?",
+      "code": "products = rxResource({\n  request: () => ({ cat: this.category() }),\n  loader: ({ request }) => this.http.get<Product[]>('/api/products', { params: request }),\n});",
+      "lang": "typescript",
+      "options": [
+        "Nic – nazwy opcji nie zmieniły się",
+        "Tylko request → source",
+        "rxResource został usunięty, trzeba przejść na httpResource",
+        "request → params oraz loader → stream"
+      ],
+      "correct": 3,
+      "why": "W v20 opcja `request` została przemianowana na `params` (w resource i rxResource), a w rxResource funkcja `loader` na `stream`. rxResource nadal istnieje w `@angular/core/rxjs-interop` (experimental)."
+    },
+    {
+      "id": "signals-q016",
+      "topic": "httpResource()",
+      "level": 2,
+      "q": "Masz interceptor dodający nagłówek Authorization. Czy zadziała dla httpResource?",
+      "options": [
+        "Tak – httpResource wykonuje żądania przez HttpClient, więc przechodzą przez interceptory",
+        "Nie – httpResource używa fetch bezpośrednio, z pominięciem interceptorów",
+        "Tylko gdy włączono withFetch()",
+        "Tylko dla interceptorów klasowych (HTTP_INTERCEPTORS)"
+      ],
+      "correct": 0,
+      "why": "httpResource jest zbudowany na HttpClient, dlatego działają interceptory funkcyjne i klasowe, HttpTestingController w testach oraz cache transfer state w SSR. withFetch zmienia tylko backend HttpClient, nie wpływa na interceptory."
+    },
+    {
+      "id": "signals-q017",
+      "topic": "input()",
+      "level": 1,
+      "q": "Co się stanie przy kompilacji tego kodu?",
+      "code": "name = input('');\nreset() { this.name.set(''); }",
+      "lang": "typescript",
+      "options": [
+        "Zadziała i nadpisze wartość podaną przez rodzica",
+        "Zadziała, ale tylko dla input() z wartością domyślną",
+        "Błąd wyłącznie w runtime, przy pierwszym kliknięciu",
+        "Błąd TypeScript – InputSignal nie ma metody set, input jest read-only"
+      ],
+      "correct": 3,
+      "why": "input() zwraca InputSignal, który można tylko czytać – dane płyną od rodzica. Jeśli komponent ma zmieniać wartość i informować rodzica, używa się model(); lokalnie edytowalna kopia – linkedSignal."
+    },
+    {
+      "id": "signals-q018",
+      "topic": "input()",
+      "level": 2,
+      "q": "Jaka będzie wartość disabled() dla `<app-button disabled />`?",
+      "code": "disabled = input(false, { transform: booleanAttribute });",
+      "lang": "typescript",
+      "options": [
+        "'' (pusty string)",
+        "false",
+        "true",
+        "undefined"
+      ],
+      "correct": 2,
+      "why": "Atrybut bez wartości przekazuje pusty string. Transform booleanAttribute zamienia go na true (obecność atrybutu = true, wyjątkiem jest 'false'). Bez transform typ by się nie zgadzał i wartość byłaby ''."
+    },
+    {
+      "id": "signals-q019",
+      "topic": "output()",
+      "level": 2,
+      "q": "Dlaczego ten kod się nie kompiluje?",
+      "code": "search = output<string>();\n// w innym miejscu:\nthis.child.search.pipe(debounceTime(300)).subscribe(...);",
+      "lang": "typescript",
+      "options": [
+        "OutputEmitterRef nie jest Observable – nie ma metody pipe; trzeba użyć outputToObservable()",
+        "output() wymaga podania typu generycznego",
+        "Subskrypcji outputu nie można tworzyć w konstruktorze",
+        "debounceTime nie działa z typem string"
+      ],
+      "correct": 0,
+      "why": "output() zwraca OutputEmitterRef z emit() i subscribe(), ale bez API RxJS. Aby użyć operatorów, trzeba zamienić go na Observable przez outputToObservable() (a w drugą stronę: outputFromObservable())."
+    },
+    {
+      "id": "signals-q020",
+      "topic": "model()",
+      "level": 1,
+      "q": "Co generuje deklaracja `checked = model(false)` w komponencie?",
+      "options": [
+        "Tylko input checked tylko do odczytu",
+        "Input checked oraz output checkedChange, co umożliwia [(checked)]",
+        "Output checked i input checkedValue",
+        "Kontrolkę formularza zgodną z ControlValueAccessor"
+      ],
+      "correct": 1,
+      "why": "model() tworzy WritableSignal, który jest jednocześnie inputem i outputem `<nazwa>Change`. Zmiana przez set/update emituje zdarzenie do rodzica. Nie implementuje ControlValueAccessor – to inny mechanizm (formularze)."
+    },
+    {
+      "id": "signals-q021",
+      "topic": "Zapytania o widok",
+      "level": 2,
+      "q": "Co wypisze konstruktor?",
+      "code": "export class Cmp {\n  input = viewChild<ElementRef>('inp');\n  constructor() { console.log(this.input()); }\n}",
+      "lang": "typescript",
+      "options": [
+        "ElementRef elementu input",
+        "Błąd – zapytania o widok nie można czytać w konstruktorze",
+        "undefined",
+        "Pustą tablicę"
+      ],
+      "correct": 2,
+      "why": "viewChild() (bez required) zwraca Signal<T | undefined>. W konstruktorze widok jeszcze nie istnieje, więc wartość to undefined. viewChild.required() rzuciłby w takiej sytuacji błąd przy odczycie. Wartość będzie dostępna po utworzeniu widoku – można na niej budować computed/afterRenderEffect."
+    },
+    {
+      "id": "signals-q022",
+      "topic": "toSignal()",
+      "level": 1,
+      "q": "Jaki jest typ `user` w tym kodzie?",
+      "code": "user = toSignal(this.http.get<User>('/api/me'));",
+      "lang": "typescript",
+      "options": [
+        "Signal<User>",
+        "Observable<User>",
+        "WritableSignal<User | undefined>",
+        "Signal<User | undefined>"
+      ],
+      "correct": 3,
+      "why": "Bez initialValue ani requireSync toSignal nie wie, czy Observable wyemituje coś synchronicznie, więc dodaje undefined do typu. Wynik jest read-only Signal, nie WritableSignal."
+    },
+    {
+      "id": "signals-q023",
+      "topic": "toSignal()",
+      "level": 3,
+      "q": "Co się stanie przy tworzeniu komponentu?",
+      "code": "user = toSignal(this.http.get<User>('/api/me'), { requireSync: true });",
+      "lang": "typescript",
+      "options": [
+        "Signal będzie miał wartość undefined do czasu odpowiedzi",
+        "Angular poczeka synchronicznie na odpowiedź HTTP",
+        "Błąd kompilacji TypeScript",
+        "Błąd w runtime, bo HTTP nie emituje synchronicznie, a requireSync tego wymaga"
+      ],
+      "correct": 3,
+      "why": "requireSync: true to obietnica, że Observable emituje od razu (np. BehaviorSubject, startWith). HttpClient emituje asynchronicznie, więc toSignal rzuca błąd. TypeScript tego nie wykryje. Dla HTTP należy użyć initialValue lub resource."
+    },
+    {
+      "id": "signals-q024",
+      "topic": "toObservable()",
+      "level": 3,
+      "q": "Co otrzyma subskrybent?",
+      "code": "const s = signal(0);\ntoObservable(s).subscribe(v => console.log(v));\ns.set(1); s.set(2); s.set(3);",
+      "lang": "typescript",
+      "options": [
+        "Trzy emisje: 1, 2, 3 (synchronicznie)",
+        "Jedną emisję: 3 (asynchronicznie)",
+        "Cztery emisje: 0, 1, 2, 3",
+        "Jedną emisję: 0"
+      ],
+      "correct": 1,
+      "why": "toObservable jest zbudowany na efekcie: emituje asynchronicznie, gdy efekt się wykona, i widzi tylko aktualną wartość. Synchroniczne set() przed wykonaniem efektu zostają \"zwinięte\" – subskrybent dostaje tylko 3. To ważne, gdy ktoś oczekuje każdej wartości pośredniej."
+    },
+    {
+      "id": "signals-q025",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "Aplikacja działa w trybie zoneless. Co się stanie po 1 sekundzie?",
+      "code": "@Component({ template: `{{ message }}` })\nexport class Cmp {\n  message = 'start';\n  constructor() { setTimeout(() => this.message = 'koniec', 1000); }\n}",
+      "lang": "typescript",
+      "options": [
+        "Widok się odświeży, bo setTimeout zawsze uruchamia change detection",
+        "Angular rzuci ExpressionChangedAfterItHasBeenCheckedError",
+        "Widok się nie odświeży, bo zmiana zwykłego pola nie powiadamia Angulara",
+        "Widok się odświeży, ale z opóźnieniem jednej klatki"
+      ],
+      "correct": 2,
+      "why": "Bez Zone.js nikt nie przechwytuje setTimeout, więc Angular nie wie o zmianie. Rozwiązanie: użyć sygnału (`message = signal('')` i `message.set(...)`) albo wywołać markForCheck()."
+    },
+    {
+      "id": "signals-q026",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "Komponent ma OnPush i w szablonie czyta `store.count()`. Serwis zmienia count w callbacku WebSocketa. Co trzeba zrobić, by widok się odświeżył?",
+      "options": [
+        "Wywołać ChangeDetectorRef.markForCheck() w komponencie",
+        "Nic – odczyt sygnału w szablonie sam oznacza widok do odświeżenia",
+        "Opakować wartość w async pipe",
+        "Zmienić strategię na Default"
+      ],
+      "correct": 1,
+      "why": "Szablon jest konsumentem sygnału. Zmiana sygnału oznacza ten widok jako wymagający odświeżenia i planuje change detection, niezależnie od OnPush i źródła zmiany (WebSocket, timer). markForCheck i async pipe nie są potrzebne."
+    },
+    {
+      "id": "signals-q027",
+      "topic": "Zarządzanie stanem",
+      "level": 1,
+      "q": "Który projekt serwisu stanu jest najlepszy?",
+      "options": [
+        "Prywatny WritableSignal, publicznie asReadonly()/computed, zmiany przez metody serwisu",
+        "Publiczny WritableSignal, żeby komponenty mogły wygodnie robić set()",
+        "Publiczny BehaviorSubject i getter zwracający jego wartość",
+        "Publiczna tablica, którą komponenty mutują, oraz signal z licznikiem wersji"
+      ],
+      "correct": 0,
+      "why": "Enkapsulacja: tylko serwis zmienia stan, a reszta aplikacji go czyta. Daje to jednokierunkowy przepływ i jedno miejsce z logiką zmian. Publiczny WritableSignal pozwala zmieniać stan z dowolnego miejsca, co utrudnia debugging."
+    },
+    {
+      "id": "signals-q028",
+      "topic": "Pułapki",
+      "level": 3,
+      "q": "Co jest nie tak w tym kodzie?",
+      "code": "onClick() {\n  effect(() => console.log('filter', this.filter()), { injector: this.injector });\n}",
+      "lang": "typescript",
+      "options": [
+        "Każde kliknięcie tworzy nowy effect, który żyje do zniszczenia komponentu – efekty się kumulują",
+        "effect nie może czytać sygnałów z inputów",
+        "Brak untracked wokół console.log",
+        "Nic – effect jest niszczony po pierwszym wykonaniu"
+      ],
+      "correct": 0,
+      "why": "Efekty powinny być tworzone raz (konstruktor/inicjalizator). Tutaj każde kliknięcie rejestruje kolejny efekt (o ile w ogóle jest injection context – tu przez injector), więc po 10 kliknięciach log wykona się 10 razy na każdą zmianę. Efekt nie jest jednorazowy."
+    },
+    {
+      "id": "signals-q029",
+      "topic": "afterRenderEffect()",
+      "level": 3,
+      "q": "Musisz przerysować wykres w canvas (biblioteka zewnętrzna) zawsze, gdy zmieni się input data(), już po aktualizacji DOM. Co wybrać?",
+      "options": [
+        "afterRenderEffect",
+        "computed wywołujący drawChart",
+        "afterNextRender w konstruktorze",
+        "ngOnChanges z setTimeout"
+      ],
+      "correct": 0,
+      "why": "afterRenderEffect jest reaktywny na sygnały i wykonuje się po renderze, gdy DOM jest gotowy. afterNextRender wykona się tylko raz, computed nie powinien mieć side-effectów (i jest lazy), a ngOnChanges + setTimeout to obejście bez gwarancji kolejności."
+    },
+    {
+      "id": "signals-q030",
+      "topic": "Testowanie",
+      "level": 2,
+      "q": "Jak poprawnie ustawić signal input `user` w teście komponentu?",
+      "options": [
+        "fixture.componentInstance.user = mockUser",
+        "fixture.componentInstance.user.set(mockUser)",
+        "fixture.componentRef.setInput('user', mockUser)",
+        "TestBed.overrideComponent z nową wartością inputu"
+      ],
+      "correct": 2,
+      "why": "Signal input jest read-only i należy do API komponentu, więc ustawia się go przez ComponentRef.setInput – tak samo jak robi to Angular przy bindingu. Przypisanie nadpisałoby cały signal, a set() nie istnieje na InputSignal."
+    }
+  ]
+}

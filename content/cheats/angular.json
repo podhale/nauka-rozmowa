@@ -1,0 +1,369 @@
+{
+ "cat": "angular",
+ "sheets": [
+  {
+   "topic": "Standalone",
+   "points": [
+    "Standalone component sam deklaruje zależności w `imports` – bez NgModule.",
+    "Od v19 `standalone: true` jest **domyślne**; komponent w NgModule potrzebuje `standalone: false`.",
+    "Zalety: mniej boilerplate'u, zależności widoczne w pliku, łatwy `loadComponent`, lepszy tree-shaking.",
+    "Migracja: `ng generate @angular/core:standalone` (w kilku krokach).",
+    "NgModule nadal działa (np. w starszych bibliotekach) – można je importować do standalone."
+   ],
+   "pitfalls": [
+    "Pisanie `standalone: true` w v19+ – zbędne; brak importu dyrektywy/pipe'a w `imports` daje błąd szablonu."
+   ],
+   "code": "@Component({\n  selector: 'app-user-card',\n  imports: [DatePipe, RouterLink],\n  template: `<a [routerLink]=\"['/users', user().id]\">{{ user().created | date }}</a>`,\n})\nexport class UserCard { user = input.required<User>(); }",
+   "lang": "typescript",
+   "say": "Standalone to domyślny model od v19: komponent sam importuje swoje zależności, co upraszcza lazy loading i tree-shaking."
+  },
+  {
+   "topic": "Bootstrap",
+   "points": [
+    "`bootstrapApplication(AppComponent, appConfig)` zastępuje `AppModule`.",
+    "`appConfig: ApplicationConfig` (zwykle `app.config.ts`) z tablicą `providers`.",
+    "Rejestrujemy funkcje `provide*`: `provideRouter`, `provideHttpClient`, `provideZonelessChangeDetection`, `provideClientHydration`…",
+    "Providery z appConfig trafiają do **root environment injectora**.",
+    "Inicjalizacja przy starcie: `provideAppInitializer(() => ...)` (v19+; `APP_INITIALIZER` deprecated).",
+    "Moduły klasyczne można włączyć przez `importProvidersFrom(...)`."
+   ],
+   "pitfalls": [
+    "Szukanie `forRoot()` w nowym projekcie – zastąpione funkcjami `provide*`."
+   ],
+   "code": "export const appConfig: ApplicationConfig = {\n  providers: [\n    provideZonelessChangeDetection(),\n    provideRouter(routes, withComponentInputBinding()),\n    provideHttpClient(withFetch(), withInterceptors([authInterceptor])),\n  ],\n};\nbootstrapApplication(App, appConfig);",
+   "lang": "typescript",
+   "say": "Aplikację startuje bootstrapApplication z ApplicationConfig – globalne providery rejestruję funkcjami provide* zamiast modułów i forRoot."
+  },
+  {
+   "topic": "Dependency Injection",
+   "points": [
+    "Dwie hierarchie: **environment** (platform → root → lazy route) i **element** (komponenty/dyrektywy z `providers`).",
+    "`inject()` szuka najpierw w element injectorach w górę drzewa, potem w environment.",
+    "`providedIn: 'root'` – singleton, leniwy, **tree-shakable**.",
+    "`inject()` działa w injection context: konstruktor, inicjalizator pola, fabryki, guardy/interceptory, `runInInjectionContext`; poza nim NG0203.",
+    "`InjectionToken<T>` dla nie-klas (config, funkcje); może mieć fabrykę z `providedIn: 'root'`.",
+    "Providery: `useClass`, `useValue`, `useFactory`, `useExisting`; `multi: true` zbiera tablicę.",
+    "Modyfikatory: `optional`, `self`, `skipSelf`, `host`; `viewProviders` – niewidoczne dla treści z `ng-content`."
+   ],
+   "pitfalls": [
+    "`inject()` w callbacku/`ngOnInit` → NG0203.",
+    "Interfejs TS jako token – znika w runtime; potrzebny InjectionToken.",
+    "Dodanie serwisu do `providers` komponentu i zdziwienie, że to nie singleton."
+   ],
+   "code": "export const API_URL = new InjectionToken<string>('API_URL', {\n  providedIn: 'root', factory: () => '/api',\n});\nexport class OrdersApi {\n  private http = inject(HttpClient);\n  private url = inject(API_URL);\n}",
+   "lang": "typescript",
+   "say": "DI w Angularze to hierarchia environment i element injectorów; domyślnie providedIn root, a gdy potrzebuję instancji per komponent albo per feature – providers w komponencie albo w trasie."
+  },
+  {
+   "topic": "Lifecycle",
+   "points": [
+    "Kolejność: constructor → `ngOnChanges` → `ngOnInit` → `ngDoCheck` → `ngAfterContentInit/Checked` → `ngAfterViewInit/Checked` → `ngOnDestroy`.",
+    "Konstruktor: DI i proste inicjalizacje; logika startowa (inputy gotowe) w `ngOnInit`.",
+    "`DestroyRef.onDestroy()` zamiast `ngOnDestroy` w funkcjach i serwisach; `takeUntilDestroyed()` do odpinania subskrypcji.",
+    "`afterNextRender` (raz) / `afterEveryRender` (v20, dawniej `afterRender`) – praca z DOM, nie działają na serwerze.",
+    "Przy signal inputs `ngOnChanges` zastępuje się `computed`/`effect`/`linkedSignal`."
+   ],
+   "pitfalls": [
+    "Czytanie inputów w konstruktorze – jeszcze nieustawione.",
+    "Zmiana stanu w `ngAfterViewInit` → ExpressionChangedAfterItHasBeenCheckedError."
+   ],
+   "code": "private destroyRef = inject(DestroyRef);\nconstructor() {\n  interval(1000).pipe(takeUntilDestroyed()).subscribe(() => this.tick());\n  afterNextRender(() => this.chart = new Chart(this.canvas().nativeElement));\n}",
+   "lang": "typescript",
+   "say": "Hooki znam w kolejności, ale w nowoczesnym kodzie zastępuję je sygnałami, DestroyRef i afterNextRender."
+  },
+  {
+   "topic": "Change detection",
+   "points": [
+    "Zone.js patchuje async API → po zadaniu CD od korzenia, sprawdzając bindingi.",
+    "**OnPush**: sprawdzany, gdy zmieni się referencja inputu, zdarzenie w szablonie, czytany signal, `markForCheck()` (async pipe).",
+    "**Zoneless** (`provideZonelessChangeDetection()`, stabilne od v20.2; domyślne w nowych projektach od v21): CD tylko po jawnych powiadomieniach.",
+    "Wyzwalacze w zoneless: sygnały w szablonie, `markForCheck`, `setInput`, listenery szablonu, attach/detach widoku.",
+    "`ExpressionChangedAfterItHasBeenCheckedError` – dev mode, wartość zmieniła się w trakcie cyklu → niejednokierunkowy przepływ.",
+    "`detectChanges()` sprawdza od razu; `markForCheck()` tylko oznacza do następnego cyklu."
+   ],
+   "pitfalls": [
+    "Mutacja obiektu przekazanego do inputu OnPush – referencja ta sama, brak odświeżenia.",
+    "'Naprawianie' ExpressionChanged przez `setTimeout` zamiast poprawy przepływu danych."
+   ],
+   "code": "@Component({\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  template: `{{ count() }}`,\n})\nexport class Counter { count = signal(0); }",
+   "lang": "typescript",
+   "say": "Change detection przeszła od Zone.js i sprawdzania całego drzewa do OnPush, sygnałów i zoneless, gdzie Angular odświeża tylko to, o czym jawnie dostał powiadomienie."
+  },
+  {
+   "topic": "Control flow",
+   "points": [
+    "`@if / @else if / @else`, `@for`, `@switch / @case / @default` – bez importów, lepsze typowanie (zawężanie w `@if`).",
+    "`*ngIf`, `*ngFor`, `ngSwitch` są **deprecated** od v20; migracja: `ng generate @angular/core:control-flow`.",
+    "`@for` wymaga `track`: `track item.id` dla encji, `$index` tylko dla statycznych prymitywów.",
+    "Zmienne `@for`: `$index`, `$first`, `$last`, `$even`, `$odd`, `$count`; blok `@empty`.",
+    "`@let` (stabilne od v19) – lokalna zmienna read-only w szablonie.",
+    "`@switch` porównuje przez `===`."
+   ],
+   "pitfalls": [
+    "`track item` dla danych z serwera – nowe obiekty = przebudowa całego DOM listy.",
+    "Brak `track` – błąd kompilacji."
+   ],
+   "code": "@let user = user$ | async;\n@for (item of items(); track item.id; let i = $index) {\n  <li>{{ i + 1 }}. {{ item.name }}</li>\n} @empty {\n  <li>Brak elementów</li>\n}",
+   "lang": "html",
+   "say": "Nowy control flow jest wbudowany w kompilator: szybszy, lepiej typowany, a track w @for jest obowiązkowy i powinien wskazywać stabilne id."
+  },
+  {
+   "topic": "@defer",
+   "points": [
+    "`@defer` leniwie ładuje fragment szablonu z zależnościami w osobnym chunku.",
+    "Triggery `on`: `idle` (domyślny), `viewport`, `interaction`, `hover`, `immediate`, `timer(2s)`; `when warunek`.",
+    "`prefetch on ...` – pobierz kod wcześniej niż wyrenderuj.",
+    "Bloki: `@placeholder` (`minimum`), `@loading` (`after`, `minimum`), `@error`.",
+    "Warunek wydzielenia: zależności standalone i **nieużywane gdzie indziej w pliku** (także przez viewChild).",
+    "SSR: serwer renderuje `@placeholder`; z incremental hydration (`hydrate on ...`) – treść, a hydracja jest odkładana."
+   ],
+   "pitfalls": [
+    "`on viewport` bez `@placeholder` – nie ma czego obserwować.",
+    "Defer dla treści above the fold – gorszy LCP i CLS."
+   ],
+   "code": "@defer (on viewport; prefetch on idle) {\n  <app-reviews [productId]=\"id()\" />\n} @placeholder (minimum 300ms) {\n  <div class=\"skeleton\" style=\"height: 400px\"></div>\n} @error { <p>Nie udało się załadować opinii.</p> }",
+   "lang": "html",
+   "say": "@defer dzieli szablon na leniwe chunki z triggerami i prefetch – używam go do ciężkich fragmentów poniżej linii zgięcia, nie do treści LCP."
+  },
+  {
+   "topic": "Pipes",
+   "points": [
+    "Pure pipe (domyślny) – wywoływany tylko przy zmianie referencji/prymitywu argumentu; wynik cache'owany.",
+    "Mutacja tablicy (`push`) nie uruchomi pure pipe'a ponownie.",
+    "Impure (`pure: false`) – przy każdej CD; kosztowny (np. `async`).",
+    "`async` – subskrybuje, `markForCheck()` przy emisji, odpina przy zniszczeniu.",
+    "Każde `| async` na zimnym Observable = osobna subskrypcja (osobne HTTP) → `@let`, `shareReplay`, `toSignal`.",
+    "Alternatywa dla pipe'ów liczących w komponencie: `computed`."
+   ],
+   "pitfalls": [
+    "Impure pipe filtrujący duże listy – liczony przy każdej CD.",
+    "Kilka `user$ | async` w szablonie = kilka żądań."
+   ],
+   "code": "@Pipe({ name: 'initials' })\nexport class InitialsPipe implements PipeTransform {\n  transform(name: string): string {\n    return name.split(' ').map(p => p[0]).join('').toUpperCase();\n  }\n}",
+   "lang": "typescript",
+   "say": "Pure pipe to memoizowana transformacja w szablonie; impure i wielokrotne async to typowe źródła problemów z wydajnością."
+  },
+  {
+   "topic": "Directives",
+   "points": [
+    "Attribute directive zmienia zachowanie/wygląd hosta; interakcje w metadanych `host` (zalecane zamiast `@HostListener/@HostBinding`).",
+    "DOM przez `inject(ElementRef)` + `Renderer2`.",
+    "Structural directive: `TemplateRef` + `ViewContainerRef`; `*` to cukier na `<ng-template>`.",
+    "Typowanie kontekstu: statyczne `ngTemplateContextGuard`.",
+    "`hostDirectives` – kompozycja zachowań na poziomie definicji; inputy/outputy trzeba jawnie wystawić.",
+    "Dziś if/for robi control flow; własne strukturalne – np. `*appHasRole`."
+   ],
+   "pitfalls": [
+    "Bezpośrednia manipulacja `nativeElement.innerHTML` – omija sanitizację.",
+    "Zakładanie, że inputy host directive są publiczne bez wystawienia."
+   ],
+   "code": "@Directive({\n  selector: '[appHighlight]',\n  host: { '[class.highlight]': 'active()', '(mouseenter)': 'active.set(true)', '(mouseleave)': 'active.set(false)' },\n})\nexport class Highlight { active = signal(false); }",
+   "lang": "typescript",
+   "say": "Dyrektywy atrybutowe zmieniają hosta przez metadane host, strukturalne zarządzają widokami przez TemplateRef i ViewContainerRef, a hostDirectives pozwalają komponować zachowania bez dziedziczenia."
+  },
+  {
+   "topic": "Content projection",
+   "points": [
+    "`<ng-content>` wstawia treść przekazaną między tagami komponentu.",
+    "Wiele slotów: `select` (tag, atrybut, klasa); reszta trafia do `ng-content` bez select.",
+    "Od v18 `ng-content` może mieć **treść domyślną** (fallback).",
+    "Projektowana treść jest tworzona przez rodzica **zawsze** – nawet gdy `ng-content` jest w `@if`.",
+    "Warunkowe/wielokrotne renderowanie: `ng-template` + `ngTemplateOutlet` (z kontekstem).",
+    "`contentChild()`/`contentChildren()` – dostęp do projektowanej treści."
+   ],
+   "pitfalls": [
+    "Oczekiwanie, że `@if` wokół `ng-content` opóźni tworzenie ciężkiego komponentu – nie opóźni.",
+    "`ng-content` w `@for` – treść pojawi się tylko raz."
+   ],
+   "code": "<!-- card.html -->\n<header><ng-content select=\"[card-title]\" /></header>\n<section><ng-content>Brak treści</ng-content></section>\n<!-- użycie -->\n<app-card><h2 card-title>Zamówienie</h2><p>Szczegóły…</p></app-card>",
+   "lang": "html",
+   "say": "ng-content to statyczna projekcja tworzona zawsze przez rodzica; gdy potrzebuję renderowania warunkowego lub wielokrotnego, przyjmuję TemplateRef i ngTemplateOutlet."
+  },
+  {
+   "topic": "Style",
+   "points": [
+    "`ViewEncapsulation.Emulated` (domyślny) – atrybuty i przepisane selektory; style nie wyciekają.",
+    "`None` – style globalne; `ShadowDom` – natywny Shadow DOM.",
+    "Host: `:host`, `:host(.active)`; kontekst rodzica: `:host-context()`.",
+    "`::ng-deep` jest **deprecated** – zamiast tego CSS custom properties jako API stylów.",
+    "Klasy/style hosta przez metadane `host` (`'[class.active]': 'active()'`)."
+   ],
+   "pitfalls": [
+    "Oczekiwanie, że style rodzica (Emulated) zadziałają na elementy w szablonie dziecka."
+   ],
+   "code": ":host { display: block; --btn-bg: var(--color-primary); }\n:host(.danger) { --btn-bg: var(--color-danger); }\nbutton { background: var(--btn-bg); }",
+   "lang": "text",
+   "say": "Domyślna enkapsulacja emulowana izoluje style; komponent konfiguruję z zewnątrz przez CSS custom properties, a nie przez ng-deep."
+  },
+  {
+   "topic": "Routing",
+   "points": [
+    "Lazy loading: `loadComponent` (komponent) i `loadChildren` (tablica `Routes`); `export default` pozwala pominąć `.then`.",
+    "`providers` w trasie tworzą environment injector feature'a.",
+    "Guardy funkcyjne: `CanActivateFn`, `CanMatchFn`, `CanDeactivateFn`; zwracają boolean, `UrlTree` lub `RedirectCommand` (v18+).",
+    "`canMatch` – czy trasa w ogóle pasuje (leniwy kod nie jest pobierany); `canActivate` – dostęp po dopasowaniu.",
+    "Resolvery (`ResolveFn`) blokują nawigację do załadowania danych.",
+    "`withComponentInputBinding()` – parametry, query params, `data` i resolvery jako inputy komponentu.",
+    "Inne: `withPreloading(PreloadAllModules)`, `withViewTransitions()`, `title` w trasie."
+   ],
+   "pitfalls": [
+    "Guard jako zabezpieczenie – to tylko UX, autoryzacja musi być na backendzie.",
+    "Wolny resolver = 'zamrożona' nawigacja; często lepiej skeleton w komponencie."
+   ],
+   "code": "export const routes: Routes = [\n  { path: 'admin', canMatch: [adminGuard], loadChildren: () => import('./admin/admin.routes') },\n  { path: 'orders/:id', loadComponent: () => import('./orders/order-detail') },\n];\nexport const adminGuard: CanMatchFn = () =>\n  inject(Auth).isAdmin() || inject(Router).createUrlTree(['/login']);",
+   "lang": "typescript",
+   "say": "Routing to lazy loading przez loadComponent/loadChildren, funkcyjne guardy z inject i withComponentInputBinding, dzięki któremu parametry trasy są zwykłymi inputami."
+  },
+  {
+   "topic": "HttpClient",
+   "points": [
+    "`provideHttpClient(...)` (`HttpClientModule` deprecated) z features: `withInterceptors`, `withFetch`, `withXsrfConfiguration`.",
+    "`withFetch()` – Fetch API zamiast XHR, zalecane przy SSR; brak postępu uploadu.",
+    "Metody zwracają **zimne** Observable – żądanie przy subskrypcji.",
+    "Interceptor funkcyjny `HttpInterceptorFn`: `(req, next)`; `req.clone()` (niemutowalny); `inject()` synchronicznie na początku.",
+    "Kolejność: żądanie od pierwszego do ostatniego interceptora, odpowiedź odwrotnie.",
+    "XSRF: cookie `XSRF-TOKEN` → nagłówek `X-XSRF-TOKEN` tylko dla mutujących żądań do tego samego originu (typowo względne URL-e).",
+    "Klasowe interceptory: `withInterceptorsFromDi()`."
+   ],
+   "pitfalls": [
+    "Zapomniane `return next(cloned)` – wysyłany jest oryginał bez nagłówka.",
+    "`inject()` w `catchError` – poza injection context."
+   ],
+   "code": "export const authInterceptor: HttpInterceptorFn = (req, next) => {\n  const token = inject(Auth).token();\n  return next(token ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : req);\n};",
+   "lang": "typescript",
+   "say": "HttpClient konfiguruję przez provideHttpClient z funkcyjnymi interceptorami; pamiętam, że Observable są zimne, a żądania niemutowalne."
+  },
+  {
+   "topic": "Formularze",
+   "points": [
+    "Template-driven (`ngModel`) – proste formularze; Reactive (`FormGroup`/`FormControl`) – jawny model, testy, dynamika.",
+    "Typed forms (v14+): typ inferowany; `form.value` ma pola opcjonalne (disabled), `getRawValue()` – pełny typ.",
+    "`reset()` domyślnie ustawia `null`; `nonNullable` / `NonNullableFormBuilder` – reset do wartości początkowej.",
+    "`ValidatorFn` zwraca `ValidationErrors | null`; async walidator uruchamia się dopiero po przejściu sync, status `PENDING`.",
+    "Dla async: `updateOn: 'blur'` lub debounce.",
+    "`ControlValueAccessor` (`writeValue`, `registerOnChange`, `registerOnTouched`, `setDisabledState`) + `NG_VALUE_ACCESSOR` z `multi: true`.",
+    "Signal Forms w v21 – experimental."
+   ],
+   "pitfalls": [
+    "Typ `string | null` po reset bez nonNullable.",
+    "Async walidator strzelający do API przy każdym znaku."
+   ],
+   "code": "private fb = inject(NonNullableFormBuilder);\nform = this.fb.group({\n  email: ['', [Validators.required, Validators.email]],\n  password: ['', Validators.minLength(8)],\n});",
+   "lang": "typescript",
+   "say": "W aplikacjach biznesowych używam typowanych reactive forms z NonNullableFormBuilder, własnych walidatorów i ControlValueAccessor dla własnych kontrolek."
+  },
+  {
+   "topic": "SSR",
+   "points": [
+    "`@angular/ssr` renderuje HTML na serwerze – lepszy LCP i SEO.",
+    "`provideClientHydration()` – klient przejmuje istniejący DOM zamiast renderować od nowa.",
+    "`withEventReplay()` – zdarzenia sprzed hydracji są odtwarzane.",
+    "`withIncrementalHydration()` (stabilne od v20) + `@defer (hydrate on ...)` / `hydrate never`.",
+    "Tryb renderowania per trasa: `RenderMode.Prerender` / `Server` / `Client` (server routes).",
+    "HttpClient + transfer cache – odpowiedzi GET z serwera nie są pobierane drugi raz.",
+    "Kod przeglądarkowy (`window`, `localStorage`, DOM) w `afterNextRender` lub za `isPlatformBrowser`."
+   ],
+   "pitfalls": [
+    "Bezpośrednia manipulacja DOM → hydration mismatch.",
+    "`window`/`localStorage` w konstruktorze – na serwerze nie istnieją."
+   ],
+   "code": "providers: [\n  provideClientHydration(withEventReplay(), withIncrementalHydration()),\n]\n// @defer (hydrate on viewport) { <app-comments /> }",
+   "lang": "typescript",
+   "say": "SSR z hydracją daje szybki pierwszy render, a incremental hydration i render mode per trasa pozwalają płacić JS-em tylko tam, gdzie to potrzebne."
+  },
+  {
+   "topic": "Performance",
+   "points": [
+    "Render: OnPush, sygnały, zoneless, `track item.id`, computed/pure pipes zamiast metod w szablonie, virtual scroll (CDK).",
+    "Ładowanie: lazy routes, `@defer`, SSR + hydracja, `NgOptimizedImage`.",
+    "`NgOptimizedImage` (`ngSrc`): wymaga `width/height` lub `fill` (CLS), domyślnie lazy, `priority` dla obrazu LCP, `srcset` z loaderem.",
+    "Bundle: budgets w `angular.json`, `ng build --stats-json` + analizator, usuwanie ciężkich zależności.",
+    "Diagnostyka: Angular DevTools Profiler, Chrome Performance, Lighthouse/Core Web Vitals."
+   ],
+   "pitfalls": [
+    "Optymalizacja na ślepo bez profilowania.",
+    "Obraz LCP z lazy loadingiem (brak `priority`)."
+   ],
+   "code": "<img ngSrc=\"/hero.webp\" width=\"1200\" height=\"600\" priority />",
+   "lang": "html",
+   "say": "Wydajność to trzy obszary: mniej pracy przy renderze, mniej kodu na start i mierzenie – OnPush i sygnały, lazy i defer, budgets i profiler."
+  },
+  {
+   "topic": "Komunikacja",
+   "points": [
+    "Rodzic → dziecko: `input()`; dziecko → rodzic: `output()`; dwukierunkowo: `model()`.",
+    "Rodzic wywołuje metodę dziecka: `viewChild()`.",
+    "Niespokrewnione komponenty: wspólny serwis ze stanem (sygnały/Observable) lub store.",
+    "Przez router: parametry trasy, query params (z `withComponentInputBinding`).",
+    "Zasada: dane w dół, zdarzenia w górę; współdzielony stan do serwisu zamiast prop drilling."
+   ],
+   "pitfalls": [
+    "Przekazywanie danych przez 4 poziomy inputów zamiast serwisu.",
+    "Globalny 'event bus' na Subjectach bez typów i właściciela stanu."
+   ],
+   "say": "Dane w dół przez input, zdarzenia w górę przez output, a wspólny stan odległych komponentów trzymam w serwisie z sygnałami."
+  },
+  {
+   "topic": "Zarządzanie stanem",
+   "points": [
+    "Stan lokalny – w komponencie (sygnały).",
+    "Serwis z sygnałami/BehaviorSubject – wystarcza w większości aplikacji.",
+    "NgRx Store: akcje, reducery, efekty, selektory – ścisły przepływ, DevTools z time-travel, konwencje dla dużych zespołów; koszt: boilerplate.",
+    "NgRx SignalStore – lżejszy, ustandaryzowany store na sygnałach.",
+    "Kryteria: rozmiar zespołu/aplikacji, ilość współdzielonego stanu, potrzeba audytu zdarzeń i debugowania."
+   ],
+   "pitfalls": [
+    "Wrzucanie wszystkiego do globalnego store'a (także stanu formularzy i UI jednego ekranu)."
+   ],
+   "say": "Zaczynam od stanu lokalnego i serwisów z sygnałami; NgRx Store lub SignalStore wybieram, gdy rośnie ilość współdzielonego stanu i zespół potrzebuje wspólnych konwencji."
+  },
+  {
+   "topic": "Bezpieczeństwo",
+   "points": [
+    "Angular traktuje wartości jako niezaufane: interpolacja jest escapowana.",
+    "`[innerHTML]`, `[style]`, `[href]`, `[src]` – sanitizacja wg kontekstu (usuwa `<script>`, handlery `on*`, `javascript:`).",
+    "`DomSanitizer.bypassSecurityTrust*` – tylko dla treści, którą kontrolujemy.",
+    "`ElementRef.nativeElement.innerHTML` omija sanitizację.",
+    "CSP: nonce przez `ngCspNonce` lub token `CSP_NONCE`; Angular wspiera **Trusted Types**.",
+    "XSRF w HttpClient (cookie → nagłówek); backend musi weryfikować.",
+    "Guardy to UX – autoryzacja na backendzie."
+   ],
+   "pitfalls": [
+    "`bypassSecurityTrustHtml` na danych od użytkownika = XSS.",
+    "Przechowywanie tokenów w localStorage bez świadomości ryzyka XSS."
+   ],
+   "say": "Angular domyślnie escapuje i sanitizuje bindingi; moja rola to nie omijać tego bez potrzeby i dołożyć CSP, Trusted Types i poprawną współpracę z backendem przy XSRF."
+  },
+  {
+   "topic": "Architektura",
+   "points": [
+    "Struktura **według funkcjonalności** (`features/orders`), każdy feature z leniwymi trasami.",
+    "`core` – singletony (auth, interceptory, layout); `shared` – UI bez logiki biznesowej, pipe'y, dyrektywy.",
+    "Smart/dumb: kontenery rozmawiają z serwisami, prezentacyjne dostają input i emitują output (OnPush).",
+    "Granice między feature'ami pilnowane narzędziowo (np. tagi i lint rules w Nx).",
+    "Style guide v20: nazwy plików bez sufiksów (`user-list.ts`)."
+   ],
+   "pitfalls": [
+    "'Shared' jako śmietnik z logiką biznesową importowaną przez wszystkich.",
+    "Importy z wnętrza innego feature'a zamiast przez publiczne API."
+   ],
+   "say": "Duży projekt dzielę po domenach z leniwymi trasami, z cienkim core i shared bez logiki biznesowej, a granice wymuszam lint rules zamiast konwencji."
+  },
+  {
+   "topic": "Angular CLI",
+   "points": [
+    "Builder `@angular/build:application` (esbuild) – przeglądarka, SSR i prerender; dev server na Vite.",
+    "Webpackowy `browser` builder – legacy.",
+    "Angular 21: nowe projekty zoneless, **Vitest** domyślnie (`@angular/build:unit-test`), Karma deprecated.",
+    "Komendy: `ng new`, `ng generate`, `ng add`, `ng update` (z migracjami), `ng build --configuration production`.",
+    "`ng extract-i18n`, budgets w `angular.json`."
+   ],
+   "pitfalls": [
+    "Własna konfiguracja webpacka – nie działa z application builderem."
+   ],
+   "code": "ng new shop --ssr\nng generate component features/orders/order-list\nng update @angular/core @angular/cli\nng build --configuration production --stats-json",
+   "lang": "bash",
+   "say": "CLI to esbuild i Vite pod spodem, ng update z automatycznymi migracjami, a od v21 Vitest i zoneless w nowych projektach."
+  }
+ ]
+}

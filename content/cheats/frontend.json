@@ -1,0 +1,489 @@
+{
+  "cat": "frontend",
+  "sheets": [
+    {
+      "topic": "Semantyczny HTML",
+      "points": [
+        "Element dobierasz po **znaczeniu**, nie wyglądzie: `header`, `nav`, `main`, `article`, `section`, `aside`, `footer`.",
+        "Semantyka buduje **accessibility tree** – landmarki i role dla czytników ekranu dostajesz za darmo.",
+        "`<a href>` = nawigacja (URL, nowa karta), `<button>` = akcja na stronie.",
+        "`div (click)` nie ma focusu, Enter/Spacji, roli ani `disabled` – to antywzorzec.",
+        "Jeden logiczny `h1` na widok, nagłówki bez przeskakiwania poziomów; wygląd robi CSS.",
+        "Formularze: każde pole z `<label for>`, grupy w `fieldset` + `legend`.",
+        "Bonus: SEO, reader mode, czytelniejszy kod."
+      ],
+      "pitfalls": [
+        "`<button>` w `<form>` ma domyślnie `type=\"submit\"` – 'Anuluj' bez `type=\"button\"` wyśle formularz.",
+        "`routerLink` na `div`/`span` zamiast na `<a>` – brak middle-click, kopiowania linku i semantyki."
+      ],
+      "code": "<button type=\"button\" (click)=\"save()\">Zapisz</button>\n<a routerLink=\"/orders/42\">Zamówienie 42</a>",
+      "lang": "html",
+      "say": "Najpierw wybieram natywny element o właściwym znaczeniu – daje mi dostępność, klawiaturę i SEO za darmo, a dopiero potem styluję."
+    },
+    {
+      "topic": "Dostępność i ARIA",
+      "points": [
+        "**Pierwsza zasada ARIA**: jeśli jest natywny element – użyj go; ARIA to ostatnia deska ratunku.",
+        "ARIA zmienia tylko semantykę dla czytnika – **nie** daje focusu ani obsługi klawiatury.",
+        "Nazwa: `aria-labelledby` (preferowane) > `aria-label` > `<label>`/`alt`/treść; opis: `aria-describedby`.",
+        "Stan: `aria-expanded`, `aria-selected`, `aria-current=\"page\"`, `aria-invalid`.",
+        "Komunikaty: `role=\"status\"`/`aria-live=\"polite\"`; `role=\"alert\"` tylko dla pilnych błędów.",
+        "WCAG 2.2, poziomy A/AA/AAA; w UE wymagane **AA** (sektor publiczny, European Accessibility Act od 28.06.2025).",
+        "Kontrast AA: **4.5:1** tekst, **3:1** duży tekst i elementy UI; AAA 7:1. Kolor nie może być jedynym nośnikiem informacji.",
+        "Automaty (axe, Lighthouse) łapią część problemów – testuj klawiaturą i czytnikiem (NVDA, VoiceOver)."
+      ],
+      "pitfalls": [
+        "`aria-hidden=\"true\"` na kontenerze z focusowalnym przyciskiem – użyj `inert`.",
+        "Region `aria-live` wstawiany razem z komunikatem – często nie zostanie odczytany.",
+        "`aria-label` niezgodny z widocznym tekstem łamie sterowanie głosem (Label in Name)."
+      ],
+      "code": "<input id=\"email\" [attr.aria-invalid]=\"email.invalid\" aria-describedby=\"email-err\">\n<p id=\"email-err\">Podaj poprawny adres</p>\n<div role=\"status\" aria-live=\"polite\">{{ count() }} wyników</div>",
+      "lang": "html",
+      "say": "Stawiam na natywny HTML, ARIA dokładam tylko tam, gdzie semantyki brakuje, i celuję w WCAG 2.2 AA – kontrast 4.5:1, pełna obsługa klawiaturą i czytelne nazwy kontrolek."
+    },
+    {
+      "topic": "Focus i klawiatura",
+      "points": [
+        "Wszystko interaktywne osiągalne Tabem, kolejność DOM = kolejność wizualna.",
+        "`tabindex=\"0\"` – do sekwencji Tab; `-1` – tylko programowy focus; **dodatnie wartości = antywzorzec**.",
+        "Widoczny focus: `:focus-visible` zamiast `outline: none`.",
+        "Skip link 'Przejdź do treści'; w widżetach złożonych **roving tabindex** (strzałki w środku).",
+        "SPA: po zmianie trasy focus na `h1` nowego widoku (`tabindex=\"-1\"`) + tytuł strony.",
+        "Modal: focus do środka, **focus trap**, Esc zamyka, focus **wraca do wyzwalacza**.",
+        "`<dialog>.showModal()` daje top layer, `inert` tła i Esc; CDK ma `FocusTrap`, `LiveAnnouncer`, `ListKeyManager`.",
+        "WCAG 2.2: focus nie może być zasłonięty (sticky header → `scroll-padding-top`), cele min. 24×24 px."
+      ],
+      "pitfalls": [
+        "CSS `order`/`row-reverse` zmienia wygląd, ale nie kolejność Tab.",
+        "Ręczny modal bez przywrócenia focusu – po zamknięciu użytkownik ląduje na początku strony."
+      ],
+      "code": "let opener: HTMLElement | null = null;\nfunction open() { opener = document.activeElement as HTMLElement; dialog.showModal(); }\ndialog.addEventListener('close', () => opener?.focus());",
+      "lang": "typescript",
+      "say": "Odkładam mysz i przechodzę krytyczne ścieżki samym Tab/Enter/Esc; w SPA pilnuję przenoszenia focusu po nawigacji i w modalach, najlepiej natywnym `<dialog>` albo CDK."
+    },
+    {
+      "topic": "Box model",
+      "points": [
+        "Element = content + padding + border + margin.",
+        "`content-box` (domyślnie): `width` to tylko content → 200 + 2×20 + 2×5 = **250px**.",
+        "`border-box`: `width` obejmuje padding i border – standard w każdym resecie.",
+        "Margin nigdy nie wchodzi do szerokości elementu.",
+        "**Margin collapsing**: pionowe marginesy bloków się zlewają do większego (20 + 30 → 30).",
+        "Nie zlewają się: poziome, we flex/grid, float, absolute, przy nowym BFC (`display: flow-root`).",
+        "Zamiast marginesów między dziećmi używaj `gap` we flex/grid."
+      ],
+      "pitfalls": [
+        "Margines pierwszego dziecka 'wypycha' rodzica – collapsing z rodzicem bez paddingu/borderu."
+      ],
+      "code": "*, *::before, *::after { box-sizing: border-box; }",
+      "lang": "css",
+      "say": "Globalnie ustawiam `box-sizing: border-box`, a odstępy w komponentach robię `gap`em, żeby uniknąć niespodzianek z margin collapsing."
+    },
+    {
+      "topic": "Specificity i kaskada",
+      "points": [
+        "Specificity = (id, klasy/atrybuty/pseudoklasy, elementy); porównywane kolumnami – 1 id > dowolnie wiele klas.",
+        "`*` i kombinatory = 0; `:is()`/`:not()`/`:has()` = najsilniejszy argument; **`:where()` = 0**.",
+        "Kolejność kaskady: pochodzenie i `!important` → kontekst (shadow) → inline → **warstwy** → specificity → kolejność w źródle.",
+        "`@layer reset, base, components, utilities;` – późniejsza warstwa wygrywa niezależnie od specificity.",
+        "Style **poza warstwami** wygrywają z każdą warstwą (dla zwykłych deklaracji).",
+        "Dla `!important` kolejność warstw się **odwraca**.",
+        "Bibliotekę wciągasz do niskiej warstwy: `@import url(lib.css) layer(vendor);`."
+      ],
+      "pitfalls": [
+        "Wyścig `!important` i selektorów z id zamiast niskiej specificity i warstw.",
+        "Owinięcie własnego kodu w `@layer`, gdy CSS biblioteki zostaje unlayered – biblioteka nagle wygrywa."
+      ],
+      "code": "@layer reset, vendor, components, utilities;\n@layer components { .btn { padding: .5rem 1rem; } }\n@layer utilities  { .p-0 { padding: 0; } }",
+      "lang": "css",
+      "say": "Trzymam specificity płasko – klasy, `:where()` dla stylów bazowych – a priorytet grup stylów ustalam jawnie przez `@layer`, zamiast walczyć `!important`."
+    },
+    {
+      "topic": "Flexbox vs Grid",
+      "points": [
+        "**Flex = 1D**, rozmiar z treści (content-out): toolbary, nawigacja, wyrównanie ikony z tekstem.",
+        "**Grid = 2D**, układ z góry (layout-in): szkielet strony, galerie, formularze, dashboardy.",
+        "`flex: 1` = `1 1 0%` (równe kolumny); `flex: auto` = `1 1 auto`; `flex: none` = `0 0 auto`.",
+        "Flex item ma `min-width: auto` → długi tekst rozpycha; fix **`min-width: 0`**; w gridzie `minmax(0, 1fr)`.",
+        "Siatka bez media queries: `repeat(auto-fill, minmax(220px, 1fr))`; `auto-fit` zwija puste ścieżki.",
+        "`subgrid` (wszystkie przeglądarki od 2023) wyrównuje wnętrza kart do ścieżek rodzica.",
+        "`margin-left: auto` we flexie odpycha element na koniec."
+      ],
+      "pitfalls": [
+        "Ellipsis nie działa w flex itemie – brak `min-width: 0`.",
+        "Jedna długa treść rozszerza kolumnę `1fr` w gridzie."
+      ],
+      "code": ".layout { display: grid; grid-template-columns: 240px 1fr; }\n.toolbar { display: flex; align-items: center; gap: .5rem; }\n.title { flex: 1; min-width: 0; text-overflow: ellipsis; overflow: hidden; }",
+      "lang": "css",
+      "say": "Grid do układu strony w dwóch wymiarach, flex do rozmieszczania elementów w jednym wierszu lub kolumnie wewnątrz komponentów – zwykle łączę oba."
+    },
+    {
+      "topic": "Pozycjonowanie i stacking context",
+      "points": [
+        "`relative` – w przepływie, punkt odniesienia dla `absolute`; `absolute` – względem najbliższego pozycjonowanego przodka.",
+        "`fixed` – względem viewportu; `sticky` – relative do progu `top`, potem przyklejony w obrębie rodzica.",
+        "`z-index` działa tylko **w obrębie stacking contextu**.",
+        "Kontekst tworzą: pozycjonowany + `z-index`, `fixed`/`sticky`, `opacity < 1`, `transform`, `filter`, `will-change`, `isolation: isolate`, flex/grid item z z-index.",
+        "`transform`/`filter` na przodku zmieniają też **containing block** dla `fixed`.",
+        "Overlaye: portal na końcu `body` (CDK Overlay) albo **top layer** (`<dialog>`, Popover API).",
+        "Skala z-indexów w custom properties (`--z-modal`) zamiast losowych 9999."
+      ],
+      "pitfalls": [
+        "Modal `z-index: 9999` w rodzicu z `transform` ląduje pod nagłówkiem `z-index: 10`.",
+        "Sticky nie działa przez `overflow: hidden/auto` na przodku albo brak `top`."
+      ],
+      "code": ".header { position: sticky; top: 0; z-index: var(--z-header); }\n.widget { isolation: isolate; }",
+      "lang": "css",
+      "say": "z-index porównuje się tylko w jednym stacking contexcie, więc overlaye renderuję poza drzewem komponentu – portal albo top layer – a w komponentach izoluję warstwy przez `isolation: isolate`."
+    },
+    {
+      "topic": "Jednostki CSS",
+      "points": [
+        "`rem` – względem `html` (16px domyślnie), przewidywalny; do typografii i odstępów.",
+        "`em` – względem font-size elementu (w `font-size` – rodzica), **kumuluje się**: 1.25em × 1.25em = 25px.",
+        "`%` – zależy od właściwości (szerokość rodzica dla `width` i pionowego `padding`).",
+        "`vh` na mobile ignoruje pasek adresu → `svh` (mały), `lvh` (duży), `dvh` (dynamiczny).",
+        "`clamp(min, preferred, max)` – płynne wartości bez media queries.",
+        "Jednostki kontenera: `cqi`, `cqw` (w container queries).",
+        "`px` w CSS to piksel referencyjny, nie fizyczny; dobry do borderów."
+      ],
+      "pitfalls": [
+        "`clamp()` z samym `vw` dla fontów – nie reaguje na zoom (WCAG 1.4.4); mieszaj z `rem`.",
+        "`html { font-size: 14px }` w px blokuje preferencję rozmiaru czcionki użytkownika."
+      ],
+      "code": "h1 { font-size: clamp(1.75rem, 1.2rem + 2vw, 3rem); }\n.app { height: 100dvh; }",
+      "lang": "css",
+      "say": "Typografię i odstępy robię w `rem`, płynne rozmiary przez `clamp()` z `rem + vw`, a pełną wysokość ekranu na mobile przez `dvh`/`svh` zamiast `vh`."
+    },
+    {
+      "topic": "Responsywność",
+      "points": [
+        "Bez `<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">` mobile renderuje wersję desktopową.",
+        "**Mobile-first**: baza dla wąskiego ekranu + `@media (min-width: …)`.",
+        "Breakpointy tam, gdzie łamie się treść, nie pod konkretne urządzenia; w `rem`/`em`.",
+        "Najpierw elastyczne narzędzia: `flex-wrap`, grid `auto-fill`, `clamp()`, `max-width`.",
+        "**Media queries** = viewport i preferencje (`prefers-reduced-motion`, `prefers-color-scheme`, `pointer`, `hover`).",
+        "**Container queries** = rozmiar przodka-kontenera; komponent dopasowuje się do miejsca, nie ekranu.",
+        "Kontener: `container-type: inline-size` (+ `container-name`), w środku `@container`.",
+        "Obrazy: `srcset` + `sizes`, `<picture>` dla art direction."
+      ],
+      "pitfalls": [
+        "`@container` bez `container-type` na przodku – reguła nie działa.",
+        "Element nie może odpytywać własnego rozmiaru; kontener z `inline-size` nie bierze szerokości z treści."
+      ],
+      "code": ".card-host { container: card / inline-size; }\n@container card (min-width: 30rem) {\n  .card { grid-template-columns: 8rem 1fr; }\n}",
+      "lang": "css",
+      "say": "Layout strony prowadzę media queries mobile-first, a komponenty wielokrotnego użytku uzależniam od ich kontenera przez container queries."
+    },
+    {
+      "topic": "Custom properties",
+      "points": [
+        "Sass `$var` = compile time; `--var` = **runtime**: kaskada, dziedziczenie, media queries, zmiana z JS.",
+        "Dziedziczą się w DOM – nie są globalne; `var(--x, fallback)` daje wartość zapasową.",
+        "Theming: przestawienie kilku zmiennych na `:root`/`[data-theme]`.",
+        "Przechodzą przez ViewEncapsulation i Shadow DOM → **publiczne API stylów** komponentu.",
+        "`@property` (wszędzie od 2024): typ, `initial-value`, `inherits` → animowalne zmienne.",
+        "Zła wartość = **invalid at computed-value time** → wartość dziedziczona/initial, nie poprzednia deklaracja.",
+        "Zmiana zmiennej na `:root` co klatkę = recalc stylu całego dokumentu; ustawiaj możliwie lokalnie."
+      ],
+      "pitfalls": [
+        "Oczekiwanie, że zmienna z `.card` będzie widoczna w `.sidebar` obok – nie jest.",
+        "Animowanie niezarejestrowanej zmiennej – zmienia się skokowo."
+      ],
+      "code": ":root { --color-primary: #2563eb; }\n[data-theme=\"dark\"] { --color-primary: #60a5fa; }\n.btn { background: var(--color-primary); border-radius: var(--btn-radius, 8px); }",
+      "lang": "css",
+      "say": "Custom properties traktuję jako runtime'owe API stylów – do themingu i wariantów komponentów – a Sass zostawiam do mixinów i obliczeń w build time."
+    },
+    {
+      "topic": "BEM vs ViewEncapsulation",
+      "points": [
+        "BEM: `block__element--modifier`, np. `.card__title--large`; jedna klasa = płaska specificity.",
+        "Element należy zawsze bezpośrednio do bloku – **bez** `__body__title`.",
+        "Emulated dopisuje `_ngcontent-xxx` – izoluje style komponentu **na zewnątrz**; globalne style nadal wchodzą.",
+        "W stylach komponentu (Emulated) BEM jest w dużej mierze zbędny – proste nazwy + `:host`, `:host(.mod)`.",
+        "BEM wciąż do: globalnych stylów, design systemu, `ViewEncapsulation.None`.",
+        "`ShadowDom` = pełna izolacja w obie strony, ale globalne utility i fonty przestają działać.",
+        "Zamiast `::ng-deep` (deprecated) – custom properties jako kontrakt stylów."
+      ],
+      "pitfalls": [
+        "Selektory Emulated mają +1 atrybut w specificity – nadpisywanie z zewnątrz bywa trudniejsze.",
+        "`::ng-deep` bez `:host` przed nim wycieka globalnie."
+      ],
+      "code": ":host { display: block; }\n:host(.featured) .title { color: var(--card-accent, inherit); }",
+      "lang": "css",
+      "say": "Wewnątrz komponentu izolację daje ViewEncapsulation, BEM porządkuje style globalne, a custom properties są kontraktem między nimi."
+    },
+    {
+      "topic": "Animacje i wydajność",
+      "points": [
+        "Pipeline klatki: style → layout → paint → composite.",
+        "`width`/`height`/`top`/`left`/`margin` = layout + paint w każdej klatce na main thread.",
+        "**`transform` i `opacity`** mogą działać na compositorze – płynne nawet przy zajętym JS.",
+        "`will-change` to wskazówka: każda warstwa kosztuje pamięć GPU – stosuj punktowo.",
+        "`transition` = A→B przy zmianie stanu; `animation` + `@keyframes` = sekwencje, pętle.",
+        "Web Animations API: `el.animate()`; w Angularze `animate.enter`/`animate.leave` (od 20.2), `@angular/animations` deprecated.",
+        "Zawsze `@media (prefers-reduced-motion: reduce)`.",
+        "Debug: Rendering → Paint flashing, Layer borders; Performance – zielone paint co klatkę = problem."
+      ],
+      "pitfalls": [
+        "Animowanie `box-shadow` – zamiast tego `opacity` pseudo-elementu z gotowym cieniem.",
+        "`will-change`/`transform` tworzą stacking context i psują `position: fixed` u dzieci."
+      ],
+      "code": ".drawer { transform: translateX(-100%); transition: transform 200ms ease-out; }\n.drawer.open { transform: none; }\n@media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }",
+      "lang": "css",
+      "say": "Animuję tylko `transform` i `opacity`, żeby animacja mogła iść na compositorze bez layoutu i paintu, i respektuję `prefers-reduced-motion`."
+    },
+    {
+      "topic": "Critical rendering path",
+      "points": [
+        "HTML → DOM, CSS → CSSOM → render tree → layout → paint → composite.",
+        "CSS jest **render-blocking**; `media=\"print\"` lub niepasujące media nie blokuje.",
+        "Klasyczny `<script>` jest **parser-blocking** i czeka na wcześniejszy CSS.",
+        "`defer` – po DOM, w kolejności; `async` – od razu po pobraniu, bez kolejności; `type=\"module\"` = deferred.",
+        "Preload scanner nie widzi zasobów z JS ani `background-image` z CSS → `preload`.",
+        "`@import` w CSS tworzy łańcuch żądań – unikaj na ścieżce krytycznej.",
+        "Angular CLI: skrypty jako moduły, inline critical CSS (Beasties) w produkcji, SSR dla szybkiego pierwszego HTML."
+      ],
+      "pitfalls": [
+        "Skrypty zależne od siebie ładowane z `async` – losowa kolejność wykonania."
+      ],
+      "code": "<link rel=\"stylesheet\" href=\"app.css\">\n<script src=\"main.js\" defer></script>\n<script src=\"analytics.js\" async></script>",
+      "lang": "html",
+      "say": "Skracam ścieżkę krytyczną: mało render-blocking CSS, skrypty `defer`/module, wcześnie odkrywalne kluczowe zasoby i SSR dla pierwszego HTML."
+    },
+    {
+      "topic": "Reflow vs repaint",
+      "points": [
+        "**Reflow/layout** – przeliczenie geometrii; najdroższy, często obejmuje duże poddrzewo.",
+        "**Repaint** – rysowanie pikseli bez zmiany geometrii (`color`, `background`).",
+        "**Composite** – tylko składanie warstw (`transform`, `opacity`).",
+        "Odczyt `offsetHeight`, `getBoundingClientRect()`, `scrollTop` po zapisie stylu = **forced synchronous layout**.",
+        "Layout thrashing: przeplatanie odczytów i zapisów w pętli → N layoutów zamiast jednego.",
+        "Fix: najpierw wszystkie odczyty, potem zapisy; zapisy w `requestAnimationFrame`.",
+        "`ResizeObserver`/`IntersectionObserver` zamiast odpytywania geometrii; wirtualizacja list (CDK).",
+        "`content-visibility: auto` + `contain-intrinsic-size` pomija render elementów poza ekranem."
+      ],
+      "pitfalls": [
+        "Pomiar elementów w pętli z jednoczesnym ustawianiem ich wysokości."
+      ],
+      "code": "const w = box.offsetWidth;           // odczyt raz\nfor (const el of items) el.style.width = w + 'px';  // potem zapisy",
+      "lang": "typescript",
+      "say": "Grupuję odczyty geometrii przed zapisami, żeby nie wymuszać synchronicznego layoutu, a w Angularze używam do tego `afterNextRender` z fazami read/write."
+    },
+    {
+      "topic": "Event loop i renderowanie",
+      "points": [
+        "Cykl: jeden task → **wszystkie microtaski** → (ewentualnie) render: rAF, style, layout, paint.",
+        "Dopóki trwa JS lub kolejka microtasków, **nic się nie odmaluje** i nie obsłuży kliknięcia.",
+        "Long task > 50 ms blokuje interakcje → gorsze INP.",
+        "Oddanie wątku = nowy macrotask: `setTimeout`, `MessageChannel`, `scheduler.yield()` (nie we wszystkich przeglądarkach, np. brak w Safari – fallback).",
+        "`await Promise.resolve()` **nie** oddaje wątku renderowi.",
+        "`requestAnimationFrame` – zapis stylów animacji tuż przed renderem; `requestIdleCallback` – praca niskiego priorytetu.",
+        "Ciężkie obliczenia → Web Worker (`ng generate web-worker`)."
+      ],
+      "pitfalls": [
+        "Ustawienie 'Ładowanie…' i synchroniczna praca w tym samym handlerze – użytkownik nigdy nie zobaczy stanu pośredniego.",
+        "Animacje JS na `setTimeout` zamiast `requestAnimationFrame`."
+      ],
+      "code": "for (let i = 0; i < items.length; i++) {\n  process(items[i]);\n  if (i % 200 === 0) await new Promise(r => setTimeout(r));\n}",
+      "lang": "typescript",
+      "say": "Render dzieje się dopiero między taskami, więc długą pracę dzielę na kawałki i oddaję wątek albo przenoszę ją do Web Workera, żeby UI reagował od razu."
+    },
+    {
+      "topic": "Zdarzenia DOM",
+      "points": [
+        "Fazy: **capturing** (window → cel) → target → **bubbling** (cel → window).",
+        "`addEventListener` domyślnie bubbling; `{ capture: true }` – capturing.",
+        "`stopPropagation()` – koniec propagacji; `preventDefault()` – blokada domyślnej akcji (to co innego).",
+        "`event.target` = faktycznie kliknięty element; `currentTarget` = element z listenerem.",
+        "**Event delegation**: jeden listener na przodku + `target.closest(...)`; obsługuje dynamiczne elementy.",
+        "Nie bąbelkują: `focus`/`blur`, `mouseenter`/`mouseleave` → `focusin`/`focusout`, `mouseover`/`mouseout`.",
+        "`{ passive: true }` dla scroll/touch – płynne przewijanie.",
+        "Shadow DOM retargetuje `target` do hosta; pełna ścieżka – `composedPath()`."
+      ],
+      "pitfalls": [
+        "Mylenie `stopPropagation` z `preventDefault`.",
+        "Delegacja oparta na `e.target` bez `closest()` – klik w `span` w przycisku nie pasuje."
+      ],
+      "code": "list.addEventListener('click', e => {\n  const btn = (e.target as Element).closest('button[data-id]');\n  if (btn) remove(btn.getAttribute('data-id')!);\n});",
+      "lang": "typescript",
+      "say": "Przy listach używam event delegation – jeden listener na kontenerze i `closest()` – a pamiętam, że `preventDefault` blokuje akcję domyślną, a `stopPropagation` propagację."
+    },
+    {
+      "topic": "Storage w przeglądarce",
+      "points": [
+        "`localStorage`: ~5 MB, stringi, trwały, wspólny dla kart originu, **synchroniczny**.",
+        "`sessionStorage`: per karta, znika po jej zamknięciu.",
+        "**IndexedDB**: asynchroniczna baza obiektów, duże dane, Bloby, dostępna w workerach i SW.",
+        "Cookies: ~4 KB, wysyłane z każdym żądaniem, `HttpOnly`/`Secure`/`SameSite` – do sesji, nie danych.",
+        "Zdarzenie `storage` przychodzi w **innych** kartach; ogólnie – `BroadcastChannel`.",
+        "Quota zależna od dysku, tryb best-effort może być wyczyszczony; `navigator.storage.persist()`/`estimate()`.",
+        "Storage third-party jest partycjonowany per strona najwyższego poziomu.",
+        "Wszystko w Web Storage jest czytelne dla XSS – żadnych sekretów."
+      ],
+      "pitfalls": [
+        "Dostęp do `localStorage` w SSR (Node) – tylko w przeglądarce (`afterNextRender`, `isPlatformBrowser`).",
+        "Brak try/catch na `QuotaExceededError`."
+      ],
+      "code": "window.addEventListener('storage', e => {\n  if (e.key === 'logout') router.navigate(['/login']);\n});",
+      "lang": "typescript",
+      "say": "Preferencje UI trzymam w localStorage, stan karty w sessionStorage, większe dane offline w IndexedDB, a sesję w HttpOnly cookie – i pamiętam, że przeglądarka może dane usunąć."
+    },
+    {
+      "topic": "CORS na froncie",
+      "points": [
+        "CORS egzekwuje **przeglądarka**; naprawia się go na serwerze.",
+        "Błąd CORS: `TypeError: Failed to fetch` / HttpClient `status: 0` – żądanie często i tak dotarło.",
+        "Preflight `OPTIONS` dla nie-prostych żądań (`Authorization`, `application/json`, PUT/DELETE).",
+        "Ciasteczka: `credentials: 'include'`/`withCredentials: true` + konkretny origin (nie `*`) + `Allow-Credentials: true`.",
+        "Własne nagłówki odpowiedzi widoczne dopiero przez `Access-Control-Expose-Headers`.",
+        "Dev: `proxy.conf.json` w Angular CLI; prod: ten sam origin za reverse proxy/BFF lub poprawny CORS.",
+        "CORS chroni użytkownika, nie API – curl/Postman go ignorują."
+      ],
+      "pitfalls": [
+        "`mode: 'no-cors'` – opaque response, nic nie odczytasz.",
+        "401 na preflight lub 500 bez nagłówków CORS – front widzi 'błąd CORS' zamiast prawdziwej przyczyny."
+      ],
+      "code": "{ \"/api\": { \"target\": \"https://localhost:7001\", \"secure\": false, \"changeOrigin\": true } }",
+      "lang": "json",
+      "say": "Błąd CORS diagnozuję w Network – preflight i nagłówki odpowiedzi – i naprawiam po stronie serwera; w dev używam proxy, a na produkcji najchętniej ten sam origin."
+    },
+    {
+      "topic": "Core Web Vitals",
+      "points": [
+        "**LCP** ≤ 2,5 s, **INP** ≤ 200 ms (zastąpił FID w 03.2024), **CLS** ≤ 0,1 – na 75. percentylu.",
+        "Field data (CrUX, `web-vitals`) vs lab (Lighthouse – bez INP, ma TBT jako proxy).",
+        "LCP = TTFB + opóźnienie startu zasobu + pobranie + render; szukaj największej części.",
+        "LCP: SSR/cache/CDN, obraz w HTML, `fetchpriority=\"high\"`, **bez lazy**, AVIF/WebP, preload tła.",
+        "INP = input delay + processing + presentation; krótkie handlery, oddawanie wątku, mniejszy DOM, workery.",
+        "CLS: `width`/`height`/`aspect-ratio`, rezerwacja miejsca, nie wstawiać nad treścią, `font-display` + dopasowany fallback.",
+        "Przesunięcia do 500 ms po interakcji nie liczą się do CLS.",
+        "Angular: `NgOptimizedImage` z `priority`, SSR + hydracja, `@defer`."
+      ],
+      "pitfalls": [
+        "'Lighthouse 100' ≠ dobre CWV realnych użytkowników na słabych telefonach.",
+        "Baner/cookie bar wstawiany asynchronicznie nad treścią – skok CLS."
+      ],
+      "code": "<img ngSrc=\"hero.avif\" width=\"1200\" height=\"600\" priority alt=\"…\">",
+      "lang": "html",
+      "say": "Mierzę CWV u realnych użytkowników i poprawiam najsłabszą fazę: dla LCP wczesne odkrycie i priorytet obrazu, dla INP krótsze taski, dla CLS rezerwację miejsca."
+    },
+    {
+      "topic": "Ładowanie zasobów",
+      "points": [
+        "`loading=\"lazy\"` dla obrazów/iframe'ów poniżej folda; **nigdy** dla elementu LCP.",
+        "Zawsze `width`/`height` (lub `aspect-ratio`) – brak CLS.",
+        "`srcset` + `sizes` – telefon nie pobiera obrazu desktopowego; `decoding=\"async\"`.",
+        "`preload` – bieżąca strona, zasób nieodkrywalny (font, tło LCP); wymaga `as`, font – `crossorigin`.",
+        "`prefetch` – niski priorytet, przyszła nawigacja; `preconnect` – DNS+TCP+TLS; `dns-prefetch` – tylko DNS.",
+        "`modulepreload` – moduły ES; `fetchpriority` zmienia priorytet bez dodawania zasobu.",
+        "Angular: `withPreloading()`, `@defer (prefetch on idle)`, `NgOptimizedImage`."
+      ],
+      "pitfalls": [
+        "Preload fontu bez `crossorigin` – podwójne pobranie.",
+        "Za dużo preloadów konkuruje o pasmo z zasobami krytycznymi."
+      ],
+      "code": "<link rel=\"preconnect\" href=\"https://cdn.example.com\" crossorigin>\n<link rel=\"preload\" href=\"/fonts/inter.woff2\" as=\"font\" type=\"font/woff2\" crossorigin>\n<img src=\"p.webp\" width=\"800\" height=\"533\" loading=\"lazy\" alt=\"…\">",
+      "lang": "html",
+      "say": "Krytyczne zasoby ładuję wcześnie i z wysokim priorytetem, resztę leniwie: lazy loading poniżej folda, preload tylko dla tego, czego przeglądarka sama nie odkryje."
+    },
+    {
+      "topic": "Service Workers i PWA",
+      "points": [
+        "SW = skrypt w tle między aplikacją a siecią: `fetch` event, Cache API, push, background sync.",
+        "Tylko HTTPS (poza localhost), brak DOM, scope zależny od ścieżki pliku.",
+        "Cykl: install (precache) → **waiting** → activate (sprzątanie) → fetch.",
+        "Strategie: cache-first (assety z hashem), network-first (API), stale-while-revalidate.",
+        "PWA = manifest + SW + HTTPS → instalowalna aplikacja.",
+        "Angular: `ng add @angular/pwa`, `provideServiceWorker`, `ngsw-config.json` (`assetGroups`, `dataGroups`: performance/freshness).",
+        "Aktualizacje: `SwUpdate.versionUpdates` (VERSION_READY) → `activateUpdate()` → reload.",
+        "Debug: Application → Service Workers (Update on reload, Bypass for network), Cache Storage."
+      ],
+      "pitfalls": [
+        "Nowa wersja czeka, aż wszystkie karty ze starą zostaną zamknięte – użytkownicy widzą stary build.",
+        "Plik SW cache'owany przez HTTP – serwuj z `Cache-Control: no-cache`."
+      ],
+      "code": "provideServiceWorker('ngsw-worker.js', {\n  enabled: !isDevMode(),\n  registrationStrategy: 'registerWhenStable:30000',\n})",
+      "lang": "typescript",
+      "say": "Service worker daje offline i szybkie ładowanie z cache, ale wymaga świadomej strategii aktualizacji – w Angularze przez SwUpdate i komunikat o nowej wersji."
+    },
+    {
+      "topic": "Bezpieczeństwo frontu",
+      "points": [
+        "**XSS**: obcy skrypt w Twoim originie = dostęp do DOM, storage i żądań jako użytkownik.",
+        "Wektory: `innerHTML`, `javascript:` w `href`, `eval`/`new Function`, `postMessage` bez sprawdzenia `origin`, biblioteki HTML/markdown.",
+        "Angular escapuje bindingi; dziury przez `bypassSecurityTrust*`, `nativeElement`, zewnętrzne biblioteki.",
+        "**CSP**: strict z nonce/hash + `strict-dynamic`, `object-src 'none'`, `base-uri 'self'`.",
+        "Angular: `ngCspNonce`/`CSP_NONCE` dla stylów runtime, wsparcie Trusted Types.",
+        "Wdrażanie CSP przez `Content-Security-Policy-Report-Only`.",
+        "**Clickjacking**: `frame-ancestors 'none'` (+ `X-Frame-Options: DENY`).",
+        "SRI (`integrity`) dla skryptów z CDN."
+      ],
+      "pitfalls": [
+        "`'unsafe-inline'` w `script-src` praktycznie unieważnia ochronę.",
+        "Stały nonce w statycznym `index.html` – nonce musi być inny w każdej odpowiedzi."
+      ],
+      "code": "Content-Security-Policy: default-src 'self';\n  script-src 'self' 'nonce-r4nd0m' 'strict-dynamic';\n  object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+      "lang": "text",
+      "say": "Bronię się warstwowo: framework escapuje, sanityzuję tylko gdy muszę renderować HTML, CSP ogranicza skutki XSS, a `frame-ancestors` blokuje clickjacking."
+    },
+    {
+      "topic": "Web Components i Shadow DOM",
+      "points": [
+        "Custom Elements (`customElements.define`, `connectedCallback`, `attributeChangedCallback`) + Shadow DOM + `<template>`/`<slot>`.",
+        "Shadow DOM izoluje style **w obie strony**; selektory z zewnątrz nie wchodzą.",
+        "Przez granicę przechodzą: właściwości **dziedziczone**, **custom properties**, `::part()`.",
+        "Od środka: `:host`, `::slotted()`.",
+        "Zdarzenia retargetowane do hosta; własne muszą mieć `composed: true`.",
+        "Formularze: `ElementInternals` + `formAssociated`; SSR: Declarative Shadow DOM.",
+        "Angular: `@angular/elements` (`createCustomElement`), `CUSTOM_ELEMENTS_SCHEMA` do obcych elementów, `ViewEncapsulation.ShadowDom`.",
+        "Sens: design system dla wielu frameworków, mikrofrontendy, widgety."
+      ],
+      "pitfalls": [
+        "`aria-labelledby` nie widzi id z innego shadow root.",
+        "Angular Elements dołącza runtime Angulara do każdego widgetu."
+      ],
+      "code": "const root = this.attachShadow({ mode: 'open' });\nroot.innerHTML = `<style>span{background:var(--badge-bg,#eee)}</style>\n  <span part=\"label\"><slot></slot></span>`;",
+      "lang": "typescript",
+      "say": "Web Components wybieram, gdy komponent ma żyć w wielu frameworkach; theming robię przez custom properties i `::part()`, bo zwykłe selektory nie przechodzą przez Shadow DOM."
+    },
+    {
+      "topic": "fetch vs XHR",
+      "points": [
+        "`fetch`: Promise, streaming (`response.body`), `AbortController`, działa w service workerach.",
+        "`fetch` **nie odrzuca** dla 4xx/5xx – sprawdzaj `res.ok`.",
+        "Domyślnie `credentials: 'same-origin'` – cross-origin bez ciasteczek.",
+        "`AbortSignal.timeout(5000)` – gotowy timeout.",
+        "XHR: eventy, `upload.onprogress` (postęp uploadu).",
+        "HttpClient: domyślnie XHR; `provideHttpClient(withFetch())` – zalecane z SSR, bez postępu uploadu.",
+        "HttpClient emituje `HttpErrorResponse` dla 4xx/5xx – inaczej niż surowy fetch."
+      ],
+      "pitfalls": [
+        "`await res.json()` bez sprawdzenia `res.ok` – parsowanie strony błędu jako danych."
+      ],
+      "code": "const res = await fetch('/api/orders', { signal: AbortSignal.timeout(5000) });\nif (!res.ok) throw new Error(`HTTP ${res.status}`);",
+      "lang": "typescript",
+      "say": "Używam fetch przez HttpClient z `withFetch()`; przy surowym fetch zawsze sprawdzam `res.ok`, bo 404 nie odrzuca promise, a anuluję przez AbortController."
+    },
+    {
+      "topic": "DevTools",
+      "points": [
+        "**Performance**: nagrywaj z CPU throttling 4–6×; long tasks (czerwony róg), flame chart, self time.",
+        "Kolory: żółty – JS, fioletowy – style/layout, zielony – paint; ostrzeżenie 'Forced reflow'.",
+        "Performance pokazuje LCP/CLS/INP z atrybucją; Lighthouse – audit labowy; Coverage – nieużywany kod.",
+        "**Network**: waterfall, Priority, Initiator (kto wywołał), throttling, Disable cache, Preserve log, Copy as cURL.",
+        "**Memory**: heap snapshot → akcja ×N → GC → snapshot → Comparison; Retainers; Detached elements.",
+        "Przyczyny wycieków: subskrypcje, listenery na `window`, `setInterval`, cache w serwisach root, biblioteki bez `destroy()`.",
+        "Fix: `takeUntilDestroyed()`, `DestroyRef.onDestroy`; Angular DevTools – profiler change detection.",
+        "Rendering: Paint flashing, Layer borders; Application: storage, SW, cache."
+      ],
+      "pitfalls": [
+        "Mierzenie na `ng serve` (dev mode) zamiast buildu produkcyjnego.",
+        "Otwarta konsola trzyma referencje do zalogowanych obiektów – fałszywy wyciek."
+      ],
+      "code": "fromEvent(window, 'resize')\n  .pipe(takeUntilDestroyed(this.destroyRef))\n  .subscribe(() => this.redraw());",
+      "lang": "typescript",
+      "say": "Zaczynam od reprodukcji z throttlingiem, w Performance szukam long tasks i forced reflow, a wycieki pamięci znajduję porównaniem heap snapshotów i ścieżką retainers."
+    }
+  ]
+}

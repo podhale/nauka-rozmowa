@@ -1,0 +1,311 @@
+{
+ "cat": "signals",
+ "name": "Angular Signals",
+ "cards": [
+  {
+   "id": "signals-s001",
+   "topic": "Model reaktywności",
+   "level": 3,
+   "q": "Jak działa graf reaktywny sygnałów pod spodem: wersje, dirty marking i 'live' consumers?",
+   "a": "Każdy węzeł grafu (signal, computed, effect, szablon) jest węzłem reaktywnym. Producer przy zmianie wartości zwiększa swoją **wersję**, a consumer zapamiętuje, którą wersję każdej zależności widział przy ostatnim przeliczeniu. Zapis do sygnału tylko oznacza zależnych konsumentów jako dirty (push), a przeliczenie następuje dopiero przy odczycie (pull): consumer sprawdza wersje producentów i liczy się od nowa tylko, gdy któraś faktycznie się zmieniła. Powiadomienia płyną wyłącznie do konsumentów 'live' – efektów i szablonów oraz computed, które same mają live konsumenta.",
+   "tip": "Dobrze powiedzieć: 'push dirty, pull values, version check'. To jedno zdanie streszcza cały mechanizm.",
+   "deep": "Implementacja żyje w `@angular/core/primitives/signals` i jest szczegółem, który może się zmieniać – na rozmowie liczy się model, nie nazwy pól. Kluczowe elementy: wersja producenta rośnie tylko, gdy nowa wartość nie jest równa staremu (equal), a globalny licznik zapisów pozwala computed szybko stwierdzić 'od ostatniego sprawdzenia nic w całym systemie się nie zmieniło' bez chodzenia po grafie. Rozróżnienie live/non-live jest ważne dla pamięci: computed czytany tylko imperatywnie (np. w metodzie) nie jest zapisany u swoich producentów, więc producent nie trzyma do niego referencji i może on zostać zebrany przez GC – przy odczycie po prostu odpytuje wersje (polling). Dopiero gdy computed trafi do szablonu lub efektu, staje się live i dostaje powiadomienia push. Koszt zapisu jest więc proporcjonalny do liczby live konsumentów w dół grafu, a koszt odczytu – do liczby zależności, które trzeba sprawdzić. Dlatego tanie są tysiące sygnałów, ale drogi bywa jeden signal czytany przez tysiące widoków. Zależności są zbierane od nowa przy każdym przeliczeniu, więc nieużywane gałęzie są automatycznie odpinane."
+  },
+  {
+   "id": "signals-s002",
+   "topic": "Model reaktywności",
+   "level": 3,
+   "q": "Czym jest glitch-freedom i dlaczego computed w zależności diamentowej przelicza się tylko raz?",
+   "a": "Glitch to chwilowy, niespójny stan pośredni – np. w RxJS `combineLatest(b$, c$)`, gdzie b$ i c$ zależą od a$, po zmianie a$ subskrybent dostaje najpierw nowe b ze starym c. W sygnałach faza push tylko oznacza węzły jako dirty i niczego nie liczy, a wartości są wyliczane dopiero przy odczycie, rekurencyjnie od zależności. Gdy d czyta b i c, najpierw upewnia się, że oba są aktualne (każde przelicza się raz), a dopiero potem liczy siebie – dokładnie raz, ze spójnymi danymi. Do tego efekty i CD są planowane asynchronicznie, więc nigdy nie obserwują stanu 'w połowie zapisu'.",
+   "code": "const a = signal(1);\nconst b = computed(() => a() * 2);\nconst c = computed(() => a() + 1);\nconst d = computed(() => b() + c()); // zawsze spójne, liczone raz\na.set(5);\nd(); // 10 + 6 = 16, bez stanu pośredniego",
+   "lang": "typescript",
+   "deep": "W diamencie a → (b, c) → d przy zmianie a: push oznacza b, c i d jako dirty, ale nic nie liczy. Odczyt d powoduje pull: d sprawdza b (przelicza się, wersja rośnie), c (to samo), stwierdza zmianę i liczy się raz. Gdyby b przeliczył się do tej samej wartości (equal), jego wersja nie wzrośnie, i jeśli to samo stanie się z c, d w ogóle się nie przeliczy – to tzw. equality cutoff. Gwarancja dotyczy grafu sygnałów; nie dotyczy kodu, który sam łączy dane z różnych źródeł asynchronicznie (np. toSignal z dwóch strumieni HTTP). Warto też wiedzieć, że wiele synchronicznych zapisów przed odczytem jest 'zwijanych' – computed widzi tylko stan końcowy, więc nie ma sensu ręczne batchowanie. W RxJS ten sam problem rozwiązuje się np. przez `combineLatest` + `debounceTime(0)` albo przeprojektowanie strumieni, co jest kruche – to dobry argument za sygnałami dla stanu pochodnego."
+  },
+  {
+   "id": "signals-s003",
+   "topic": "Equality",
+   "level": 3,
+   "q": "Na czym polega equality cutoff i jak wykorzystać go do ograniczenia propagacji zmian w dużej aplikacji?",
+   "a": "Gdy computed przeliczy się, ale wynik jest równy poprzedniemu wg jego funkcji `equal`, jego wersja się nie zmienia – konsumenci dalej w grafie (inne computed, szablony, efekty) nie są przeliczani ani odświeżani. To pozwala budować 'selektory' z dużego stanu: computed wyciągający mały wycinek albo flagę odcina zmiany, które go nie dotyczą. Przy prymitywach działa to automatycznie, przy obiektach i tablicach – tylko gdy zwracamy tę samą referencję lub podamy własne `equal`.",
+   "code": "// selektor odcinający zmiany innych pól\nreadonly selectedCount = computed(() => this.state().selectedIds.length);\nreadonly visibleIds = computed(\n  () => this.state().items.filter(i => i.visible).map(i => i.id),\n  { equal: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]) },\n);",
+   "lang": "typescript",
+   "deep": "Typowy problem w dużej aplikacji: store trzyma obiekt `state`, a 30 computed robi `state().items.filter(...)`. Każda zmiana czegokolwiek w state tworzy nowy obiekt, więc wszystkie 30 computed się przelicza (to zwykle tanie), a jeśli każdy zwraca nową tablicę, wszystkie widoki się odświeżają (to już drogie). Rozwiązania: 1) rozbić stan na osobne sygnały lub użyć SignalStore, gdzie każda właściwość stanu jest osobnym sygnałem; 2) w computed zwracać prymitywy (np. `count`, `isSelected`) zamiast nowych struktur; 3) tam, gdzie wynik to kolekcja, podać `equal` porównujące płytko lub po id/wersji. Trade-off: własne `equal` kosztuje przy każdym przeliczeniu, więc deep-equal na dużych drzewach może zjeść zysk; i zbyt luźne equal ukrywa prawdziwe zmiany. Cutoff działa też dla szablonów: Angular przed odświeżeniem widoku sprawdza, czy czytane przez niego sygnały faktycznie zmieniły wersję."
+  },
+  {
+   "id": "signals-s004",
+   "topic": "Signals vs RxJS",
+   "level": 3,
+   "q": "Gdzie w architekturze dużej aplikacji przebiega granica między sygnałami a RxJS?",
+   "a": "Przyjmuję zasadę: RxJS na brzegu systemu i do orkiestracji w czasie, sygnały jako stan i kontrakt z widokiem. Strumienie zdarzeń (websockety, SSE, zdarzenia DOM wysokiej częstotliwości, polling, retry z backoffem, kolejkowanie żądań przez `concatMap`/`exhaustMap`) zostają w RxJS. Wynik tych przepływów ląduje w sygnałach (`toSignal`, `patchState`, `rxMethod`), a komponenty czytają tylko sygnały. Proste pobieranie danych zależne od parametrów obsługuje `resource`/`httpResource`/`rxResource`.",
+   "tip": "Dobrym argumentem jest konkretny przykład: wyszukiwarka – query jako signal, toObservable + debounceTime + switchMap, wynik z powrotem toSignal albo rxResource.",
+   "deep": "Kryterium decyzyjne: czy liczy się 'co jest teraz' (stan – signal), czy 'co i kiedy się wydarzyło' (zdarzenia – Observable). Sygnały nie mają semantyki czasu: dwa set() w jednym ticku dają jedną zmianę, nie ma operatorów typu debounce, nie ma backpressure ani wyboru strategii współbieżności – resource zawsze anuluje poprzednie ładowanie (jak switchMap), więc zapis formularza, gdzie potrzebny jest `concatMap` lub `exhaustMap`, robię w RxJS lub w metodzie z jawną blokadą. Antywzorce: effect, który na zmianę sygnału robi subscribe (brak anulowania, wycieki), oraz BehaviorSubject jako stan w nowym kodzie. Na granicy pilnuję, żeby błędy były obsłużone w strumieniu (`catchError`), bo toSignal rzuci błąd przy odczycie w szablonie. W kodzie z dużą bazą RxJS (np. NgRx Store z efektami) nie przepisuję wszystkiego – selektory wystawiam przez `store.selectSignal()`, a efekty zostają."
+  },
+  {
+   "id": "signals-s005",
+   "topic": "NgRx SignalStore",
+   "level": 3,
+   "q": "Jak zaprojektować stan na SignalStore w dużej aplikacji (podział, zakres, reużycie)?",
+   "a": "Store per domena lub feature, nie jeden globalny. Store'y domenowe współdzielone między ekranami daję `providedIn: 'root'`, a stan konkretnego ekranu lub instancji widżetu – w `providers` komponentu albo trasy, żeby żył i umierał razem z nim. Powtarzalne fragmenty (status ładowania, paginacja, filtrowanie) wydzielam jako własne features przez `signalStoreFeature`. Stan jest domyślnie chroniony – zmiany tylko przez metody store'a, które nazywam intencjami biznesowymi.",
+   "code": "export function withRequestStatus() {\n  return signalStoreFeature(\n    withState({ status: 'idle' as 'idle' | 'loading' | 'error', error: null as string | null }),\n    withComputed(({ status }) => ({ isLoading: computed(() => status() === 'loading') })),\n  );\n}\nexport const OrdersStore = signalStore(\n  withEntities<Order>(),\n  withRequestStatus(),\n  withMethods(store => ({ /* load, cancel, ... */ })),\n);",
+   "lang": "typescript",
+   "deep": "Warstwy: `withState` (minimalny, znormalizowany stan – kolekcje przez `withEntities`), `withComputed` (wszystko, co pochodne), `withMethods` (intencje; synchroniczne przez patchState, asynchroniczne przez rxMethod lub async/await), `withHooks` (onInit – start ładowania, onDestroy – sprzątanie). Komunikacja między store'ami: store wyższego poziomu może wstrzyknąć inny store w withMethods/withComputed, ale pilnuję kierunku zależności (feature → domena, nie odwrotnie), żeby uniknąć cykli. Do luźnego powiązania NgRx ma plugin zdarzeń (`@ngrx/signals/events`) – warto sprawdzić jego status stabilności w używanej wersji. Trade-offy: SignalStore nie ma wbudowanego time-travel jak Redux DevTools w NgRx Store (są rozszerzenia społeczności), a łatwość 'dopisania metody' w dużym zespole może prowadzić do store'ów-gigantów – stąd features i code review. Zalety: każda właściwość stanu to osobny sygnał (głębokie właściwości też są dostępne jako sygnały), więc komponent czytający `store.filter()` nie odświeża się przy zmianie `items`."
+  },
+  {
+   "id": "signals-s006",
+   "topic": "NgRx SignalStore",
+   "level": 3,
+   "q": "Jak działa rxMethod i jak obsługiwać w SignalStore efekty asynchroniczne bez wycieków i wyścigów?",
+   "a": "`rxMethod<T>(pipe(...))` tworzy metodę, która przyjmuje wartość statyczną, signal albo Observable i przepuszcza ją przez pipeline RxJS. Gdy podamy signal, metoda reaguje na każdą jego zmianę (pod spodem efekt), a gdy Observable – subskrybuje go. Subskrypcje są sprzątane przy zniszczeniu injectora store'a. W pipeline wybieram operator współbieżności świadomie: `switchMap` dla wyszukiwania, `exhaustMap` dla 'zapisz', `concatMap` dla kolejki, a wynik zapisuję przez `patchState`, obsługując błąd w `tapResponse` z `@ngrx/operators`.",
+   "code": "withMethods((store, api = inject(ProductsApi)) => ({\n  search: rxMethod<string>(pipe(\n    debounceTime(300),\n    distinctUntilChanged(),\n    tap(() => patchState(store, { status: 'loading' })),\n    switchMap(q => api.search(q).pipe(tapResponse({\n      next: items => patchState(store, setAllEntities(items), { status: 'idle' }),\n      error: () => patchState(store, { status: 'error' }),\n    }))),\n  )),\n})),",
+   "lang": "typescript",
+   "deep": "Wywołanie `store.load(this.query)` z sygnałem w konstruktorze oznacza 'ładuj za każdym razem, gdy zmieni się query' – to deklaratywne podpięcie, a nie jednorazowe wywołanie; pomylenie tego z `store.load(this.query())` (wartość) to częsty błąd. Ponieważ odczyt sygnału idzie przez efekt, kilka synchronicznych zmian query da jedną emisję. Błąd nieobsłużony w wewnętrznym Observable zabija cały pipeline – kolejne wywołania nie zadziałają – dlatego `tapResponse`/`catchError` musi być wewnątrz `switchMap`, a nie na końcu. Dla prostych przypadków bez RxJS NgRx ma `signalMethod` (od v19), które przyjmuje wartość lub signal i wykonuje zwykłą funkcję. Wyścigi: jeśli metoda używa async/await zamiast RxJS, sam muszę ignorować nieaktualne odpowiedzi (np. porównując id żądania), bo nic ich nie anuluje."
+  },
+  {
+   "id": "signals-s007",
+   "topic": "Migracja na sygnały",
+   "level": 3,
+   "q": "Jak zaplanować migrację dużej aplikacji z @Input/@Output/RxJS na sygnały?",
+   "a": "Migruję przyrostowo, bo sygnały i stare API współistnieją. Krok 1: automaty – `ng generate @angular/core:signal-input-migration`, `output-migration`, `signal-queries-migration` (lub zbiorczo `@angular/core:signals`), uruchamiane per katalog przez `--path`, każda partia jako osobny PR z testami. Krok 2: komponenty prezentacyjne (liście drzewa) – `ngOnChanges` i settery inputów zastępuję computed/linkedSignal. Krok 3: serwisy stanu – BehaviorSubject na prywatny signal, a dla starych konsumentów tymczasowo `toObservable`. Na koniec OnPush wszędzie i ewentualnie zoneless.",
+   "code": "ng generate @angular/core:signal-input-migration --path=libs/orders/ui\nng generate @angular/core:output-migration --path=libs/orders/ui\nng generate @angular/core:signal-queries-migration --path=libs/orders/ui",
+   "lang": "bash",
+   "deep": "Schematics są konserwatywne: pomijają przypadki, których nie da się bezpiecznie przekształcić (np. input, do którego komponent sam zapisuje, albo użycia, gdzie zawężanie typów przestałoby działać), i raportują je; jest tryb `--best-effort-mode`, który migruje agresywniej i wymaga ręcznej weryfikacji. Po migracji inputów zmieniają się testy (`setInput` zamiast przypisania pola) i kod rodziców, którzy zapisywali do inputów dziecka przez ViewChild. Kolejność ma znaczenie: zaczynam od liści, bo ich migracja nie wymusza zmian u konsumentów (szablony rodziców się nie zmieniają). RxJS zostaje tam, gdzie modeluje zdarzenia – migracja ma usunąć Subjecty-jako-stan i ręczne subskrypcje, a nie wszystkie Observable. Mierzę postęp prostym skryptem (liczba `@Input(` w repo) i blokuję regres lint rules dla nowego kodu. W monorepo Nx migrację robię per biblioteka i korzystam z `nx affected`, żeby testować tylko to, czego dotyczą zmiany."
+  },
+  {
+   "id": "signals-s008",
+   "topic": "Migracja na sygnały",
+   "level": 2,
+   "q": "Jak przepisać serwis oparty o BehaviorSubject na sygnały, nie psując istniejących konsumentów?",
+   "a": "Źródłem prawdy staje się prywatny `signal`, publiczny stan to `asReadonly()` i computed, a metody zmieniające stan zostają z tą samą sygnaturą. Dla konsumentów, którzy nadal subskrybują `state$`, wystawiam tymczasowo `toObservable(this.state)` jako adapter i oznaczam go jako deprecated. Konsumentów przenoszę stopniowo na odczyt sygnałów, a na koniec usuwam adapter.",
+   "code": "@Injectable({ providedIn: 'root' })\nexport class FilterService {\n  private readonly _filter = signal<Filter>(DEFAULT);\n  readonly filter = this._filter.asReadonly();\n  /** @deprecated użyj filter() */\n  readonly filter$ = toObservable(this._filter);\n  setFilter(f: Filter) { this._filter.set(f); }\n}",
+   "lang": "typescript",
+   "deep": "Różnice semantyczne, na które trzeba uważać: BehaviorSubject emituje synchronicznie przy `next`, a `toObservable` – asynchronicznie i tylko ostatnią wartość z ticku, więc kod zależny od synchronicznej emisji (np. testy bez czekania, logika 'po next od razu przeczytaj subskrypcję') może się zmienić. `distinctUntilChanged` jest zbędny, bo sygnał porównuje wartości, ale porównanie jest po referencji. Pochodne `combineLatest` + `map` zamieniam na computed, co usuwa glitche. Jeśli serwis ładuje dane HTTP, rozważam resource lub rxMethod zamiast ręcznej subskrypcji w serwisie. `toObservable` wymaga injection context – w serwisie tworzę go w inicjalizatorze pola."
+  },
+  {
+   "id": "signals-s009",
+   "topic": "effect()",
+   "level": 3,
+   "q": "Jakie race conditions powstają w efektach z kodem asynchronicznym i jak im zapobiegać?",
+   "a": "Efekt uruchamiany przy każdej zmianie sygnału, który startuje żądanie i po odpowiedzi ustawia stan, nie anuluje poprzednich żądań. Gdy użytkownik szybko zmienia parametry, odpowiedzi mogą przyjść w innej kolejności i starsza nadpisze nowszą. Do tego sygnały czytane po `await` nie są śledzone. Rozwiązania: w pierwszej kolejności `resource`/`rxResource`/`httpResource`, które same anulują nieaktualne ładowanie; jeśli musi być effect – `onCleanup` z `AbortController` lub odpięciem subskrypcji.",
+   "code": "effect(onCleanup => {\n  const id = this.userId();\n  const ctrl = new AbortController();\n  onCleanup(() => ctrl.abort());\n  fetch(`/api/users/${id}`, { signal: ctrl.signal })\n    .then(r => r.json())\n    .then(u => this.user.set(u))\n    .catch(e => { if (e.name !== 'AbortError') this.error.set(e); });\n});\n// lepiej: httpResource(() => `/api/users/${this.userId()}`)",
+   "lang": "typescript",
+   "deep": "Mechanika: `onCleanup` wykonuje się przed kolejnym uruchomieniem efektu i przy jego zniszczeniu, więc to naturalne miejsce na abort lub ustawienie flagi 'nieaktualne'. Abort przerywa żądanie sieciowe, ale jeśli loader robi kilka kroków, sprawdzam `signal.aborted` po każdym await. Drugi typ wyścigu to kolejność efektów względem CD: efekt komponentu wykonuje się w trakcie CD, root effect przed nią, więc kod, który 'ustawia signal i od razu oczekuje, że effect już zadziałał' jest błędny – efekty są asynchroniczne. Trzeci: dwa efekty piszące do tego samego sygnału – wynik zależy od kolejności planowania; jeden właściciel zapisu to dobra zasada. Pod obciążeniem (np. filtr zmieniany przy każdym znaku) efekt bez debounce generuje lawinę żądań – tu RxJS (`toObservable` + `debounceTime` + `switchMap`) jest lepszy niż effect."
+  },
+  {
+   "id": "signals-s010",
+   "topic": "resource()",
+   "level": 3,
+   "q": "Jak resource zachowuje się przy zmianie parametrów, reload i anulowaniu – i gdzie są jego granice?",
+   "a": "Zmiana `params` przerywa poprzednie ładowanie (abortSignal / odpięcie subskrypcji w rxResource), przechodzi w 'loading' i uruchamia loader z nowymi parametrami – semantyka switchMap. `reload()` ponawia ładowanie z tymi samymi parametrami w stanie 'reloading'. `params` zwracające `undefined` daje 'idle' bez wywołania loadera. Lokalny `set()` daje status 'local' – przydatne do optimistic update. Granice: resource jest do odczytu, ma tylko strategię 'anuluj poprzednie' i jest nadal experimental.",
+   "code": "products = httpResource<Product[]>(() => ({\n  url: '/api/products',\n  params: { page: this.page(), q: this.query() },\n}));\n// zachowanie poprzednich danych podczas ładowania\nshown = linkedSignal<Product[] | undefined, Product[]>({\n  source: () => (this.products.hasValue() ? this.products.value() : undefined),\n  computation: (v, prev) => v ?? prev?.value ?? [],\n});",
+   "lang": "typescript",
+   "deep": "Na produkcji ważne są szczegóły UX: przy zmianie params `value()` na czas ładowania wraca do `defaultValue` (domyślnie undefined) – poprzednia wartość znika (zostaje tylko przy `reload()`), więc 'keep previous data' (lista nie miga przy paginacji) robię świadomie, np. linkedSignal, który trzyma ostatnią rozwiązaną wartość. Anulowanie działa tylko, jeśli loader faktycznie przekaże `abortSignal` do fetch – inaczej żądania lecą dalej, a wynik jest tylko ignorowany (koszt serwera nadal ponoszony). Błąd przechodzi w status 'error' i `error()`; odczyty `value()` przy błędzie trzeba zabezpieczyć `hasValue()`. Brak wbudowanego cache, deduplikacji, retry ani invalidacji między komponentami – dwa komponenty z tym samym resource zrobią dwa żądania. Jeśli potrzebuję cache i invalidacji po mutacji (server state), wynoszę resource do serwisu/store'a lub sięgam po bibliotekę typu TanStack Query (jej adapter do Angulara też jest oznaczony jako experimental)."
+  },
+  {
+   "id": "signals-s011",
+   "topic": "SSR i hydracja",
+   "level": 3,
+   "q": "Jak sygnały współpracują z SSR i hydracją i jakie są typowe problemy?",
+   "a": "Na serwerze sygnały działają normalnie, ale ich stan nie jest przenoszony do przeglądarki – klient startuje od wartości początkowych. Jeśli wartość różni się między serwerem a klientem (Date.now, Math.random, localStorage, rozmiar okna), dostajemy hydration mismatch lub mignięcie treści. Dane z HTTP przenosi HttpTransferCache (dlatego httpResource/HttpClient są lepsze niż goły fetch w resource), a inny stan – ręcznie przez `TransferState`. Kod zależny od przeglądarki wykonuję w `afterNextRender`/`afterRenderEffect`, które na serwerze się nie uruchamiają.",
+   "code": "// zły: różna wartość na serwerze i kliencie\nnow = signal(Date.now());\n// lepiej: deterministyczny start, aktualizacja po hydracji\nnow = signal<number | null>(null);\nconstructor() {\n  afterNextRender(() => this.now.set(Date.now()));\n}",
+   "lang": "typescript",
+   "deep": "Stabilność aplikacji: serwer serializuje HTML, gdy aplikacja jest stabilna, a w trybie zoneless 'stabilność' wynika z PendingTasks – HttpClient i resource zgłaszają swoje zadania, ale własny kod async (setTimeout, SDK zewnętrzne) trzeba owinąć `inject(PendingTasks).run(...)`, inaczej serwer wyśle HTML bez danych. Efekty: root i component effects wykonują się też na serwerze, więc efekt dotykający `localStorage` wywali render – trzeba go zabezpieczyć lub zastąpić afterRenderEffect. Wzorzec dla preferencji użytkownika (motyw, język): wartość początkowa deterministyczna (np. z cookie czytanego na serwerze przez `REQUEST`), a nie z localStorage. Przy incremental hydration fragmenty `@defer (hydrate on ...)` pozostają niezhydratowane – ich sygnały i efekty nie działają, dopóki trigger nie zajdzie, co trzeba uwzględnić w logice, która zakłada, że komponent 'już żyje'."
+  },
+  {
+   "id": "signals-s012",
+   "topic": "Zoneless",
+   "level": 3,
+   "q": "Co realnie psuje się przy przejściu dużej aplikacji na zoneless i jak to wykryć?",
+   "a": "Psuje się każdy kod, który zmienia stan widoczny w szablonie poza kanałami, o których Angular wie: zwykłe pola zmieniane w `setTimeout`, callbackach bibliotek, subskrypcjach bez async pipe czy `.then()`. W aplikacji z OnPush i sygnałami problemów jest niewiele, bo OnPush już wymagał jawnych powiadomień. Drugi obszar to kod oparty o `NgZone`: `onStable`, `onMicrotaskEmpty` czy `isStable` w zoneless nie emitują, więc biblioteki czekające na nie (pozycjonowanie overlayów, 'po renderze zrób X') przestają działać. Trzeci – testy z `fakeAsync`/`waitForAsync`, które wymagają zone.js.",
+   "tip": "W SSR zoneless ważne jest PendingTasks – bez zone.js serwer nie wie sam, kiedy skończył się Twój kod asynchroniczny.",
+   "deep": "Plan: 1) OnPush wszędzie – co działa z OnPush, prawie na pewno zadziała w zoneless; 2) zastąpić `NgZone.onStable` przez `afterNextRender`/`afterEveryRender`, a stan widoku przenieść do sygnałów; 3) `provideZonelessChangeDetection()` i usunięcie zone.js z `polyfills` w angular.json; 4) audyt bibliotek – sprawdzić changelogi pod kątem wsparcia zoneless, a dla starych wrapperów owinąć ich callbacki w aktualizację sygnału. Do wykrywania 'cichych' bindingów, które zmieniły się bez powiadomienia, służy w dev mode `provideCheckNoChangesConfig({ exhaustive: true, interval })` (v20+, developer preview; wcześniej experimental pod inną nazwą) – okresowo sprawdza wszystkie widoki i zgłasza ExpressionChanged. `NgZone.run` i `runOutsideAngular` nadal można wołać (są no-op), więc kod się kompiluje, ale optymalizacje oparte o runOutsideAngular tracą sens. Zyski: brak narzutu zone.js w bundle i w każdym zadaniu async, czytelniejsze stack trace'y i brak CD po zdarzeniach, które niczego nie zmieniły."
+  },
+  {
+   "id": "signals-s013",
+   "topic": "Zoneless",
+   "level": 2,
+   "q": "Jak testować i utrzymywać biblioteki zależne od zone.js w projekcie zoneless?",
+   "a": "W testach dodaję `provideZonelessChangeDetection()` do TestBed, żeby testy odpowiadały produkcji, i zamiast `fixture.detectChanges()` w kluczowych miejscach używam `await fixture.whenStable()` – wtedy test wykrywa brakujące powiadomienia. `fakeAsync`/`tick` wymagają zone.js, więc w Vitest (domyślnym od v21) używam fake timers runnera (`vi.useFakeTimers()`). Biblioteki zewnętrzne, które polegają na zone.js do odświeżenia widoku, owijam: ich callbacki ustawiają sygnał albo wołają `markForCheck()`.",
+   "code": "TestBed.configureTestingModule({\n  providers: [provideZonelessChangeDetection()],\n});\nconst fixture = TestBed.createComponent(Clock);\nvi.useFakeTimers();\nvi.advanceTimersByTime(1000);\nawait fixture.whenStable();",
+   "lang": "typescript",
+   "deep": "Zone.js można zostawić tylko w testach (polyfills w konfiguracji testów), jeśli migracja istniejących testów z fakeAsync jest zbyt kosztowna – ale wtedy testy nie wykryją błędów zoneless, bo zone.js 'naprawi' brakujące powiadomienia. Lepsza strategia: nowe testy bez zone, stare migrowane przy okazji zmian. Wrapper dla biblioteki: komponent-adapter, który tworzy instancję w afterNextRender, subskrybuje jej zdarzenia i przepisuje je do sygnałów lub outputów – wtedy reszta aplikacji jest odporna na to, jak biblioteka planuje pracę. Dla bibliotek, które same tworzą komponenty Angulara dynamicznie, sprawdzam, czy używają `setInput` (to powiadamia scheduler), a nie bezpośredniego przypisania pól instancji. Typowy objaw braku wsparcia: widok aktualizuje się dopiero przy następnym kliknięciu gdziekolwiek."
+  },
+  {
+   "id": "signals-s014",
+   "topic": "Wydajność",
+   "level": 3,
+   "q": "Jak w praktyce uzyskać fine-grained updates z OnPush i sygnałami i gdzie są granice tej granularności?",
+   "a": "Komponenty OnPush, stan w sygnałach czytanych bezpośrednio w szablonach, pochodne w computed. Zmiana sygnału oznacza do odświeżenia tylko widoki, które go czytają, a niezmienione komponenty OnPush po drodze są pomijane. Granulacja w Angularze to widok komponentu, a nie pojedynczy węzeł DOM jak w Solid – zmiana sygnału przelicza wszystkie bindingi szablonu, który go czyta. Dlatego duże szablony rozbijam na mniejsze komponenty, a sygnał czytany w tysiącach widoków zastępuję computed per element, który wykorzystuje equality cutoff.",
+   "code": "@Component({\n  selector: 'app-row',\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  template: `<tr [class.selected]=\"isSelected()\">{{ row().name }}</tr>`,\n})\nexport class Row {\n  private store = inject(TableStore);\n  row = input.required<RowData>();\n  isSelected = computed(() => this.store.selectedId() === this.row().id);\n}",
+   "lang": "typescript",
+   "deep": "Przykład listy 5000 wierszy i `selectedId`: jeśli każdy wiersz czyta `store.selectedId()` w szablonie, każda zmiana zaznaczenia oznacza wszystkie 5000 widoków. Jeśli wiersz czyta `isSelected = computed(() => store.selectedId() === this.id())`, computed przeliczy się wszędzie (porównanie – tanie), ale tylko 2 wiersze zmienią wartość, więc tylko ich widoki faktycznie się odświeżą. Alternatywa: rodzic przekazuje `[selected]` jako input, a wiersze są OnPush. Inne dźwignie: `track item.id`, żeby @for nie tworzył DOM od nowa; virtual scroll dla długich list; unikanie toSignal/effect per wiersz (koszt pamięci i planowania); computed zamiast metod w szablonie. Pomiar: Angular DevTools Profiler pokazuje, które komponenty były sprawdzane w danym cyklu i ile to trwało – przed i po zmianie. Nie optymalizuję na ślepo: 200 wierszy z prostym szablonem zwykle nie wymaga żadnej z tych technik."
+  },
+  {
+   "id": "signals-s015",
+   "topic": "Testowanie",
+   "level": 2,
+   "q": "Jak testować efekty, resource i SignalStore w sposób stabilny (bez flaky testów)?",
+   "a": "Efekty: ustaw sygnał, wywołaj `TestBed.tick()` (v20+) i sprawdź skutek uboczny – bez tego efekt jeszcze się nie wykonał. httpResource: `provideHttpClient()` + `provideHttpClientTesting()`, flush odpowiedzi w `HttpTestingController`, potem `await TestBed.inject(ApplicationRef).whenStable()` i asercje na `value()`/`status()`. SignalStore: wstrzyknij przez TestBed z zamockowanymi zależnościami (np. API zwracające `of(...)`), wywołuj metody publiczne i sprawdzaj sygnały – testuję zachowanie, nie wewnętrzny stan.",
+   "code": "it('zapisuje motyw', () => {\n  const svc = TestBed.inject(ThemeService);\n  svc.theme.set('dark');\n  TestBed.tick();\n  expect(localStorage.getItem('theme')).toBe('dark');\n});",
+   "lang": "typescript",
+   "deep": "Źródła flakiness: asercje 'od razu po set()' na kodzie asynchronicznym (efekty, toObservable, resource), realne timery w debounce i zależność od kolejności efektów. Leki: deterministyczne czekanie na stabilność (`whenStable` używa PendingTasks, więc czeka też na resource i HttpClient), fake timers dla debounce i jawne `TestBed.tick()`. computed testuję jak czystą funkcję, bez DOM. Dla komponentów preferuję testy przez DOM (setInput → whenStable → tekst), bo przeżywają refaktoryzację z inputów dekoratorowych na sygnałowe. Efekt z `effect()` w serwisie wymaga injection context – tworzę serwis przez TestBed.inject, nie przez `new`. W projektach v21 z Vitest zone-based helpery (fakeAsync, tick z @angular/core/testing) nie zadziałają bez zone.js – używam narzędzi runnera."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "signals-sq001",
+   "topic": "Model reaktywności",
+   "level": 3,
+   "q": "Ile razy łącznie pojawi się 'd' w konsoli?",
+   "code": "const a = signal(1);\nconst b = computed(() => a() * 2);\nconst c = computed(() => a() + 1);\nconst d = computed(() => { console.log('d'); return b() + c(); });\nd();\na.set(2);\na.set(3);\nd();",
+   "lang": "typescript",
+   "options": [
+    "4 – po jednym razie na każdą zmianę a i każdy odczyt",
+    "2 – raz przy pierwszym odczycie i raz po zmianach, bo d jest lazy i glitch-free",
+    "3 – raz przy pierwszym odczycie i po razie dla każdego set()",
+    "1 – computed liczy się tylko raz w całym cyklu życia"
+   ],
+   "correct": 1,
+   "why": "Pierwszy odczyt liczy d raz. Dwa set() tylko oznaczają b, c i d jako dirty (push), niczego nie licząc. Drugi odczyt robi pull: b i c przeliczają się raz, a d raz, ze stanem końcowym (a=3). Diament nie powoduje podwójnego przeliczenia, a pośrednia wartość a=2 nigdy nie jest obserwowana."
+  },
+  {
+   "id": "signals-sq002",
+   "topic": "Equality",
+   "level": 3,
+   "q": "Efekt w komponencie czyta tylko `isEven()`. Co się stanie po wykonaniu `count.set(2)`, a potem `count.set(4)`?",
+   "code": "count = signal(0);\nisEven = computed(() => this.count() % 2 === 0);\nconstructor() {\n  effect(() => console.log('even?', this.isEven()));\n}",
+   "lang": "typescript",
+   "options": [
+    "Efekt nie uruchomi się ponownie – isEven przeliczy się, ale wartość (true) się nie zmieniła, więc propagacja jest ucinana",
+    "Efekt uruchomi się dwa razy, bo count zmienił się dwa razy",
+    "Efekt uruchomi się raz, bo zmiany są batchowane",
+    "Efekt uruchomi się ponownie, bo computed zawsze powiadamia konsumentów po przeliczeniu"
+   ],
+   "correct": 0,
+   "why": "To equality cutoff: isEven jest przeliczany (zależność count się zmieniła), ale wynik true === true, więc jego wersja się nie zmienia i efekt nie ma powodu się uruchomić. Batching sprawiłby, że efekt uruchomi się co najwyżej raz – ale tu nie uruchomi się wcale. computed nie powiadamia konsumentów, jeśli wynik jest równy poprzedniemu."
+  },
+  {
+   "id": "signals-sq003",
+   "topic": "effect()",
+   "level": 3,
+   "q": "Użytkownik szybko klika kolejne zamówienia na liście (id 1, 2, 3). Czasem szczegóły pokazują zamówienie 2, choć wybrane jest 3. Co jest przyczyną i najlepszą poprawką?",
+   "code": "constructor() {\n  effect(() => {\n    const id = this.selectedId();\n    this.http.get<Order>(`/api/orders/${id}`)\n      .subscribe(o => this.order.set(o));\n  });\n}",
+   "lang": "typescript",
+   "options": [
+    "Brak `untracked` wokół `http.get` – efekt uruchamia się zbyt często",
+    "Signal `selectedId` ma domyślne equal; trzeba podać własne",
+    "Odpowiedzi przychodzą w dowolnej kolejności, a efekt nie anuluje poprzednich żądań; najlepiej zastąpić go httpResource/rxResource (lub odpinać subskrypcję w onCleanup)",
+    "Efekty komponentów wykonują się przed CD, więc widok pokazuje stary stan; trzeba użyć afterRenderEffect"
+   ],
+   "correct": 2,
+   "why": "Każde uruchomienie efektu startuje nową subskrypcję HTTP, a żadna nie jest anulowana – wolniejsza odpowiedź dla id 2 może przyjść po odpowiedzi dla 3 i ją nadpisać. httpResource/rxResource mają semantykę switchMap (anulują poprzednie ładowanie), a w efekcie można to zrobić ręcznie przez onCleanup(() => sub.unsubscribe()). untracked czy equal nie mają związku z kolejnością odpowiedzi, a afterRenderEffect służy do pracy z DOM."
+  },
+  {
+   "id": "signals-sq004",
+   "topic": "Zoneless",
+   "level": 3,
+   "q": "Po przejściu na zoneless dropdown z zewnętrznej biblioteki przestał się pozycjonować – otwiera się w lewym górnym rogu. Biblioteka pozycjonuje panel w kodzie poniżej. Co jest przyczyną?",
+   "code": "open() {\n  this.isOpen = true;\n  this.ngZone.onStable.pipe(take(1)).subscribe(() => {\n    this.position(this.panel.nativeElement);\n  });\n}",
+   "lang": "typescript",
+   "options": [
+    "W zoneless `ngZone.run` rzuca wyjątek, który biblioteka połyka",
+    "W zoneless NgZone jest no-op i `onStable` nie emituje, więc kod pozycjonowania nigdy się nie wykona; zamiennik to afterNextRender",
+    "Panel jest renderowany poza drzewem komponentów, więc wymaga OnPush",
+    "Brakuje `provideAnimations()`, który w zoneless jest wymagany do overlayów"
+   ],
+   "correct": 1,
+   "why": "Bez zone.js Angular używa NoopNgZone: `run` i `runOutsideAngular` wykonują funkcję bez dodatkowej logiki, ale zdarzenia `onStable`/`onMicrotaskEmpty` nigdy nie emitują. Kod czekający na nie nigdy się nie wykona. Poprawny odpowiednik 'po renderze' to `afterNextRender` (lub aktualizacja biblioteki do wersji wspierającej zoneless). OnPush i animacje nie mają tu znaczenia."
+  },
+  {
+   "id": "signals-sq005",
+   "topic": "SSR i hydracja",
+   "level": 3,
+   "q": "Serwis motywu w aplikacji z SSR i hydracją ma kod poniżej. Co się stanie?",
+   "code": "@Injectable({ providedIn: 'root' })\nexport class ThemeService {\n  readonly theme = signal(localStorage.getItem('theme') ?? 'light');\n}",
+   "lang": "typescript",
+   "options": [
+    "Działa poprawnie – Angular automatycznie przenosi wartość sygnału z serwera do klienta",
+    "Na serwerze theme będzie 'light', a w przeglądarce motyw z localStorage – bez żadnych skutków ubocznych",
+    "Kompilacja się nie powiedzie, bo localStorage nie może być użyty w inicjalizatorze sygnału",
+    "Render na serwerze zakończy się błędem ReferenceError, bo localStorage nie istnieje w Node; motyw trzeba ustalić deterministycznie (np. cookie) lub odczytać po hydracji w afterNextRender"
+   ],
+   "correct": 3,
+   "why": "Inicjalizator pola wykonuje się też na serwerze, gdzie nie ma `localStorage` – SSR rzuci ReferenceError. Nawet z zabezpieczeniem isPlatformBrowser wartości różniłyby się między serwerem a klientem (mignięcie/mismatch), bo stan sygnałów nie jest przenoszony automatycznie. Dobre rozwiązania: cookie czytane na serwerze lub domyślna wartość + odczyt w afterNextRender. TypeScript nie zabrania takiego kodu."
+  },
+  {
+   "id": "signals-sq006",
+   "topic": "NgRx SignalStore",
+   "level": 2,
+   "q": "Komponent wywołuje `patchState(this.store, { filter: 'done' })` na store'ze zdefiniowanym przez `signalStore(withState(...), withMethods(...))` bez dodatkowych opcji (NgRx 18+). Co się stanie?",
+   "options": [
+    "Stan zostanie zaktualizowany – patchState działa z dowolnego miejsca",
+    "Błąd w runtime NG0600, bo zapis do sygnału nastąpił poza store'em",
+    "Błąd kompilacji TypeScript – stan jest domyślnie chroniony i z zewnątrz nie da się go patchować; trzeba wystawić metodę w withMethods",
+    "Aktualizacja zostanie zignorowana bez błędu"
+   ],
+   "correct": 2,
+   "why": "Od NgRx 18 SignalStore ma domyślnie `protectedState: true` – typ instancji store'a nie udostępnia zapisywalnego źródła stanu na zewnątrz, więc wywołanie patchState z komponentu nie przejdzie type-checku. Zmiany idą przez metody-intencje store'a. Wyłączenie ochrony (`protectedState: false`) jest możliwe, ale łamie enkapsulację. NG0600 dotyczy zapisu w computed."
+  },
+  {
+   "id": "signals-sq007",
+   "topic": "NgRx SignalStore",
+   "level": 3,
+   "q": "W konstruktorze komponentu wywołano `this.store.search(this.query)`, gdzie `query` to signal, a `search` to rxMethod z switchMap do API. Co się dzieje, gdy użytkownik wpisuje kolejne znaki (query.set przy każdym znaku)?",
+   "options": [
+    "search wykona się tylko raz, z wartością query z chwili wywołania",
+    "search reaguje na każdą zmianę query; poprzednie żądania są anulowane przez switchMap, a pipeline sprzątany przy zniszczeniu",
+    "Każda zmiana query uruchamia osobny, niezależny pipeline, więc nie ma anulowania",
+    "Błąd – rxMethod przyjmuje tylko Observable"
+   ],
+   "correct": 1,
+   "why": "rxMethod przyjmuje wartość statyczną, signal albo Observable. Przekazanie samego sygnału (nie jego wartości `query()`) oznacza podpięcie: każda zmiana trafia do tego samego pipeline'u, więc switchMap anuluje poprzednie żądanie. Subskrypcja jest sprzątana razem z injectorem. Gdyby przekazać `this.query()`, wykonałoby się tylko raz."
+  },
+  {
+   "id": "signals-sq008",
+   "topic": "Migracja na sygnały",
+   "level": 3,
+   "q": "Po uruchomieniu signal-input-migration komponent `Slider` nadal ma `@Input() value`, a schematic zgłosił go jako niekompatybilny. W kodzie jest fragment poniżej. Co najlepiej zrobić?",
+   "code": "@Input() value = 0;\n@Output() valueChange = new EventEmitter<number>();\nonDrag(v: number) {\n  this.value = v;\n  this.valueChange.emit(v);\n}",
+   "lang": "typescript",
+   "options": [
+    "Uruchomić migrację ponownie z `--path`, bo pominęła plik",
+    "Zamienić na `input()` i w metodzie użyć `(this.value as any).set(v)`",
+    "Zamienić na `input()` z `transform`, który zapisze nową wartość",
+    "Zamienić na `model()` (komponent zmienia wartość i informuje rodzica) albo linkedSignal, jeśli to tylko lokalna kopia"
+   ],
+   "correct": 3,
+   "why": "InputSignal jest read-only – komponent nie może do niego zapisać, dlatego migracja domyślnie pomija takie inputy. Jeśli zmiana ma trafić do rodzica, właściwy jest `model()` (input + output valueChange). Jeśli to lokalny stan inicjowany z inputu, `linkedSignal(() => this.value())`. Rzutowanie na any i transform nie dają zapisu (transform tylko przekształca wartość od rodzica)."
+  },
+  {
+   "id": "signals-sq009",
+   "topic": "Wydajność",
+   "level": 3,
+   "q": "Tabela ma 5000 wierszy (OnPush). Profiler pokazuje, że przy zmianie zaznaczenia odświeżane są wszystkie wiersze. Która zmiana ograniczy odświeżenie do 2 wierszy?",
+   "code": "<!-- row.html -->\n<tr [class.selected]=\"store.selectedId() === row().id\">\n  <td>{{ row().name }}</td>\n</tr>",
+   "lang": "html",
+   "options": [
+    "Dodać `track $index` w @for",
+    "Zmienić selectedId na `signal(..., { equal: () => false })`",
+    "Zastąpić odczyt w szablonie computed per wiersz `isSelected = computed(() => store.selectedId() === this.row().id)`",
+    "Owinąć odczyt selectedId w untracked w szablonie"
+   ],
+   "correct": 2,
+   "why": "Gdy szablon wiersza czyta selectedId bezpośrednio, każdy z 5000 widoków jest konsumentem tego sygnału. Z computed per wiersz wszystkie computed przeliczą się (tanie porównanie), ale wartość zmieni się tylko w 2 wierszach – dzięki equality cutoff tylko te widoki będą faktycznie odświeżane. equal: () => false pogorszyłoby sytuację, track nie wpływa na odświeżanie bindingów, a untracked nie istnieje w szablonie."
+  },
+  {
+   "id": "signals-sq010",
+   "topic": "Testowanie",
+   "level": 2,
+   "q": "Test serwisu, który w konstruktorze tworzy effect zapisujący `cart()` do localStorage, czasem nie przechodzi. Co jest przyczyną?",
+   "code": "it('zapisuje koszyk', () => {\n  const svc = TestBed.inject(CartService);\n  svc.add({ id: 1, qty: 1 });\n  expect(localStorage.getItem('cart')).toContain('\"id\":1');\n});",
+   "lang": "typescript",
+   "options": [
+    "Efekt nie wykonał się jeszcze w momencie asercji – po set() trzeba wywołać `TestBed.tick()`",
+    "localStorage nie działa w środowisku testowym",
+    "Serwis utworzony przez TestBed.inject nie ma injection context",
+    "Efekty w serwisach nie wykonują się w testach bez fixture komponentu"
+   ],
+   "correct": 0,
+   "why": "Efekty są planowane asynchronicznie, więc zaraz po set() nic nie zostało zapisane. `TestBed.tick()` (v20+, wcześniej flushEffects) synchronicznie przetwarza zaplanowane efekty i CD. TestBed.inject zapewnia injection context, a root effects działają bez komponentu."
+  }
+ ]
+}

@@ -1,0 +1,177 @@
+{
+  "cat": "csharp",
+  "sheets": [
+    {
+      "topic": "Thread pool starvation",
+      "points": [
+        "Objaw: **rosnąca latencja i timeouty przy niskim CPU**, potem nagłe 'odżycie' systemu.",
+        "Przyczyna: wątki puli zablokowane przez `.Result`, `.Wait()`, `GetAwaiter().GetResult()`, synchroniczne I/O, długie `lock`.",
+        "Pula ma minimum = liczba rdzeni; powyżej dokłada wątki powoli (rzędu 1–2/s), więc nagły skok ruchu zatyka kolejkę.",
+        "Diagnoza: `dotnet-counters` → rosnące **ThreadPool Queue Length** i powoli rosnący **ThreadPool Thread Count**.",
+        "Potwierdzenie: `dotnet-stack report` albo dump + `clrstack -all` – wiele wątków na tej samej ramce Wait/Result.",
+        "`ThreadPool.SetMinThreads` to plaster na hotfix (pamięć, context switching), naprawa to **async all the way**."
+      ],
+      "pitfalls": [
+        "Mylenie starvation z brakiem CPU i skalowanie pionowe zamiast usunięcia blokowania.",
+        "Traktowanie braku deadlocka w ASP.NET Core jako dowodu, że `.Result` jest 'bezpieczne'."
+      ],
+      "code": "dotnet-counters monitor -p <PID> --counters System.Runtime\ndotnet-stack report -p <PID>",
+      "lang": "bash",
+      "say": "Niskie CPU, rosnąca kolejka puli i skaczące p99 to dla mnie thread pool starvation; potwierdzam stosami wątków i usuwam sync-over-async, a SetMinThreads traktuję tylko jako tymczasowy plaster."
+    },
+    {
+      "topic": "Channels",
+      "points": [
+        "`Channel<T>` = asynchroniczna kolejka producent–konsument, bez blokowania wątków.",
+        "**Bounded** daje backpressure: pełny kanał → `WriteAsync` czeka (FullMode.Wait) lub porzuca (DropOldest/DropNewest/DropWrite).",
+        "Unbounded = brak limitu = potencjalny OutOfMemory pod obciążeniem.",
+        "`SingleReader`/`SingleWriter` pozwalają użyć szybszej implementacji.",
+        "Konsument: `await foreach (var x in reader.ReadAllAsync(ct))`; koniec przez `writer.Complete()`.",
+        "Kolejka jest w pamięci procesu – restart gubi elementy; do pracy krytycznej → broker/outbox."
+      ],
+      "pitfalls": [
+        "Unbounded channel 'na wszelki wypadek' – przenosi problem z latencji na pamięć.",
+        "Traktowanie Channel jako trwałej kolejki zadań (praca ginie przy deployu)."
+      ],
+      "code": "var ch = Channel.CreateBounded<Job>(new BoundedChannelOptions(500)\n{ FullMode = BoundedChannelFullMode.Wait, SingleReader = true });",
+      "lang": "csharp",
+      "say": "Do kolejek w procesie używam bounded Channel z backpressure; jeśli praca nie może zginąć przy restarcie, przenoszę ją do trwałego brokera albo outboxa."
+    },
+    {
+      "topic": "IAsyncEnumerable",
+      "points": [
+        "Asynchroniczny strumień: `await foreach`, każdy element może czekać na I/O bez blokowania wątku.",
+        "Generowanie: `async IAsyncEnumerable<T>` + `yield return`.",
+        "Anulowanie: parametr `[EnumeratorCancellation] CancellationToken ct` + `WithCancellation(token)` u konsumenta.",
+        "ASP.NET Core serializuje `IAsyncEnumerable<T>` strumieniowo (System.Text.Json) – mniej pamięci serwera.",
+        "EF Core `AsAsyncEnumerable()` trzyma połączenie i DataReader przez całą iterację.",
+        "LINQ: pakiet System.Linq.Async, od .NET 10 `System.Linq.AsyncEnumerable` w BCL."
+      ],
+      "pitfalls": [
+        "Brak `[EnumeratorCancellation]` – token z `WithCancellation` jest ignorowany (ostrzeżenie CS8425).",
+        "Wyjątek w połowie streamowanej odpowiedzi = ucięty JSON zamiast ProblemDetails."
+      ],
+      "say": "IAsyncEnumerable używam do przetwarzania dużych zbiorów element po elemencie bez ładowania wszystkiego do pamięci, pamiętając o EnumeratorCancellation i o tym, że strumień trzyma połączenie do bazy."
+    },
+    {
+      "topic": "Alokacje i pooling",
+      "points": [
+        "Najpierw pomiar: `[MemoryDiagnoser]`, `dotnet-counters` (Allocation Rate, % time in GC), `dotnet-trace`.",
+        "`ArrayPool<T>.Shared.Rent/Return` dla dużych buforów tymczasowych (≥ 85 000 B trafiłoby na LOH).",
+        "`Rent(n)` zwraca tablicę **≥ n** – pracuj na `buffer.AsSpan(0, n)`.",
+        "`stackalloc` tylko dla małych, ograniczonych rozmiarów (do ok. 1 KB); wzorzec: stackalloc dla małych, pool dla dużych.",
+        "Span/ReadOnlySpan zamiast `Substring`/`Split`; `string.Create`, `TryFormat` do budowania tekstu.",
+        "Ukryte alokacje: closures, boxing przez interfejs, `params`, LINQ w gorącej pętli, async state machine."
+      ],
+      "pitfalls": [
+        "Użycie bufora po `Return` albo podwójny `Return` – błąd typu use-after-free.",
+        "`stackalloc` z rozmiarem z inputu użytkownika → StackOverflowException (nie da się złapać)."
+      ],
+      "code": "byte[] buf = ArrayPool<byte>.Shared.Rent(size);\ntry { Use(buf.AsSpan(0, size)); }\nfinally { ArrayPool<byte>.Shared.Return(buf); }",
+      "lang": "csharp",
+      "say": "Alokacje optymalizuję tylko w gorących ścieżkach wskazanych przez profiler: ArrayPool dla dużych buforów, stackalloc dla małych, Span zamiast kopiowania stringów."
+    },
+    {
+      "topic": "Memory leaks",
+      "points": [
+        "GC zbiera tylko obiekty nieosiągalne – wyciek = niechciana ścieżka od roota.",
+        "Klasyk: krótkożyjący obiekt subskrybuje **event singletona** i nie robi `-=`.",
+        "Statyczne/singletonowe cache bez limitu i TTL (np. `ConcurrentDictionary` kluczowany inputem).",
+        "Closures trzymające duże obiekty, niezdisposowane `Timer`, subskrypcje `IOptionsMonitor.OnChange`.",
+        "Objaw: gen 2 i LOH rosną po każdym pełnym GC (zamiast stabilnej 'piły').",
+        "Narzędzia: dwa `dotnet-gcdump` i porównanie, `dotnet-dump` → `dumpheap -stat`, `gcroot <addr>`."
+      ],
+      "pitfalls": [
+        "Wycieki niezarządzane (handle, natywne bufory) nie widać w GC heap – patrz working set i brak Dispose.",
+        "`IMemoryCache` bez `SizeLimit` z kluczami od użytkownika."
+      ],
+      "say": "Wyciek w .NET to zawsze ktoś, kto trzyma referencję – szukam go porównaniem dwóch gcdumpów i gcroot, a najczęściej winne są eventy singletonów i cache bez limitu."
+    },
+    {
+      "topic": "BenchmarkDotNet",
+      "points": [
+        "Osobny proces, Release, rozgrzewka (JIT, tiering), wiele iteracji, statystyki.",
+        "`[MemoryDiagnoser]` – alokacje i GC na operację.",
+        "Porównania: `[Benchmark(Baseline = true)]`, `[Params]`, joby dla różnych runtime'ów.",
+        "Dane przygotowuj w `[GlobalSetup]`, nie w mierzonej metodzie.",
+        "Metoda **zwraca wynik** – inaczej JIT może usunąć obliczenia (dead code elimination).",
+        "Mikrobenchmark ≠ wydajność aplikacji: potwierdź load testem i profilem."
+      ],
+      "pitfalls": [
+        "Stopwatch w pętli w Debug – mierzysz JIT, tier 0 i GC, nie kod.",
+        "Optymalizacja nanosekund w kodzie wołanym raz na minutę."
+      ],
+      "code": "[MemoryDiagnoser]\npublic class Bench\n{\n    [Benchmark] public int Run() => Compute();\n}\n// dotnet run -c Release",
+      "lang": "csharp",
+      "say": "Mikrooptymalizacje weryfikuję BenchmarkDotNet z MemoryDiagnoserem, a efekt potwierdzam na poziomie aplikacji, bo mikrobenchmark mierzy kod w izolacji."
+    },
+    {
+      "topic": "Source generators",
+      "points": [
+        "Roslyn w czasie kompilacji **dodaje** kod (nie modyfikuje) – stąd `partial`.",
+        "Zastępują refleksję w runtime: szybszy start, mniej alokacji, zgodność z trimmingiem i **Native AOT**.",
+        "W BCL: `[GeneratedRegex]`, `JsonSerializerContext`, `[LoggerMessage]`, `[LibraryImport]`, binder konfiguracji, Request Delegate Generator.",
+        "Nowe generatory: `IIncrementalGenerator` (cache'owany pipeline, dobre dla IDE).",
+        "Podgląd: `EmitCompilerGeneratedFiles` albo węzeł Analyzers w IDE.",
+        "Biblioteki: Mapperly (mapowanie), StronglyTypedId."
+      ],
+      "pitfalls": [
+        "Stary `ISourceGenerator` potrafi zamulić IDE.",
+        "Zapomniana rejestracja `JsonSerializerContext` – w AOT serializer nie zna typów."
+      ],
+      "say": "Source generatory przenoszą pracę refleksji do kompilacji, co daje szybszy start i zgodność z AOT; używam gotowych z BCL, a własne piszę tylko jako incremental."
+    },
+    {
+      "topic": "Reflection i expression trees",
+      "points": [
+        "Refleksja: najprostsza, wolna per wywołanie, kłopotliwa dla trimmingu/AOT.",
+        "Expression trees: `Expression.Lambda(...).Compile()` raz → szybki delegat; **cache obowiązkowy**.",
+        "`Compile()` kosztuje milisekundy – kompilacja per wywołanie jest gorsza niż refleksja.",
+        "Source generator: najszybszy i AOT-friendly, najdroższy w implementacji.",
+        "`[UnsafeAccessor]` (.NET 8+) – dostęp do prywatnych członków bez refleksji.",
+        "W AOT `Compile()` działa jako interpreter, Reflection.Emit niedostępne."
+      ],
+      "pitfalls": [
+        "Kompilowanie expression tree w każdym requeście.",
+        "Mylenie expression trees w IQueryable (tłumaczone na SQL) z kompilacją do IL."
+      ],
+      "say": "Dla rzadkich operacji wystarczy refleksja, dla gorących ścieżek cache'owany skompilowany delegat, a gdy celuję w AOT – source generator."
+    },
+    {
+      "topic": "Immutability",
+      "points": [
+        "Zalety: thread-safety bez locków, przewidywalność, bezpieczne klucze i wartości cache.",
+        "Narzędzia: `record` + `init`, `readonly struct`, get-only, `required`.",
+        "`with` robi **płytką** kopię – mutowalna lista w środku jest współdzielona.",
+        "`ImmutableList` (AVL, O(log n) zmiany) vs `ImmutableArray` (szybki odczyt, kopia przy zmianie) vs `Frozen*` (najszybszy odczyt, droga budowa).",
+        "Wzorzec: niemutowalny snapshot + podmiana referencji (`Volatile.Write`, `Interlocked.Exchange`, `ImmutableInterlocked.Update`).",
+        "`IReadOnlyList` to tylko widok, nie gwarancja niemutowalności."
+      ],
+      "pitfalls": [
+        "Record z `List<T>` uznany za niemutowalny.",
+        "`ImmutableList` w gorącej pętli odczytu zamiast `ImmutableArray`/`Frozen*`."
+      ],
+      "code": "Volatile.Write(ref _snapshot, fresh.ToFrozenDictionary());",
+      "lang": "csharp",
+      "say": "Niemutowalność stosuję tam, gdzie dane są współdzielone między wątkami lub cache'owane: niemutowalny snapshot plus atomowa podmiana referencji zamiast locków."
+    },
+    {
+      "topic": "Diagnostyka produkcyjna",
+      "points": [
+        "Kolejność: metryki → hipoteza → trace/dump → poprawka → weryfikacja tymi samymi metrykami.",
+        "`dotnet-counters`: CPU, Allocation Rate, % time in GC, rozmiary generacji, kolejka puli, liczba wyjątków.",
+        "Wysokie CPU: `dotnet-trace --profile cpu-sampling` + flame graph (PerfView, Speedscope, VS).",
+        "Pamięć: `dotnet-gcdump` (lekki, tylko graf zarządzany) lub `dotnet-dump` (pełny).",
+        "Kubernetes: `kubectl debug` z ephemeral containerem albo **dotnet-monitor** jako sidecar z triggerami.",
+        "Wysokie CPU + wysoki % time in GC = problem alokacji, nie obliczeń."
+      ],
+      "pitfalls": [
+        "Pełny dump zamraża proces i jest duży – liveness probe może zabić pod w trakcie.",
+        "Dumpy zawierają sekrety i dane osobowe – traktuj je jak dane produkcyjne."
+      ],
+      "code": "dotnet-trace collect -p 1 --profile cpu-sampling --duration 00:00:30\ndotnet-dump collect -p 1 --type Full",
+      "lang": "bash",
+      "say": "Diagnozuję od metryk do dowodu: counters wskazują kategorię problemu, trace lub dump pokazuje konkretny kod, a po poprawce sprawdzam te same metryki."
+    }
+  ]
+}

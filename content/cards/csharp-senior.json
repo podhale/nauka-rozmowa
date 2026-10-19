@@ -1,0 +1,316 @@
+{
+  "cat": "csharp",
+  "name": "C# i .NET",
+  "cards": [
+    {
+      "id": "csharp-s001",
+      "topic": "Thread pool starvation",
+      "level": 3,
+      "q": "Czym jest thread pool starvation, jakie daje objawy i jak go zdiagnozować na produkcji?",
+      "a": "To sytuacja, w której wszystkie wątki puli są zablokowane (najczęściej sync-over-async: .Result, .Wait(), GetAwaiter().GetResult(), synchroniczne I/O), więc nowe work itemy – w tym kontynuacje awaitów i obsługa requestów – czekają w kolejce. Objawy: latencja rośnie skokowo, timeouty, a CPU jest niskie, bo wątki nic nie liczą, tylko czekają. Diagnozuję w kolejności: dotnet-counters (rosnące ThreadPool Queue Length i powoli rosnący ThreadPool Thread Count), potem dump (dotnet-dump collect + clrstack -all) albo dotnet-stack, żeby zobaczyć, na czym wiszą wątki.",
+      "code": "# 1. czy kolejka puli rośnie?\ndotnet-counters monitor -p <PID> --counters System.Runtime\n# 2. co robią wątki?\ndotnet-stack report -p <PID>\ndotnet-dump collect -p <PID>\ndotnet-dump analyze <plik> # > clrstack -all",
+      "lang": "bash",
+      "tip": "Kluczowe zdanie: 'niskie CPU + rosnąca latencja + rosnąca kolejka puli = starvation, nie brak mocy'.",
+      "deep": "Pula ma minimum wątków równe domyślnie liczbie rdzeni; powyżej tego progu dorzuca wątki ostrożnie (algorytm hill climbing plus mechanizm wykrywania starvation), rzędu jednego–dwóch na sekundę. Przy nagłym skoku ruchu i blokującym kodzie kolejka rośnie szybciej niż pula, więc system 'zamarza' na kilkadziesiąt sekund i potem nagle odżywa – klasyczny wzorzec na wykresach. Od .NET 6 pula szybciej dorzuca wątki, gdy wykryje blokowanie na Tasku, ale to łagodzi objaw, a nie usuwa przyczynę. Podniesienie ThreadPool.SetMinThreads to plaster na czas hotfixa: kosztuje pamięć (stos ~1 MB na wątek) i context switching. Właściwa naprawa to async all the way i usunięcie blokującego I/O. W dumpie szukam wielu wątków ze stosem kończącym się na Monitor.Wait / ManualResetEventSlim.Wait / Task.Wait wywołanym z kodu aplikacji. Na Kubernetesie wygodny jest dotnet-monitor jako sidecar, który zbiera dumpy i trace na żądanie lub po triggerze."
+    },
+    {
+      "id": "csharp-s002",
+      "topic": "Deadlock przy .Result/.Wait()",
+      "level": 3,
+      "q": "Musisz wywołać metodę async z kodu synchronicznego (konstruktor, synchroniczny interfejs biblioteki). Jakie masz opcje i co jest najmniejszym złem?",
+      "a": "Najlepiej usunąć problem: przerobić ścieżkę na async (async all the way), zamienić konstruktor na statyczną fabrykę CreateAsync albo przenieść inicjalizację do IHostedService / leniwej inicjalizacji asynchronicznej. Jeśli biblioteka ma synchroniczny odpowiednik (np. HttpClient.Send), lepiej go użyć niż blokować na async. Gdy naprawdę muszę blokować, robię to raz, na brzegu, przez GetAwaiter().GetResult() (lepszy wyjątek niż AggregateException z .Result), a w środowisku z SynchronizationContext – przez Task.Run(...).GetAwaiter().GetResult(), żeby kontynuacje nie wracały na zablokowany wątek.",
+      "code": "public sealed class Catalog\n{\n    private Catalog(IReadOnlyList<Item> items) => Items = items;\n    public IReadOnlyList<Item> Items { get; }\n\n    public static async Task<Catalog> CreateAsync(IItemSource src, CancellationToken ct)\n        => new(await src.LoadAsync(ct));\n}",
+      "lang": "csharp",
+      "deep": "Sync-over-async zawsze zabiera wątek na czas trwania operacji, a często dwa (blokujący i ten, który wykona kontynuację), więc pod obciążeniem prowadzi do thread pool starvation. Task.Run omija deadlock z SynchronizationContext, ale nie usuwa kosztu – tylko przenosi blokadę. W ASP.NET Core deadlocka z kontekstem nie ma (brak SynchronizationContext), więc ludzie uważają blokowanie za 'bezpieczne', a zabija ono skalowalność. Async-over-sync (Task.Run wokół synchronicznego I/O w API) to odwrotny antywzorzec: nie zwalnia wątku, tylko dokłada przełączenie. W konstruktorach DI blokujące wywołanie async jest szczególnie groźne, bo wykona się przy pierwszym resolve, często w środku requestu. W bibliotekach zamiast udostępniać 'Sync wrappery' nad async lepiej mieć dwie prawdziwe implementacje albo tylko async."
+    },
+    {
+      "id": "csharp-s003",
+      "topic": "async/await – mechanizm",
+      "level": 3,
+      "q": "Czym jest SynchronizationContext, dlaczego w ASP.NET Core go nie ma i co to zmienia w praktyce?",
+      "a": "SynchronizationContext to abstrakcja 'gdzie uruchomić kontynuację'. await domyślnie przechwytuje bieżący kontekst (albo TaskScheduler różny od domyślnego) i wznawia na nim kod – w WPF/WinForms to wątek UI, w starym ASP.NET kontekst requestu. ASP.NET Core go nie ma, więc kontynuacje lecą na dowolny wątek puli: nie ma klasycznego deadlocka z .Result, a ConfigureAwait(false) w kodzie aplikacji nic nie zmienia. Nadal jednak HttpContext i DbContext nie są thread-safe, więc nie wolno ich używać równolegle.",
+      "tip": "Rozróżnij: SynchronizationContext decyduje GDZIE wznowić, ExecutionContext niesie DANE (AsyncLocal) przez await.",
+      "deep": "Kontekst przechwytywany jest w momencie await na niezakończonym zadaniu; jeśli zadanie już się zakończyło, kod leci dalej synchronicznie bez przełączenia. Blazor Server ma własny SynchronizationContext renderera, więc tam reguły UI wracają (Blazor WebAssembly i tak wykonuje kod na jednym wątku przeglądarki). ConfigureAwait(false) ma sens w bibliotekach, które mogą być używane z UI – oszczędza przełączeń i chroni przed deadlockiem klienta, który blokuje. Pułapka: Task.Factory.StartNew używa TaskScheduler.Current, więc wywołany z kontynuacji na niestandardowym schedulerze może uruchomić pracę nie tam, gdzie myślisz – stąd rekomendacja Task.Run. ExecutionContext (AsyncLocal, Activity.Current, kultura) to coś innego niż SynchronizationContext: płynie przez await zawsze, także z ConfigureAwait(false). Na rozmowie dobrze odróżnić te dwa pojęcia, bo to typowy follow-up."
+    },
+    {
+      "id": "csharp-s004",
+      "topic": "Channels",
+      "level": 3,
+      "q": "Czym są System.Threading.Channels i kiedy ich używasz zamiast BlockingCollection czy ConcurrentQueue?",
+      "a": "Channel<T> to asynchroniczna kolejka producent–konsument: producent woła WriteAsync, konsument ReadAllAsync, bez blokowania wątków. Bounded channel daje backpressure – gdy kolejka jest pełna, WriteAsync czeka (albo zgodnie z FullMode porzuca elementy), więc szybki producent nie zje pamięci. Używam go do kolejek w tle w procesie (np. BackgroundService przetwarzający zadania z endpointów), pipeline'ów przetwarzania i ograniczania współbieżności. BlockingCollection blokuje wątki, a ConcurrentQueue nie ma czekania ani limitu.",
+      "code": "var channel = Channel.CreateBounded<Job>(new BoundedChannelOptions(500)\n{\n    FullMode = BoundedChannelFullMode.Wait,\n    SingleReader = true\n});\n\n// producent (np. endpoint)\nawait channel.Writer.WriteAsync(job, ct);\n\n// konsument (BackgroundService)\nawait foreach (var j in channel.Reader.ReadAllAsync(stoppingToken))\n    await ProcessAsync(j, stoppingToken);",
+      "lang": "csharp",
+      "deep": "Opcje SingleReader/SingleWriter pozwalają wybrać szybszą implementację, gdy wiesz, że jest jeden konsument lub producent. FullMode: Wait (backpressure), DropOldest, DropNewest, DropWrite – wybór to decyzja biznesowa (telemetria może gubić, zamówienia nie). Unbounded channel jest wygodny, ale pod obciążeniem to tylko odroczony OutOfMemory. Channel żyje w pamięci procesu: restart lub crash poda gubi wszystko, co było w kolejce, więc do pracy, której nie wolno stracić, potrzebny jest trwały broker (RabbitMQ, Azure Service Bus) lub outbox. Zakończenie: writer.Complete() sygnalizuje koniec, a ReadAllAsync kończy się po opróżnieniu – ważne przy graceful shutdown. Kilku konsumentów to po prostu kilka pętli czytających z tego samego readera."
+    },
+    {
+      "id": "csharp-s005",
+      "topic": "IAsyncEnumerable",
+      "level": 2,
+      "q": "Czym jest IAsyncEnumerable<T> i do czego go używasz w API i dostępie do danych?",
+      "a": "IAsyncEnumerable<T> to asynchroniczny odpowiednik IEnumerable – elementy pobiera się przez await foreach, a każdy MoveNextAsync może czekać na I/O bez blokowania wątku. Metoda z async + yield return generuje taki strumień. Przydaje się do przetwarzania dużych zbiorów element po elemencie (EF Core AsAsyncEnumerable, odczyt z kolejki, paginowane API zewnętrzne) bez ładowania wszystkiego do pamięci. ASP.NET Core zwracający IAsyncEnumerable<T> serializuje go strumieniowo przez System.Text.Json.",
+      "code": "public async IAsyncEnumerable<Order> ReadAsync(\n    [EnumeratorCancellation] CancellationToken ct = default)\n{\n    await foreach (var o in db.Orders.AsNoTracking().AsAsyncEnumerable()\n                               .WithCancellation(ct))\n        yield return o;\n}",
+      "lang": "csharp",
+      "deep": "CancellationToken przekazuje się parametrem oznaczonym [EnumeratorCancellation]; wtedy token z WithCancellation(...) po stronie konsumenta jest łączony z parametrem metody – bez atrybutu jest ignorowany (kompilator ostrzega). Strumieniowanie w API zmniejsza zużycie pamięci serwera, ale klient (np. Angular HttpClient) i tak zwykle czeka na całą tablicę JSON, więc realny zysk jest po stronie serwera. Przy EF Core strumień trzyma otwarte połączenie i DataReader przez cały czas iteracji – długie przetwarzanie per element blokuje connection z puli. LINQ na IAsyncEnumerable jest w bibliotece System.Linq.Async, a od .NET 10 bezpośrednio w BCL (System.Linq.AsyncEnumerable) – warto to sprawdzić przed dodaniem pakietu. Wyjątek w środku strumienia przy już rozpoczętej odpowiedzi HTTP oznacza ucięty JSON, a nie ładny ProblemDetails."
+    },
+    {
+      "id": "csharp-s006",
+      "topic": "Alokacje i pooling",
+      "level": 3,
+      "q": "Jak ograniczasz alokacje w gorącej ścieżce: ArrayPool, stackalloc, Span – i jakie są pułapki?",
+      "a": "Najpierw mierzę (MemoryDiagnoser w BenchmarkDotNet, dotnet-counters 'Allocation Rate', dotnet-trace), dopiero potem optymalizuję. Duże bufory tymczasowe wypożyczam z ArrayPool<T>.Shared zamiast alokować (szczególnie powyżej 85 000 B, które trafiłyby na LOH). Małe bufory o ograniczonym rozmiarze mogę zaalokować na stosie przez stackalloc do Span<T>. Parsowanie i formatowanie robię na Span/ReadOnlySpan zamiast Substring/Split, a do budowania tekstu używam string.Create lub interpolacji do Span (TryFormat).",
+      "code": "const int StackLimit = 256;\nbyte[]? rented = null;\nSpan<byte> buf = len <= StackLimit\n    ? stackalloc byte[StackLimit]\n    : (rented = ArrayPool<byte>.Shared.Rent(len));\ntry\n{\n    Fill(buf[..len]);\n}\nfinally\n{\n    if (rented is not null) ArrayPool<byte>.Shared.Return(rented);\n}",
+      "lang": "csharp",
+      "deep": "Rent zwraca tablicę o długości CO NAJMNIEJ żądanej, więc zawsze pracuję na wycinku [..requested], nie na buffer.Length. Zwrot musi być w finally i dokładnie raz – podwójny Return albo użycie bufora po zwrocie to bug typu use-after-free, bardzo trudny do zdiagnozowania. Dane wrażliwe zwracam z clearArray: true. stackalloc tylko dla małych, ograniczonych rozmiarów (typowo do kilkuset bajtów – 1 KB); zmienna długość z inputu użytkownika to ryzyko StackOverflowException, którego nie da się złapać. Popularny wzorzec: stackalloc dla małych, ArrayPool dla dużych. Alokacje ukryte: closures w lambdach, boxing przy interfejsach na structach, params arrays, LINQ w gorącej pętli, async state machine przy każdej asynchronicznej ścieżce. Optymalizacje alokacji pogarszają czytelność, więc stosuję je tylko tam, gdzie profiler pokazuje problem."
+    },
+    {
+      "id": "csharp-s007",
+      "topic": "struct / class / record",
+      "level": 3,
+      "q": "Kiedy struct jest szybszy od klasy, a kiedy wolniejszy? Czym są defensive copies?",
+      "a": "Struct nie wymaga alokacji na stercie i nie obciąża GC, ma lepszą lokalność danych w tablicach, więc małe, niemutowalne typy (do ok. 16 bajtów, np. współrzędne, identyfikatory, wartości pieniężne) są wydajniejsze jako struct. Duży struct jest kopiowany przy każdym przekazaniu, przypisaniu i zwrocie, więc może być wolniejszy od klasy. Struct rzutowany na interfejs lub object jest boxowany. Defensive copy to ukryta kopia, którą kompilator robi, gdy wywołujesz metodę na niemutowalnej lokalizacji (readonly pole, parametr in) zwykłego structa – żeby metoda nie mogła jej zmienić.",
+      "code": "public readonly record struct Money(decimal Amount, string Currency)\n{\n    public Money Add(Money other) => other.Currency == Currency\n        ? this with { Amount = Amount + other.Amount }\n        : throw new InvalidOperationException(\"Currency mismatch\");\n}",
+      "lang": "csharp",
+      "deep": "Rozwiązanie defensive copies: readonly struct (kompilator wie, że metody nie mutują) albo readonly na poszczególnych członkach. Parametr in przekazuje przez referencję bez kopiowania, ale z nie-readonly structem potrafi skończyć się kopią przy każdym wywołaniu metody – efekt odwrotny do zamierzonego. Mutowalne structy w kolekcjach to pułapka: list[i].X = 5 się nie skompiluje, a var p = list[i]; p.X = 5; zmienia kopię; CollectionsMarshal.AsSpan(list) albo CollectionsMarshal.GetValueRefOrAddDefault dla Dictionary daje referencję. Domyślne Equals/GetHashCode structa bez nadpisania może używać refleksji – wolne i z boxingiem; record struct lub IEquatable<T> to rozwiązuje. ref struct (jak Span<T>) żyje tylko na stosie: nie może być polem klasy, a jego użycie w metodach async/iteratorach jest mocno ograniczone. Decyzję struct vs class weryfikuję benchmarkiem, nie intuicją."
+    },
+    {
+      "id": "csharp-s008",
+      "topic": "Garbage Collector",
+      "level": 3,
+      "q": "Server GC vs Workstation GC, concurrent GC i DATAS – jak dobierasz tryb GC dla API w kontenerach?",
+      "a": "Workstation GC ma jedną stertę i jest nastawiony na małe zużycie pamięci (aplikacje desktopowe, małe serwisy). Server GC tworzy stertę i wątek GC na rdzeń – daje wyższą przepustowość, ale zużywa więcej pamięci; ASP.NET Core domyślnie go włącza. Background (concurrent) GC pozwala zbierać gen 2 równolegle z pracą aplikacji, skracając pauzy. Od .NET 9 przy Server GC domyślnie działa DATAS (Dynamic Adaptation To Application Sizes), który dynamicznie dobiera liczbę stert do obciążenia – dzięki temu Server GC w kontenerach zużywa znacznie mniej pamięci.",
+      "code": "<PropertyGroup>\n  <ServerGarbageCollector>true</ServerGarbageCollector>\n  <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>\n</PropertyGroup>\n<!-- lub env: DOTNET_GCHeapHardLimitPercent=0x46 (hex, 70%) -->",
+      "lang": "text",
+      "tip": "Wspomnij, że wartości liczbowe w zmiennych DOTNET_GC* podaje się szesnastkowo – częsta pułapka.",
+      "deep": "GC jest świadomy limitów kontenera (cgroups): przy limicie pamięci domyślny GCHeapHardLimit to ok. 75% limitu, a liczba stert Server GC wynika z limitu CPU. Typowy problem sprzed DATAS: pod z limitem 512 MiB na węźle z wieloma rdzeniami i Server GC miał wiele stert, zużywał dużo pamięci i dostawał OOMKilled. Narzędzia: GCHeapHardLimit / GCHeapHardLimitPercent, GCConserveMemory (agresywniejsze kompaktowanie LOH), DOTNET_GCDynamicAdaptationMode=0 wyłącza DATAS, gdy ważna jest maksymalna przepustowość. Dla małych serwisów o niskim ruchu Workstation GC bywa rozsądniejszy. Metryki do patrzenia: % time in GC, GC heap size, gen 2 collections count, pause time – wysoki % time in GC to zwykle zbyt wiele alokacji, a nie zły tryb. Strojenie GC to ostatni krok po ograniczeniu alokacji."
+    },
+    {
+      "id": "csharp-s009",
+      "topic": "Memory leaks",
+      "level": 3,
+      "q": "Jakie są typowe przyczyny wycieków pamięci w .NET mimo GC i jak je znaleźć?",
+      "a": "GC zbiera tylko obiekty nieosiągalne, więc 'wyciek' to obiekt, który nadal ma ścieżkę od roota. Typowe przyczyny: subskrypcja eventu długożyjącego obiektu przez krótkożyjący bez odpięcia (publisher trzyma subskrybenta), statyczne lub singletonowe cache bez limitu i wygasania, closures trzymające duże obiekty w długo żyjących delegatach, niezdisposowane timery i subskrypcje (np. IOptionsMonitor.OnChange, IChangeToken), oraz IMemoryCache bez SizeLimit z kluczami z inputu użytkownika. Diagnoza: dotnet-counters pokazuje rosnący GC heap/gen 2 mimo pełnych GC, potem dwa dumpy (dotnet-gcdump) w odstępie czasu i porównanie, a dotnet-dump gcroot pokazuje, kto trzyma obiekt.",
+      "code": "dotnet-gcdump collect -p <PID> -o before.gcdump\n# ... kilka minut ruchu ...\ndotnet-gcdump collect -p <PID> -o after.gcdump\n# porównanie w VS / PerfView; ścieżka do roota:\ndotnet-dump analyze core.dmp   # > dumpheap -stat ; gcroot <addr>",
+      "lang": "bash",
+      "deep": "Wzorzec rosnącego gen 2 i LOH po każdym pełnym GC jest sygnałem wycieku; piłokształtny wykres stabilny w czasie to zdrowa aplikacja. W ASP.NET Core częsty wyciek to scoped serwis subskrybujący event singletona: każdy request zostawia instancję podpiętą na zawsze. Statyczny ConcurrentDictionary jako 'cache' z kluczem zawierającym np. userId lub query string rośnie bez końca – lepszy IMemoryCache z SizeLimit lub HybridCache z TTL. Wycieki niezarządzane (handle, natywne bufory) nie są widoczne w GC heap – widać je w working set i liczbie handle, przyczyną jest zwykle brak Dispose. Closure w lambdzie przechwytuje całą klasę 'display class', więc lambda używająca jednej zmiennej może trzymać też inne przechwycone w tym samym scope. Na produkcji w kontenerze dumpy bywają duże (rozmiar ~ working set), więc gcdump jest lżejszy, ale pokazuje tylko graf zarządzany. Naprawa: odpinanie handlerów w Dispose, słabe referencje tylko gdy naprawdę trzeba, limity i TTL dla cache."
+    },
+    {
+      "id": "csharp-s010",
+      "topic": "BenchmarkDotNet",
+      "level": 2,
+      "q": "Jak poprawnie zmierzyć wydajność fragmentu kodu w .NET i dlaczego nie Stopwatch w pętli?",
+      "a": "Używam BenchmarkDotNet: uruchamia kod w osobnym procesie w trybie Release, robi rozgrzewkę (JIT, tiered compilation), wiele iteracji i podaje statystyki (średnia, odchylenie, percentyle), a [MemoryDiagnoser] pokazuje alokacje na operację. Stopwatch w pętli mierzy JIT, tier 0, GC z innych części programu i często kod, który JIT wyeliminował jako martwy. Benchmark porównuje warianty ([Benchmark(Baseline = true)], [Params]) na tych samych danych.",
+      "code": "[MemoryDiagnoser]\npublic class ParseBench\n{\n    private string _csv = \"\";\n    [GlobalSetup] public void Setup() => _csv = string.Join(',', Enumerable.Range(0, 100));\n\n    [Benchmark(Baseline = true)]\n    public int Split() => _csv.Split(',').Length;\n\n    [Benchmark]\n    public int SpanCount() => _csv.AsSpan().Count(',') + 1;\n}\n// BenchmarkRunner.Run<ParseBench>();  (dotnet run -c Release)",
+      "lang": "csharp",
+      "deep": "Metoda benchmarku powinna zwracać wynik (albo użyć Consumer), żeby JIT nie usunął obliczeń (dead code elimination). Dane wejściowe przygotowuję w [GlobalSetup], nie w metodzie benchmarku. BDN nie pozwala uruchomić benchmarków w Debug i ostrzega przy podpiętym debuggerze. Mikrobenchmark mierzy kod w izolacji, w gorącym cache CPU – realny wpływ trzeba potwierdzić na poziomie aplikacji (load test, np. k6/NBomber, plus profil). Można porównać runtime'y ([SimpleJob(RuntimeMoniker.Net80)] vs Net10) – przydatne przy uzasadnianiu migracji. Wyniki rzędu nanosekund dla rzadko wołanego kodu nie mają znaczenia biznesowego – optymalizuję gorące ścieżki wskazane przez profiler. W CI benchmarki są szumne na współdzielonych runnerach, więc lepiej traktować je jako narzędzie analizy niż twardy gate."
+    },
+    {
+      "id": "csharp-s011",
+      "topic": "Source generators",
+      "level": 3,
+      "q": "Czym są source generators, gdzie je spotykasz w .NET i jakie mają trade-offy?",
+      "a": "Source generator to komponent Roslyn uruchamiany w trakcie kompilacji, który analizuje kod i DODAJE nowe pliki źródłowe (nie może modyfikować istniejących – stąd partial). Zastępuje refleksję i generowanie kodu w runtime: szybszy start, mniej alokacji i zgodność z trimmingiem i Native AOT. W BCL to m.in. [GeneratedRegex], JsonSerializerContext w System.Text.Json, [LoggerMessage], [LibraryImport], generator bindowania konfiguracji i Request Delegate Generator dla Minimal APIs. Nowe generatory pisze się jako IIncrementalGenerator.",
+      "code": "public static partial class Validators\n{\n    [GeneratedRegex(@\"^[A-Z]{2}\\d{26}$\", RegexOptions.CultureInvariant)]\n    public static partial Regex Iban();\n}\n\n[JsonSerializable(typeof(OrderDto))]\ninternal partial class AppJsonContext : JsonSerializerContext;",
+      "lang": "csharp",
+      "deep": "Incremental generators budują pipeline z cache'owaniem, żeby nie przeliczać wszystkiego przy każdym naciśnięciu klawisza w IDE – stary ISourceGenerator potrafił zabić wydajność edytora. Wygenerowany kod można podejrzeć (EmitCompilerGeneratedFiles albo w IDE pod Analyzers), co ułatwia debugowanie. Trade-offy: dłuższy build, trudniejsze pisanie i testowanie generatora, kod 'magiczny' dla zespołu, zależność od wersji Roslyn. Nie każdą refleksję warto zastępować: jednorazowa refleksja przy starcie nie jest problemem, dopóki nie celujesz w AOT. Popularne biblioteki: Mapperly (mapowanie bez refleksji), MediatR-podobne biblioteki generujące dispatch, StronglyTypedId. Przy JSON source gen trzeba pamiętać o rejestracji kontekstu (TypeInfoResolverChain), inaczej serializer w AOT nie zna typów."
+    },
+    {
+      "id": "csharp-s012",
+      "topic": "CLR, JIT, AOT",
+      "level": 3,
+      "q": "Kiedy NIE wybrałbyś Native AOT dla serwisu ASP.NET Core? Omów trade-offy.",
+      "a": "Native AOT daje start w milisekundach, mniejsze zużycie pamięci i jedną binarkę bez runtime'u – świetne dla serverless, narzędzi CLI i gęsto upakowanych kontenerów, które często się skalują. Nie wybieram go, gdy aplikacja używa MVC Controllers (nieobsługiwane w AOT), intensywnej refleksji, dynamicznego ładowania pluginów, Reflection.Emit lub bibliotek nieprzygotowanych do trimmingu, a także EF Core w złożonym użyciu, bo wsparcie jest ograniczone. W długo działającym serwisie z dużym ruchem przewaga startu znika, a JIT z Dynamic PGO potrafi osiągnąć wyższą przepustowość w stanie ustalonym.",
+      "tip": "Dobrze zabrzmi: 'AOT optymalizuje start i pamięć, nie peak throughput'.",
+      "deep": "AOT oznacza publikację per runtime identifier (linux-x64, linux-arm64), dłuższy build i potrzebę toolchaina natywnego. Ostrzeżenia trimmingu (IL2026, IL3050) to nie kosmetyka – kod oznaczony RequiresUnreferencedCode/RequiresDynamicCode może w AOT nie działać w runtime. Minimal APIs z CreateSlimBuilder i JSON source generatorem są wspierane; Request Delegate Generator generuje kod endpointów w kompilacji. Expression.Compile w AOT przechodzi na interpreter, więc biblioteki oparte na expression trees zwalniają. Alternatywy pośrednie: ReadyToRun (szybszy start, nadal JIT), trimming bez AOT, tiered compilation z PGO. Decyzję opieram na pomiarze: startup time, RSS pod obciążeniem, RPS i koszt utrzymania zgodności z AOT w całym zespole. W .NET 8+ można włączyć analizatory AOT (IsAotCompatible) w bibliotekach wcześniej, żeby zobaczyć skalę problemu."
+    },
+    {
+      "id": "csharp-s013",
+      "topic": "Reflection i expression trees",
+      "level": 3,
+      "q": "Refleksja, skompilowane expression trees czy source generator – jak wybierasz przy dynamicznym dostępie do członków?",
+      "a": "Refleksja (GetProperty, MethodInfo.Invoke) jest najprostsza, ale wolna przy każdym wywołaniu i niezbyt przyjazna dla trimmingu/AOT. Expression trees pozwalają raz zbudować i skompilować delegat (Expression.Lambda(...).Compile()), który potem działa prawie jak zwykłe wywołanie – opłaca się, gdy ta sama operacja wykona się wiele razy i wynik trzymam w cache. Source generator przenosi całą pracę do kompilacji – najszybszy i zgodny z AOT, ale najdroższy w implementacji. Do dostępu do prywatnych członków bez refleksji od .NET 8 jest [UnsafeAccessor].",
+      "code": "static class Getter<T>\n{\n    private static readonly ConcurrentDictionary<string, Func<T, object?>> Cache = new();\n\n    public static Func<T, object?> For(string prop) => Cache.GetOrAdd(prop, p =>\n    {\n        var x = Expression.Parameter(typeof(T));\n        var body = Expression.Convert(Expression.Property(x, p), typeof(object));\n        return Expression.Lambda<Func<T, object?>>(body, x).Compile();\n    });\n}",
+      "lang": "csharp",
+      "deep": "Compile() kosztuje dużo (milisekundy, alokacje, generowanie IL), więc kompilowanie w każdym wywołaniu jest gorsze niż sama refleksja – kluczowy jest cache (np. statyczny ConcurrentDictionary<Type, Func<...>> lub generic static class cache). Od .NET 7/8 refleksja przyspieszyła (MethodInvoker/ConstructorInvoker w .NET 8), więc różnica bywa mniejsza niż kilka lat temu. W AOT Expression.Compile działa w trybie interpretera i Reflection.Emit jest niedostępne – biblioteki typu stare mappery czy niektóre ORM-y zwalniają lub nie działają. Expression trees mają też drugie zastosowanie: IQueryable – EF Core tłumaczy je na SQL, nie kompiluje do IL. Na rozmowie dobrze pokazać tok myślenia: zmierzyć, czy to gorąca ścieżka, i dopiero wtedy wybrać cięższe rozwiązanie."
+    },
+    {
+      "id": "csharp-s014",
+      "topic": "Immutability",
+      "level": 2,
+      "q": "Jakie korzyści i koszty daje niemutowalność w C# i jak ją realizujesz?",
+      "a": "Obiekty niemutowalne są bezpieczne wątkowo bez locków, łatwiejsze do rozumowania (brak 'kto to zmienił?'), dobrze nadają się na klucze słowników, wartości w cache i Value Objects w DDD. W C# realizuję to przez record z init, readonly struct, właściwości get-only, a dla kolekcji ImmutableArray/ImmutableList, FrozenDictionary/FrozenSet albo eksponowanie IReadOnlyList. Kosztem jest kopiowanie przy każdej 'zmianie' – with tworzy nowy obiekt.",
+      "code": "public sealed class RatesProvider\n{\n    private FrozenDictionary<string, decimal> _rates = FrozenDictionary<string, decimal>.Empty;\n\n    public decimal Get(string code) => Volatile.Read(ref _rates)[code];\n\n    public void Reload(IEnumerable<KeyValuePair<string, decimal>> fresh) =>\n        Volatile.Write(ref _rates, fresh.ToFrozenDictionary());\n}",
+      "lang": "csharp",
+      "deep": "with robi płytką kopię: jeśli record ma właściwość List<T>, kopia współdzieli tę samą listę, więc 'niemutowalny' record nadal może się zmienić – należy używać niemutowalnych kolekcji w środku. ImmutableList<T> to drzewo AVL: Add/Remove O(log n) ze współdzieleniem struktury, ale wolniejszy odczyt i więcej alokacji; ImmutableArray<T> ma szybki odczyt jak tablica, ale każda modyfikacja kopiuje całość – dobry dla danych budowanych raz. FrozenDictionary jest drogi w budowie i najszybszy w odczycie – idealny na konfigurację ładowaną przy starcie. Popularny wzorzec współbieżny: niemutowalny snapshot + podmiana referencji (Volatile.Write / Interlocked.Exchange albo ImmutableInterlocked.Update), czytelnicy nigdy nie widzą stanu pośredniego. IReadOnlyList to tylko widok – właściciel nadal może zmieniać kolekcję pod spodem, więc nie jest to gwarancja niemutowalności. EF Core wspiera records i konstruktory, ale encje śledzone przez change tracker zwykle zostają mutowalne."
+    },
+    {
+      "id": "csharp-s015",
+      "topic": "Diagnostyka produkcyjna",
+      "level": 3,
+      "q": "API w kontenerze nagle używa 100% CPU albo ciągle rośnie mu pamięć. Jak krok po kroku diagnozujesz problem?",
+      "a": "Zaczynam od metryk i hipotezy, nie od zgadywania w kodzie: dotnet-counters (CPU, alokacje, % time in GC, rozmiary generacji, kolejka puli wątków, liczba wyjątków) albo te same metryki z OpenTelemetry na dashboardzie. Dla wysokiego CPU zbieram dotnet-trace (sampling CPU) i oglądam flame graph w PerfView/Speedscope/Visual Studio. Dla pamięci – dotnet-gcdump lub pełny dump (dotnet-dump) i analiza najliczniejszych typów oraz ścieżek do rootów. Korelaty biorę z logów i trace'ów: który endpoint, od kiedy, po jakim deployu.",
+      "code": "dotnet-counters monitor -p 1 --counters System.Runtime\ndotnet-trace collect -p 1 --profile cpu-sampling --duration 00:00:30\ndotnet-dump collect -p 1 --type Full",
+      "lang": "bash",
+      "deep": "W Kubernetesie narzędzia muszą być dostępne w podzie: albo obraz z narzędziami, albo kubectl debug z ephemeral containerem, albo dotnet-monitor jako sidecar wystawiający /dump, /trace, /gcdump przez HTTP i z triggerami (np. CPU > 80% przez 1 min). Kontener potrzebuje wspólnego /tmp z sidecarem (diagnostic socket). Wysokie CPU przy wysokim % time in GC wskazuje na alokacje, a nie na 'ciężkie obliczenia'. Duża liczba wyjątków na sekundę też potrafi zjeść CPU – wyjątki są drogie. Pełny dump zatrzymuje proces na czas zapisu i ma rozmiar porównywalny z pamięcią procesu – trzeba pamiętać o miejscu na dysku i o tym, że liveness probe może w tym czasie zabić pod. Dumpy zawierają dane z pamięci (tokeny, dane osobowe), więc wymagają ostrożnego obchodzenia się zgodnie z polityką bezpieczeństwa. Po naprawie wynik weryfikuję tymi samymi metrykami."
+    },
+    {
+      "id": "csharp-s016",
+      "topic": "lock i SemaphoreSlim",
+      "level": 2,
+      "q": "Co wnosi typ System.Threading.Lock z .NET 9 i jak go używać?",
+      "a": "System.Threading.Lock to dedykowany typ blokady wprowadzony w .NET 9 (C# 13). Gdy instrukcja lock dostaje obiekt typu Lock, kompilator generuje wywołanie Lock.EnterScope() zamiast Monitor.Enter/Exit – jest to szybsze i jaśniej wyraża intencję niż lock na zwykłym object. Zamieniam pola 'private readonly object _sync = new();' na 'private readonly Lock _sync = new();'. Semantyka pozostaje ta sama: blokada reentrant dla tego samego wątku i brak await wewnątrz lock.",
+      "code": "public sealed class Counter\n{\n    private readonly Lock _sync = new();\n    private int _value;\n\n    public int Increment()\n    {\n        lock (_sync) { return ++_value; }\n    }\n}",
+      "lang": "csharp",
+      "deep": "Pułapka: jeśli obiekt Lock zostanie potraktowany jako object (przypisany do zmiennej object, przekazany do metody przyjmującej object), lock wróci do Monitor – kompilator wyświetla ostrzeżenie. Lock nie rozwiązuje problemu sekcji krytycznych z await – tam nadal SemaphoreSlim(1,1) z WaitAsync i Release w finally. Dla prostych liczników lepsze są Interlocked, a dla odczytów przeważających nad zapisami – niemutowalne snapshoty lub ReaderWriterLockSlim (ostrożnie, jest cięższy). Długie sekcje krytyczne pod obciążeniem prowadzą do lock contention; widać to w dotnet-counters jako 'Monitor Lock Contention Count'. Zasada: trzymać lock jak najkrócej, nie wołać pod nim kodu zewnętrznego (callbacków, eventów, I/O)."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "csharp-sq001",
+      "topic": "Thread pool starvation",
+      "level": 3,
+      "q": "API pod rosnącym ruchem: p99 latencji skacze z 80 ms do 20 s, CPU ok. 15%, baza i zależności odpowiadają szybko. dotnet-counters pokazuje rosnące ThreadPool Queue Length i liczbę wątków puli rosnącą o ok. 1 na sekundę. Najbardziej prawdopodobna przyczyna?",
+      "options": [
+        "Za mało rdzeni CPU – trzeba skalować pionowo",
+        "Blokujące wywołania (sync-over-async, synchroniczne I/O) zajmują wątki puli – thread pool starvation",
+        "Zbyt częste pełne GC gen 2",
+        "Za mały Max Pool Size w connection stringu do bazy"
+      ],
+      "correct": 1,
+      "why": "Niskie CPU przy rosnącej kolejce puli i powolnym przyroście wątków to podręcznikowy obraz starvation: wątki czekają zablokowane, a pula dorzuca nowe ostrożnie. Brak CPU dawałby wysokie zużycie CPU. GC dawałby wysoki % time in GC. Wyczerpana pula połączeń dawałaby wyjątki timeoutu przy pobieraniu połączenia i zwykle nie rosnącą kolejkę puli wątków (chyba że oczekiwanie na połączenie jest synchroniczne)."
+    },
+    {
+      "id": "csharp-sq002",
+      "topic": "Diagnostyka produkcyjna",
+      "level": 3,
+      "q": "Podejrzewasz, że wątki w produkcyjnym podzie wiszą na blokujących wywołaniach. Co da ci najszybciej konkretną odpowiedź, który kod blokuje?",
+      "options": [
+        "Włączenie logowania na poziomie Trace i restart poda",
+        "Podniesienie ThreadPool.SetMinThreads i obserwacja, czy problem znika",
+        "Zebranie stosów wątków (dotnet-stack report lub dump i clrstack -all) i szukanie powtarzających się ramek Wait/Result w kodzie aplikacji",
+        "Uruchomienie BenchmarkDotNet na podejrzanej metodzie"
+      ],
+      "correct": 2,
+      "why": "Stosy wątków pokazują dokładnie, gdzie każdy wątek czeka – przy starvation widać dziesiątki wątków z tą samą ramką kodu aplikacji wywołującą .Result/.Wait(). Restart usuwa dowody, a Trace logging zwiększa obciążenie. SetMinThreads może złagodzić objaw, ale nie wskaże przyczyny. BenchmarkDotNet mierzy kod w izolacji i nie odtworzy kontencji z produkcji."
+    },
+    {
+      "id": "csharp-sq003",
+      "topic": "Channels",
+      "level": 2,
+      "q": "Endpoint zapisuje zadania do Channel.CreateBounded<Job>(1000) z FullMode = Wait, a BackgroundService przetwarza je wolniej, niż napływają. Co się stanie pod stałym obciążeniem?",
+      "options": [
+        "Po zapełnieniu kanału WriteAsync w endpointach będzie asynchronicznie czekać na miejsce, więc latencja endpointów wzrośnie (backpressure)",
+        "Najstarsze zadania zaczną być po cichu usuwane",
+        "WriteAsync rzuci ChannelClosedException po przekroczeniu 1000 elementów",
+        "Kanał automatycznie urośnie, a pamięć procesu będzie rosła bez ograniczeń"
+      ],
+      "correct": 0,
+      "why": "FullMode.Wait oznacza backpressure: producent czeka, aż konsument zwolni miejsce, więc presja przenosi się na wywołujących (rosnąca latencja, ewentualnie timeouty) zamiast na pamięć. Usuwanie najstarszych to DropOldest. ChannelClosedException pojawia się tylko po Complete(). Nieograniczony wzrost to cecha unbounded channel. Warto dodać CancellationToken do WriteAsync albo TryWrite z odpowiedzią 503/429, żeby nie trzymać requestów w nieskończoność."
+    },
+    {
+      "id": "csharp-sq004",
+      "topic": "Memory leaks",
+      "level": 3,
+      "q": "Pamięć API rośnie z każdą godziną, gen 2 nie spada po pełnych GC. gcroot dla tysięcy instancji OrderViewModelBuilder pokazuje ścieżkę przez singleton PriceFeed. Który kod jest najbardziej prawdopodobną przyczyną?",
+      "options": [
+        "OrderViewModelBuilder zarejestrowany jako scoped implementuje IDisposable",
+        "Singleton PriceFeed ma pole typu ILogger<PriceFeed>",
+        "OrderViewModelBuilder używa IOptions<PriceOptions>",
+        "Scoped OrderViewModelBuilder w konstruktorze robi feed.PriceChanged += OnPriceChanged i nigdy się nie odpina"
+      ],
+      "correct": 3,
+      "why": "Event trzyma referencję do delegata, a delegat do obiektu subskrybenta. Singleton żyje przez cały czas działania aplikacji, więc każda scoped instancja podpięta pod jego event nigdy nie zostanie zebrana. Rozwiązanie: odpiąć handler w Dispose (scoped serwisy są disposowane na końcu requestu) albo zmienić projekt na pull/IObservable z jawną subskrypcją. Pozostałe opcje nie tworzą ścieżki od singletona do scoped instancji."
+    },
+    {
+      "id": "csharp-sq005",
+      "topic": "Alokacje i pooling",
+      "level": 2,
+      "q": "Co jest nie tak w tym kodzie?",
+      "code": "byte[] buffer = ArrayPool<byte>.Shared.Rent(1000);\ntry\n{\n    int count = await stream.ReadAsync(buffer.AsMemory(0, 1000), ct);\n    for (int i = 0; i < buffer.Length; i++) checksum += buffer[i];\n}\nfinally { ArrayPool<byte>.Shared.Return(buffer); }",
+      "lang": "csharp",
+      "options": [
+        "Nic – Rent zawsze zwraca tablicę dokładnie o żądanej długości",
+        "Rent może zwrócić większą tablicę, więc pętla po buffer.Length przetworzy śmieci z poprzednich użyć; trzeba pracować na buffer.AsSpan(0, count)",
+        "ArrayPool<byte>.Shared nie jest thread-safe",
+        "Tablicy z ArrayPool nie wolno przekazywać do Stream.ReadAsync"
+      ],
+      "correct": 1,
+      "why": "ArrayPool.Rent zwraca tablicę o długości co najmniej żądanej (zwykle zaokrągloną w górę do kubełka, np. 1000 -> 1024). Dane za żądanym rozmiarem są pozostałościami po wcześniejszych użytkownikach puli. Shared pool jest thread-safe, a wypożyczoną tablicę można normalnie przekazywać do I/O – byle nie używać jej po Return."
+    },
+    {
+      "id": "csharp-sq006",
+      "topic": "IAsyncEnumerable",
+      "level": 3,
+      "q": "Klient anuluje cts po 1 sekundzie, ale strumień nadal czyta wszystkie rekordy z bazy. Dlaczego?",
+      "code": "async IAsyncEnumerable<Row> Stream(CancellationToken ct = default)\n{\n    await foreach (var r in db.Rows.AsAsyncEnumerable().WithCancellation(ct))\n        yield return r;\n}\n\nawait foreach (var r in Stream().WithCancellation(cts.Token))\n    Process(r);",
+      "lang": "csharp",
+      "options": [
+        "WithCancellation działa tylko z ConfigureAwait(false)",
+        "await foreach nie wspiera anulowania",
+        "Parametr ct nie ma atrybutu [EnumeratorCancellation], więc token z WithCancellation nie trafia do metody, a ct ma wartość default",
+        "EF Core ignoruje tokeny w AsAsyncEnumerable"
+      ],
+      "correct": 2,
+      "why": "WithCancellation przekazuje token do GetAsyncEnumerator. Kompilator łączy go z parametrem metody iteratora tylko wtedy, gdy parametr jest oznaczony [EnumeratorCancellation] (bez niego zgłasza ostrzeżenie CS8425). Tutaj Stream() zostało wywołane bez argumentu, więc ct == default i anulowanie nigdy nie dociera do zapytania. await foreach wspiera anulowanie, a EF Core respektuje token przekazany do WithCancellation."
+    },
+    {
+      "id": "csharp-sq007",
+      "topic": "struct / class / record",
+      "level": 3,
+      "q": "Co wypisze ten kod?",
+      "code": "struct Counter { public int Value; public void Inc() => Value++; }\n\nclass Holder\n{\n    private readonly Counter _c;\n    public int Bump() { _c.Inc(); return _c.Value; }\n}\n\nConsole.WriteLine(new Holder().Bump());",
+      "lang": "csharp",
+      "options": [
+        "0",
+        "1",
+        "Błąd kompilacji – nie można wywołać metody na polu readonly",
+        "Wyjątek InvalidOperationException w runtime"
+      ],
+      "correct": 0,
+      "why": "_c jest polem readonly typu struct, który nie jest readonly struct. Żeby zagwarantować niezmienność pola, kompilator wywołuje Inc() na defensive copy – zwiększa się kopia, a pole zostaje równe 0. Kod kompiluje się bez błędu. Rozwiązania: oznaczyć struct jako readonly (wtedy Inc() nie skompiluje się, co ujawnia problem) albo usunąć readonly z pola, jeśli mutacja jest zamierzona."
+    },
+    {
+      "id": "csharp-sq008",
+      "topic": "Garbage Collector",
+      "level": 3,
+      "q": "Po migracji API z .NET 8 na .NET 9/10 (bez zmian konfiguracji, Server GC) zużycie pamięci podów w spokojnych godzinach spadło o kilkadziesiąt procent przy podobnym RPS. Co najbardziej prawdopodobnie za to odpowiada?",
+      "options": [
+        "Przełączenie ASP.NET Core na Workstation GC w nowych wersjach",
+        "Wyłączenie Large Object Heap",
+        "Native AOT włączany automatycznie w .NET 9",
+        "DATAS – domyślnie włączona w .NET 9 dynamiczna adaptacja liczby stert Server GC do obciążenia"
+      ],
+      "correct": 3,
+      "why": "Od .NET 9 Server GC domyślnie używa DATAS (Dynamic Adaptation To Application Sizes): zaczyna od mniejszej liczby stert i dostosowuje je do obciążenia, więc przy małym ruchu zajmuje znacznie mniej pamięci. ASP.NET Core nadal domyślnie używa Server GC, LOH istnieje dalej, a Native AOT wymaga jawnego PublishAot. DATAS można wyłączyć przez GCDynamicAdaptationMode=0, gdy liczy się maksymalna przepustowość."
+    },
+    {
+      "id": "csharp-sq009",
+      "topic": "CLR, JIT, AOT",
+      "level": 2,
+      "q": "Po włączeniu PublishAot w Minimal API build zgłasza ostrzeżenia IL2026/IL3050 przy JsonSerializer.Serialize(order). Co jest właściwą reakcją?",
+      "options": [
+        "Dodać JsonSerializerContext z [JsonSerializable(typeof(OrderDto))] i zarejestrować go w opcjach JSON, żeby serializacja nie wymagała refleksji",
+        "Zignorować ostrzeżenia – AOT obsługuje refleksję tak samo jak JIT",
+        "Wyłączyć trimming, zostawiając AOT",
+        "Zamienić System.Text.Json na Newtonsoft.Json"
+      ],
+      "correct": 0,
+      "why": "IL2026/IL3050 oznaczają kod wymagający refleksji lub generowania kodu w runtime, który w AOT może nie działać. System.Text.Json source generator (JsonSerializerContext) generuje metadane w kompilacji – to wspierana ścieżka dla AOT (rejestracja np. przez ConfigureHttpJsonOptions i TypeInfoResolverChain). Native AOT zawsze trimuje, a Newtonsoft.Json opiera się na refleksji i nie jest przygotowany pod AOT."
+    },
+    {
+      "id": "csharp-sq010",
+      "topic": "BenchmarkDotNet",
+      "level": 2,
+      "q": "Benchmark pokazuje ok. 0,0 ns dla tej metody. Najbardziej prawdopodobne wyjaśnienie?",
+      "code": "private double _x = 12345.678;\n\n[Benchmark]\npublic void Sqrt() { Math.Sqrt(_x); }",
+      "lang": "csharp",
+      "options": [
+        "Math.Sqrt jest wykonywany przez GPU",
+        "Wynik nie jest używany, więc JIT usunął obliczenie jako martwy kod – metoda powinna zwracać wynik",
+        "BenchmarkDotNet nie mierzy metod void",
+        "Benchmark został uruchomiony w trybie Release, a należy mierzyć w Debug"
+      ],
+      "correct": 1,
+      "why": "Obliczenie bez efektów ubocznych, którego wynik jest porzucany, JIT może całkowicie wyeliminować (dead code elimination). Wystarczy zwrócić wynik z metody (BDN go 'konsumuje') albo użyć Consumer. BDN mierzy też metody void – po prostu nie ma tu czego mierzyć. Benchmarki uruchamia się w Release; BDN odmawia lub ostrzega przy buildzie Debug."
+    }
+  ]
+}

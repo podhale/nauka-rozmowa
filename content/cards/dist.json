@@ -1,0 +1,821 @@
+{
+  "cat": "dist",
+  "name": "Systemy rozproszone i messaging",
+  "cards": [
+    {
+      "id": "dist-001",
+      "topic": "Komunikacja asynchroniczna",
+      "level": 1,
+      "q": "Point-to-point vs publish/subscribe i competing consumers – czym się różnią?",
+      "a": "Point-to-point (kolejka): każdą wiadomość przetwarza dokładnie jeden konsument; to typowy kanał dla komend (\"zrób X\"). Publish/subscribe: wiadomość trafia do wszystkich subskrybentów, każdy dostaje własną kopię; to kanał dla eventów (\"stało się X\"). Competing consumers to wiele instancji tego samego serwisu czytających z jednej kolejki – broker rozdziela między nie wiadomości, co daje skalowanie poziome i odporność. Łącząc oba: event publikowany na topic, każdy serwis-subskrybent ma własną kolejkę/subskrypcję, a w jej obrębie kilka instancji konkuruje o wiadomości.",
+      "tip": "Dobrze dodać: komenda ma jednego właściciela (odbiorcę), event ma jednego nadawcę i dowolnie wielu odbiorców – nadawca eventu nie wie, kto go słucha."
+    },
+    {
+      "id": "dist-002",
+      "topic": "Komunikacja asynchroniczna",
+      "level": 2,
+      "q": "Message broker (RabbitMQ, Service Bus) vs event streaming (Kafka) – na czym polega różnica?",
+      "a": "Klasyczny broker to kolejka: wiadomość po potwierdzeniu (ack) jest usuwana, broker śledzi stan każdej wiadomości, wspiera routing, priorytety, opóźnienia i DLQ – świetny do komend i rozdzielania pracy. Event streaming to rozproszony, trwały log: wiadomości zostają przez okres retencji niezależnie od odczytu, konsument sam pamięta pozycję (offset), może przewinąć i odtworzyć historię, a wiele grup konsumentów czyta ten sam strumień niezależnie. Kafka daje ogromną przepustowość i kolejność w partycji, ale słabsze mechanizmy per wiadomość (brak natywnego DLQ, delayed messages czy selektywnego ack).",
+      "tip": "Nie mów, że Kafka \"jest kolejką\" – rekruter często łapie na tym, że konsumpcja nie usuwa wiadomości.",
+      "deep": "Model mentalny: broker to \"smart broker, dumb consumer\" – broker zna stan każdej wiadomości (in-flight, redelivery count, lock). Log to \"dumb broker, smart consumer\" – broker tylko dopisuje i serwuje sekwencyjnie, stan to jeden offset na partycję na grupę, dzięki czemu skaluje się do milionów wiadomości/s. Konsekwencja: w Kafce nie da się \"pominąć\" jednej wadliwej wiadomości i potwierdzić następnych – commit offsetu jest kumulatywny, więc trzeba samemu zbudować retry topics/DLT. Równoległość w Kafce jest ograniczona liczbą partycji, w brokerze – liczbą konsumentów. Streaming wybieram, gdy potrzebuję replay (nowy serwis buduje read model od zera), event sourcingu/CDC, analityki strumieniowej lub wysokiego wolumenu; broker – do workflow, komend, opóźnionych zadań, request/reply i złożonego routingu. Granica się zaciera: RabbitMQ ma Streams, Azure Event Hubs ma API zgodne z Kafką."
+    },
+    {
+      "id": "dist-003",
+      "topic": "RabbitMQ",
+      "level": 2,
+      "q": "Opisz model RabbitMQ: exchange, binding, queue, ack/nack i prefetch.",
+      "a": "Producent publikuje do exchange z routing key, a exchange według bindingów kopiuje wiadomość do kolejek. Typy exchange: direct (dokładne dopasowanie klucza), fanout (do wszystkich kolejek, klucz ignorowany), topic (wzorce z * – jedno słowo i # – zero lub więcej słów, np. order.*.created) oraz headers (dopasowanie po nagłówkach). Konsument z autoAck=false po przetworzeniu wysyła ack; nack/reject z requeue=true wraca wiadomość do kolejki, z requeue=false odrzuca ją (trafi do DLX, jeśli skonfigurowany). Prefetch (basic.qos) ogranicza liczbę niepotwierdzonych wiadomości na konsumenta – bez niego broker wypchnie wszystko do jednego klienta.",
+      "code": "await channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 20, global: false);\nvar consumer = new AsyncEventingBasicConsumer(channel);\nconsumer.ReceivedAsync += async (_, ea) =>\n{\n    try { await HandleAsync(ea.Body); await channel.BasicAckAsync(ea.DeliveryTag, false); }\n    catch { await channel.BasicNackAsync(ea.DeliveryTag, false, requeue: false); }\n};\nawait channel.BasicConsumeAsync(\"orders\", autoAck: false, consumer);",
+      "lang": "csharp",
+      "tip": "Pytanie kontrolne: co dzieje się z niepotwierdzonymi wiadomościami, gdy konsument zerwie połączenie? Wracają do kolejki i zostaną dostarczone ponownie (redelivered=true).",
+      "deep": "autoAck=true to at-most-once: broker uznaje wiadomość za dostarczoną w chwili wysłania, crash konsumenta = utrata. Prefetch to kompromis: za mały (1) – konsument czeka na każdy round-trip i przepustowość spada; za duży – jeden wolny konsument trzyma setki wiadomości, inne się nudzą, a przy crashu wszystkie wracają do kolejki naraz. Praktyczny punkt startu to kilkadziesiąt, dostrojony do czasu przetwarzania i liczby wątków. Po stronie producenta odpowiednikiem ack są publisher confirms – bez nich wiadomość może zginąć między klientem a brokerem; do tego persistent delivery mode i durable queue. Nack z requeue=true przy błędzie deterministycznym tworzy gorącą pętlę redelivery – stąd DLX i limity dostarczeń. Biblioteka RabbitMQ.Client od wersji 7 ma w pełni asynchroniczne API (IChannel zamiast IModel)."
+    },
+    {
+      "id": "dist-004",
+      "topic": "RabbitMQ",
+      "level": 3,
+      "q": "Jak w RabbitMQ obsłużyć wiadomości, których nie da się przetworzyć? Dead letter exchange, quorum queues, delivery limit.",
+      "a": "Kolejce ustawiam argument x-dead-letter-exchange – wiadomość odrzucona z requeue=false, wygasła (TTL) lub odrzucona przez przepełnienie trafia do DLX, a stamtąd do kolejki DLQ do analizy lub ręcznego replay. Quorum queues (replikowane przez Raft) to dziś zalecany typ kolejek dla danych, na których zależy – śledzą liczbę dostarczeń i z x-delivery-limit po przekroczeniu limitu dead-letterują wiadomość, co przerywa nieskończone pętle requeue. Opóźnione ponawianie realizuje się kolejką retry z TTL, która po wygaśnięciu dead-letteruje z powrotem do kolejki głównej, albo w bibliotece (MassTransit/NServiceBus).",
+      "code": "await channel.QueueDeclareAsync(\"orders\", durable: true, exclusive: false, autoDelete: false,\n    arguments: new Dictionary<string, object?>\n    {\n        [\"x-queue-type\"] = \"quorum\",\n        [\"x-dead-letter-exchange\"] = \"orders.dlx\",\n        [\"x-delivery-limit\"] = 5\n    });",
+      "lang": "csharp",
+      "tip": "Wspomnij o monitoringu DLQ i procedurze replay – to odróżnia praktyka od teoretyka.",
+      "deep": "Classic queues bez replikacji tracą dane przy awarii węzła; classic mirrored queues zostały usunięte w RabbitMQ 4.0, więc HA = quorum queues (lub Streams dla logu). Quorum queues wymagają większości węzłów (klaster 3 lub 5), mają większy narzut na zapis i nie wspierają wszystkich funkcji classic queues, ale dają trwałość i at-least-once przy awarii węzła. W RabbitMQ 4.x quorum queues mają domyślny delivery limit, więc wiadomość zapętlona w requeue ostatecznie wyląduje w DLX lub zostanie odrzucona – warto ustawić DLX świadomie. Dead-letterowana wiadomość dostaje nagłówek x-death z powodem i licznikiem – przydaje się w narzędziu do replay. DLQ musi mieć monitoring i alert na rosnącą liczbę wiadomości; DLQ, do której nikt nie zagląda, to cicha utrata danych."
+    },
+    {
+      "id": "dist-005",
+      "topic": "Kafka",
+      "level": 1,
+      "q": "Wyjaśnij pojęcia Kafki: topic, partition, offset, consumer group.",
+      "a": "Topic to nazwany strumień zdarzeń podzielony na partycje; każda partycja to uporządkowany, append-only log replikowany na kilku brokerach. Offset to numer pozycji wiadomości w partycji – konsument zapisuje (commit) offset, do którego przetworzył dane. Consumer group to zbiór instancji jednego serwisu: każda partycja jest przydzielona dokładnie jednemu konsumentowi w grupie, więc partycje wyznaczają maksymalny poziom równoległości. Różne grupy czytają ten sam topic niezależnie, każda z własnymi offsetami.",
+      "tip": "Typowy follow-up: co jeśli konsumentów jest więcej niż partycji? Nadmiarowe instancje stoją bezczynnie."
+    },
+    {
+      "id": "dist-006",
+      "topic": "Kafka",
+      "level": 2,
+      "q": "Jak Kafka gwarantuje kolejność i co dzieje się podczas rebalancingu consumer group?",
+      "a": "Kolejność jest gwarantowana tylko w obrębie partycji. Producent wybiera partycję na podstawie hasha klucza, więc wszystkie zdarzenia z tym samym kluczem (np. OrderId) trafią do jednej partycji i zostaną przeczytane w kolejności zapisu. Bez klucza wiadomości są rozrzucane po partycjach i globalnej kolejności nie ma. Rebalancing następuje, gdy konsument dołącza, odchodzi lub nie wysyła heartbeatów/nie wywołuje poll w czasie max.poll.interval.ms – partycje są przydzielane od nowa, a nieskomitowane wiadomości przetworzy nowy właściciel (duplikaty).",
+      "code": "await producer.ProduceAsync(\"orders\", new Message<string, string>\n{\n    Key = order.Id.ToString(),   // ten sam klucz -> ta sama partycja -> kolejność\n    Value = JsonSerializer.Serialize(evt)\n});",
+      "lang": "csharp",
+      "tip": "Pułapka: \"Kafka gwarantuje kolejność\" – tylko w partycji i tylko gdy klucz jest dobrze dobrany.",
+      "deep": "Zwiększenie liczby partycji zmienia mapowanie hash(key) % N, więc nowe zdarzenia dla starego klucza mogą trafić do innej partycji niż poprzednie – na czas przejścia kolejność per klucz jest złamana; liczbę partycji warto zaplanować z zapasem. Po stronie producenta retry mogą zamienić kolejność – idempotentny producer (EnableIdempotence = true; warto ustawić jawnie) zachowuje kolejność i usuwa duplikaty przy retry. Długie przetwarzanie pojedynczej wiadomości przekraczające max.poll.interval.ms powoduje wyrzucenie konsumenta z grupy i \"rebalance storm\" – rozwiązaniem jest krótsza paczka (max.poll.records), szybsze przetwarzanie albo przekazanie pracy do workerów z kontrolą commitów. Cooperative (incremental) rebalancing ogranicza przestój, bo zabiera tylko przenoszone partycje zamiast zatrzymywać całą grupę. Przetwarzanie wiadomości z jednej partycji równolegle w kilku wątkach łamie kolejność – można równoleglić per klucz."
+    },
+    {
+      "id": "dist-007",
+      "topic": "Kafka",
+      "level": 2,
+      "q": "Commit offsetów, retencja i log compaction w Kafce – co trzeba wiedzieć?",
+      "a": "Moment commitu wyznacza semantykę: commit po przetworzeniu daje at-least-once (crash przed commitem = ponowne przetworzenie), commit przed przetworzeniem – at-most-once. Dlatego w krytycznych konsumentach wyłączam auto-commit i commituję ręcznie po udanym przetworzeniu, a handler robię idempotentny. Retencja jest czasowa lub rozmiarowa (np. 7 dni) i nie zależy od tego, czy ktoś przeczytał wiadomość. Log compaction zachowuje dla każdego klucza tylko ostatnią wartość (a tombstone z null usuwa klucz) – topic staje się \"tabelą\" aktualnego stanu, np. do odtwarzania cache lub snapshotów.",
+      "code": "var config = new ConsumerConfig\n{\n    BootstrapServers = \"kafka:9092\", GroupId = \"billing\",\n    EnableAutoCommit = false, AutoOffsetReset = AutoOffsetReset.Earliest\n};\nusing var consumer = new ConsumerBuilder<string, string>(config).Build();\nconsumer.Subscribe(\"orders\");\nwhile (!ct.IsCancellationRequested)\n{\n    var cr = consumer.Consume(ct);\n    await HandleAsync(cr.Message);   // idempotentnie\n    consumer.Commit(cr);             // dopiero po sukcesie\n}",
+      "lang": "csharp",
+      "tip": "Gdy pada pytanie o \"lag\": to różnica między ostatnim offsetem w partycji a skomitowanym offsetem grupy – podstawowa metryka do alertów i autoskalowania konsumentów.",
+      "deep": "Auto-commit w kliencie commituje okresowo offsety pobranych wiadomości – przy przetwarzaniu asynchronicznym (np. odpalenie Task bez await) może skomitować coś, czego jeszcze nie przetworzono. Commit per wiadomość jest drogi; w praktyce commituje się co N wiadomości lub co kilka sekund, akceptując większe okno duplikatów. AutoOffsetReset decyduje, od czego zaczyna nowa grupa (Earliest – od początku retencji, Latest – tylko nowe). Exactly-once w Kafce (idempotentny producer + transakcje + read_committed) działa dla przepływu read-process-write w obrębie Kafki; gdy efektem jest zapis do bazy czy wywołanie HTTP, wracamy do at-least-once + idempotencja. Trwałość zapisu: acks=all plus min.insync.replicas=2 przy replication factor 3 – inaczej potwierdzony zapis może zniknąć po awarii lidera partycji. Od Kafki 4.0 klaster działa wyłącznie w trybie KRaft, bez ZooKeepera."
+    },
+    {
+      "id": "dist-008",
+      "topic": "Azure Service Bus",
+      "level": 1,
+      "q": "Azure Service Bus: queue vs topic/subscription, PeekLock vs ReceiveAndDelete.",
+      "a": "Queue to point-to-point: każdą wiadomość odbiera jeden konsument. Topic to pub/sub: każda subskrypcja dostaje własną kopię i działa jak osobna kolejka, a reguły filtrów (SQL lub correlation filter) pozwalają subskrypcji odbierać tylko część wiadomości. W trybie PeekLock wiadomość jest blokowana na czas lock duration – konsument musi ją jawnie Complete (usunięcie), Abandon (powrót), Dead-letter lub Defer; po wygaśnięciu blokady wraca do kolejki. ReceiveAndDelete usuwa wiadomość przy odbiorze – szybciej, ale to at-most-once.",
+      "code": "var processor = client.CreateProcessor(\"orders\", new ServiceBusProcessorOptions\n{\n    AutoCompleteMessages = false,\n    MaxConcurrentCalls = 10,\n    MaxAutoLockRenewalDuration = TimeSpan.FromMinutes(10)\n});\nprocessor.ProcessMessageAsync += async args =>\n{\n    await HandleAsync(args.Message.Body);\n    await args.CompleteMessageAsync(args.Message);\n};\nprocessor.ProcessErrorAsync += args => { logger.LogError(args.Exception, \"SB error\"); return Task.CompletedTask; };\nawait processor.StartProcessingAsync();",
+      "lang": "csharp",
+      "tip": "ServiceBusClient i nadawcy/procesory są thread-safe i powinny żyć długo (singleton) – tworzenie ich per request to typowy błąd wydajnościowy."
+    },
+    {
+      "id": "dist-009",
+      "topic": "Azure Service Bus",
+      "level": 3,
+      "q": "Service Bus: sessions, dead-lettering i duplicate detection – jak działają i do czego służą?",
+      "a": "Sessions: wiadomości z tym samym SessionId są przetwarzane przez jednego odbiorcę naraz i w kolejności (FIFO per sesja) – to sposób na ordering per klient/zamówienie przy wielu konsumentach; sesja ma też state. Dead-letter queue to podkolejka każdej kolejki/subskrypcji: trafiają tam wiadomości po przekroczeniu MaxDeliveryCount (domyślnie 10), wygasłe (jeśli włączono dead-lettering przy wygaśnięciu) lub jawnie odrzucone przez DeadLetterMessageAsync z powodem. Duplicate detection odrzuca wiadomości z MessageId, który pojawił się w zadanym oknie czasowym – chroni przed duplikatami po stronie wysyłającego (retry po timeoucie).",
+      "code": "var msg = new ServiceBusMessage(body)\n{\n    MessageId = $\"order-{order.Id}-placed\",  // deterministyczny -> duplicate detection działa\n    SessionId = order.CustomerId.ToString()    // kolejność per klient\n};\nawait sender.SendMessageAsync(msg);\n// w handlerze, błąd nienaprawialny:\nawait args.DeadLetterMessageAsync(args.Message, \"ValidationFailed\", ex.Message);",
+      "lang": "csharp",
+      "tip": "Często pytają, jak zapewnić kolejność w Service Bus przy skalowaniu – odpowiedź: sessions, nie jeden konsument.",
+      "deep": "Sessions i duplicate detection trzeba włączyć przy tworzeniu kolejki/subskrypcji – nie da się ich po prostu przełączyć na istniejącej encji. Session-enabled kolejka wymaga, żeby każda wiadomość miała SessionId, a skalowanie jest ograniczone liczbą aktywnych sesji (jedna gorąca sesja = jeden wątek). Duplicate detection działa tylko, jeśli MessageId jest deterministyczny (z danych biznesowych); Guid generowany przy każdej próbie wysyłki nic nie da. Chroni też tylko przed duplikatami wysyłki, nie przed redelivery do konsumenta, więc idempotentny handler nadal jest potrzebny. Lock w PeekLock ma ograniczony czas (maksymalnie 5 minut) – przy dłuższym przetwarzaniu procesor odnawia lock (MaxAutoLockRenewalDuration), inaczej dostaniemy lock lost i drugie przetworzenie. Wiadomości z DLQ nie wracają same – potrzebny proces/narzędzie do replay i alert na ich liczbę. Premium tier daje dedykowane zasoby i większe wiadomości, Standard jest współdzielony."
+    },
+    {
+      "id": "dist-010",
+      "topic": "Gwarancje dostarczania",
+      "level": 1,
+      "q": "At-most-once, at-least-once, exactly-once – co oznaczają i co wybiera się w praktyce?",
+      "a": "At-most-once: wiadomość dotrze najwyżej raz – może zginąć, ale nie zdubluje się (np. ack przed przetworzeniem, brak retry). At-least-once: wiadomość dotrze na pewno, ale może być dostarczona wielokrotnie (ack po przetworzeniu, retry). Exactly-once end-to-end w systemie rozproszonym z efektami ubocznymi praktycznie nie istnieje, bo zawsze może zginąć potwierdzenie. W praktyce wybieram at-least-once i idempotentnego konsumenta – efekt jest \"effectively once\".",
+      "tip": "Zdanie, które dobrze brzmi: \"exactly-once delivery jest niemożliwe, exactly-once processing osiągam przez at-least-once plus idempotencję\".",
+      "deep": "Problem dwóch generałów: nadawca nie odróżni sytuacji \"wiadomość zginęła\" od \"potwierdzenie zginęło\", więc musi wybrać – ponowić (ryzyko duplikatu) albo nie (ryzyko utraty). Exactly-once oferowane przez platformy (transakcje Kafki, deduplikacja w brokerze) działa w obrębie tej platformy lub w zadanym oknie czasowym; po wyjściu do bazy, e-maila czy API zewnętrznego wracamy do idempotencji. At-most-once ma sens dla telemetrii, metryk, live pozycji GPS – tam utrata pojedynczej próbki jest tańsza niż duplikaty i narzut potwierdzeń."
+    },
+    {
+      "id": "dist-011",
+      "topic": "Gwarancje dostarczania",
+      "level": 3,
+      "q": "Jakie znasz techniki budowy idempotentnego konsumenta i deduplikacji?",
+      "a": "1) Naturalna idempotencja: operacja ustawiająca stan (\"status = Paid\", upsert) zamiast przyrostowej (\"saldo += 100\"). 2) Tabela przetworzonych wiadomości (inbox) z unikalnym kluczem na MessageId, zapisywana w tej samej transakcji co efekt biznesowy. 3) Warunki na wersji/stanie: aktualizuj tylko, jeśli wersja agregatu < wersji z eventu albo status pozwala na przejście. 4) Unikalne ograniczenia w bazie na kluczu biznesowym (np. jedna płatność na PaymentId). 5) Przy efektach zewnętrznych – przekazywanie idempotency key do API dostawcy. Duplikaty wykrywam po stabilnym identyfikatorze nadanym przez producenta, nie po treści.",
+      "tip": "Uzupełnia pytanie o samą definicję idempotentnego konsumenta – tu liczą się konkretne techniki i atomowość.",
+      "deep": "Kluczowa jest atomowość: \"sprawdź, czy przetworzone -> wykonaj -> zapisz Id\" bez wspólnej transakcji ma okno, w którym crash daje duplikat; dlatego Id zapisuję razem ze zmianą, a unikalny indeks rozstrzyga wyścig dwóch równoległych konsumentów. Gdy efekt jest poza bazą (e-mail, wywołanie bramki płatności), pełnej atomowości nie ma – stosuję idempotency key u dostawcy albo rozbijam na kroki: zapis intencji, wywołanie z kluczem, zapis wyniku. Tabela deduplikacji rośnie – czyszczę ją po okresie dłuższym niż maksymalne okno redelivery (np. retencja brokera + czas retry). Deduplikacja w pamięci (cache) nie wystarcza przy wielu instancjach i restartach; Redis z TTL bywa kompromisem, ale bez transakcji z bazą to tylko \"best effort\". Komendy idempotentne z natury upraszczają wszystko – projektuję wiadomości jako \"ustaw\" i z numerami wersji, gdzie się da."
+    },
+    {
+      "id": "dist-012",
+      "topic": "Gwarancje dostarczania",
+      "level": 3,
+      "q": "Inbox pattern i szczegóły implementacji outboxa – jak to wygląda w praktyce?",
+      "a": "Inbox to lustrzane odbicie outboxa po stronie konsumenta: przy odbiorze w jednej transakcji zapisuję MessageId do tabeli Inbox i wykonuję zmianę biznesową – duplikat zostanie odrzucony przez unikalny klucz. Outbox po stronie producenta: wiadomość zapisana w tej samej transakcji co dane, a relay (polling w BackgroundService albo CDC, np. Debezium) publikuje ją i oznacza jako wysłaną. Razem dają at-least-once na wyjściu i deduplikację na wejściu, czyli efektywnie exactly-once processing między serwisami.",
+      "code": "await using var tx = await db.Database.BeginTransactionAsync(ct);\nif (await db.Inbox.AnyAsync(m => m.MessageId == msg.MessageId, ct)) return; // duplikat\ndb.Inbox.Add(new InboxMessage(msg.MessageId, DateTime.UtcNow));\naccount.Credit(msg.Amount);\nawait db.SaveChangesAsync(ct);  // PK na MessageId rozstrzyga wyścig\nawait tx.CommitAsync(ct);",
+      "lang": "csharp",
+      "tip": "Wspomnij SKIP LOCKED i sprzątanie tabel – to szczegóły, które pokazują doświadczenie produkcyjne.",
+      "deep": "Relay outboxa przy wielu instancjach musi unikać podwójnej publikacji tych samych wierszy – stosuje się SELECT ... FOR UPDATE SKIP LOCKED (PostgreSQL) / READPAST z UPDLOCK (SQL Server) albo jeden aktywny relay z leader election. Kolejność publikacji: relay wysyła w kolejności sekwencji, ale przy równoległych relayach kolejność się psuje – jeśli jest ważna, partycjonuje się po kluczu agregatu. Crash po publikacji a przed oznaczeniem wiersza daje ponowną publikację – stąd konieczność idempotentnych konsumentów. Polling co sekundę dodaje opóźnienie i obciąża bazę; CDC czyta log transakcyjny i jest szybsze, ale to dodatkowa infrastruktura. Tabele outbox/inbox trzeba czyścić (job usuwający wpisy starsze niż N dni) – inaczej rosną bez końca. Gotowe implementacje (np. MassTransit EF Core outbox, NServiceBus Outbox, Wolverine durable inbox/outbox) robią to wszystko i są zwykle lepszym wyborem niż własna."
+    },
+    {
+      "id": "dist-013",
+      "topic": "Kolejność i partycjonowanie",
+      "level": 3,
+      "q": "Jak zachować kolejność przetwarzania przy wielu konsumentach i jak dobrać klucz partycjonowania?",
+      "a": "Globalna kolejność wymaga jednego konsumenta, więc się nie skaluje – zamiast tego zapewniam kolejność per encja: klucz partycji w Kafce, SessionId w Service Bus, single active consumer lub consistent-hash exchange w RabbitMQ. Klucz wybieram jako najmniejszą jednostkę, w obrębie której kolejność ma znaczenie (zwykle Id agregatu, np. OrderId), bo im drobniejszy klucz, tym lepsze rozłożenie obciążenia. Konsument powinien też tolerować zdarzenia nie po kolei – np. ignorować event z wersją niższą niż zapisana.",
+      "tip": "Dobra odpowiedź zaczyna się od pytania: kolejność względem czego? Prawie zawsze wystarcza per agregat.",
+      "deep": "Klucz zbyt gruby (TenantId, CountryCode) daje hot partition: jeden duży tenant zapycha jedną partycję, jej konsument ma rosnący lag, a dodawanie instancji nic nie daje, bo partycja ma jednego właściciela. Klucz zbyt drobny (Guid wiadomości) rozkłada obciążenie idealnie, ale nie daje żadnej kolejności. Retry łamie kolejność: jeśli wiadomość 1 idzie na kolejkę opóźnioną, a 2 przetwarza się od razu, stan się odwraca – przy ścisłej kolejności trzeba blokować klucz (head-of-line blocking) albo parkować kolejne wiadomości dla tego klucza. W wielu domenach lepiej zrezygnować z wymogu kolejności: eventy niosą wersję/sekwencję, a konsument robi \"apply jeśli nowsze\" lub buforuje luki. Pamiętaj też, że kolejność w kolejce nie oznacza kolejności zdarzeń w świecie – dwie instancje producenta mogą opublikować w innej kolejności, niż zapisały do bazy, jeśli nie publikują przez outbox w porządku sekwencji."
+    },
+    {
+      "id": "dist-014",
+      "topic": "Retry i poison messages",
+      "level": 2,
+      "q": "Jak projektujesz retry w przetwarzaniu wiadomości i co to jest poison message?",
+      "a": "Rozróżniam błędy przejściowe (timeout, deadlock, 503) od trwałych (walidacja, brak danych, błąd deserializacji). Przejściowe ponawiam: kilka szybkich immediate retry, potem delayed retry z exponential backoff i jitterem (sekundy, minuty), żeby przeczekać awarię zależności. Trwałe od razu kieruję do DLQ – ponawianie nic nie da. Poison message to wiadomość, której przetwarzanie zawsze kończy się błędem; bez limitu prób krąży w nieskończoność, blokuje konsumenta i generuje szum w logach, więc po N próbach musi trafić do DLQ z informacją o przyczynie.",
+      "tip": "Pułapka: retry na błąd deserializacji – to klasyczny poison message, który powinien od razu iść do DLQ.",
+      "deep": "Jitter jest istotny: bez niego tysiące wiadomości po awarii bazy ponawiają się w tych samych momentach i tworzą kolejne fale obciążenia (thundering herd). Immediate retry w pętli trzymają lock/slot konsumenta – przy długiej awarii lepiej oddać wiadomość brokerowi z opóźnieniem (scheduled message w Service Bus, kolejka z TTL w RabbitMQ, retry topic w Kafce). Retry łączy się z circuit breakerem: gdy zależność leży, nie ma sensu ciągnąć kolejnych wiadomości – można wstrzymać konsumenta (MassTransit ma kill switch / circuit breaker na endpointcie). Każde ponowienie oznacza możliwe duplikaty efektów częściowych, więc handler musi być idempotentny. Wiadomość w DLQ powinna nieść stack trace, liczbę prób i oryginalne nagłówki, a zespół – procedurę replay po naprawie błędu."
+    },
+    {
+      "id": "dist-015",
+      "topic": "Retry i poison messages",
+      "level": 3,
+      "q": "Kafka nie ma natywnego DLQ ani delayed retry. Jak obsłużyć błędy przetwarzania?",
+      "a": "Konsument nie może \"pominąć\" wiadomości i potwierdzić następnych – commit offsetu jest kumulatywny, więc błąd blokuje całą partycję. Standardowe podejście to retry topics i dead letter topic: po kilku szybkich próbach wiadomość jest publikowana na orders.retry-1m (z nagłówkami o liczbie prób i błędzie), offset w głównym topicu commitowany, a osobny konsument retry czeka do terminu i ponawia; po wyczerpaniu prób wiadomość ląduje w orders.dlt. Alternatywa przy ścisłej kolejności: zatrzymać partycję i ponawiać do skutku (blocking retry), alarmując o rosnącym lagu.",
+      "tip": "Słowo kluczowe: head-of-line blocking – jedna zła wiadomość wstrzymuje całą partycję.",
+      "deep": "Non-blocking retry przez osobne topici łamie kolejność per klucz – kolejne zdarzenia dla tego samego OrderId przejdą, zanim ponowiona wiadomość wróci. Jeśli kolejność jest wymagana, trzeba albo blokować partycję, albo zapamiętywać \"klucze w retry\" i kierować ich kolejne wiadomości także do retry (parkowanie). Konsument retry z opóźnieniem nie powinien robić Thread.Sleep na długo – przekroczy max.poll.interval.ms; zamiast tego pauzuje partycję (Pause/Resume) do czasu najbliższego terminu. Część frameworków (np. Spring Kafka po stronie Javy) ma to wbudowane; w .NET zwykle buduje się to samemu albo przez bibliotekę messagingową z transportem Kafka. DLT musi mieć procedurę replay – republikację na główny topic po poprawce."
+    },
+    {
+      "id": "dist-016",
+      "topic": "Biblioteki messagingowe .NET",
+      "level": 2,
+      "q": "Co dają biblioteki MassTransit, NServiceBus czy Wolverine ponad \"gołego\" klienta brokera?",
+      "a": "Abstrakcję nad transportem (RabbitMQ, Azure Service Bus, Amazon SQS, Kafka – zależnie od biblioteki), więc piszę konsumentów jako zwykłe klasy z DI, a topologię (exchange, kolejki, subskrypcje) biblioteka tworzy sama. Do tego gotowe, przetestowane mechanizmy: serializacja i koperta wiadomości, retry immediate/delayed, przekierowanie błędów do kolejki error/DLQ, transactional outbox/inbox, sagi (state machine), request/response, scheduling, propagacja nagłówków i OpenTelemetry oraz test harness. Pisanie tego samemu na kliencie brokera to tygodnie pracy i wiele subtelnych błędów.",
+      "code": "services.AddMassTransit(x =>\n{\n    x.AddConsumer<OrderPlacedConsumer>();\n    x.UsingRabbitMq((ctx, cfg) =>\n    {\n        cfg.UseMessageRetry(r => r.Intervals(100, 500, 1000));\n        cfg.ConfigureEndpoints(ctx);\n    });\n});\n\npublic class OrderPlacedConsumer : IConsumer<OrderPlaced>\n{\n    public Task Consume(ConsumeContext<OrderPlaced> ctx) => /* ... */ Task.CompletedTask;\n}",
+      "lang": "csharp",
+      "tip": "Nie trzeba znać API każdej biblioteki – liczy się, że wiesz, jakie problemy rozwiązują (retry, outbox, sagi, topologia).",
+      "deep": "Różnice koncepcyjne: NServiceBus to dojrzała, komercyjna platforma z naciskiem na niezawodność, sagi i narzędzia operacyjne (monitoring, replay błędów); MassTransit – bardzo popularny w ekosystemie .NET, bogaty w transporty i sagi oparte na state machine; Wolverine (z ekosystemu Marten/JasperFx) łączy mediator i messaging, stawia na konwencje i generowanie kodu, ma wbudowany durable inbox/outbox. Warto sprawdzić aktualne licencje przed wyborem: NServiceBus jest produktem komercyjnym, a MassTransit zapowiedział model komercyjny dla wersji 9, przy czym v8 pozostaje open source. Abstrakcja ma koszt: trudniej użyć specyficznych funkcji brokera, a przy problemach trzeba rozumieć, jaką topologię biblioteka wygenerowała. Dla jednego prostego konsumenta Kafki czasem lepszy jest czysty Confluent.Kafka."
+    },
+    {
+      "id": "dist-017",
+      "topic": "Saga",
+      "level": 3,
+      "q": "Czym jest saga i czym różni się choreografia od orkiestracji?",
+      "a": "Saga to sposób na długotrwały proces biznesowy obejmujący wiele serwisów bez transakcji rozproszonej: sekwencja lokalnych transakcji, a w razie błędu – akcje kompensujące, które semantycznie cofają wcześniejsze kroki (zwrot płatności, zwolnienie rezerwacji). W choreografii serwisy reagują na swoje eventy nawzajem, nie ma centralnego koordynatora – proste przy 2–3 krokach, ale przepływ jest rozproszony i trudny do śledzenia. W orkiestracji jeden komponent (orchestrator/process manager, np. saga state machine w MassTransit) trzyma stan procesu, wysyła komendy i decyduje o kompensacji.",
+      "tip": "Wspomnij, że kompensacja to nie rollback – to nowa operacja biznesowa, często widoczna dla klienta.",
+      "deep": "Dlaczego nie 2PC: transakcje rozproszone blokują zasoby, wymagają wsparcia od wszystkich uczestników (brokery i wiele baz go nie mają) i koordynator staje się pojedynczym punktem awarii. Saga daje tylko eventual consistency – pośrednie stany są widoczne (zamówienie \"oczekuje na płatność\"), co trzeba uwzględnić w UI i domenie; brak izolacji rodzi anomalie, które ogranicza się m.in. semantic lockami (status Pending blokujący inne operacje). Kompensacje muszą być idempotentne i ponawialne, bo też mogą się nie udać; niektóre kroki są nieodwracalne (wysłany e-mail) – wtedy kompensacją jest kolejna akcja biznesowa. Stan sagi persystuje się w bazie z optimistic concurrency, bo eventy dla jednej instancji mogą przyjść równolegle. Potrzebne są timeouty (\"brak płatności w 15 minut -> anuluj\"), realizowane przez scheduled messages."
+    },
+    {
+      "id": "dist-018",
+      "topic": "Redis",
+      "level": 1,
+      "q": "Jakie struktury danych oferuje Redis i do czego je używasz?",
+      "a": "String (wartości, liczniki przez INCR, cache serializowanych obiektów), Hash (obiekt z polami – częściowe odczyty/aktualizacje), List (kolejka/ostatnie N elementów), Set (unikalne elementy, części wspólne), Sorted Set (elementy ze score – rankingi, leaderboardy, kolejki priorytetowe, sliding window rate limiting), Stream (trwały log z consumer groups), do tego Bitmap, HyperLogLog (przybliżone liczenie unikalnych), Geo. Redis trzyma dane w pamięci, a komendy wykonuje jednowątkowo, więc pojedyncze operacje są atomowe.",
+      "code": "var redis = ConnectionMultiplexer.Connect(\"redis:6379\"); // singleton!\nvar db = redis.GetDatabase();\nawait db.StringIncrementAsync(\"views:article:42\");\nawait db.SortedSetIncrementAsync(\"leaderboard\", \"player:7\", 50);\nvar top = await db.SortedSetRangeByRankWithScoresAsync(\"leaderboard\", 0, 9, Order.Descending);",
+      "lang": "csharp",
+      "tip": "ConnectionMultiplexer tworzy się raz na aplikację (singleton) – tworzenie per request to częsty błąd."
+    },
+    {
+      "id": "dist-019",
+      "topic": "Redis",
+      "level": 2,
+      "q": "Redis Pub/Sub vs Redis Streams vs lista jako kolejka – czym się różnią?",
+      "a": "Pub/Sub to fire-and-forget: wiadomość trafia tylko do aktualnie podłączonych subskrybentów, nic nie jest zapisywane – offline subskrybent ją traci. Nadaje się do powiadomień typu invalidacja cache, backplane SignalR. Streams to trwały, append-only log z Id wpisów, consumer groups, potwierdzaniem (XACK) i listą oczekujących (pending) – coś jak lekka Kafka, gdy potrzebujemy niezawodności. Lista z LPUSH/BRPOP to prosta kolejka, ale bez potwierdzeń wiadomość zdjęta przez konsumenta, który padł, ginie (chyba że użyjemy wzorca z przeniesieniem do listy roboczej).",
+      "tip": "Jeśli w odpowiedzi padnie \"Pub/Sub do komunikacji między mikroserwisami\", rekruter zapyta o utratę wiadomości przy deployu."
+    },
+    {
+      "id": "dist-020",
+      "topic": "Redis",
+      "level": 2,
+      "q": "Co się dzieje, gdy Redisowi skończy się pamięć? Omów maxmemory i eviction policies.",
+      "a": "Gdy osiągnięty jest maxmemory, Redis stosuje politykę eviction. noeviction (domyślna) odrzuca zapisy błędem OOM. allkeys-lru / allkeys-lfu usuwają najdawniej / najrzadziej używane klucze spośród wszystkich – typowe dla czystego cache. volatile-lru / volatile-lfu / volatile-random / volatile-ttl usuwają tylko klucze z ustawionym TTL – przydatne, gdy w tej samej instancji są dane, które nie mogą zniknąć. allkeys-random usuwa losowo. Dla cache wybieram allkeys-lru lub allkeys-lfu i zawsze ustawiam TTL.",
+      "tip": "Słowo klucz: domyślnie noeviction – czysty cache bez zmiany polityki zacznie odrzucać zapisy.",
+      "deep": "LRU i LFU w Redisie są przybliżone – sprawdzają próbkę kluczy (maxmemory-samples), a nie globalną listę, co jest tanie i w praktyce wystarczające. LFU lepiej chroni \"gorące\" klucze przed wyparciem przez jednorazowy skan wielu kluczy. Polityki volatile-* przy braku kluczy z TTL zachowują się jak noeviction, więc można dostać OOM mimo \"ustawionej\" eviction. Mieszanie cache i danych krytycznych (sesje, locki, kolejki) w jednej instancji jest ryzykowne – lepiej osobne instancje z różnymi politykami. Duże klucze (big keys, np. hash z milionem pól) i operacje O(N) jak KEYS czy SMEMBERS na dużych zbiorach blokują jednowątkową pętlę – używam SCAN i pilnuję rozmiarów. Przy persystencji i replikacji trzeba zostawić zapas pamięci na fork (RDB) i bufory replikacji."
+    },
+    {
+      "id": "dist-021",
+      "topic": "Redis",
+      "level": 3,
+      "q": "Jak zrobić distributed lock w Redisie i jakie są jego pułapki?",
+      "a": "Podstawa: SET key token NX PX 30000 – atomowo ustawia klucz tylko, jeśli nie istnieje, z TTL, żeby lock nie wisiał wiecznie po crashu. Token jest unikalny dla właściciela, a zwolnienie robię skryptem Lua \"usuń tylko, jeśli wartość == mój token\" – inaczej mogę zwolnić lock, który po wygaśnięciu przejął ktoś inny. Pułapka zasadnicza: lock z TTL to lease – jeśli proces zatrzyma się dłużej niż TTL (GC pause, wolne I/O), lock wygaśnie i dwóch właścicieli działa naraz. Dlatego używam go do efektywności (unikania podwójnej pracy), a nie jako jedynej ochrony poprawności.",
+      "code": "var token = Guid.NewGuid().ToString();\nif (await db.StringSetAsync(\"lock:report\", token, TimeSpan.FromSeconds(30), When.NotExists))\n{\n    try { await GenerateReportAsync(); }\n    finally\n    {\n        await db.ScriptEvaluateAsync(\n            \"if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end\",\n            new RedisKey[] { \"lock:report\" }, new RedisValue[] { token });\n    }\n}",
+      "lang": "csharp",
+      "tip": "Najmocniejsze zdanie: \"lock w Redisie daje efektywność, nie poprawność – poprawność zapewniam fencing tokenem lub ograniczeniem w bazie\".",
+      "deep": "Problemy produkcyjne: 1) Replikacja w Redisie jest asynchroniczna – lider przyjmuje lock, pada przed replikacją, replika awansuje bez locka i drugi klient też go dostaje. 2) Redlock (lock na większości z N niezależnych instancji) próbuje to poprawić, ale jest krytykowany (m.in. przez Martina Kleppmanna) za założenia o ograniczonych opóźnieniach i dryfie zegarów. 3) Jedyną prawdziwą ochroną poprawności jest fencing token: monotonicznie rosnący numer wydawany przy przejęciu locka i sprawdzany przez zasób (np. baza odrzuca zapis z niższym numerem). 4) Długie zadania wymagają przedłużania locka (watchdog), co samo może zawieść. Gdy potrzebna jest poprawność, lepsze są: unikalne constrainty/optimistic concurrency w bazie, advisory lock w PostgreSQL (sp_getapplock w SQL Server) albo system z consensus (etcd, ZooKeeper). StackExchange.Redis ma pomocnicze LockTakeAsync/LockReleaseAsync realizujące ten sam wzorzec."
+    },
+    {
+      "id": "dist-022",
+      "topic": "Wzorce cache",
+      "level": 2,
+      "q": "Read-through, write-through, write-behind (write-back) – czym się różnią od cache-aside?",
+      "a": "W cache-aside aplikacja sama sprawdza cache, przy missie czyta z bazy i wkłada wynik do cache. Read-through: aplikacja pyta tylko cache, a ten (lub warstwa cache) sam ładuje dane ze źródła przy missie – logika ładowania jest w jednym miejscu. Write-through: zapis idzie przez cache, który synchronicznie zapisuje do bazy – cache zawsze aktualny, ale zapis wolniejszy i w cache lądują też dane, których nikt nie czyta. Write-behind: zapis trafia do cache, a do bazy asynchronicznie (paczkami) – bardzo szybkie zapisy, ale ryzyko utraty danych przy awarii cache i trudniejsza spójność.",
+      "tip": "Uzupełnia cache-aside – rekruter chce zobaczyć, że znasz trade-off szybkość zapisu vs ryzyko utraty.",
+      "deep": "W .NET HybridCache.GetOrCreateAsync to w praktyce read-through z ochroną przed stampede w obrębie procesu. Write-through rzadko stosuje się z Redisem bezpośrednio, bo Redis nie zapisuje do bazy sam – robi to warstwa w aplikacji, a wtedy problemem jest atomowość (zapis do bazy się udał, do cache nie). Write-behind ma sens dla liczników, metryk, \"ostatnio widziany\" – tam utrata kilku sekund danych jest akceptowalna; dla zamówień czy płatności – nie. Refresh-ahead odświeża wpisy przed wygaśnięciem, gdy są często czytane – zmniejsza opóźnienia, ale generuje ruch dla danych, które mogą już nie być potrzebne."
+    },
+    {
+      "id": "dist-023",
+      "topic": "Wzorce cache",
+      "level": 3,
+      "q": "Cache stampede, TTL i invalidacja przy wielu instancjach – jak sobie z tym radzisz?",
+      "a": "Cache stampede: popularny klucz wygasa i setki równoległych żądań naraz idą do bazy. Zabezpieczenia: request coalescing (jedno ładowanie na klucz, reszta czeka – w obrębie procesu robi to HybridCache), distributed lock na odbudowę, wcześniejsze odświeżanie (probabilistic early expiration / refresh-ahead), serwowanie nieaktualnej wartości podczas odbudowy (stale-while-revalidate) oraz jitter w TTL, żeby klucze nie wygasały jednocześnie. Przy wielu instancjach z lokalnym cache L1 invalidację rozgłaszam przez Redis Pub/Sub lub broker, a TTL traktuję jako ostateczne zabezpieczenie przed rozjechaniem danych.",
+      "tip": "Wymień przynajmniej trzy techniki przeciw stampede i powiedz, że TTL z jitterem to najtańsza z nich.",
+      "deep": "Coalescing w procesie przy N instancjach nadal daje N równoległych zapytań – zwykle akceptowalne; przy drogich zapytaniach dokładam distributed lock lub odświeżanie przez jeden background job. TTL to kompromis: krótki = więcej missów i obciążenia bazy, długi = dłużej nieaktualne dane; dla danych krytycznych invalidacja eventowa + dłuższy TTL jako safety net. Invalidacja przez Pub/Sub jest best effort – instancja po restarcie lub chwilowym rozłączeniu przegapi komunikat, stąd TTL na L1 musi być krótki. Race przy cache-aside: czytelnik wczytuje starą wartość z bazy, w międzyczasie writer aktualizuje bazę i usuwa klucz, czytelnik zapisuje starą wartość do cache – rozwiązaniem są wersje w wartości, krótkie TTL lub delayed double delete. Negative caching (zapamiętanie \"nie ma\") chroni przed atakiem na nieistniejące klucze, ale wymaga invalidacji przy utworzeniu obiektu. Hot key w Redis Cluster obciąża jeden shard – pomaga lokalny L1 lub replikacja klucza pod kilkoma nazwami."
+    },
+    {
+      "id": "dist-024",
+      "topic": "gRPC",
+      "level": 1,
+      "q": "Czym jest gRPC i kiedy wybierasz go zamiast REST?",
+      "a": "gRPC to framework RPC oparty na HTTP/2 i Protocol Buffers: kontrakt (serwisy i wiadomości) definiuję w pliku .proto, a z niego generowany jest silnie typowany klient i bazowa klasa serwera. Binarny format jest mniejszy i szybszy w serializacji niż JSON, HTTP/2 multipleksuje wiele wywołań na jednym połączeniu, a do tego dostaję streaming, deadline'y i anulowanie. Wybieram go do komunikacji serwis-serwis wewnątrz systemu, przy wysokim wolumenie, niskich opóźnieniach i streamingu. REST zostawiam dla publicznych API, przeglądarek i integracji z zewnętrznymi klientami, gdzie liczy się prostota, czytelność i cache HTTP.",
+      "code": "syntax = \"proto3\";\nservice Prices {\n  rpc GetPrice (PriceRequest) returns (PriceReply);\n  rpc Watch (WatchRequest) returns (stream PriceReply);\n}\nmessage PriceRequest { string symbol = 1; }\nmessage WatchRequest { repeated string symbols = 1; }\nmessage PriceReply { string symbol = 1; double value = 2; }",
+      "lang": "text",
+      "tip": "Przeglądarka nie zawoła gRPC bezpośrednio – potrzebny gRPC-Web albo JSON transcoding."
+    },
+    {
+      "id": "dist-025",
+      "topic": "gRPC",
+      "level": 2,
+      "q": "Jakie są rodzaje wywołań w gRPC i jak działają deadline'y, wersjonowanie kontraktu oraz load balancing?",
+      "a": "Cztery typy: unary (żądanie-odpowiedź), server streaming (serwer wysyła strumień, np. notowania), client streaming (klient wysyła strumień, np. upload paczek) i bidirectional streaming (oba kierunki niezależnie, np. czat). Deadline to bezwzględny termin wywołania przekazywany do serwera – po jego upływie wywołanie kończy się DeadlineExceeded, a serwer dostaje anulowany CancellationToken, który powinien przekazywać dalej. Kontrakt ewoluuje kompatybilnie: dodaję nowe pola z nowymi numerami, nigdy nie zmieniam ani nie używam ponownie numerów pól (usunięte oznaczam reserved).",
+      "code": "var reply = await client.GetPriceAsync(new PriceRequest { Symbol = \"MSFT\" },\n    deadline: DateTime.UtcNow.AddSeconds(2), cancellationToken: ct);\n\n// serwer\npublic override async Task Watch(WatchRequest req, IServerStreamWriter<PriceReply> stream, ServerCallContext ctx)\n{\n    await foreach (var p in feed.ReadAllAsync(ctx.CancellationToken))\n        await stream.WriteAsync(p);\n}",
+      "lang": "csharp",
+      "tip": "Wspomnij o pułapce L4 load balancera – to częste pytanie od osób, które wdrażały gRPC na Kubernetesie.",
+      "deep": "Load balancing to częsta pułapka: gRPC utrzymuje długie połączenie HTTP/2 i multipleksuje na nim wszystkie wywołania, więc balancer L4 (TCP) przypnie cały ruch klienta do jednego poda. Potrzebny jest balancer L7 rozumiejący HTTP/2 (Envoy, service mesh, YARP) albo client-side load balancing (Grpc.Net.Client wspiera resolvery, np. DNS, i polityki round_robin). Domyślnie brak deadline'u oznacza czekanie bez końca – w łańcuchu wywołań deadline warto propagować, żeby niższe serwisy nie pracowały nad żądaniem, które klient już porzucił. Kanał (GrpcChannel) jest drogi w utworzeniu – reużywam go lub korzystam z AddGrpcClient. W proto3 brak pola = wartość domyślna (0, \"\"), więc do rozróżnienia \"nie ustawiono\" służą wrapper types lub optional. Dla przeglądarek ASP.NET Core oferuje gRPC-Web oraz JSON transcoding, który wystawia te same serwisy jako REST/JSON."
+    },
+    {
+      "id": "dist-026",
+      "topic": "Real-time",
+      "level": 2,
+      "q": "WebSockets vs Server-Sent Events vs long polling – kiedy co?",
+      "a": "WebSockets: pełny dupleks na jednym połączeniu TCP po upgrade z HTTP – czat, gry, edycja współdzielona, gdy klient też często wysyła. SSE: jednokierunkowy strumień tekstowy serwer→klient po zwykłym HTTP, z wbudowanym w przeglądarkę EventSource, automatycznym reconnectem i Last-Event-ID – powiadomienia, dashboardy, postęp zadań, strumieniowanie odpowiedzi LLM. Long polling: klient wysyła żądanie, serwer trzyma je do pojawienia się danych lub timeoutu, klient od razu ponawia – działa wszędzie, ale ma narzut i opóźnienia; dziś głównie fallback.",
+      "code": "// .NET 10: natywne SSE w Minimal API\napp.MapGet(\"/prices\", (PriceFeed feed, CancellationToken ct) =>\n    TypedResults.ServerSentEvents(feed.StreamAsync(ct), eventType: \"price\"));",
+      "lang": "csharp",
+      "tip": "SSE bywa niedoceniane – jeśli komunikacja jest tylko serwer→klient, to często najprostsza poprawna odpowiedź.",
+      "deep": "SSE przez HTTP/1.1 podlega limitowi ok. 6 połączeń na domenę w przeglądarce – kilka otwartych kart wyczerpuje pulę; HTTP/2 multipleksuje i problem znika. EventSource nie pozwala ustawić nagłówka Authorization, więc uwierzytelnienie idzie cookie lub tokenem w query (z ryzykiem logowania tokenu) albo używa się fetch ze streamingiem. WebSocket to stan na serwerze: każde połączenie zajmuje pamięć, a skalowanie wymaga sticky sessions lub backplane; proxy i load balancery muszą wspierać upgrade i mieć dłuższe idle timeouty, a utrzymanie połączenia wymaga ping/pong. Wszystkie trzy wymagają obsługi reconnectu i nadrobienia utraconych zdarzeń (Id ostatniego zdarzenia, re-fetch stanu). SignalR abstrahuje te transporty i wybiera najlepszy dostępny."
+    },
+    {
+      "id": "dist-027",
+      "topic": "Real-time",
+      "level": 1,
+      "q": "Czym jest SignalR i czym jest hub?",
+      "a": "SignalR to biblioteka ASP.NET Core do komunikacji real-time, która negocjuje transport (WebSockets, potem SSE, potem long polling) i daje model RPC w obie strony. Hub to klasa na serwerze, której metody klient wywołuje, a serwer wywołuje metody klienta przez Clients.All, Clients.Caller, Clients.User(id), Clients.Group(name). Grupy służą do wysyłki do podzbioru połączeń (np. pokój, tenant), a silnie typowany Hub<T> daje kontrolę kompilatora nad nazwami metod klienta. Po stronie Angulara używa się pakietu @microsoft/signalr z HubConnectionBuilder i withAutomaticReconnect.",
+      "code": "public interface INotificationsClient { Task OrderUpdated(OrderDto order); }\n\npublic class NotificationsHub : Hub<INotificationsClient>\n{\n    public Task JoinTenant(string tenantId) =>\n        Groups.AddToGroupAsync(Context.ConnectionId, $\"tenant-{tenantId}\");\n}\n// z dowolnego serwisu:\nawait hubContext.Clients.Group($\"tenant-{id}\").OrderUpdated(dto);\napp.MapHub<NotificationsHub>(\"/hubs/notifications\");",
+      "lang": "csharp",
+      "tip": "Hub jest transient – nie trzymaj w nim stanu w polach; do wysyłki spoza huba wstrzykuj IHubContext<THub>."
+    },
+    {
+      "id": "dist-028",
+      "topic": "Real-time",
+      "level": 3,
+      "q": "Jak skalować SignalR na wiele instancji? Backplane, Azure SignalR Service, sticky sessions.",
+      "a": "Każda instancja zna tylko swoje połączenia, więc Clients.All czy Clients.Group wysłane z instancji A nie dotrą do klientów podłączonych do B. Rozwiązania: Redis backplane (AddStackExchangeRedis) – każda wiadomość jest publikowana przez Redis Pub/Sub do wszystkich instancji, które dostarczają ją swoim klientom; albo Azure SignalR Service (AddAzureSignalR) – połączenia klientów obsługuje usługa zarządzana, a serwery aplikacji tylko wysyłają do niej wiadomości. Przy self-hostingu na wielu instancjach potrzebne są sticky sessions, bo negocjacja i kolejne żądania (zwłaszcza long polling/SSE) muszą trafiać do tej samej instancji.",
+      "code": "builder.Services.AddSignalR()\n    .AddStackExchangeRedis(builder.Configuration.GetConnectionString(\"redis\")!);\n// albo usługa zarządzana:\n// builder.Services.AddSignalR().AddAzureSignalR();",
+      "lang": "csharp",
+      "tip": "Pytanie podchwytliwe: \"czy backplane zapewnia, że wiadomość dotrze?\" – nie, to fire-and-forget.",
+      "deep": "Redis backplane rozsyła każdą wiadomość do każdej instancji – przy wielu serwerach i dużym ruchu broadcast staje się wąskim gardłem; nie daje też trwałości (Pub/Sub), więc chwilowa utrata połączenia z Redisem gubi wiadomości. Sticky sessions można pominąć tylko, gdy wszyscy klienci używają wyłącznie WebSockets z SkipNegotiation. Azure SignalR Service zdejmuje z aplikacji utrzymanie tysięcy połączeń i sticky sessions, skaluje się jednostkami, ale to koszt i zależność od chmury. SignalR nie gwarantuje dostarczenia – po reconnectcie klient powinien ponownie pobrać stan (lub użyć stateful reconnect z .NET 8, który buforuje wiadomości przy krótkich przerwach). Grupy nie są persystowane – po reconnectcie klient musi ponownie do nich dołączyć. Wysyłka z workerów/innych serwisów: przez IHubContext w procesie z backplane albo przez REST API/SDK usługi zarządzanej."
+    },
+    {
+      "id": "dist-029",
+      "topic": "CAP i consensus",
+      "level": 2,
+      "q": "Wyjaśnij twierdzenie CAP i rozszerzenie PACELC.",
+      "a": "CAP mówi, że w razie partycji sieciowej (P) system rozproszony musi wybrać między spójnością (C – każdy odczyt widzi najnowszy zapis lub dostaje błąd) a dostępnością (A – każdy węzeł odpowiada, choćby nieaktualnymi danymi). Partycji nie da się wykluczyć, więc realny wybór to CP albo AP na czas awarii. PACELC dodaje drugą połowę: Else – gdy sieć działa normalnie, i tak wybieramy między opóźnieniem (L) a spójnością (C), bo synchroniczna replikacja kosztuje czas.",
+      "tip": "Dobrze powiedzieć, że P nie jest opcjonalne – wybór dotyczy tylko zachowania w czasie partycji.",
+      "deep": "\"Wybierz 2 z 3\" to uproszczenie – CA nie istnieje dla systemu rozproszonego, a wybór jest często per operacja, nie per system (np. odczyt salda silnie spójny, licznik polubień eventualnie). C w CAP to linearizability, nie C z ACID. Przykłady: systemy w stylu Dynamo/Cassandra domyślnie PA/EL z regulowanym poziomem spójności (quorum reads/writes), relacyjna baza z synchroniczną replikacją i failoverem zachowuje się jak PC/EC, z repliką asynchroniczną do odczytów – odczyty z repliki to wybór EL. W praktyce aplikacji .NET CAP przekłada się na decyzje: czy czytam z repliki (ryzyko stale read, read-your-writes), czy zamówienie można przyjąć przy niedostępnym magazynie (AP z kompensacją) czy odmówić (CP)."
+    },
+    {
+      "id": "dist-030",
+      "topic": "CAP i consensus",
+      "level": 3,
+      "q": "Na czym polega consensus i leader election (np. Raft) i gdzie się z nim spotykasz?",
+      "a": "Consensus to uzgodnienie przez grupę węzłów jednej wartości (np. kolejności wpisów w logu) mimo awarii części z nich. W Raft węzły są followerami; gdy nie dostają heartbeatu od lidera, jeden zostaje kandydatem, zwiększa term i prosi o głosy – lider wymaga większości. Lider przyjmuje zapisy i replikuje log; wpis jest zatwierdzony, gdy potwierdzi go większość. Klaster 2f+1 węzłów przeżyje awarię f węzłów (3 → 1, 5 → 2). Spotykam to pośrednio w etcd (Kubernetes), Consul, quorum queues RabbitMQ, Kafce w trybie KRaft, a w aplikacji – gdy potrzebuję, żeby tylko jedna instancja robiła daną pracę.",
+      "tip": "Kluczowa liczba: większość z 2f+1. Pytanie \"ile awarii przeżyje 4-węzłowy klaster\" pada często.",
+      "deep": "Parzysta liczba węzłów nie zwiększa odporności (4 węzły nadal tolerują 1 awarię, bo większość to 3), a zwiększa koszt zapisu – dlatego klastry mają 3 lub 5 węzłów. Mniejszość odciętą partycją nie może wybrać lidera ani zatwierdzać zapisów – to świadomy wybór CP. Split brain grozi, gdy stary lider nie wie, że został zdetronizowany (np. po długiej pauzie GC) – term/epoch i fencing tokens sprawiają, że jego zapisy są odrzucane. Wybór lidera nie jest natychmiastowy: timeouty wyborcze (setki ms – sekundy) oznaczają krótką niedostępność zapisów. Nie implementuję consensus samemu – w aplikacji leader election realizuję przez lease w etcd/Kubernetes (Lease API), blob lease w Azure Storage, advisory lock w bazie albo clustering Quartz. Paxos to starszy, równoważny algorytm, trudniejszy w implementacji; Raft powstał jako łatwiejszy do zrozumienia."
+    },
+    {
+      "id": "dist-031",
+      "topic": "Replikacja i sharding",
+      "level": 2,
+      "q": "Replikacja vs sharding – czym się różnią i jakie są ich odmiany?",
+      "a": "Replikacja to kopie tych samych danych na wielu węzłach – dla dostępności i skalowania odczytów. Odmiany: single-leader (zapisy na lidera, repliki do odczytu), multi-leader (zapisy w wielu regionach, potrzebne rozwiązywanie konfliktów) i leaderless (zapisy/odczyty kworum, styl Dynamo). Replikacja synchroniczna nie traci potwierdzonych danych, ale zwiększa opóźnienie; asynchroniczna jest szybka, ale daje replication lag. Sharding (partycjonowanie) dzieli dane na rozłączne części na różnych węzłach – dla skalowania zapisów i rozmiaru; strategia to zakres kluczy (range) lub hash klucza.",
+      "tip": "Często pytają o read-your-writes przy replice odczytowej – miej gotowe dwa sposoby.",
+      "deep": "Replication lag rodzi anomalie: użytkownik zapisuje i od razu czyta z repliki, nie widząc swojej zmiany – rozwiązania: read-your-writes (czytanie z lidera przez chwilę po zapisie albo według wersji/LSN), sticky routing użytkownika do jednej repliki (monotonic reads). Sharding po zakresie dobrze obsługuje zapytania zakresowe, ale grozi hot spotem (np. klucz = data – cały dzisiejszy ruch na jednym shardzie); po hashu rozkłada równomiernie, ale zapytania zakresowe idą do wszystkich shardów (scatter-gather). Consistent hashing lub stała liczba wirtualnych partycji ogranicza przenoszenie danych przy dodawaniu węzłów. Zapytania i transakcje między shardami są drogie, więc klucz shardowania dobieram do głównego wzorca dostępu (np. TenantId w SaaS). W praktyce oba mechanizmy łączy się: każdy shard jest replikowany."
+    },
+    {
+      "id": "dist-032",
+      "topic": "Czas i kolejność zdarzeń",
+      "level": 3,
+      "q": "Dlaczego zegary w systemach rozproszonych są problemem i jak porządkować zdarzenia?",
+      "a": "Zegary ścienne różnych maszyn się rozjeżdżają (clock skew), NTP potrafi je cofnąć lub przeskoczyć, więc porównywanie timestampów z różnych serwerów nie mówi wiarygodnie, co było pierwsze. Do pomiaru czasu trwania używam zegara monotonicznego (Stopwatch), nie DateTime.UtcNow. Kolejność ustalam przez mechanizmy logiczne: sekwencję nadawaną przez jedno źródło (wersja agregatu, offset w partycji, sekwencja w bazie), zegary Lamporta (porządek zgodny z przyczynowością) lub vector clocks (wykrywają zdarzenia współbieżne). Last-write-wins na podstawie wall clock potrafi cicho zgubić nowszą zmianę.",
+      "tip": "Zdanie warte zapamiętania: \"timestamp mówi kiedy (mniej więcej), wersja mówi co było pierwsze\".",
+      "deep": "Zegar Lamporta: każdy węzeł trzyma licznik, zwiększa go przy zdarzeniu i dołącza do wiadomości; odbiorca ustawia max(własny, otrzymany)+1 – jeśli A przyczynowo poprzedza B, to L(A) < L(B), ale nie odwrotnie, więc nie wykryje współbieżności. Vector clocks (wektor liczników per węzeł) wykrywają zdarzenia współbieżne, ale rosną z liczbą węzłów. Hybrid Logical Clocks łączą czas fizyczny z licznikiem logicznym i są używane w bazach rozproszonych. Spanner (Google) korzysta z zegarów atomowych/GPS i jawnej niepewności czasu (TrueTime), czekając jej przedział przed zatwierdzeniem. W praktyce .NET: optimistic concurrency przez rowversion/xmin zamiast porównywania dat, sequence number w eventach, a timestampy przechowuję w UTC (DateTimeOffset) jedynie jako informację, nie podstawę porządku. Także TTL locków i lease zakładają ograniczony dryf zegarów – to kolejny powód, by nie opierać na nich poprawności."
+    },
+    {
+      "id": "dist-033",
+      "topic": "Rate limiting",
+      "level": 2,
+      "q": "Porównaj algorytmy rate limitingu: fixed window, sliding window, token bucket, leaky bucket.",
+      "a": "Fixed window: licznik na okno (np. 100/min) zerowany na granicy – prosty, ale na styku okien przepuszcza do 2× limitu. Sliding window log trzyma znaczniki czasu każdego żądania – dokładny, ale pamięciożerny; sliding window counter waży licznik bieżącego i poprzedniego okna (lub dzieli okno na segmenty, jak w ASP.NET Core) – dobry kompromis. Token bucket: wiadro o pojemności N napełniane w stałym tempie, każde żądanie zużywa token – pozwala na kontrolowane bursty i średnią przepustowość. Leaky bucket: żądania wypływają ze stałą szybkością – wygładza ruch do stałego tempa. Odrzucone żądanie dostaje 429 z nagłówkiem Retry-After.",
+      "code": "builder.Services.AddRateLimiter(o =>\n{\n    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;\n    o.AddTokenBucketLimiter(\"api\", t =>\n    {\n        t.TokenLimit = 100;            // maksymalny burst\n        t.TokensPerPeriod = 20;        // tempo uzupełniania\n        t.ReplenishmentPeriod = TimeSpan.FromSeconds(1);\n        t.QueueLimit = 0;\n    });\n});",
+      "lang": "csharp",
+      "tip": "Konkretna liczba robi wrażenie: fixed window 100/min może przepuścić 200 żądań w ciągu 2 sekund na granicy okien.",
+      "deep": "Wbudowany rate limiter ASP.NET Core działa w pamięci procesu – przy 5 instancjach za load balancerem efektywny limit jest 5× większy i zależy od rozkładu ruchu. Globalny limit wymaga wspólnego stanu: Redis z atomowym skryptem Lua (INCR+EXPIRE dla fixed window, sorted set z ZREMRANGEBYSCORE dla sliding log, zapis tokenów i znacznika czasu dla token bucket) albo rate limiting na API gateway/WAF. Każde żądanie dodaje wtedy round-trip do Redisa, więc stosuje się lokalne przybliżenia (np. limit/N per instancja) z okresową synchronizacją. Klucz partycji to decyzja biznesowa: per użytkownik, API key, tenant, IP (IP zawodzi za NAT/proxy). Gdy Redis jest niedostępny, trzeba zdecydować fail-open (przepuść) czy fail-closed. Rate limiting chroni przed nadużyciem; przed przeciążeniem własnych zasobów lepszy bywa concurrency limiter lub load shedding."
+    },
+    {
+      "id": "dist-034",
+      "topic": "Load balancing i service discovery",
+      "level": 1,
+      "q": "Load balancing L4 vs L7 i najpopularniejsze algorytmy.",
+      "a": "L4 (warstwa transportowa) balansuje połączenia TCP/UDP po adresach i portach, nie widzi treści – jest szybki i prosty. L7 (warstwa aplikacji) rozumie HTTP: może routować po ścieżce, nagłówku czy hoście, terminować TLS, robić retry i health checki na poziomie HTTP, balansować pojedyncze żądania w ramach jednego połączenia (ważne dla HTTP/2 i gRPC). Algorytmy: round robin (po kolei), weighted round robin, least connections / least outstanding requests (dla nierównych czasów obsługi), hash po IP/kluczu lub consistent hashing (przyklejenie klienta lub klucza do instancji). Health checki usuwają z puli niezdrowe instancje.",
+      "tip": "W .NET reverse proxy/L7 balancer to np. YARP; w chmurze – Azure Application Gateway (L7) vs Azure Load Balancer (L4)."
+    },
+    {
+      "id": "dist-035",
+      "topic": "Load balancing i service discovery",
+      "level": 2,
+      "q": "Czym jest service discovery i jak wygląda w świecie .NET/Kubernetes?",
+      "a": "Service discovery to mechanizm, dzięki któremu serwis znajduje aktualne adresy instancji innego serwisu, zamiast mieć je wpisane na sztywno – instancje skalują się i zmieniają IP. Client-side discovery: klient pyta rejestr (Consul, DNS) i sam wybiera instancję; server-side: klient woła stały adres, a load balancer/proxy wybiera instancję. W Kubernetesie Service daje stabilną nazwę DNS i wirtualny IP, a kube-proxy rozkłada ruch na pody spełniające readiness probe. W .NET pakiet Microsoft.Extensions.ServiceDiscovery (używany przez .NET Aspire) rozwiązuje logiczne nazwy typu https+http://catalog na podstawie konfiguracji lub DNS.",
+      "code": "builder.Services.AddServiceDiscovery();\nbuilder.Services.AddHttpClient<CatalogClient>(c =>\n        c.BaseAddress = new Uri(\"https+http://catalog\"))\n    .AddServiceDiscovery();",
+      "lang": "csharp",
+      "tip": "Powiąż discovery z health checkami: readiness decyduje, czy instancja dostaje ruch, liveness – czy ma być zrestartowana."
+    },
+    {
+      "id": "dist-036",
+      "topic": "Circuit breaker",
+      "level": 2,
+      "q": "Jak działa circuit breaker i jak łączyć go z retry, timeoutem i bulkheadem?",
+      "a": "Circuit breaker obserwuje wyniki wywołań zależności. Closed – ruch przechodzi; gdy odsetek błędów w oknie przekroczy próg (przy minimalnej liczbie wywołań), przechodzi w Open i od razu odrzuca wywołania bez obciążania zależności. Po czasie break duration przechodzi w Half-open i przepuszcza próbne wywołania: sukces zamyka obwód, porażka znowu otwiera. Chroni to przed kaskadą awarii i daje zależności czas na powrót. W pipeline: retry na zewnątrz, circuit breaker w środku, timeout per próba najbliżej wywołania – tak każda próba ma własny timeout, a breaker liczy pojedyncze porażki.",
+      "code": "var pipeline = new ResiliencePipelineBuilder()\n    .AddRetry(new RetryStrategyOptions { MaxRetryAttempts = 3, BackoffType = DelayBackoffType.Exponential, UseJitter = true })\n    .AddCircuitBreaker(new CircuitBreakerStrategyOptions\n    {\n        FailureRatio = 0.5, MinimumThroughput = 20,\n        SamplingDuration = TimeSpan.FromSeconds(30), BreakDuration = TimeSpan.FromSeconds(15)\n    })\n    .AddTimeout(TimeSpan.FromSeconds(2))\n    .Build();",
+      "lang": "csharp",
+      "tip": "Pytają o kolejność strategii – pierwsza dodana w builderze jest najbardziej zewnętrzna.",
+      "deep": "Retry bez breakera przy długiej awarii mnoży ruch na leżącą zależność (retry storm), szczególnie gdy retry jest na każdej warstwie: 3 warstwy po 4 próby to 64 wywołania na dole. Zasada: retry w jednym miejscu (najbliżej wywołania lub na krawędzi), ograniczony budżet retry, breaker per zależność (a nie jeden globalny), fallback tam, gdzie da się zwrócić degradację (cache, wartość domyślna). Bulkhead (ograniczenie współbieżności per zależność) chroni pulę wątków i połączeń przed jedną wolną zależnością – wolne wywołania są często gorsze niż szybkie błędy. Breaker per instancja aplikacji widzi tylko swój ruch – to zwykle w porządku i prostsze niż współdzielony stan. W .NET używam Polly v8 lub Microsoft.Extensions.Http.Resilience (AddStandardResilienceHandler ze zdrowymi domyślnymi ustawieniami); stan breakera warto eksportować do metryk i alertów."
+    },
+    {
+      "id": "dist-037",
+      "topic": "Distributed tracing",
+      "level": 2,
+      "q": "Jak działa distributed tracing: trace, span, W3C Trace Context i jak to wygląda w .NET?",
+      "a": "Trace to drzewo operacji jednego żądania przechodzącego przez wiele serwisów; span to pojedyncza operacja z czasem rozpoczęcia, trwaniem, atrybutami i rodzicem. Kontekst propaguje się między serwisami nagłówkiem W3C traceparent w formacie wersja-traceId(32 hex)-parentSpanId(16 hex)-flagi, np. 00-4bf92f35...-00f067aa0ba902b7-01, a tracestate niesie dane specyficzne dla vendorów. W .NET span to System.Diagnostics.Activity tworzone przez ActivitySource; ASP.NET Core i HttpClient propagują traceparent automatycznie, a OpenTelemetry SDK zbiera Activity i eksportuje je (np. OTLP) do Jaegera, Tempo, Application Insights czy Aspire Dashboard.",
+      "code": "builder.Services.AddOpenTelemetry()\n    .WithTracing(t => t\n        .AddSource(\"Orders\")\n        .AddAspNetCoreInstrumentation()\n        .AddHttpClientInstrumentation()\n        .AddOtlpExporter());\n\nstatic readonly ActivitySource Source = new(\"Orders\");\nusing var activity = Source.StartActivity(\"ReserveStock\");\nactivity?.SetTag(\"order.id\", orderId);",
+      "lang": "csharp",
+      "tip": "Rozwinięcie pytania o observability – tu liczy się mechanizm propagacji kontekstu.",
+      "deep": "StartActivity zwraca null, gdy nikt nie nasłuchuje danego źródła (nie dodano AddSource) lub span nie jest próbkowany – stąd operator ?. Ostatni bajt flag (01) oznacza sampled; decyzja o próbkowaniu propaguje się w dół, żeby trace był kompletny. Logi korelują się z trace przez TraceId/SpanId dodawane do scope logowania, co pozwala przejść z błędu w logu do całego trace. Baggage (nagłówek baggage) niesie pary klucz-wartość przez cały łańcuch, ale trafia do każdego wywołania – nie wkładaj tam danych wrażliwych ani dużych. Nazwy spanów i atrybutów warto trzymać zgodnie z semantic conventions OpenTelemetry, żeby backendy poprawnie je interpretowały."
+    },
+    {
+      "id": "dist-038",
+      "topic": "Distributed tracing",
+      "level": 3,
+      "q": "Jak przenieść kontekst trace przez kolejkę/broker i jak podejść do samplingu?",
+      "a": "Przy wysyłce wiadomości wstrzykuję traceparent (i tracestate) do nagłówków/application properties wiadomości, a konsument je wyciąga i tworzy span typu Consumer z tym kontekstem jako rodzicem lub jako link. Wiele SDK i bibliotek robi to samo (Azure SDK, MassTransit, NServiceBus), dla gołego klienta używa się propagatora OpenTelemetry (Propagators.DefaultTextMapPropagator: Inject/Extract). Sampling: head-based decyduje na początku trace (np. 10% ruchu) – tani, ale może pominąć rzadkie błędy; tail-based decyduje po zebraniu całego trace (np. w OpenTelemetry Collector) – zachowa wszystkie błędy i wolne żądania, ale wymaga buforowania.",
+      "tip": "Słowa klucze: Inject/Extract, span links, tail sampling w Collectorze.",
+      "deep": "Przy przetwarzaniu asynchronicznym relacja parent-child bywa myląca: event przetwarzany godzinę później lub paczka 100 wiadomości z różnych trace'ów. Wtedy lepiej użyć span links – span konsumenta zaczyna nowy trace i linkuje do kontekstów producentów; tak zaleca semantic conventions dla messagingu przy batchach. Outbox zrywa propagację, jeśli nie zapiszemy traceparent w wierszu outboxa – relay musi go odtworzyć przy publikacji. Koszty: pełne tracowanie 100% ruchu przy dużym wolumenie generuje ogromne ilości danych; typowo head sampling parent-based z niskim procentem plus tail sampling w Collectorze dla błędów i latencji powyżej progu. Collector jako pośrednik daje też batchowanie, retry eksportu, usuwanie danych wrażliwych i zmianę backendu bez zmiany kodu aplikacji."
+    },
+    {
+      "id": "dist-039",
+      "topic": "Background jobs",
+      "level": 2,
+      "q": "BackgroundService vs Hangfire vs Quartz.NET – kiedy co?",
+      "a": "BackgroundService (hosted service) to pętla w procesie aplikacji – idealna do konsumentów kolejek, relayu outboxa, cyklicznego odświeżania cache; nie ma trwałości, retry ani harmonogramu, więc przy restarcie praca w toku przepada. Hangfire zapisuje zadania w trwałym storage (SQL Server, PostgreSQL, Redis – zależnie od pakietów): fire-and-forget, delayed, recurring (cron), continuations, automatyczne retry i dashboard; serwery Hangfire na wielu instancjach dzielą się kolejką. Quartz.NET to scheduler z bogatymi triggerami (cron, kalendarze, misfire), jobami z danymi i trybem klastrowym na bazie danych. Wybór: zadania wywoływane z kodu z retry i podglądem – Hangfire; złożone harmonogramy – Quartz; ciągłe przetwarzanie strumienia – BackgroundService.",
+      "code": "// Hangfire\nBackgroundJob.Enqueue<IEmailSender>(s => s.SendWelcomeAsync(userId));\nBackgroundJob.Schedule<IInvoiceService>(s => s.RemindAsync(invoiceId), TimeSpan.FromDays(3));\nRecurringJob.AddOrUpdate<ReportJob>(\"daily-report\", j => j.RunAsync(), Cron.Daily);",
+      "lang": "csharp",
+      "tip": "Uzupełnia podstawowe pytanie o IHostedService – tu chodzi o wybór narzędzia i trwałość zadań.",
+      "deep": "Hangfire serializuje wywołanie metody (typ, nazwa, argumenty) – argumenty muszą być małe i serializowalne (przekazuj Id, nie encję), a zmiana sygnatury metody psuje zadania już zakolejkowane. Domyślne retry Hangfire (kilka prób z rosnącym opóźnieniem) oznacza, że job musi być idempotentny. Część funkcji (np. batche) jest w płatnej wersji Pro. Quartz domyślnie trzyma harmonogram w pamięci – przy wielu instancjach każda odpali job; tryb klastrowy z AdoJobStore koordynuje przez bazę, a [DisallowConcurrentExecution] blokuje równoległe wykonania tego samego joba. Dla BackgroundService: od .NET 6 nieobsłużony wyjątek domyślnie zatrzymuje hosta (BackgroundServiceExceptionBehavior.StopHost), a do .NET 9 długi kod synchroniczny przed pierwszym await w ExecuteAsync blokował start aplikacji – od .NET 10 całe ExecuteAsync jest uruchamiane jako Task na wątku w tle, więc już nie blokuje startu pozostałych usług. W chmurze alternatywą bywają osobne workery (Azure Functions, Container Apps Jobs, Kubernetes CronJob)."
+    },
+    {
+      "id": "dist-040",
+      "topic": "Background jobs",
+      "level": 3,
+      "q": "Jak skalować workery przetwarzające zadania i uniknąć podwójnego wykonania przy wielu instancjach?",
+      "a": "Pracę ciągłą skaluję wzorcem competing consumers: N instancji czyta z jednej kolejki, broker rozdziela wiadomości; skaluję po długości kolejki/lagu (np. KEDA w Kubernetesie) zamiast po CPU. Zadania cykliczne (timer w BackgroundService) przy N replikach wykonają się N razy – rozwiązania: scheduler z koordynacją (Hangfire recurring jobs, Quartz w trybie klastrowym), leader election lub lock na wykonanie, albo osobny deployment schedulera z jedną repliką, który tylko wrzuca zadanie do kolejki. Do tego graceful shutdown: obsługa CancellationToken, dokończenie lub oddanie bieżącej wiadomości przed zatrzymaniem poda.",
+      "tip": "Konkretny przykład: \"wysyłka raportu dziennego trzy razy, bo mamy trzy repliki\" – rekruterzy lubią ten scenariusz.",
+      "deep": "Skalowanie konsumentów ma limity: w Kafce liczba partycji, w Service Bus sessions liczba aktywnych sesji, a przede wszystkim przepustowość zasobu docelowego – 50 workerów może zadusić bazę, więc limituję współbieżność (MaxConcurrentCalls, prefetch, SemaphoreSlim) i obserwuję DB. Przy shutdown host daje hosted services ograniczony czas (HostOptions.ShutdownTimeout), a Kubernetes – terminationGracePeriodSeconds; dłuższe przetwarzanie zostanie przerwane, więc zadania muszą być wznawialne i idempotentne (checkpointy dla długich jobów, małe jednostki pracy). Lock na zadanie cykliczne z TTL krótszym niż czas wykonania pozwoli drugiej instancji wystartować – TTL dobieram z zapasem lub przedłużam. Lepiej deterministyczny klucz wykonania (np. \"raport-2026-10-19\" z unikalnym indeksem), który gwarantuje jedno wykonanie na okres nawet przy podwójnym starcie. Zadania długie (godziny) rozbijam na fan-out wielu małych wiadomości, co daje równoległość i odporność na restart."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "dist-q001",
+      "topic": "RabbitMQ",
+      "level": 1,
+      "q": "Który typ exchange w RabbitMQ dostarcza kopię wiadomości do wszystkich podpiętych kolejek, ignorując routing key?",
+      "options": [
+        "direct",
+        "fanout",
+        "topic",
+        "headers"
+      ],
+      "correct": 1,
+      "why": "Fanout rozsyła do wszystkich związanych kolejek bez patrzenia na klucz. Direct wymaga dokładnego dopasowania klucza, topic – dopasowania wzorca (*, #), headers – dopasowania nagłówków."
+    },
+    {
+      "id": "dist-q002",
+      "topic": "Kafka",
+      "level": 1,
+      "q": "Topic ma 6 partycji. W jednej consumer group uruchamiasz 8 instancji konsumenta. Co się stanie?",
+      "options": [
+        "Każda instancja dostanie część wiadomości z każdej partycji",
+        "Kafka automatycznie utworzy 2 dodatkowe partycje",
+        "6 instancji dostanie po jednej partycji, 2 będą bezczynne",
+        "Konsumenci z nadmiarowych instancji dostaną duplikaty wiadomości"
+      ],
+      "correct": 2,
+      "why": "W grupie partycja ma dokładnie jednego właściciela, więc równoległość jest ograniczona liczbą partycji. Kafka nie dodaje partycji sama, a nadmiarowi konsumenci nic nie dostają (są w rezerwie na wypadek awarii)."
+    },
+    {
+      "id": "dist-q003",
+      "topic": "Azure Service Bus",
+      "level": 1,
+      "q": "Event OrderPlaced musi niezależnie trafić do serwisów Billing i Shipping, a każdy z nich ma po 3 instancje. Jak to zamodelować w Azure Service Bus?",
+      "options": [
+        "Jedna kolejka, którą czytają wszystkie 6 instancji",
+        "Dwie kolejki, do których producent wysyła tę samą wiadomość osobno",
+        "Jedna kolejka z sesjami, SessionId = nazwa serwisu",
+        "Topic z dwiema subskrypcjami (billing, shipping); instancje danego serwisu konkurują o wiadomości swojej subskrypcji"
+      ],
+      "correct": 3,
+      "why": "Subskrypcja dostaje własną kopię i działa jak kolejka, w której instancje są competing consumers. Wspólna kolejka dałaby każdą wiadomość tylko jednemu serwisowi; wysyłka do dwóch kolejek wiąże producenta z odbiorcami; sesje służą do kolejności, nie do fan-outu."
+    },
+    {
+      "id": "dist-q004",
+      "topic": "Real-time",
+      "level": 1,
+      "q": "Dashboard w Angularze ma tylko odbierać aktualizacje statusów z serwera kilka razy na minutę. Klient nic nie wysyła tym kanałem. Które rozwiązanie jest najprostsze i wystarczające?",
+      "options": [
+        "Server-Sent Events",
+        "WebSockets z własnym protokołem",
+        "gRPC bidirectional streaming",
+        "Polling co 100 ms"
+      ],
+      "correct": 0,
+      "why": "SSE to jednokierunkowy strumień serwer→klient po HTTP z wbudowanym reconnectem w EventSource. WebSockets dają dupleks, który tu nie jest potrzebny; gRPC nie działa bezpośrednio w przeglądarce; agresywny polling marnuje zasoby."
+    },
+    {
+      "id": "dist-q005",
+      "topic": "Circuit breaker",
+      "level": 1,
+      "q": "Circuit breaker jest w stanie Open. Minął czas break duration. Co dzieje się dalej?",
+      "options": [
+        "Breaker przechodzi w Closed i przepuszcza cały ruch",
+        "Breaker przechodzi w Half-open i przepuszcza próbne wywołania; sukces zamyka obwód, porażka znów go otwiera",
+        "Breaker pozostaje Open do ręcznego resetu",
+        "Breaker ponawia wszystkie odrzucone wcześniej wywołania"
+      ],
+      "correct": 1,
+      "why": "Half-open to stan próbny: kilka wywołań sprawdza, czy zależność wróciła. Pełne otwarcie ruchu od razu groziłoby ponownym przeciążeniem, a breaker nie kolejkuje odrzuconych wywołań."
+    },
+    {
+      "id": "dist-q006",
+      "topic": "Redis",
+      "level": 1,
+      "q": "Potrzebujesz rankingu graczy z szybkim pobieraniem top 10 i aktualizacją punktów. Która struktura Redisa pasuje najlepiej?",
+      "options": [
+        "List",
+        "Set",
+        "Hash",
+        "Sorted Set"
+      ],
+      "correct": 3,
+      "why": "Sorted Set trzyma elementy posortowane po score: ZINCRBY aktualizuje punkty, a ZRANGE/ZREVRANGE z WITHSCORES daje top N w O(log N + N). Set nie ma kolejności, List wymaga ręcznego sortowania, Hash nie sortuje."
+    },
+    {
+      "id": "dist-q007",
+      "topic": "RabbitMQ",
+      "level": 2,
+      "q": "Konsument RabbitMQ działa z autoAck: true. W trakcie przetwarzania wiadomości proces zostaje zabity przez OOM. Co stanie się z tą wiadomością?",
+      "options": [
+        "Wróci do kolejki po zerwaniu połączenia",
+        "Trafi do dead letter exchange",
+        "Przepadnie – broker uznał ją za potwierdzoną w chwili wysłania do konsumenta",
+        "Zostanie dostarczona ponownie po upływie TTL"
+      ],
+      "correct": 2,
+      "why": "Przy autoAck broker usuwa wiadomość od razu po dostarczeniu, więc to semantyka at-most-once. Do kolejki wracają tylko wiadomości niepotwierdzone przy autoAck: false; DLX dotyczy odrzuconych lub wygasłych."
+    },
+    {
+      "id": "dist-q008",
+      "topic": "Retry i poison messages",
+      "level": 2,
+      "q": "Handler przy każdym wyjątku wywołuje BasicNackAsync(tag, false, requeue: true). Jedna wiadomość ma niepoprawny JSON. Co się stanie i jak to naprawić?",
+      "options": [
+        "Wiadomość będzie krążyć w nieskończonej pętli redelivery; błędy deserializacji/trwałe należy odrzucać bez requeue do DLX, a przejściowe ponawiać z limitem",
+        "RabbitMQ po 3 próbach sam przeniesie ją do DLQ, więc nic nie trzeba robić",
+        "Wiadomość zostanie odrzucona, bo requeue działa tylko raz",
+        "Konsument zostanie odłączony, a wiadomość usunięta"
+      ],
+      "correct": 0,
+      "why": "Poison message z requeue=true wraca natychmiast i znów się wysypuje – gorąca pętla obciążająca CPU i logi. Classic queues nie mają limitu dostarczeń; quorum queues mają delivery limit, ale i tak należy świadomie skonfigurować DLX i rozróżniać błędy trwałe od przejściowych."
+    },
+    {
+      "id": "dist-q009",
+      "topic": "Kafka",
+      "level": 2,
+      "q": "Zdarzenia OrderCreated, OrderPaid i OrderShipped dla tego samego zamówienia są czasem przetwarzane w złej kolejności. Producent wysyła je bez klucza. Co jest najlepszą poprawką?",
+      "options": [
+        "Zwiększyć liczbę partycji",
+        "Ustawić klucz wiadomości na OrderId, aby wszystkie zdarzenia zamówienia trafiały do tej samej partycji",
+        "Uruchomić jednego konsumenta zamiast kilku",
+        "Włączyć auto-commit offsetów"
+      ],
+      "correct": 1,
+      "why": "Kafka gwarantuje kolejność tylko w partycji, a partycję wyznacza hash klucza. Bez klucza zdarzenia trafiają do różnych partycji. Jeden konsument nie pomoże, bo partycje i tak mogą być czytane w różnym tempie; więcej partycji i auto-commit nie mają związku z kolejnością."
+    },
+    {
+      "id": "dist-q010",
+      "topic": "Kafka",
+      "level": 2,
+      "q": "Konsument Kafki commituje offset wiadomości zaraz po Consume(), a dopiero potem zapisuje dane do bazy. Proces pada między commitem a zapisem. Jaki jest efekt?",
+      "options": [
+        "Wiadomość zostanie przetworzona ponownie po restarcie (at-least-once)",
+        "Kafka wykryje brak zapisu i cofnie offset",
+        "Wiadomość trafi do dead letter topic",
+        "Wiadomość zostanie utracona dla tej grupy (at-most-once)"
+      ],
+      "correct": 3,
+      "why": "Offset jest już zapisany, więc po restarcie grupa zacznie od następnej wiadomości. Commit przed przetworzeniem to at-most-once. Kafka nie wie nic o efektach w bazie i nie ma natywnego DLT."
+    },
+    {
+      "id": "dist-q011",
+      "topic": "Azure Service Bus",
+      "level": 2,
+      "q": "Kod wysyłający do Service Bus ponawia SendMessageAsync po timeoucie, za każdym razem tworząc nową wiadomość z MessageId = Guid.NewGuid().ToString(). Kolejka ma włączone duplicate detection. Dlaczego konsument i tak dostaje duplikaty?",
+      "options": [
+        "Duplicate detection działa tylko w tierze Premium",
+        "Duplicate detection porównuje treść wiadomości, a nie Id",
+        "Każda próba ma inny MessageId, więc broker nie rozpoznaje duplikatu; MessageId powinien być deterministyczny (np. z OrderId)",
+        "Duplicate detection działa tylko dla kolejek z sesjami"
+      ],
+      "correct": 2,
+      "why": "Deduplikacja w Service Bus opiera się wyłącznie na MessageId w oknie czasowym. Losowy Id przy każdej próbie czyni ją bezużyteczną. Funkcja nie wymaga sesji i nie analizuje treści."
+    },
+    {
+      "id": "dist-q012",
+      "topic": "Gwarancje dostarczania",
+      "level": 2,
+      "q": "Które stwierdzenie o semantyce dostarczania jest prawdziwe?",
+      "options": [
+        "Exactly-once end-to-end da się osiągnąć, włączając odpowiednią opcję w brokerze",
+        "At-most-once jest bezpieczniejsze dla płatności, bo nie ma duplikatów",
+        "W praktyce exactly-once processing osiąga się przez at-least-once w połączeniu z idempotentnym przetwarzaniem",
+        "At-least-once gwarantuje brak duplikatów, jeśli konsument jest jednowątkowy"
+      ],
+      "correct": 2,
+      "why": "Gwarancje brokera kończą się na jego granicy; efekty w bazie czy API wymagają idempotencji. At-most-once przy płatnościach oznacza ryzyko utraty, a jednowątkowość nie chroni przed redelivery."
+    },
+    {
+      "id": "dist-q013",
+      "topic": "Redis",
+      "level": 2,
+      "q": "Mikroserwisy komunikują się przez Redis Pub/Sub. Podczas 2-minutowego deployu serwisu Shipping zginęły zamówienia do wysyłki. Dlaczego?",
+      "options": [
+        "Pub/Sub ma domyślny TTL 60 sekund na wiadomość",
+        "Pub/Sub jest fire-and-forget: wiadomości trafiają tylko do aktualnie podłączonych subskrybentów i nie są przechowywane",
+        "Redis usunął wiadomości przez politykę eviction",
+        "Kanał trzeba było utworzyć jako durable"
+      ],
+      "correct": 1,
+      "why": "Pub/Sub nie ma persystencji ani potwierdzeń. Do komunikacji wymagającej niezawodności potrzebne są Redis Streams z consumer groups lub broker. Pub/Sub nie ma TTL ani trybu durable, a eviction dotyczy kluczy."
+    },
+    {
+      "id": "dist-q014",
+      "topic": "Redis",
+      "level": 2,
+      "q": "Redis służy wyłącznie jako cache, ma ustawione maxmemory i domyślną politykę eviction. Po osiągnięciu limitu aplikacja dostaje błędy przy SET. Co jest przyczyną?",
+      "options": [
+        "Domyślna polityka to noeviction – przy pełnej pamięci zapisy są odrzucane; dla cache należy ustawić np. allkeys-lru lub allkeys-lfu",
+        "Domyślna polityka volatile-lru usuwa tylko klucze z TTL, a klucze go nie mają",
+        "Redis nie obsługuje eviction w trybie standalone",
+        "Klucze cache muszą mieć TTL krótszy niż 1 godzina"
+      ],
+      "correct": 0,
+      "why": "Domyślnie Redis ma noeviction i zwraca błąd OOM przy zapisie. Polityki allkeys-* wybierają ofiary spośród wszystkich kluczy. Eviction działa w każdym trybie, a długość TTL nie ma tu znaczenia."
+    },
+    {
+      "id": "dist-q015",
+      "topic": "Wzorce cache",
+      "level": 2,
+      "q": "System liczy wyświetlenia artykułów. Zapisy trafiają do Redisa, a co 10 sekund są zrzucane paczką do bazy. Jaki to wzorzec i jakie ma główne ryzyko?",
+      "options": [
+        "Cache-aside; ryzyko stampede",
+        "Read-through; ryzyko czytania nieaktualnych danych",
+        "Write-through; ryzyko wolnych zapisów",
+        "Write-behind; ryzyko utraty danych z ostatnich sekund przy awarii cache"
+      ],
+      "correct": 3,
+      "why": "Asynchroniczny, odroczony zapis do bazy to write-behind (write-back). Daje szybkie zapisy kosztem możliwej utraty niezrzuconych danych – akceptowalne dla liczników, nie dla zamówień. Write-through zapisuje do bazy synchronicznie."
+    },
+    {
+      "id": "dist-q016",
+      "topic": "gRPC",
+      "level": 2,
+      "q": "Aplikacja Angular ma bezpośrednio wywoływać istniejący serwis gRPC w ASP.NET Core. Co jest potrzebne?",
+      "options": [
+        "Nic – przeglądarki obsługują HTTP/2, więc gRPC działa natywnie",
+        "gRPC-Web (lub JSON transcoding), bo API przeglądarki nie daje kontroli nad ramkami HTTP/2 i trailerami wymaganymi przez gRPC",
+        "Zmiana serializacji z protobuf na JSON w pliku .proto",
+        "Uruchomienie serwisu na HTTP/1.1"
+      ],
+      "correct": 1,
+      "why": "Przeglądarkowe fetch/XHR nie pozwalają na pełne wykorzystanie HTTP/2 wymagane przez gRPC (m.in. trailers). gRPC-Web to wariant protokołu dla przeglądarek, a JSON transcoding wystawia te same metody jako REST/JSON. Plik .proto nie wybiera formatu przesyłu."
+    },
+    {
+      "id": "dist-q017",
+      "topic": "Real-time",
+      "level": 2,
+      "q": "Aplikacja z SignalR działa na 3 instancjach za load balancerem ze sticky sessions, bez backplane. Serwer wywołuje Clients.Group(\"tenant-5\").SendAsync(...). Co się stanie?",
+      "options": [
+        "Wiadomość dostaną tylko członkowie grupy podłączeni do tej samej instancji, która wysłała wiadomość",
+        "Wiadomość dotrze do wszystkich członków grupy, bo sticky sessions to zapewniają",
+        "SignalR rzuci wyjątek, bo grupy wymagają backplane",
+        "Wiadomość zostanie zbuforowana i dostarczona po dołączeniu do backplane"
+      ],
+      "correct": 0,
+      "why": "Każda instancja zna tylko swoje połączenia i grupy. Sticky sessions utrzymują klienta przy jednej instancji, ale nie rozsyłają wiadomości między serwerami – do tego służy Redis backplane lub Azure SignalR Service."
+    },
+    {
+      "id": "dist-q018",
+      "topic": "Rate limiting",
+      "level": 2,
+      "q": "Limit to 100 żądań na minutę w algorytmie fixed window. Klient wysyła 100 żądań o 12:00:59 i 100 o 12:01:00. Ile zostanie przepuszczonych?",
+      "options": [
+        "100",
+        "150",
+        "200",
+        "0 – klient zostanie zablokowany na minutę"
+      ],
+      "correct": 2,
+      "why": "Liczniki są zerowane na granicy okna, więc oba pakiety mieszczą się w swoich oknach – 200 żądań w 2 sekundy. To znana wada fixed window, którą łagodzi sliding window lub token bucket."
+    },
+    {
+      "id": "dist-q019",
+      "topic": "Distributed tracing",
+      "level": 2,
+      "q": "Nagłówek: traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01. Co oznacza fragment 4bf92f3577b34da6a3ce929d0e0e4736?",
+      "options": [
+        "Id bieżącego spanu",
+        "Identyfikator całego trace, wspólny dla wszystkich spanów żądania",
+        "Identyfikator usługi, która wysłała żądanie",
+        "Flagi próbkowania"
+      ],
+      "correct": 1,
+      "why": "Format to wersja-traceId(32 hex)-parentId(16 hex)-flagi. 32-znakowy fragment to trace-id; 00f067aa0ba902b7 to Id spanu rodzica, a 01 oznacza, że trace jest próbkowany."
+    },
+    {
+      "id": "dist-q020",
+      "topic": "Background jobs",
+      "level": 2,
+      "q": "BackgroundService z PeriodicTimer wysyła codziennie raport mailowy. Po przeskalowaniu API do 3 replik klienci dostają raport 3 razy. Które rozwiązanie jest właściwe?",
+      "options": [
+        "Dodać Task.Delay z losowym opóźnieniem na starcie",
+        "Zamienić PeriodicTimer na System.Threading.Timer",
+        "Sprawdzać w pamięci, czy raport był już wysłany dzisiaj",
+        "Użyć schedulera z koordynacją (Hangfire recurring job, Quartz w trybie klastrowym) lub lock/leader election, ewentualnie osobny worker z jedną repliką"
+      ],
+      "correct": 3,
+      "why": "Każda replika ma własny timer, więc zadanie wykona się N razy. Potrzebna jest koordynacja między instancjami. Losowe opóźnienie i zmiana typu timera tego nie rozwiązują, a stan w pamięci nie jest współdzielony między replikami."
+    },
+    {
+      "id": "dist-q021",
+      "topic": "Gwarancje dostarczania",
+      "level": 3,
+      "q": "Konsument najpierw zapisuje zmianę salda (SaveChanges, commit), a potem w osobnej transakcji wstawia MessageId do tabeli Inbox. Co jest nie tak?",
+      "options": [
+        "Nic – kolejność zapisów nie ma znaczenia",
+        "Crash między transakcjami spowoduje redelivery i ponowne zmienienie salda; zmiana i wpis do Inbox muszą być w jednej transakcji",
+        "Tabela Inbox powinna być w Redisie, a nie w bazie",
+        "MessageId należy zapisywać przed odebraniem wiadomości z brokera"
+      ],
+      "correct": 1,
+      "why": "Deduplikacja działa tylko, gdy wpis Inbox i efekt biznesowy są atomowe. Inaczej zostaje okno, w którym efekt jest zapisany, a ślad przetworzenia – nie, więc ponowne dostarczenie podwoi efekt. Redis nie da transakcji wspólnej z bazą."
+    },
+    {
+      "id": "dist-q022",
+      "topic": "Azure Service Bus",
+      "level": 3,
+      "q": "Przetwarzanie wiadomości z Service Bus trwa ok. 3 minuty, lock duration kolejki to 1 minuta, a automatyczne odnawianie locka jest wyłączone. Co się dzieje?",
+      "options": [
+        "Service Bus wydłuży lock automatycznie do końca przetwarzania",
+        "Wiadomość zostanie od razu przeniesiona do DLQ",
+        "Lock wygasa, wiadomość staje się widoczna dla innego konsumenta i jest przetwarzana ponownie, a Complete pierwszego kończy się błędem lock lost; po MaxDeliveryCount trafi do DLQ",
+        "Konsument dostanie wyjątek przy odbiorze i nie zacznie przetwarzania"
+      ],
+      "correct": 2,
+      "why": "W PeekLock lock ma ograniczony czas – po wygaśnięciu wiadomość wraca do kolejki, a licznik dostarczeń rośnie. Rozwiązanie: odnawianie locka (MaxAutoLockRenewalDuration w procesorze), krótsze przetwarzanie lub idempotentny handler."
+    },
+    {
+      "id": "dist-q023",
+      "topic": "Redis",
+      "level": 3,
+      "q": "Co jest najpoważniejszym problemem tego kodu?",
+      "code": "if (await db.StringSetAsync(\"lock:invoices\", \"1\", when: When.NotExists))\n{\n    await GenerateInvoicesAsync();\n    await db.KeyDeleteAsync(\"lock:invoices\");\n}",
+      "lang": "csharp",
+      "options": [
+        "StringSetAsync nie jest atomowe przy When.NotExists",
+        "Należy użyć KeyExistsAsync przed StringSetAsync",
+        "Lock powinien mieć wartość \"true\" zamiast \"1\"",
+        "Brak TTL (crash = lock na zawsze) i brak unikalnego tokenu – KeyDeleteAsync może zwolnić lock innego właściciela"
+      ],
+      "correct": 3,
+      "why": "SET NX jest atomowe, ale lock bez wygaśnięcia zostaje po crashu na zawsze. Stała wartość \"1\" i bezwarunkowe DEL sprawiają, że po ewentualnym wygaśnięciu można usunąć cudzy lock. Poprawnie: SET z TTL i unikalnym tokenem oraz zwolnienie skryptem Lua porównującym token. Osobne KeyExists wprowadza wyścig."
+    },
+    {
+      "id": "dist-q024",
+      "topic": "Kolejność i partycjonowanie",
+      "level": 3,
+      "q": "Topic Kafki ma 24 partycje, kluczem jest TenantId. Jeden tenant generuje 70% ruchu; lag rośnie tylko na jednej partycji, a dodanie konsumentów nic nie zmienia. Kolejność jest potrzebna tylko w obrębie zamówienia. Co zrobić?",
+      "options": [
+        "Zmienić klucz na OrderId (lub TenantId+OrderId), żeby rozłożyć ruch dużego tenanta na wiele partycji",
+        "Podwoić liczbę partycji przy tym samym kluczu",
+        "Dodać więcej instancji konsumenta",
+        "Wyłączyć klucz, żeby producent rozrzucał wiadomości losowo"
+      ],
+      "correct": 0,
+      "why": "Wszystkie wiadomości jednego klucza trafiają do jednej partycji, która ma jednego konsumenta – to hot partition. Więcej partycji czy instancji nie rozbije jednego klucza. Brak klucza zniszczy kolejność per zamówienie, a drobniejszy klucz zachowa ją tam, gdzie jest potrzebna."
+    },
+    {
+      "id": "dist-q025",
+      "topic": "CAP i consensus",
+      "level": 3,
+      "q": "Ile awarii węzłów przetrwa klaster Raft złożony z 4 węzłów, zachowując możliwość zatwierdzania zapisów?",
+      "options": [
+        "0",
+        "2",
+        "3",
+        "1"
+      ],
+      "correct": 3,
+      "why": "Zapis wymaga większości: dla 4 węzłów to 3, więc dopuszczalna jest 1 awaria – tyle samo co przy 3 węzłach. Dlatego klastry consensus mają nieparzystą liczbę węzłów (3, 5); 5 węzłów toleruje 2 awarie."
+    },
+    {
+      "id": "dist-q026",
+      "topic": "CAP i consensus",
+      "level": 3,
+      "q": "Baza w normalnej pracy (bez awarii sieci) serwuje odczyty z asynchronicznych replik, żeby obniżyć opóźnienia, akceptując chwilowo nieaktualne dane. Jak to opisać w PACELC?",
+      "options": [
+        "PA – wybór dostępności w czasie partycji",
+        "EL – przy braku partycji wybór niższego opóźnienia kosztem spójności",
+        "EC – przy braku partycji wybór spójności",
+        "CA – system spójny i dostępny"
+      ],
+      "correct": 1,
+      "why": "Część E (else) PACELC opisuje zachowanie bez partycji: tu wybrano latencję (L) kosztem spójności. PA dotyczy zachowania podczas partycji, a CA nie jest realnym wyborem w systemie rozproszonym."
+    },
+    {
+      "id": "dist-q027",
+      "topic": "Czas i kolejność zdarzeń",
+      "level": 3,
+      "q": "Dwa węzły przyjmują aktualizacje profilu i rozwiązują konflikty strategią last-write-wins po DateTime.UtcNow. Zegar węzła B spóźnia się o 2 s. Użytkownik zmienia e-mail na A, a sekundę później na B. Jaki może być efekt?",
+      "options": [
+        "Zawsze wygra późniejsza zmiana, bo czas jest w UTC",
+        "Obie zmiany zostaną zachowane jako konflikt do rozwiązania",
+        "Wcześniejsza zmiana z A ma wyższy timestamp i wygra – nowsza zmiana zostanie cicho utracona",
+        "Węzeł B odrzuci zapis z powodu rozbieżności zegarów"
+      ],
+      "correct": 2,
+      "why": "UTC nie usuwa clock skew: zapis z B dostaje timestamp ok. 1 s wcześniejszy niż zapis z A, więc LWW wybierze starszą zmianę. Poprawne porządkowanie wymaga wersji/sekwencji z jednego źródła lub zegarów logicznych; LWW samo nie zgłasza konfliktów."
+    },
+    {
+      "id": "dist-q028",
+      "topic": "Circuit breaker",
+      "level": 3,
+      "q": "Łańcuch: Gateway → Service A → Service B → baza. Każde z trzech wywołań (Gateway→A, A→B, B→DB) ma retry z 3 ponowieniami (łącznie 4 próby). Baza zwraca trwały błąd. Ile maksymalnie zapytań trafi do bazy na jedno żądanie użytkownika?",
+      "options": [
+        "12",
+        "16",
+        "64",
+        "256"
+      ],
+      "correct": 2,
+      "why": "Próby się mnożą: 4 (Gateway→A) × 4 (A→B) × 4 (B→DB) = 64. To retry storm – dlatego retry stosuje się w jednym miejscu, z budżetem i circuit breakerem, a błędy trwałe nie są ponawiane."
+    },
+    {
+      "id": "dist-q029",
+      "topic": "Load balancing i service discovery",
+      "level": 3,
+      "q": "Serwis gRPC ma 5 podów za load balancerem L4 (TCP). Klient to jedna instancja innego serwisu z jednym GrpcChannel. Cały ruch trafia do jednego poda. Dlaczego?",
+      "options": [
+        "gRPC wymaga sticky sessions, które L4 włącza domyślnie",
+        "Pozostałe pody nie przeszły readiness probe",
+        "gRPC zawsze wybiera pod z najniższym IP",
+        "gRPC multipleksuje wywołania na jednym długotrwałym połączeniu HTTP/2, a L4 balansuje połączenia, nie żądania – potrzebny L7 lub client-side load balancing"
+      ],
+      "correct": 3,
+      "why": "Balancer L4 przypisuje połączenie TCP do poda raz; wszystkie wywołania na tym połączeniu idą tam. Balancer L7 (Envoy, YARP, mesh) rozkłada pojedyncze żądania HTTP/2, a Grpc.Net.Client wspiera balansowanie po stronie klienta. Pozostałe opcje nie opisują mechanizmu."
+    },
+    {
+      "id": "dist-q030",
+      "topic": "Saga",
+      "level": 3,
+      "q": "Saga zamówienia: 1) rezerwacja towaru, 2) obciążenie karty, 3) zamówienie kuriera. Krok 3 kończy się trwałym błędem. Co powinna zrobić saga?",
+      "options": [
+        "Wykonać akcje kompensujące w odwrotnej kolejności: zwrot płatności, a potem zwolnienie rezerwacji",
+        "Wycofać transakcję rozproszoną obejmującą wszystkie trzy serwisy",
+        "Ponawiać krok 3 w nieskończoność, bo saga gwarantuje sukces",
+        "Nic – poprzednie kroki zostały zatwierdzone lokalnie, więc stan jest spójny"
+      ],
+      "correct": 0,
+      "why": "Saga nie ma globalnego rollbacku – każdy krok to zatwierdzona transakcja lokalna, więc cofnięcie wymaga kompensacji (nowych operacji biznesowych), zwykle w odwrotnej kolejności. Nieskończone retry przy błędzie trwałym nic nie da, a pozostawienie stanu zostawi pobraną płatność bez wysyłki."
+    }
+  ]
+}

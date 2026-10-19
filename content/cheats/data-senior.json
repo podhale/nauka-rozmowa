@@ -1,0 +1,81 @@
+{
+  "cat": "data",
+  "sheets": [
+    {
+      "topic": "Diagnostyka EF",
+      "points": [
+        "Kolejność: **zmierz → zlokalizuj (trace) → wyizoluj SQL → plan wykonania → poprawka → weryfikacja metryką**.",
+        "OpenTelemetry tracing pokazuje spany SQL w requeście: od razu widać N+1, jedno ciężkie zapytanie lub czekanie na połączenie.",
+        "Logi kategorii `Microsoft.EntityFrameworkCore.Database.Command` (Information) zawierają SQL i czas wykonania.",
+        "`TagWith` / `TagWithCallSite` dodają komentarz do SQL – DBA znajdzie źródło w Query Store / pg_stat_statements.",
+        "`ToQueryString()` zwraca SQL bez wykonania (przy split query tylko pierwsze zapytanie).",
+        "Na produkcji loguj tylko wolne komendy: `DbCommandInterceptor` z progiem (np. > 500 ms).",
+        "Wyczerpana pula połączeń wygląda jak wolna baza: timeouty przy niskim CPU bazy.",
+        "Metryki EF (meter `Microsoft.EntityFrameworkCore`, od EF 9; wcześniej event counters) i SqlClient pomagają wykryć wycieki kontekstów i problemy z pulą."
+      ],
+      "pitfalls": [
+        "`EnableSensitiveDataLogging` na produkcji = dane osobowe w logach.",
+        "Zmienne wartości w `TagWith` (np. Id użytkownika) – każdy tekst to osobny wpis w plan cache."
+      ],
+      "code": "var q = db.Orders.TagWith(\"GetCustomerOrders\").TagWithCallSite()\n    .Where(o => o.CustomerId == id);\nConsole.WriteLine(q.ToQueryString());",
+      "lang": "csharp",
+      "say": "Najpierw ustalam tracingiem, czy czas idzie w bazie, czy w aplikacji, potem biorę konkretny SQL dzięki tagom i logom wolnych zapytań, i dopiero wtedy patrzę na plan wykonania i indeksy."
+    },
+    {
+      "topic": "Odporność połączeń",
+      "points": [
+        "`EnableRetryOnFailure` włącza execution strategy ponawiającą operacje przy błędach przejściowych (failover, throttling, zerwane połączenie).",
+        "Ręczna transakcja + retry → `InvalidOperationException`; całość owijasz w `CreateExecutionStrategy().ExecuteAsync`.",
+        "Blok w strategii musi być **powtarzalny**: bez efektów ubocznych poza bazą, świeży stan (`ChangeTracker.Clear()` lub nowy kontekst).",
+        "Zerwanie w trakcie COMMIT: nie wiadomo, czy się zatwierdziło – `ExecuteInTransactionAsync` z `verifySucceeded` lub unikalny klucz operacji.",
+        "Ogranicz liczbę prób i maksymalne opóźnienie; timeout requestu musi uwzględniać sumę retry.",
+        "Retry dotyczy tylko błędów przejściowych; violation constraint nie jest ponawiany."
+      ],
+      "pitfalls": [
+        "Wysyłanie maila lub wywołanie płatności wewnątrz bloku z retry – efekt wykona się kilka razy.",
+        "Agresywny retry z wielu instancji dobija przeciążoną bazę."
+      ],
+      "code": "var strategy = db.Database.CreateExecutionStrategy();\nawait strategy.ExecuteAsync(async () =>\n{\n    await using var tx = await db.Database.BeginTransactionAsync();\n    // ... zmiany + SaveChangesAsync\n    await tx.CommitAsync();\n});",
+      "lang": "csharp",
+      "say": "Retry obejmuje całą jednostkę pracy, więc transakcję owijam w execution strategy, a samą operację projektuję jako idempotentną, bo przy zerwaniu w trakcie commita nie wiem, czy zapis się udał."
+    },
+    {
+      "topic": "Multi-tenancy",
+      "points": [
+        "Modele: **wspólna baza + TenantId** (tanio), **schema per tenant**, **baza per tenant** (izolacja, data residency, najdrożej).",
+        "Wspólna baza: global query filter na TenantId + ustawianie TenantId w `SaveChangesInterceptor`.",
+        "EF 10: nazwane query filters – soft delete i tenant da się wyłączać niezależnie.",
+        "Schema per tenant wymaga własnej `IModelCacheKeyFactory` – model jest cache’owany per typ kontekstu.",
+        "Baza per tenant: connection string wybierany per request (fabryka / `OnConfiguring`), migracje osobnym procesem po wszystkich bazach.",
+        "Druga linia obrony: Row-Level Security z `SESSION_CONTEXT` ustawianym w `DbConnectionInterceptor`.",
+        "Pula połączeń jest per connection string – tysiące baz zjadają zasoby (elastic pools, model hybrydowy)."
+      ],
+      "pitfalls": [
+        "Filtr to nie zabezpieczenie: `IgnoreQueryFilters`, surowy SQL, `ExecuteUpdate` i joby bez kontekstu tenanta go omijają.",
+        "Z DbContext pooling nie wstrzykniesz tenanta do konstruktora (dozwolony tylko DbContextOptions) – tenant ustawiany po każdym wypożyczeniu, inaczej przecieka między requestami."
+      ],
+      "code": "b.Entity<Order>().HasQueryFilter(o => o.TenantId == tenant.TenantId);\n// schema per tenant:\npublic object Create(DbContext ctx, bool designTime) =>\n    (ctx.GetType(), ((TenantDbContext)ctx).Schema, designTime);",
+      "lang": "csharp",
+      "say": "Dla większości SaaS zaczynam od wspólnej bazy z TenantId, filtrem w EF i RLS w bazie, a dużych lub regulowanych klientów przenoszę do osobnych baz – model hybrydowy."
+    },
+    {
+      "topic": "Skalowanie odczytów",
+      "points": [
+        "Kolejność: **indeksy i zapytania → cache → read replica → osobny read model**.",
+        "Read replica: osobny `ReadDbContext` z `NoTracking` na connection stringu repliki (np. `ApplicationIntent=ReadOnly`).",
+        "Replication lag: odczyt tuż po zapisie może być nieaktualny – read-your-writes (sticky do primary po zapisie) lub zwrot stanu z komendy.",
+        "Osobny read model (CQRS): zdenormalizowane tabele pod ekrany, aktualizowane zdarzeniami (outbox + idempotencja), możliwy replay.",
+        "EF Core **nie ma** cache drugiego poziomu; identity map działa tylko w obrębie kontekstu.",
+        "Cache’uj DTO use case’u: `HybridCache` (pakiet 9.x+, działa też na .NET 8) = L1 + L2, ochrona przed stampede, tagi (`RemoveByTagAsync`).",
+        "Tenant zawsze w kluczu cache; L1 na wielu podach może chwilę serwować stare dane – krótki TTL."
+      ],
+      "pitfalls": [
+        "Cache wyników zapytań EF unieważniany przez SaveChanges nie widzi bulk operacji, SQL-a ani innych serwisów.",
+        "Replika podwaja koszt bazy – nie proponuj jej, zanim nie sprawdzisz indeksów i zapytań."
+      ],
+      "code": "builder.Services.AddDbContext<ReadDbContext>(o => o\n    .UseSqlServer(replicaCs)\n    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking));",
+      "lang": "csharp",
+      "say": "Odczyty skaluję stopniowo: najpierw zapytania i cache na poziomie use case’u, potem replika z obsługą replication lag, a osobny read model dopiero gdy ekrany potrzebują innego kształtu danych niż model zapisu."
+    }
+  ]
+}

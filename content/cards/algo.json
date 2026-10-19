@@ -1,0 +1,1088 @@
+{
+ "cat": "algo",
+ "name": "Algorytmy i live coding",
+ "cards": [
+  {
+   "id": "algo-001",
+   "topic": "Big-O i złożoność",
+   "level": 1,
+   "q": "Czym jest notacja Big-O i jak ocenić złożoność czasową i pamięciową rozwiązania?",
+   "a": "Big-O opisuje, jak rośnie koszt algorytmu (czas lub dodatkowa pamięć) wraz z rozmiarem wejścia n, w najgorszym przypadku i z pominięciem stałych oraz składników niższego rzędu. Typowe klasy od najlepszej: O(1), O(log n), O(n), O(n log n), O(n²), O(2ⁿ), O(n!). Czas szacuję, licząc zagnieżdżenie pętli i koszt operacji na kolekcjach w środku, a pamięć – licząc dodatkowe struktury i głębokość rekurencji (stos wywołań też się liczy). Często wymieniam czas na pamięć, np. HashSet zamienia O(n²) na O(n) kosztem O(n) pamięci.",
+   "code": "int First(int[] a) => a[0];                     // O(1)\n\nint Sum(int[] a)                                // O(n) czas, O(1) pamięć\n{\n    int s = 0;\n    foreach (var x in a) s += x;\n    return s;\n}\n\nbool HasDup(int[] a)                            // O(n²) czas, O(1) pamięć\n{\n    for (int i = 0; i < a.Length; i++)\n        for (int j = i + 1; j < a.Length; j++)\n            if (a[i] == a[j]) return true;\n    return false;\n}\n\nbool HasDupFast(int[] a) => new HashSet<int>(a).Count != a.Length; // O(n) / O(n)",
+   "lang": "csharp",
+   "tip": "Zawsze podawaj obie złożoności (czas i pamięć). Przy dwóch wejściach używaj osobnych zmiennych, np. O(n + m), a nie O(n)."
+  },
+  {
+   "id": "algo-002",
+   "topic": "Big-O i złożoność",
+   "level": 2,
+   "q": "Dlaczego List<T>.Add ma złożoność O(1), skoro czasem musi skopiować całą tablicę? Co to jest koszt zamortyzowany?",
+   "a": "List<T> trzyma elementy w tablicy. Gdy Count == Capacity, alokuje tablicę dwa razy większą i kopiuje elementy – ten jeden Add kosztuje O(n). Ale skoro pojemność rośnie geometrycznie, łączna liczba kopiowań dla n dodań to n + n/2 + n/4 + … < 2n, więc średnio na operację wychodzi O(1). To jest koszt zamortyzowany: gwarancja dla ciągu operacji, a nie dla pojedynczej. Jeśli znam rozmiar z góry, podaję capacity w konstruktorze i unikam realokacji.",
+   "code": "var list = new List<int>();          // Capacity rośnie: 0 → 4 → 8 → 16 → ...\nfor (int i = 0; i < 1_000_000; i++)\n    list.Add(i);                     // ~20 realokacji, łącznie < 2n kopiowań\n\nvar known = new List<int>(capacity: 1_000_000);   // zero realokacji\nknown.EnsureCapacity(2_000_000);                  // .NET 6+: rezerwacja z góry",
+   "lang": "csharp",
+   "deep": "Kluczowy jest wzrost geometryczny: gdyby lista rosła o stałą (np. +100), n dodań kosztowałoby O(n²). To samo dotyczy Dictionary/HashSet – przy przepełnieniu robią resize do większego rozmiaru (liczba pierwsza ok. 2×) i rehashing wszystkich elementów, a także StringBuilder (choć on dokłada nowe chunki zamiast kopiować). Na produkcji amortyzacja nie ukrywa jednak skoków latencji: pojedynczy Add na liście z milionem elementów kopiuje kilka MB, a tablice powyżej 85 000 bajtów lądują na Large Object Heap, co zwiększa presję na GC. Dlatego w gorących ścieżkach podaje się capacity, używa EnsureCapacity lub ArrayPool<T>. Po zbudowaniu dużej kolekcji, która już nie rośnie, TrimExcess oddaje nadmiarową pamięć. Na rozmowie dobrze odróżnić trzy pojęcia: średni przypadek (np. hash), najgorszy przypadek i koszt zamortyzowany."
+  },
+  {
+   "id": "algo-003",
+   "topic": "Kolekcje .NET – złożoność",
+   "level": 1,
+   "q": "Jaka jest złożoność podstawowych operacji na List<T>, HashSet<T>, Dictionary, LinkedList<T>, Queue<T> i Stack<T>?",
+   "a": "List<T> to dynamiczna tablica: indeks O(1), Add O(1) zamortyzowane, ale Insert/RemoveAt w środku i Contains są O(n). HashSet<T> i Dictionary<TKey,TValue> to tablice haszujące: Add/Remove/Contains/TryGetValue średnio O(1), pesymistycznie O(n) przy kolizjach. LinkedList<T> daje O(1) wstawianie i usuwanie, ale tylko mając referencję do węzła – wyszukiwanie jest O(n). Queue<T> i Stack<T> mają operacje na końcach w O(1) (bufor cykliczny / tablica). Dobór struktury to zwykle połowa optymalizacji na live codingu.",
+   "code": "// List<T>:           this[i] O(1), Add O(1)*, Insert/RemoveAt(i) O(n), Contains O(n)\n// HashSet<T>:        Add / Remove / Contains O(1) średnio\n// Dictionary<K,V>:   [key], TryGetValue, Remove O(1) średnio\n// SortedDictionary:  Add / Remove / TryGetValue O(log n), iteracja posortowana\n// LinkedList<T>:     AddFirst/AddLast/AddAfter(node)/Remove(node) O(1), Find O(n)\n// Queue<T>/Stack<T>: Enqueue/Dequeue, Push/Pop, Peek O(1)*\n// PriorityQueue:     Enqueue/Dequeue O(log n), Peek O(1)\n// * zamortyzowane",
+   "lang": "csharp",
+   "tip": "Klasyczna pułapka: list.Contains w pętli (O(n²)) albo list.RemoveAt(0) jako kolejka – rekruter oczekuje, że od razu zamienisz to na HashSet / Queue."
+  },
+  {
+   "id": "algo-004",
+   "topic": "Kolekcje .NET – złożoność",
+   "level": 2,
+   "q": "Czym różnią się Dictionary, SortedDictionary i SortedList w .NET i kiedy wybrać każdą z nich?",
+   "a": "Dictionary to hash table: O(1) średnio, ale kolejność iteracji nie jest gwarantowana. SortedDictionary to drzewo czerwono-czarne: Add/Remove/TryGetValue w O(log n) i iteracja po kluczach posortowanych. SortedList trzyma dwie posortowane tablice: odczyt O(log n) (binary search), wstawianie i usuwanie O(n), za to mniej pamięci i dostęp po indeksie (Keys[i]). Wybieram Dictionary domyślnie, SortedDictionary gdy potrzebuję porządku przy częstych zmianach, a SortedList gdy dane się rzadko zmieniają albo są ładowane już posortowane.",
+   "code": "var byId = new Dictionary<int, string>();            // szybki lookup, brak porządku\nvar timeline = new SortedDictionary<DateTime, string>(); // zawsze posortowane po kluczu\ntimeline[DateTime.Parse(\"2026-01-02\")] = \"B\";\ntimeline[DateTime.Parse(\"2026-01-01\")] = \"A\";\nforeach (var (when, what) in timeline)               // A, potem B\n    Console.WriteLine($\"{when:d} {what}\");\n\nvar set = new SortedSet<int> { 5, 1, 9, 3 };\nvar range = set.GetViewBetween(2, 6);                // { 3, 5 } – zapytanie o zakres\nConsole.WriteLine($\"{set.Min} {set.Max}\");          // 1 9",
+   "lang": "csharp",
+   "deep": "SortedDictionary alokuje osobny węzeł drzewa na każdy wpis, więc ma większy narzut pamięci i gorszą lokalność cache niż tablicowe SortedList czy Dictionary – dla małych kolekcji (dziesiątki elementów) liniowe przeszukanie tablicy bywa szybsze od drzewa. .NET nie ma odpowiednika TreeMap.floorKey z Javy w SortedDictionary; do zapytań zakresowych i min/max służy SortedSet<T> (GetViewBetween, Min, Max). Jeśli potrzebujesz kolejności wstawiania, a nie sortowania, od .NET 9 jest generyczny OrderedDictionary<TKey,TValue>. Dla danych tylko do odczytu warto rozważyć FrozenDictionary (.NET 8), który płaci więcej przy tworzeniu, ale ma szybszy odczyt. Dictionary bywa też zdegenerowany przez złe GetHashCode (np. zwracające stałą) – wtedy każdy lookup to O(n)."
+  },
+  {
+   "id": "algo-005",
+   "topic": "Kolekcje .NET – złożoność",
+   "level": 2,
+   "q": "Jak używać PriorityQueue<TElement, TPriority> w .NET i jaka jest złożoność jej operacji?",
+   "a": "PriorityQueue (od .NET 6) to min-kopiec na tablicy: Enqueue i Dequeue w O(log n), Peek w O(1). Element i priorytet są osobno, a Dequeue zwraca element o najmniejszym priorytecie. Max-heap robię przez odwrócony Comparer. Kolejka nie jest stabilna – przy równych priorytetach kolejność nie jest gwarantowana – i nie ma operacji zmiany priorytetu, więc w Dijkstrze dodaje się duplikaty i pomija przestarzałe wpisy.",
+   "code": "var pq = new PriorityQueue<string, int>();\npq.Enqueue(\"niski\", 5);\npq.Enqueue(\"pilny\", 1);\npq.Enqueue(\"średni\", 3);\nwhile (pq.TryDequeue(out var item, out var prio))\n    Console.WriteLine($\"{item} ({prio})\");      // pilny, średni, niski\n\n// max-heap: odwrócony comparer priorytetów\nvar max = new PriorityQueue<string, int>(Comparer<int>.Create((a, b) => b.CompareTo(a)));",
+   "lang": "csharp",
+   "tip": "Top-K największych: min-heap o rozmiarze k (wyrzucasz najmniejszy) daje O(n log k) zamiast sortowania O(n log n).",
+   "deep": "Implementacja to kopiec 4-arny (d-ary heap) na tablicy, co zmniejsza wysokość drzewa i poprawia lokalność cache. Brak stabilności rozwiązuje się priorytetem złożonym, np. (priority, sequenceNumber) jako tuple – tuple porównują się leksykograficznie. Brak decrease-key obchodzi się „lazy deletion”: wrzucasz nowy wpis z lepszym priorytetem, a przy zdjęciu sprawdzasz, czy wpis jest aktualny. Od .NET 9 jest Remove(element, ...), ale działa w O(n), więc nie zastąpi decrease-key. Są też EnqueueDequeue/DequeueEnqueue (jedna operacja zamiast dwóch) i UnorderedItems do podglądu bez zdejmowania. Klasa nie jest thread-safe – do kolejki zadań między wątkami lepiej Channel<T> z osobnymi kolejkami per priorytet."
+  },
+  {
+   "id": "algo-006",
+   "topic": "Tablice i stringi",
+   "level": 1,
+   "q": "Masz posortowaną rosnąco tablicę i liczbę target. Znajdź indeksy dwóch elementów o sumie target.",
+   "a": "Two pointers: lewy wskaźnik na początku, prawy na końcu. Jeśli suma jest za mała, przesuwam lewy w prawo (zwiększam sumę), jeśli za duża – prawy w lewo. Każdy krok eliminuje jeden element, więc czas O(n), pamięć O(1). Brute force to O(n²), a wersja z hash mapą O(n) czasu, ale O(n) pamięci – tutaj sortowanie daje to za darmo.",
+   "code": "(int, int)? PairWithSum(int[] a, int target)\n{\n    int l = 0, r = a.Length - 1;\n    while (l < r)\n    {\n        int sum = a[l] + a[r];\n        if (sum == target) return (l, r);\n        if (sum < target) l++;\n        else r--;\n    }\n    return null;\n}",
+   "lang": "csharp",
+   "tip": "Ten sam wzorzec: palindrom, odwracanie w miejscu, usuwanie duplikatów z posortowanej tablicy, 3Sum (sort + two pointers, O(n²))."
+  },
+  {
+   "id": "algo-007",
+   "topic": "Tablice i stringi",
+   "level": 2,
+   "q": "Znajdź długość najdłuższego podciągu (spójnego) stringa bez powtarzających się znaków.",
+   "a": "Sliding window o zmiennej szerokości: prawy koniec idzie po stringu, a w słowniku trzymam ostatni indeks każdego znaku. Gdy znak już jest w oknie, przesuwam lewy koniec za jego poprzednie wystąpienie. Każdy indeks wchodzi i wychodzi z okna co najwyżej raz, więc czas O(n), pamięć O(min(n, rozmiar alfabetu)). Dla \"abcabcbb\" wynik to 3.",
+   "code": "int LongestUnique(string s)\n{\n    var last = new Dictionary<char, int>();\n    int best = 0, left = 0;\n    for (int right = 0; right < s.Length; right++)\n    {\n        if (last.TryGetValue(s[right], out int prev) && prev >= left)\n            left = prev + 1;\n        last[s[right]] = right;\n        best = Math.Max(best, right - left + 1);\n    }\n    return best;\n}",
+   "lang": "csharp",
+   "deep": "Okno stałe (np. maksymalna suma k kolejnych elementów) przesuwa się, dodając nowy i odejmując najstarszy element. Okno zmienne rozszerza się prawym końcem i zwęża lewym, dopóki warunek jest złamany – kluczowe jest jasne nazwanie niezmiennika („w oknie nie ma duplikatów”). Technika działa, gdy warunek jest monotoniczny: dla sum okna liczby muszą być nieujemne; z ujemnymi trzeba przejść na prefix sums z hash mapą. Warunek prev >= left jest istotny – bez niego lewy koniec mógłby cofnąć się w lewo. Dla samego ASCII zamiast Dictionary wystarczy int[128], co jest szybsze i daje O(1) pamięci. Warianty z rozmów: minimum window substring, najdłuższy podciąg z co najwyżej k różnymi znakami, maksimum w przesuwanym oknie (monotoniczna kolejka)."
+  },
+  {
+   "id": "algo-008",
+   "topic": "Tablice i stringi",
+   "level": 3,
+   "q": "Policz liczbę spójnych podtablic, których suma wynosi k (liczby mogą być ujemne).",
+   "a": "Sliding window nie zadziała, bo przy liczbach ujemnych suma okna nie jest monotoniczna. Używam prefix sums: jeśli suma do i to P, to podtablica kończąca się w i ma sumę k wtedy, gdy wcześniej wystąpił prefiks P − k. W Dictionary zliczam, ile razy wystąpił każdy prefiks. Jedno przejście: czas O(n), pamięć O(n).",
+   "code": "int SubarraySum(int[] nums, int k)\n{\n    var count = new Dictionary<int, int> { [0] = 1 };   // pusty prefiks\n    int prefix = 0, result = 0;\n    foreach (var x in nums)\n    {\n        prefix += x;\n        result += count.GetValueOrDefault(prefix - k);\n        count[prefix] = count.GetValueOrDefault(prefix) + 1;\n    }\n    return result;\n}",
+   "lang": "csharp",
+   "deep": "Wpis {0: 1} reprezentuje pusty prefiks – bez niego zgubisz podtablice zaczynające się od indeksu 0. Kolejność ma znaczenie: najpierw odczyt count[prefix − k], potem inkrementacja bieżącego prefiksu, inaczej przy k = 0 policzysz pustą podtablicę. Klasyczne prefix sums (tablica pre[i+1] = pre[i] + a[i]) dają sumę dowolnego przedziału [l, r] w O(1) po O(n) preprocessingu – przydatne, gdy jest wiele zapytań; uogólniają się na 2D (sumy prostokątów). Przy dużych wartościach sumy warto trzymać w long, bo int się przepełni bez wyjątku (domyślnie unchecked). Odwrotna technika to difference array: aktualizacja przedziału w O(1) i odtworzenie wyniku prefiksem w O(n). Brute force to O(n²) z prefiksami albo O(n³) bez nich – warto to powiedzieć jako punkt wyjścia."
+  },
+  {
+   "id": "algo-009",
+   "topic": "Tablice i stringi",
+   "level": 2,
+   "q": "Znajdź maksymalną sumę spójnej podtablicy (tablica może zawierać liczby ujemne).",
+   "a": "Algorytm Kadane'a: idę po tablicy i dla każdego elementu decyduję, czy przedłużyć bieżącą podtablicę, czy zacząć nową od tego elementu – cur = max(x, cur + x). Globalne maksimum aktualizuję na bieżąco. To proste programowanie dynamiczne z pamięcią O(1): czas O(n). Dla [-2, 1, -3, 4, -1, 2, 1, -5, 4] wynik to 6 (podtablica [4, -1, 2, 1]).",
+   "code": "int MaxSubArray(int[] nums)\n{\n    int best = nums[0], cur = nums[0];\n    for (int i = 1; i < nums.Length; i++)\n    {\n        cur = Math.Max(nums[i], cur + nums[i]);\n        best = Math.Max(best, cur);\n    }\n    return best;\n}",
+   "lang": "csharp",
+   "tip": "Inicjalizuj best pierwszym elementem, a nie zerem – inaczej dla samych ujemnych liczb zwrócisz 0 zamiast największej z nich."
+  },
+  {
+   "id": "algo-010",
+   "topic": "Hash mapy",
+   "level": 1,
+   "q": "Two sum: w nieposortowanej tablicy znajdź indeksy dwóch liczb, które sumują się do target.",
+   "a": "Idę po tablicy i dla każdej liczby sprawdzam w Dictionary, czy widziałem już jej dopełnienie (target − x). Jeśli tak – mam wynik, jeśli nie – zapisuję wartość → indeks. Czas O(n), pamięć O(n), zamiast O(n²) dla dwóch pętli. Sprawdzam przed dodaniem, żeby nie użyć tego samego elementu dwa razy.",
+   "code": "int[] TwoSum(int[] nums, int target)\n{\n    var seen = new Dictionary<int, int>();   // wartość -> indeks\n    for (int i = 0; i < nums.Length; i++)\n    {\n        if (seen.TryGetValue(target - nums[i], out int j))\n            return [j, i];\n        seen[nums[i]] = i;\n    }\n    return [];\n}",
+   "lang": "csharp",
+   "tip": "Test na [3, 3] i target 6 – sprawdza, czy obsługujesz duplikaty i nie łączysz elementu z samym sobą. Używaj seen[x] = i zamiast Add, bo Add rzuci wyjątek przy powtórzonym kluczu."
+  },
+  {
+   "id": "algo-011",
+   "topic": "Hash mapy",
+   "level": 1,
+   "q": "Sprawdź, czy dwa stringi są anagramami.",
+   "a": "Zliczam wystąpienia znaków: dla jednego stringa inkrementuję, dla drugiego dekrementuję, a na końcu wszystkie liczniki muszą być zerowe. Przy założeniu małych liter a–z wystarczy int[26]: czas O(n), pamięć O(1). Alternatywa to posortowanie obu stringów i porównanie – O(n log n). Najpierw szybki test długości.",
+   "code": "bool IsAnagram(string a, string b)\n{\n    if (a.Length != b.Length) return false;\n    var count = new int[26];               // założenie: tylko małe litery a–z\n    for (int i = 0; i < a.Length; i++)\n    {\n        count[a[i] - 'a']++;\n        count[b[i] - 'a']--;\n    }\n    return count.All(c => c == 0);\n}",
+   "lang": "csharp",
+   "tip": "Dopytaj o wielkość liter, spacje i znaki spoza ASCII (polskie litery!). Dla dowolnego Unicode użyj Dictionary<char, int> po normalizacji (ToLowerInvariant)."
+  },
+  {
+   "id": "algo-012",
+   "topic": "Hash mapy",
+   "level": 2,
+   "q": "Pogrupuj listę słów tak, by anagramy trafiły do tej samej grupy.",
+   "a": "Potrzebuję klucza, który jest identyczny dla wszystkich anagramów. Najprostszy: posortowane litery słowa (\"eat\", \"tea\" → \"aet\"). Wrzucam słowa do Dictionary<string, List<string>> po tym kluczu. Czas O(n · k log k), gdzie k to długość słowa; pamięć O(n · k). Szybszy klucz to sygnatura z liczników liter – O(n · k).",
+   "code": "IEnumerable<List<string>> GroupAnagrams(string[] words)\n{\n    var groups = new Dictionary<string, List<string>>();\n    foreach (var w in words)\n    {\n        var chars = w.ToCharArray();\n        Array.Sort(chars);\n        var key = new string(chars);\n        if (!groups.TryGetValue(key, out var list))\n            groups[key] = list = new List<string>();\n        list.Add(w);\n    }\n    return groups.Values;\n}\n// LINQ: words.GroupBy(w => string.Concat(w.Order()))",
+   "lang": "csharp",
+   "deep": "Wersja LINQ z GroupBy jest czytelna i na rozmowie w zupełności wystarczy jako pierwsze rozwiązanie; wewnętrznie robi to samo (lookup po kluczu). Wersja ręczna pozwala uniknąć podwójnego lookupu – w kodzie wydajnościowym można użyć CollectionsMarshal.GetValueRefOrAddDefault. Klucz z liczników (np. \"1#0#0#...\" albo string z 26 znaków) usuwa sortowanie, ale dla krótkich słów różnica jest pomijalna, a kod mniej czytelny. Dopytaj o wielkość liter i Unicode – sortowanie char-ów rozbija pary surogatów, choć dla zwykłych polskich liter (BMP) nie ma problemu."
+  },
+  {
+   "id": "algo-013",
+   "topic": "Hash mapy",
+   "level": 3,
+   "q": "Zwróć k najczęściej występujących elementów tablicy.",
+   "a": "Najpierw zliczam częstości w Dictionary – O(n). Potem wybieram top k: najprościej sortując pary po liczności (O(u log u), u = liczba unikalnych), lepiej min-heapem o rozmiarze k (O(u log k)), a najszybciej bucket sortem po liczności (O(n), bo częstość ≤ n). Na rozmowie zaczynam od LINQ OrderByDescending, a potem proponuję heap.",
+   "code": "int[] TopK(int[] nums, int k)\n{\n    var freq = new Dictionary<int, int>();\n    foreach (var x in nums) freq[x] = freq.GetValueOrDefault(x) + 1;\n\n    var heap = new PriorityQueue<int, int>();   // min-heap po częstości\n    foreach (var (value, count) in freq)\n    {\n        heap.Enqueue(value, count);\n        if (heap.Count > k) heap.Dequeue();      // wyrzuć najrzadszy\n    }\n    return heap.UnorderedItems.Select(x => x.Element).ToArray();\n}",
+   "lang": "csharp",
+   "deep": "Min-heap o rozmiarze k jest lepszy od max-heapa ze wszystkimi elementami, gdy k ≪ u: pamięć O(k) zamiast O(u). Bucket sort tworzy tablicę list indeksowaną licznością (0..n) i zbiera wyniki od końca – O(n), ale O(n) pamięci. Quickselect daje średnio O(u), pesymistycznie O(u²). Trzeba dopytać o remisy (czy kolejność wśród równych ma znaczenie) – heap ich nie porządkuje. Przy strumieniu danych, którego nie zmieścisz w pamięci (np. top wyszukiwane frazy), stosuje się struktury przybliżone jak Count-Min Sketch z heapem kandydatów albo agregację w oknach czasowych. Wersję heapową można przyspieszyć metodą EnqueueDequeue, gdy kopiec ma już k elementów."
+  },
+  {
+   "id": "algo-014",
+   "topic": "Stos i kolejka",
+   "level": 1,
+   "q": "Sprawdź, czy string z nawiasami (), [], {} jest poprawnie zbalansowany.",
+   "a": "Używam stosu: nawias otwierający wkładam, a przy zamykającym zdejmuję szczyt i sprawdzam, czy pasuje. Jeśli stos jest pusty przy zamykającym albo typ się nie zgadza – false. Na końcu stos musi być pusty. Czas O(n), pamięć O(n).",
+   "code": "bool IsValid(string s)\n{\n    var pairs = new Dictionary<char, char> { [')'] = '(', [']'] = '[', ['}'] = '{' };\n    var stack = new Stack<char>();\n    foreach (var c in s)\n    {\n        if (pairs.TryGetValue(c, out var open))\n        {\n            if (!stack.TryPop(out var top) || top != open) return false;\n        }\n        else if (c is '(' or '[' or '{') stack.Push(c);\n    }\n    return stack.Count == 0;\n}",
+   "lang": "csharp",
+   "tip": "Najczęstszy błąd: brak sprawdzenia stack.Count == 0 na końcu – wtedy \"((\" przechodzi jako poprawne. Samo liczenie nawiasów nie wystarczy dla \"([)]\"."
+  },
+  {
+   "id": "algo-015",
+   "topic": "Stos i kolejka",
+   "level": 2,
+   "q": "Dla listy dziennych temperatur zwróć, ile dni trzeba czekać na cieplejszy dzień (0, jeśli nigdy).",
+   "a": "Monotonic stack: trzymam na stosie indeksy dni, na które jeszcze nie znalazłem odpowiedzi, z temperaturami malejąco. Gdy przychodzi cieplejszy dzień, zdejmuję ze stosu wszystkie chłodniejsze i wpisuję im różnicę indeksów. Mimo pętli while w for całość to O(n), bo każdy indeks jest raz wkładany i co najwyżej raz zdejmowany. Pamięć O(n).",
+   "code": "int[] DailyTemperatures(int[] t)\n{\n    var result = new int[t.Length];\n    var stack = new Stack<int>();              // indeksy, temperatury malejąco\n    for (int i = 0; i < t.Length; i++)\n    {\n        while (stack.Count > 0 && t[stack.Peek()] < t[i])\n        {\n            int j = stack.Pop();\n            result[j] = i - j;\n        }\n        stack.Push(i);\n    }\n    return result;\n}",
+   "lang": "csharp",
+   "deep": "Sygnał do monotonic stack w treści zadania: „najbliższy większy/mniejszy element po lewej/prawej”. Ta sama technika rozwiązuje next greater element, stock span, największy prostokąt w histogramie (O(n) zamiast O(n²)) i trapping rain water. Analiza zamortyzowana jest tu kluczowa: rekruter często dopytuje, czemu to nie jest O(n²) – odpowiedź to liczenie operacji push/pop (każda maks. n razy). Wariant z kolejką dwustronną (monotonic deque) daje maksimum w przesuwanym oknie w O(n) – w C# można użyć LinkedList<int> jako deque, bo .NET nie ma wbudowanej klasy Deque. Trzymanie indeksów zamiast wartości to standard, bo pozwala liczyć odległości i odczytać wartość."
+  },
+  {
+   "id": "algo-016",
+   "topic": "Listy wiązane",
+   "level": 2,
+   "q": "Odwróć listę jednokierunkową.",
+   "a": "Iteracyjnie z trzema wskaźnikami: prev, current i next. Dla każdego węzła zapamiętuję next, przestawiam current.Next na prev i przesuwam oba wskaźniki o krok. Na końcu prev jest nową głową. Czas O(n), pamięć O(1). Wersja rekurencyjna jest krótsza, ale zużywa O(n) stosu.",
+   "code": "class ListNode(int val, ListNode? next = null)\n{\n    public int Val = val;\n    public ListNode? Next = next;\n}\n\nListNode? Reverse(ListNode? head)\n{\n    ListNode? prev = null;\n    while (head is not null)\n    {\n        var next = head.Next;\n        head.Next = prev;\n        prev = head;\n        head = next;\n    }\n    return prev;\n}",
+   "lang": "csharp",
+   "tip": "Narysuj 3 węzły i strzałki przed pisaniem kodu. Sprawdź listę pustą i jednoelementową."
+  },
+  {
+   "id": "algo-017",
+   "topic": "Listy wiązane",
+   "level": 3,
+   "q": "Wykryj cykl w liście jednokierunkowej i zwróć węzeł, w którym się zaczyna – w pamięci O(1).",
+   "a": "Algorytm Floyda (żółw i zając): wolny wskaźnik idzie o 1, szybki o 2. Jeśli jest cykl, spotkają się w nim; jeśli szybki dojdzie do null – cyklu nie ma. Żeby znaleźć początek cyklu, ustawiam jeden wskaźnik z powrotem na głowę i przesuwam oba o 1 – spotkają się dokładnie na początku cyklu. Czas O(n), pamięć O(1); wersja z HashSet odwiedzonych węzłów to O(n) pamięci.",
+   "code": "ListNode? CycleStart(ListNode? head)\n{\n    ListNode? slow = head, fast = head;\n    while (fast?.Next is not null)\n    {\n        slow = slow!.Next;\n        fast = fast.Next.Next;\n        if (slow == fast)\n        {\n            slow = head;\n            while (slow != fast) { slow = slow!.Next; fast = fast!.Next; }\n            return slow;\n        }\n    }\n    return null;\n}",
+   "lang": "csharp",
+   "deep": "Dowód drugiej fazy: niech a to odległość od głowy do początku cyklu, b – od początku cyklu do punktu spotkania, c – długość cyklu. Szybki przeszedł dwa razy więcej: 2(a + b) = a + b + k·c, więc a = k·c − b. Czyli idąc a kroków od głowy i a kroków od punktu spotkania, oba wskaźniki lądują na początku cyklu. Ta sama technika rozwiązuje „znajdź zduplikowaną liczbę w tablicy 1..n bez modyfikacji i w O(1) pamięci” (tablica jako funkcja i → a[i]). Wolny/szybki wskaźnik daje też środek listy w jednym przejściu i pomaga sprawdzić palindrom na liście. W praktyce ten sam problem występuje przy wykrywaniu cykli w funkcjach iterowanych (np. generatory pseudolosowe, rho Pollarda). Porównanie slow == fast to porównanie referencji – tak ma być, porównujemy węzły, a nie wartości."
+  },
+  {
+   "id": "algo-018",
+   "topic": "Drzewa",
+   "level": 1,
+   "q": "Oblicz wysokość (maksymalną głębokość) drzewa binarnego.",
+   "a": "Rekurencyjny DFS: wysokość pustego drzewa to 0, a każdego węzła to 1 + max(wysokość lewego, wysokość prawego). Odwiedzam każdy węzeł raz, więc czas O(n). Pamięć to głębokość rekurencji O(h): O(log n) dla drzewa zbalansowanego, O(n) dla zdegenerowanego. Alternatywa to BFS liczący poziomy.",
+   "code": "class TreeNode(int val, TreeNode? left = null, TreeNode? right = null)\n{\n    public int Val = val;\n    public TreeNode? Left = left, Right = right;\n}\n\nint Height(TreeNode? node) =>\n    node is null ? 0 : 1 + Math.Max(Height(node.Left), Height(node.Right));",
+   "lang": "csharp",
+   "tip": "Dopytaj o definicję: czy wysokość liczona w węzłach, czy w krawędziach (wtedy liść ma 0, a puste drzewo −1)."
+  },
+  {
+   "id": "algo-019",
+   "topic": "Drzewa",
+   "level": 2,
+   "q": "Zwróć wartości drzewa binarnego poziomami (level order traversal).",
+   "a": "BFS z kolejką. Kluczowy trik: na początku każdego poziomu zapamiętuję queue.Count – tyle węzłów należy do bieżącego poziomu. Zdejmuję je, dodaję wartości do listy poziomu i wkładam ich dzieci. Czas O(n), pamięć O(w), gdzie w to maksymalna szerokość drzewa (do n/2 dla pełnego drzewa).",
+   "code": "List<List<int>> LevelOrder(TreeNode? root)\n{\n    var result = new List<List<int>>();\n    if (root is null) return result;\n    var queue = new Queue<TreeNode>([root]);\n    while (queue.Count > 0)\n    {\n        int size = queue.Count;                // węzły bieżącego poziomu\n        var level = new List<int>(size);\n        for (int i = 0; i < size; i++)\n        {\n            var n = queue.Dequeue();\n            level.Add(n.Val);\n            if (n.Left is not null) queue.Enqueue(n.Left);\n            if (n.Right is not null) queue.Enqueue(n.Right);\n        }\n        result.Add(level);\n    }\n    return result;\n}",
+   "lang": "csharp",
+   "tip": "Warianty: widok z prawej strony (ostatni element poziomu), zigzag, minimalna głębokość – BFS kończy się na pierwszym liściu, więc bywa szybszy niż DFS."
+  },
+  {
+   "id": "algo-020",
+   "topic": "Drzewa",
+   "level": 2,
+   "q": "Czym jest BST, jakie są złożoności jego operacji i co się dzieje, gdy drzewo się zdegeneruje?",
+   "a": "Binary search tree: dla każdego węzła wszystkie wartości w lewym poddrzewie są mniejsze, a w prawym większe. Wyszukiwanie, wstawianie i usuwanie kosztują O(h). W drzewie zbalansowanym h = O(log n), ale wstawiając posortowane dane do zwykłego BST dostaję „listę” i O(n). Dlatego w praktyce używa się drzew samobalansujących (red-black, AVL) – w .NET opierają się na nich SortedSet<T> i SortedDictionary. Przejście inorder daje wartości posortowane.",
+   "code": "TreeNode? Search(TreeNode? node, int value)\n{\n    while (node is not null && node.Val != value)\n        node = value < node.Val ? node.Left : node.Right;\n    return node;\n}\n\n// wstawianie 1, 2, 3, 4, 5 do zwykłego BST:\n// 1 → 2 → 3 → 4 → 5   (wysokość n, wyszukiwanie O(n))",
+   "lang": "csharp"
+  },
+  {
+   "id": "algo-021",
+   "topic": "Drzewa",
+   "level": 2,
+   "q": "Sprawdź, czy drzewo binarne jest poprawnym BST.",
+   "a": "Nie wystarczy porównać węzła z dziećmi – każdy węzeł musi mieścić się w przedziale wyznaczonym przez wszystkich przodków. Przekazuję w rekurencji dolną i górną granicę: w lewo zawężam górną do wartości węzła, w prawo dolną. Czas O(n), pamięć O(h). Alternatywa: inorder musi dać ciąg ściśle rosnący.",
+   "code": "bool IsValidBst(TreeNode? node, long min = long.MinValue, long max = long.MaxValue)\n{\n    if (node is null) return true;\n    if (node.Val <= min || node.Val >= max) return false;\n    return IsValidBst(node.Left, min, node.Val)\n        && IsValidBst(node.Right, node.Val, max);\n}",
+   "lang": "csharp",
+   "deep": "Kontrprzykład dla naiwnego porównania z dziećmi: korzeń 5, prawe dziecko 7, a lewe dziecko siódemki to 3 – lokalnie OK, ale 3 leży w prawym poddrzewie piątki. Granice typu long (albo int? z null jako „brak ograniczenia”) są po to, żeby węzeł o wartości int.MinValue lub int.MaxValue nie dał fałszywego wyniku. Trzeba dopytać o duplikaty – czy są dozwolone i po której stronie (to zmienia < na <=). Dla bardzo głębokich, zdegenerowanych drzew (np. 100 000 węzłów w linii) rekurencja może skończyć się StackOverflowException, którego w .NET nie da się złapać – wtedy inorder iteracyjny z jawnym Stack<TreeNode>. Wersja inorder pozwala też przerwać przy pierwszym naruszeniu porządku."
+  },
+  {
+   "id": "algo-022",
+   "topic": "Drzewa",
+   "level": 3,
+   "q": "Znajdź najniższego wspólnego przodka (LCA) dwóch węzłów w drzewie binarnym. Czym różni się wersja dla BST?",
+   "a": "Dla zwykłego drzewa: rekurencyjnie szukam p i q w obu poddrzewach. Jeśli węzeł jest p lub q – zwracam go; jeśli oba poddrzewa coś zwróciły, bieżący węzeł jest LCA; inaczej przekazuję wyżej niepusty wynik. Czas O(n), pamięć O(h). W BST wystarczy schodzić w dół: jeśli oba klucze są mniejsze – idę w lewo, większe – w prawo, w przeciwnym razie jestem w punkcie rozwidlenia. To O(h) bez odwiedzania całego drzewa.",
+   "code": "TreeNode? Lca(TreeNode? root, TreeNode p, TreeNode q)\n{\n    if (root is null || root == p || root == q) return root;\n    var left = Lca(root.Left, p, q);\n    var right = Lca(root.Right, p, q);\n    if (left is not null && right is not null) return root;\n    return left ?? right;\n}\n\nTreeNode LcaBst(TreeNode root, int p, int q)\n{\n    while (true)\n    {\n        if (p < root.Val && q < root.Val) root = root.Left!;\n        else if (p > root.Val && q > root.Val) root = root.Right!;\n        else return root;\n    }\n}",
+   "lang": "csharp",
+   "deep": "Wersja rekurencyjna zakłada, że oba węzły istnieją w drzewie – jeśli jeden może nie istnieć, zwróci drugi jako fałszywe LCA, więc trzeba liczyć znalezione węzły albo zrobić osobne wyszukiwanie. Węzeł może być przodkiem samego siebie (LCA(2, 4) = 2, jeśli 4 leży pod 2). Gdy węzły mają wskaźnik na rodzica, problem sprowadza się do przecięcia dwóch list (wyrównaj głębokości i idź w górę). Przy wielu zapytaniach na statycznym drzewie stosuje się binary lifting: O(n log n) preprocessingu i O(log n) na zapytanie. W praktyce hierarchie (struktura organizacyjna, kategorie, komentarze) w bazie modeluje się materialized path, closure table albo hierarchyid w SQL Server, gdzie wspólny przodek to wspólny prefiks ścieżki."
+  },
+  {
+   "id": "algo-023",
+   "topic": "Grafy",
+   "level": 2,
+   "q": "Znajdź długość najkrótszej ścieżki od startu do celu w labiryncie na siatce (ruchy w 4 kierunki, '#' to ściana).",
+   "a": "Graf bez wag, więc BFS: przetwarzam pola warstwami w kolejności odległości, więc pierwsze dotarcie do celu to najkrótsza ścieżka. Odwiedzone pola oznaczam w momencie dodania do kolejki. Czas O(R·C), pamięć O(R·C). DFS nie gwarantuje najkrótszej ścieżki.",
+   "code": "int ShortestPath(char[][] grid, (int r, int c) start, (int r, int c) end)\n{\n    int rows = grid.Length, cols = grid[0].Length;\n    var dist = new Dictionary<(int, int), int> { [start] = 0 };\n    var queue = new Queue<(int r, int c)>([start]);\n    (int dr, int dc)[] dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)];\n    while (queue.TryDequeue(out var cur))\n    {\n        if (cur == end) return dist[cur];\n        foreach (var (dr, dc) in dirs)\n        {\n            var next = (r: cur.r + dr, c: cur.c + dc);\n            if (next.r < 0 || next.r >= rows || next.c < 0 || next.c >= cols) continue;\n            if (grid[next.r][next.c] == '#' || dist.ContainsKey(next)) continue;\n            dist[next] = dist[cur] + 1;\n            queue.Enqueue(next);\n        }\n    }\n    return -1;\n}",
+   "lang": "csharp",
+   "deep": "BFS daje najkrótszą ścieżkę tylko w grafie bez wag (lub o równych wagach), bo przetwarza wierzchołki w kolejności rosnącej odległości. Oznaczanie jako odwiedzone przy wstawianiu (a nie przy zdejmowaniu) jest ważne – inaczej to samo pole trafi do kolejki wielokrotnie i na dużej siatce pamięć eksploduje. Złożoność ogólnie to O(V + E); na siatce V = R·C, a E ≤ 4V. Żeby odtworzyć samą ścieżkę, trzymam słownik parent i cofam się od celu. Optymalizacje: bidirectional BFS (dwa fronty spotykają się w środku – znacznie mniej odwiedzonych węzłów), 0-1 BFS z deque dla wag 0/1, A* z heurystyką odległości Manhattan. Gdy krawędzie mają różne wagi – Dijkstra. Dla dużych siatek zamiast Dictionary lepsza tablica bool[,]/int[,]."
+  },
+  {
+   "id": "algo-024",
+   "topic": "Grafy",
+   "level": 2,
+   "q": "Policz liczbę wysp na siatce '1' (ląd) i '0' (woda), gdzie wyspa to połączone poziomo/pionowo pola lądu.",
+   "a": "Przechodzę po wszystkich polach; gdy trafię na nieodwiedzony ląd, zwiększam licznik i „zatapiam” całą wyspę DFS-em (albo BFS-em), oznaczając pola jako odwiedzone. Każde pole odwiedzam stałą liczbę razy, więc czas O(R·C), pamięć O(R·C) w najgorszym przypadku na stos rekurencji.",
+   "code": "int NumIslands(char[][] grid)\n{\n    int count = 0;\n    for (int r = 0; r < grid.Length; r++)\n        for (int c = 0; c < grid[0].Length; c++)\n            if (grid[r][c] == '1') { count++; Sink(grid, r, c); }\n    return count;\n}\n\nvoid Sink(char[][] g, int r, int c)\n{\n    if (r < 0 || c < 0 || r >= g.Length || c >= g[0].Length || g[r][c] != '1') return;\n    g[r][c] = '0';                                  // oznacz jako odwiedzone\n    Sink(g, r + 1, c); Sink(g, r - 1, c); Sink(g, r, c + 1); Sink(g, r, c - 1);\n}",
+   "lang": "csharp",
+   "tip": "Zapytaj, czy wolno modyfikować wejście (inaczej osobna tablica visited). Przy siatce 1000×1000 jednego lądu rekurencja może przepełnić stos – wtedy BFS lub DFS z jawnym Stack<T>. Alternatywa: union-find."
+  },
+  {
+   "id": "algo-025",
+   "topic": "Grafy",
+   "level": 3,
+   "q": "Mając zależności między zadaniami (A musi być przed B), wyznacz kolejność wykonania lub wykryj, że się nie da.",
+   "a": "Sortowanie topologiczne algorytmem Kahna: liczę stopień wejściowy każdego wierzchołka, do kolejki wkładam te z zerowym. Zdejmuję wierzchołek, dopisuję do wyniku i zmniejszam stopień jego następników – gdy któryś spadnie do zera, trafia do kolejki. Jeśli na końcu wynik ma mniej wierzchołków niż graf, istnieje cykl. Czas i pamięć O(V + E).",
+   "code": "List<int>? TopoSort(int n, (int from, int to)[] edges)\n{\n    var graph = Enumerable.Range(0, n).Select(_ => new List<int>()).ToArray();\n    var inDegree = new int[n];\n    foreach (var (from, to) in edges) { graph[from].Add(to); inDegree[to]++; }\n\n    var queue = new Queue<int>(Enumerable.Range(0, n).Where(v => inDegree[v] == 0));\n    var order = new List<int>(n);\n    while (queue.TryDequeue(out var v))\n    {\n        order.Add(v);\n        foreach (var next in graph[v])\n            if (--inDegree[next] == 0) queue.Enqueue(next);\n    }\n    return order.Count == n ? order : null;    // null = cykl\n}",
+   "lang": "csharp",
+   "deep": "Alternatywa to DFS z trzema stanami (nieodwiedzony / w trakcie / zakończony): wierzchołek dopisuję do wyniku po przetworzeniu wszystkich następników, a wynik odwracam; trafienie na wierzchołek „w trakcie” oznacza cykl. Kahn jest iteracyjny (brak ryzyka przepełnienia stosu) i naturalnie daje „poziomy” – wszystko, co jest jednocześnie w kolejce, można wykonać równolegle. Kolejność topologiczna zwykle nie jest jednoznaczna; jeśli wynik ma być deterministyczny (np. leksykograficznie najmniejszy), zamieniam Queue na PriorityQueue, co daje O((V + E) log V). Zastosowania produkcyjne: kolejność budowania projektów w solucji, kolejność migracji, rozwiązywanie zależności w kontenerze DI (który wykrywa cykle i rzuca wyjątek), planowanie jobów, kolejność inicjalizacji modułów. Graf zbudowany z krawędzi to lista sąsiedztwa – macierz sąsiedztwa ma sens tylko przy gęstych grafach (O(V²) pamięci)."
+  },
+  {
+   "id": "algo-026",
+   "topic": "Grafy",
+   "level": 3,
+   "q": "Wyjaśnij algorytm Dijkstry i jak go zaimplementować w .NET.",
+   "a": "Dijkstra liczy najkrótsze ścieżki z jednego źródła w grafie z nieujemnymi wagami. Zachłannie zdejmuje z kolejki priorytetowej wierzchołek o najmniejszym znanym dystansie – jego odległość jest wtedy ostateczna – i relaksuje krawędzie: jeśli przez niego do sąsiada jest bliżej, aktualizuje dystans i wrzuca sąsiada do kolejki. Z PriorityQueue złożoność to O((V + E) log V). Przy ujemnych wagach nie działa – wtedy Bellman-Ford.",
+   "code": "int[] Dijkstra(List<(int to, int w)>[] graph, int source)\n{\n    var dist = Enumerable.Repeat(int.MaxValue, graph.Length).ToArray();\n    dist[source] = 0;\n    var pq = new PriorityQueue<int, int>();\n    pq.Enqueue(source, 0);\n    while (pq.TryDequeue(out var u, out var d))\n    {\n        if (d > dist[u]) continue;              // przestarzały wpis (lazy deletion)\n        foreach (var (v, w) in graph[u])\n            if (d + w < dist[v])\n            {\n                dist[v] = d + w;\n                pq.Enqueue(v, dist[v]);\n            }\n    }\n    return dist;\n}",
+   "lang": "csharp",
+   "deep": "PriorityQueue w .NET nie ma decrease-key, więc ten sam wierzchołek może być w kolejce kilka razy, a warunek d > dist[u] odrzuca przestarzałe wpisy – kolejka ma wtedy do E elementów, ale złożoność pozostaje O(E log V). Ujemna krawędź łamie założenie, że zdjęty wierzchołek ma ostateczny dystans; dodanie stałej do wszystkich wag nie pomaga, bo karze ścieżki o większej liczbie krawędzi. Bellman-Ford działa z ujemnymi wagami w O(V·E) i wykrywa ujemne cykle. Ścieżkę odtwarza się tablicą prev[v] = u ustawianą przy relaksacji. A* to Dijkstra z heurystyką (np. odległość na mapie) – dla dopuszczalnej heurystyki daje optimum, odwiedzając mniej węzłów. Przy dużych wagach dystanse trzymaj w long, bo suma może przepełnić int. Na rozmowie wystarczy zwykle opis i pseudokod – pisanie od zera jest rzadkie, ale warto znać lazy deletion."
+  },
+  {
+   "id": "algo-027",
+   "topic": "Rekurencja i backtracking",
+   "level": 1,
+   "q": "Jak poprawnie napisać funkcję rekurencyjną i co może pójść nie tak? Pokaż na przykładzie szybkiego potęgowania.",
+   "a": "Każda rekurencja potrzebuje warunku bazowego i kroku, który zbliża problem do tego warunku. Szybkie potęgowanie: xⁿ = (x^(n/2))², a dla nieparzystego n mnożę jeszcze przez x – problem maleje o połowę, więc O(log n) czasu i O(log n) stosu. Ryzyka: brak lub zły warunek bazowy i zbyt głęboka rekurencja, która kończy się StackOverflowException. Ważne: liczę wynik rekurencji raz i zapisuję w zmiennej, a nie wywołuję dwa razy.",
+   "code": "long Power(long x, int n)              // x^n dla n >= 0, O(log n)\n{\n    if (n == 0) return 1;              // warunek bazowy\n    long half = Power(x, n / 2);       // problem o połowę mniejszy\n    return n % 2 == 0 ? half * half : half * half * x;\n}",
+   "lang": "csharp",
+   "tip": "W .NET StackOverflowException nie da się złapać – kończy proces. C# nie gwarantuje tail-call optimization, więc dla głębokości liczonych w dziesiątkach tysięcy przepisz na pętlę lub jawny stos."
+  },
+  {
+   "id": "algo-028",
+   "topic": "Rekurencja i backtracking",
+   "level": 2,
+   "q": "Wygeneruj wszystkie podzbiory zbioru różnych liczb.",
+   "a": "Backtracking według schematu: wybierz – eksploruj – cofnij. W każdym wywołaniu dodaję kopię bieżącego podzbioru do wyniku, a potem próbuję dołożyć każdy kolejny element (od indeksu start, żeby nie generować permutacji tego samego zbioru). Podzbiorów jest 2ⁿ, a kopiowanie każdego kosztuje do n, więc czas O(n · 2ⁿ), pamięć na stos O(n).",
+   "code": "List<List<int>> Subsets(int[] nums)\n{\n    var result = new List<List<int>>();\n    var current = new List<int>();\n    void Backtrack(int start)\n    {\n        result.Add([.. current]);                  // kopia!\n        for (int i = start; i < nums.Length; i++)\n        {\n            current.Add(nums[i]);                  // wybierz\n            Backtrack(i + 1);                      // eksploruj\n            current.RemoveAt(current.Count - 1);   // cofnij\n        }\n    }\n    Backtrack(0);\n    return result;\n}",
+   "lang": "csharp",
+   "deep": "Najczęstszy błąd to result.Add(current) bez kopii – wszystkie wpisy wskazują tę samą listę, która na końcu jest pusta. Permutacje generuje się podobnie, ale z tablicą used[] zamiast indeksu start – jest ich n!, czas O(n · n!). Gdy wejście ma duplikaty, sortuję je i pomijam element równy poprzedniemu na tym samym poziomie (i > start && nums[i] == nums[i - 1]). Siła backtrackingu leży w przycinaniu (pruning): w combination sum przerywam pętlę, gdy suma przekroczy target (przy posortowanym wejściu), w N-Queens odrzucam kolumny i przekątne zajęte przez hetmany. Alternatywą dla podzbiorów jest maska bitowa od 0 do 2ⁿ − 1, gdzie bit i oznacza obecność elementu i. Przy n > ~20 generowanie wszystkich podzbiorów przestaje być realne (2²⁰ ≈ milion) – warto to głośno zauważyć."
+  },
+  {
+   "id": "algo-029",
+   "topic": "Programowanie dynamiczne",
+   "level": 1,
+   "q": "Policz n-tą liczbę Fibonacciego. Dlaczego naiwna rekurencja jest zła i jak ją poprawić?",
+   "a": "Naiwna rekurencja Fib(n − 1) + Fib(n − 2) liczy te same wartości wielokrotnie – drzewo wywołań rośnie wykładniczo, O(2ⁿ). Memoizacja (top-down) zapamiętuje wyniki w słowniku i każdą wartość liczy raz: O(n) czasu i pamięci. Tabulacja (bottom-up) liczy od dołu, a skoro potrzebne są tylko dwie poprzednie wartości, wystarczą dwie zmienne: O(n) czasu i O(1) pamięci.",
+   "code": "long Fib(int n, Dictionary<int, long>? memo = null)   // top-down: O(n) / O(n)\n{\n    if (n <= 1) return n;\n    memo ??= new();\n    if (memo.TryGetValue(n, out var cached)) return cached;\n    return memo[n] = Fib(n - 1, memo) + Fib(n - 2, memo);\n}\n\nlong FibIter(int n)                                   // bottom-up: O(n) / O(1)\n{\n    long a = 0, b = 1;\n    for (int i = 0; i < n; i++) (a, b) = (b, a + b);\n    return a;\n}",
+   "lang": "csharp",
+   "tip": "long przepełnia się dla n > 92 – warto to powiedzieć i zaproponować BigInteger albo checked."
+  },
+  {
+   "id": "algo-030",
+   "topic": "Programowanie dynamiczne",
+   "level": 2,
+   "q": "Coin change: mając nominały monet i kwotę, znajdź minimalną liczbę monet (−1, jeśli się nie da).",
+   "a": "Algorytm zachłanny nie działa dla dowolnych nominałów, więc programowanie dynamiczne. Stan: dp[x] = minimalna liczba monet na kwotę x. Przejście: dp[x] = min(dp[x − c] + 1) po wszystkich monetach c ≤ x. Bazowo dp[0] = 0, reszta „nieskończoność”. Czas O(kwota · liczba monet), pamięć O(kwota).",
+   "code": "int CoinChange(int[] coins, int amount)\n{\n    var dp = new int[amount + 1];                // dp[x] = min monet na kwotę x\n    Array.Fill(dp, int.MaxValue);\n    dp[0] = 0;\n    for (int x = 1; x <= amount; x++)\n        foreach (var c in coins)\n            if (c <= x && dp[x - c] != int.MaxValue)\n                dp[x] = Math.Min(dp[x], dp[x - c] + 1);\n    return dp[amount] == int.MaxValue ? -1 : dp[amount];\n}",
+   "lang": "csharp",
+   "deep": "Kontrprzykład na zachłanność: monety [1, 3, 4], kwota 6 – zachłannie 4 + 1 + 1 (3 monety), optymalnie 3 + 3 (2 monety). Zachłanność działa tylko dla „kanonicznych” systemów jak złotówki czy euro. DP rozpoznaję po dwóch cechach: optymalna podstruktura (optimum składa się z optimów podproblemów) i nakładające się podproblemy. Schemat rozmowy: zdefiniuj stan, przejście, warunek bazowy i kolejność liczenia, a potem pokaż memoizację lub tabulację. Wariant „na ile sposobów można wydać kwotę” zmienia min na sumę, a kolejność pętli ma znaczenie: monety w pętli zewnętrznej liczą kombinacje, kwota w zewnętrznej – permutacje. Sprawdzenie dp[x − c] != int.MaxValue chroni przed przepełnieniem int.MaxValue + 1, które w kontekście unchecked daje liczbę ujemną i zepsułoby minimum."
+  },
+  {
+   "id": "algo-031",
+   "topic": "Programowanie dynamiczne",
+   "level": 3,
+   "q": "Znajdź długość najdłuższego ściśle rosnącego podciągu (LIS) – niekoniecznie spójnego.",
+   "a": "Wersja DP O(n²): dp[i] = 1 + max(dp[j]) dla j < i z a[j] < a[i], wynik to max(dp). Wersja O(n log n): utrzymuję tablicę tails, gdzie tails[k] to najmniejszy możliwy koniec rosnącego podciągu długości k + 1. Dla każdego elementu binary searchem znajduję pierwszą pozycję z wartością ≥ x i ją nadpisuję albo dopisuję na końcu. Długość tails to wynik. Dla [10, 9, 2, 5, 3, 7, 101, 18] LIS = 4.",
+   "code": "int LengthOfLis(int[] nums)\n{\n    var tails = new List<int>();   // tails[k] = najmniejszy koniec podciągu długości k+1\n    foreach (var x in nums)\n    {\n        int i = tails.BinarySearch(x);\n        if (i < 0) i = ~i;         // indeks wstawienia\n        if (i == tails.Count) tails.Add(x);\n        else tails[i] = x;\n    }\n    return tails.Count;\n}",
+   "lang": "csharp",
+   "deep": "Tablica tails nie jest samym LIS – to tylko „najlepsze końcówki” dla każdej długości; żeby odtworzyć podciąg, trzeba trzymać indeksy i tablicę poprzedników. List<T>.BinarySearch zwraca dopełnienie bitowe (~) indeksu wstawienia, gdy elementu nie ma – stąd i = ~i. Dla podciągu niemalejącego zamiast lower bound używa się upper bound (pierwszy element > x). Na rozmowie zwykle oczekuje się wersji O(n²) z poprawnym opisem stanu, a O(n log n) jest bonusem – lepiej solidnie napisać prostszą niż pomylić się w trudniejszej. Pokrewne zadania: najdłuższy wspólny podciąg (LCS, O(n · m) tabela 2D), edit distance (Levenshtein) – klasyczne DP na dwóch stringach, używane np. w fuzzy search. LIS pojawia się też w zadaniach 2D (pudełka/koperty) po sortowaniu jednego wymiaru."
+  },
+  {
+   "id": "algo-032",
+   "topic": "Sortowanie",
+   "level": 2,
+   "q": "Porównaj quicksort i merge sort: złożoność, pamięć, stabilność.",
+   "a": "Quicksort: średnio O(n log n), pesymistycznie O(n²) przy złym wyborze pivota (np. już posortowane dane i pivot na krańcu), sortuje w miejscu z O(log n) stosu, niestabilny, bardzo szybki w praktyce dzięki lokalności cache. Merge sort: zawsze O(n log n), ale potrzebuje O(n) dodatkowej pamięci, jest stabilny i dobrze nadaje się do list wiązanych oraz sortowania zewnętrznego (dane większe niż RAM). Stabilność oznacza, że równe elementy zachowują kolejność wejściową.",
+   "code": "int[] MergeSort(int[] a)\n{\n    if (a.Length <= 1) return a;\n    int mid = a.Length / 2;\n    var left = MergeSort(a[..mid]);\n    var right = MergeSort(a[mid..]);\n    var result = new int[a.Length];\n    int i = 0, j = 0, k = 0;\n    while (i < left.Length && j < right.Length)\n        result[k++] = left[i] <= right[j] ? left[i++] : right[j++];  // <= = stabilność\n    while (i < left.Length) result[k++] = left[i++];\n    while (j < right.Length) result[k++] = right[j++];\n    return result;\n}",
+   "lang": "csharp",
+   "tip": "Dolna granica dla sortowań opartych na porównaniach to Ω(n log n). Szybciej (O(n + k)) da się tylko bez porównań: counting sort, radix sort – gdy zakres wartości jest mały."
+  },
+  {
+   "id": "algo-033",
+   "topic": "Sortowanie",
+   "level": 2,
+   "q": "Jakiego algorytmu używa Array.Sort / List<T>.Sort w .NET i czym różni się od LINQ OrderBy?",
+   "a": "Array.Sort i List<T>.Sort (który deleguje do Array.Sort) używają introsortu: quicksort, który przy zbyt głębokiej rekurencji przełącza się na heapsort, a małe fragmenty sortuje insertion sortem. Daje to O(n log n) pesymistycznie, sortowanie w miejscu, ale brak stabilności. LINQ OrderBy/ThenBy jest stabilny, nie modyfikuje źródła, zwraca nową sekwencję i jest leniwy (sortuje przy pierwszej enumeracji), kosztem dodatkowej pamięci.",
+   "code": "var people = new List<Person> { new(\"Ala\", 30), new(\"Bob\", 25), new(\"Ewa\", 30) };\n\npeople.Sort((a, b) => a.Age.CompareTo(b.Age));   // w miejscu, introsort, NIESTABILNE\n\nvar sorted = people.OrderBy(p => p.Age)          // nowa sekwencja, STABILNE\n                   .ThenBy(p => p.Name)\n                   .ToList();\n\nrecord Person(string Name, int Age);",
+   "lang": "csharp",
+   "deep": "Introsort startuje od quicksorta z pivotem median-of-three, limit głębokości wynosi ok. 2·log₂ n – po jego przekroczeniu dany fragment sortuje heapsort, a partycje do 16 elementów insertion sort. Od .NET 5 implementacja jest w całości zarządzana (C#), także dla Span<T> przez MemoryExtensions.Sort. Comparer musi być spójny (przechodni, antysymetryczny) – niespójny może dać śmieciowy wynik albo InvalidOperationException („IComparer.Compare() method returns inconsistent results”). Nie pisz comparera jako a − b, bo przy dużych wartościach przepełnienie int odwraca znak; używaj CompareTo. Stabilność przy List.Sort można wymusić, dodając indeks jako drugi klucz. Do stringów świadomie wybieraj StringComparer.Ordinal (szybki, deterministyczny) zamiast porównań zależnych od kultury. Od .NET 7 są skróty Order() i OrderDescending() dla typów porównywalnych."
+  },
+  {
+   "id": "algo-034",
+   "topic": "Binary search",
+   "level": 1,
+   "q": "Zaimplementuj binary search w posortowanej tablicy.",
+   "a": "Utrzymuję przedział [lo, hi], w którym może być szukana wartość. Porównuję środek z targetem i odrzucam połowę przedziału. Kończę, gdy znajdę element lub przedział będzie pusty. Czas O(log n), pamięć O(1). Warunek konieczny: dane posortowane według tego samego porządku co porównanie.",
+   "code": "int BinarySearch(int[] a, int target)\n{\n    int lo = 0, hi = a.Length - 1;\n    while (lo <= hi)\n    {\n        int mid = lo + (hi - lo) / 2;      // zamiast (lo + hi) / 2 – brak overflow\n        if (a[mid] == target) return mid;\n        if (a[mid] < target) lo = mid + 1;\n        else hi = mid - 1;\n    }\n    return -1;\n}",
+   "lang": "csharp",
+   "tip": "W .NET masz gotowe Array.BinarySearch i List<T>.BinarySearch – na rozmowie warto o nich wspomnieć, ale zwykle oczekuje się własnej implementacji."
+  },
+  {
+   "id": "algo-035",
+   "topic": "Binary search",
+   "level": 2,
+   "q": "Znajdź pierwsze wystąpienie wartości w posortowanej tablicy z duplikatami (lower bound) i policz jej wystąpienia.",
+   "a": "Klasyczny binary search zwraca dowolne trafienie, więc przy duplikatach używam lower bound: szukam pierwszego indeksu, dla którego a[i] ≥ target, na przedziale półotwartym [lo, hi). Gdy a[mid] < target, idę w prawo (lo = mid + 1), w przeciwnym razie zawężam do hi = mid. Liczba wystąpień to LowerBound(t + 1) − LowerBound(t). Czas O(log n).",
+   "code": "int LowerBound(int[] a, int target)     // pierwszy i, gdzie a[i] >= target\n{\n    int lo = 0, hi = a.Length;           // przedział półotwarty [lo, hi)\n    while (lo < hi)\n    {\n        int mid = lo + (hi - lo) / 2;\n        if (a[mid] < target) lo = mid + 1;\n        else hi = mid;\n    }\n    return lo;                           // a.Length, jeśli wszystkie < target\n}\n// pierwsze wystąpienie: i < a.Length && a[i] == target\n// liczba wystąpień:     LowerBound(a, t + 1) - LowerBound(a, t)",
+   "lang": "csharp",
+   "deep": "Najbezpieczniej myśleć niezmiennikami: wszystko na lewo od lo jest < target, wszystko od hi w prawo jest ≥ target; pętla kończy się, gdy lo == hi. Typowy błąd to lo = mid zamiast mid + 1 – przy dwóch elementach mid == lo i pętla kręci się w nieskończoność. Array.BinarySearch przy braku elementu zwraca ujemną liczbę: dopełnienie bitowe indeksu wstawienia (~index), a przy duplikatach zwraca dowolne z trafień, więc nie nadaje się do lower bound. Upper bound (pierwszy > target) różni się tylko warunkiem a[mid] <= target. Popularne warianty na rozmowach: wyszukiwanie w obróconej posortowanej tablicy (jedna połowa zawsze jest posortowana), szukanie minimum w obróconej tablicy, szukanie peak elementu, binary search po odpowiedzi."
+  },
+  {
+   "id": "algo-036",
+   "topic": "Binary search",
+   "level": 3,
+   "q": "Paczki o wagach w[] trzeba przewieźć w kolejności w ciągu D dni. Jaka jest minimalna ładowność statku?",
+   "a": "Binary search po odpowiedzi: zamiast szukać w tablicy, szukam w przestrzeni możliwych ładowności. Dolna granica to najcięższa paczka, górna – suma wszystkich. Predykat „czy ładownością cap zdążę w D dni” jest monotoniczny (jeśli zdążę z cap, zdążę z każdą większą), więc szukam najmniejszego cap, dla którego jest prawdziwy. Sprawdzenie zachłanne to O(n), więc całość O(n · log(suma)).",
+   "code": "int ShipWithinDays(int[] weights, int days)\n{\n    int lo = weights.Max(), hi = weights.Sum();\n    while (lo < hi)\n    {\n        int cap = lo + (hi - lo) / 2;\n        if (CanShip(weights, days, cap)) hi = cap; else lo = cap + 1;\n    }\n    return lo;\n}\n\nbool CanShip(int[] w, int days, int cap)\n{\n    int used = 1, load = 0;\n    foreach (var x in w)\n        if ((load += x) > cap) { used++; load = x; }   // nowy dzień\n    return used <= days;\n}",
+   "lang": "csharp",
+   "deep": "Sygnał w treści: „znajdź minimalną/maksymalną wartość X taką, że da się …”, gdzie sprawdzenie dla konkretnego X jest proste, a jego wynik monotoniczny względem X. Ten sam schemat rozwiązuje Koko eating bananas, podział tablicy na k części z minimalną maksymalną sumą, pierwiastek całkowity, czy alokację zasobów. Kluczowe są poprawne granice (lo musi być wykonalne do sprawdzenia – tu max, bo mniejszy statek nie uniesie najcięższej paczki) i forma „pierwszy true” z hi = cap. Przy dużych sumach granice trzymaj w long. To samo myślenie stosuje się w praktyce: git bisect szuka pierwszego złego commita, a testy obciążeniowe – maksymalnego RPS, przy którym SLA jest spełnione. Na rozmowie dobrze zacząć od brute force (sprawdzanie każdej ładowności po kolei, O(n · suma)) i zauważyć monotoniczność."
+  },
+  {
+   "id": "algo-037",
+   "topic": "Bit manipulation",
+   "level": 1,
+   "q": "Jakie podstawowe operacje bitowe warto znać na rozmowę i do czego się przydają?",
+   "a": "AND (&) sprawdza i czyści bity, OR (|) ustawia, XOR (^) przełącza i znosi pary (x ^ x = 0, x ^ 0 = x), przesunięcia (<<, >>) mnożą/dzielą przez potęgi dwójki. x & (x − 1) usuwa najmłodszy ustawiony bit – stąd test potęgi dwójki. XOR wszystkich elementów znajduje jedyny element bez pary w O(n) i O(1) pamięci. W .NET przydają się [Flags] enumy i System.Numerics.BitOperations (PopCount, IsPow2, LeadingZeroCount).",
+   "code": "bool IsEven(int x) => (x & 1) == 0;\nbool IsPowerOfTwo(int x) => x > 0 && (x & (x - 1)) == 0;\nint SetBit(int x, int i) => x | (1 << i);\nint ClearBit(int x, int i) => x & ~(1 << i);\nbool HasBit(int x, int i) => (x & (1 << i)) != 0;\nint CountOnes(uint x) => BitOperations.PopCount(x);          // System.Numerics\n\n// każdy element występuje 2 razy poza jednym\nint SingleNumber(int[] a) => a.Aggregate(0, (acc, x) => acc ^ x);\n\n[Flags] enum Perm { None = 0, Read = 1, Write = 2, Delete = 4 }\n// var p = Perm.Read | Perm.Write;  p.HasFlag(Perm.Write) == true",
+   "lang": "csharp",
+   "tip": "W C# >> na int jest przesunięciem arytmetycznym (zachowuje znak); dla przesunięcia logicznego użyj uint albo operatora >>> (C# 11)."
+  },
+  {
+   "id": "algo-038",
+   "topic": "LRU cache i projektowanie struktur",
+   "level": 3,
+   "q": "Zaimplementuj LRU cache o stałej pojemności z operacjami Get i Put w O(1).",
+   "a": "Łączę dwie struktury: Dictionary mapuje klucz na węzeł LinkedList, a lista trzyma kolejność użycia (początek = najświeższy). Get: znajduję węzeł w słowniku w O(1) i przenoszę go na początek listy w O(1). Put: aktualizuję albo dodaję na początek; gdy przekroczę pojemność, usuwam ostatni węzeł listy i jego klucz ze słownika. Węzeł musi przechowywać klucz, żeby przy eviction usunąć go ze słownika.",
+   "code": "public class LruCache<TKey, TValue>(int capacity) where TKey : notnull\n{\n    private readonly Dictionary<TKey, LinkedListNode<(TKey Key, TValue Value)>> _map = new();\n    private readonly LinkedList<(TKey Key, TValue Value)> _list = new();  // first = najświeższy\n\n    public bool TryGet(TKey key, out TValue value)\n    {\n        if (!_map.TryGetValue(key, out var node)) { value = default!; return false; }\n        _list.Remove(node); _list.AddFirst(node);\n        value = node.Value.Value;\n        return true;\n    }\n\n    public void Put(TKey key, TValue value)\n    {\n        if (_map.TryGetValue(key, out var node)) _list.Remove(node);\n        else if (_map.Count == capacity) { _map.Remove(_list.Last!.Value.Key); _list.RemoveLast(); }\n        _map[key] = _list.AddFirst((key, value));\n    }\n}",
+   "lang": "csharp",
+   "deep": "LinkedList<T> w .NET jest dwukierunkowa i pozwala usunąć węzeł w O(1) mając LinkedListNode – dlatego słownik trzyma węzły, a nie wartości. Queue nie wystarczy, bo nie usuniesz z niej elementu ze środka w O(1), a PriorityQueue po znaczniku czasu dałaby O(log n) i problem z aktualizacją priorytetu. Klasa nie jest thread-safe; najprościej owinąć operacje w lock (od .NET 9 dedykowany typ System.Threading.Lock) – ConcurrentDictionary sam nie wystarczy, bo lista i słownik muszą zmieniać się atomowo. Alokację węzłów przy każdym Put można ograniczyć, reużywając usuwany węzeł. Na produkcji zamiast własnego LRU zwykle używa się IMemoryCache (z SizeLimit i politykami wygasania – usuwanie przy kompakcji, nie jest to ścisłe LRU) lub HybridCache (.NET 9), a w systemach rozproszonych Redisa z polityką maxmemory allkeys-lru (przybliżone LRU oparte na próbkowaniu). Warto też wspomnieć LFU jako alternatywę dla danych z wyraźnie „gorącymi” kluczami."
+  },
+  {
+   "id": "algo-039",
+   "topic": "LRU cache i projektowanie struktur",
+   "level": 3,
+   "q": "Zaprojektuj rate limiter: maksymalnie N żądań na klienta w przesuwanym oknie czasu.",
+   "a": "Najprostsza dokładna wersja to sliding window log: dla każdego klienta kolejka znaczników czasu. Przy żądaniu usuwam z początku kolejki wpisy starsze niż okno; jeśli zostało mniej niż N – przepuszczam i dopisuję bieżący czas. Czas O(1) zamortyzowany, pamięć O(N) na klienta. Czas wstrzykuję przez TimeProvider, żeby dało się to testować. W ASP.NET Core na produkcji użyłbym wbudowanego middleware rate limiting (fixed window, sliding window, token bucket, concurrency).",
+   "code": "public class SlidingWindowLimiter(int limit, TimeSpan window, TimeProvider clock)\n{\n    private readonly Dictionary<string, Queue<DateTimeOffset>> _hits = new();\n    private readonly Lock _lock = new();                       // .NET 9\n\n    public bool TryAcquire(string clientId)\n    {\n        lock (_lock)\n        {\n            var now = clock.GetUtcNow();\n            if (!_hits.TryGetValue(clientId, out var q)) _hits[clientId] = q = new();\n            while (q.Count > 0 && now - q.Peek() >= window) q.Dequeue();\n            if (q.Count >= limit) return false;\n            q.Enqueue(now);\n            return true;\n        }\n    }\n}",
+   "lang": "csharp",
+   "deep": "Fixed window (licznik na okno zegarowe) to O(1) pamięci, ale pozwala na burst 2N na granicy dwóch okien. Sliding window log jest dokładny, ale trzyma do N znaczników na klienta. Sliding window counter przybliża okno ważoną sumą bieżącego i poprzedniego licznika – O(1) pamięci przy małym błędzie. Token bucket (żetony dosypywane ze stałą prędkością, żądanie zużywa żeton) pozwala na kontrolowane bursty i wymaga tylko dwóch liczb: liczby żetonów i czasu ostatniego uzupełnienia. Jeden globalny lock to wąskie gardło – można shardować po kluczu albo trzymać lock per klient; trzeba też sprzątać nieaktywnych klientów, inaczej słownik rośnie bez końca. W wielu instancjach stan musi być współdzielony, np. Redis (INCR + EXPIRE dla fixed window albo sorted set / skrypt Lua dla sliding window). W ASP.NET Core: builder.Services.AddRateLimiter(...) i app.UseRateLimiter(), odrzucenia domyślnie z 503 – zwykle ustawia się RejectionStatusCode = 429."
+  },
+  {
+   "id": "algo-040",
+   "topic": "Typowe zadania live coding",
+   "level": 3,
+   "q": "Zdekoduj string w formacie k[treść], z możliwym zagnieżdżeniem, np. \"3[a2[c]]\" → \"accaccacc\".",
+   "a": "Parsowanie z dwoma stosami: na liczby powtórzeń i na zbudowane dotąd fragmenty. Cyfry akumuluję w liczbę (może być wielocyfrowa). Na '[' odkładam bieżący licznik i bieżący StringBuilder na stosy i zaczynam nowy fragment. Na ']' zdejmuję poprzedni fragment i doklejam do niego bieżący powtórzony k razy. Zwykłe litery dopisuję. Czas proporcjonalny do długości wyniku, pamięć O(głębokość zagnieżdżenia + wynik).",
+   "code": "string Decode(string s)\n{\n    var counts = new Stack<int>();\n    var parts = new Stack<StringBuilder>();\n    var current = new StringBuilder();\n    int k = 0;\n    foreach (var c in s)\n    {\n        if (char.IsAsciiDigit(c)) k = k * 10 + (c - '0');\n        else if (c == '[') { counts.Push(k); parts.Push(current); current = new(); k = 0; }\n        else if (c == ']')\n        {\n            var prev = parts.Pop();                                   // dopisz bieżący × k\n            current = prev.Insert(prev.Length, current.ToString(), counts.Pop());\n        }\n        else current.Append(c);\n    }\n    return current.ToString();\n}",
+   "lang": "csharp",
+   "deep": "Ten sam schemat (stos kontekstów) obsługuje parsowanie wyrażeń z nawiasami, zagnieżdżonych struktur i prostych DSL-i. Alternatywą jest rekurencyjny parser zstępujący (recursive descent), gdzie każdy poziom nawiasów to wywołanie funkcji – kod bywa czytelniejszy, ale głębokość zależy od wejścia. Do wyrażeń arytmetycznych z priorytetami operatorów stosuje się shunting-yard albo dwa stosy (wartości i operatory). Na rozmowie warto dopytać o walidację: co z niezbalansowanymi nawiasami, liczbą bez nawiasu, zerem? Ważny argument produkcyjny: wynik może eksplodować („1000[1000[a]]” to milion znaków), więc w realnym systemie potrzebny jest limit długości. I zdrowy rozsądek: JSON, CSV czy daty parsuje się bibliotekami (System.Text.Json, TryParse z CultureInfo.InvariantCulture), a nie ręcznie."
+  },
+  {
+   "id": "algo-041",
+   "topic": "Typowe zadania live coding",
+   "level": 1,
+   "q": "FizzBuzz z twistem: wypisz liczby 1..n, ale reguły podzielności (np. 3 → Fizz, 5 → Buzz, 7 → Bazz) mają być konfigurowalne.",
+   "a": "Zamiast zahardkodowanych if-ów trzymam listę reguł (dzielnik, słowo). Dla każdej liczby skleja słowa wszystkich pasujących reguł w kolejności; jeśli żadna nie pasuje, zwracam liczbę. Dodanie nowej reguły nie wymaga zmiany kodu (Open/Closed). Czas O(n · r), gdzie r to liczba reguł. Zwracam IEnumerable<string> zamiast pisać na konsolę – łatwiej testować.",
+   "code": "IEnumerable<string> FizzBuzz(int n, params (int Divisor, string Word)[] rules)\n{\n    for (int i = 1; i <= n; i++)\n    {\n        var sb = new StringBuilder();\n        foreach (var (d, w) in rules)\n            if (i % d == 0) sb.Append(w);\n        yield return sb.Length > 0 ? sb.ToString() : i.ToString();\n    }\n}\n\n// FizzBuzz(21, (3, \"Fizz\"), (5, \"Buzz\"), (7, \"Bazz\"))  →  ..., \"21\" → \"FizzBazz\"",
+   "lang": "csharp",
+   "tip": "Rekruter sprawdza tu nie algorytm, a czystość kodu: oddzielenie logiki od wypisywania, testowalność i to, czy przy nowym wymaganiu („dodaj 7”) kod się nie rozsypie."
+  },
+  {
+   "id": "algo-042",
+   "topic": "Typowe zadania live coding",
+   "level": 1,
+   "q": "Sprawdź, czy zdanie jest palindromem, ignorując wielkość liter, spacje i znaki interpunkcyjne (np. \"Kobyła ma mały bok\").",
+   "a": "Two pointers od obu końców bez budowania nowego stringa: pomijam znaki, które nie są literą ani cyfrą, i porównuję pozostałe po sprowadzeniu do małych liter. Gdy wskaźniki się miną – to palindrom. Czas O(n), pamięć O(1). Wersja „oczyść string i porównaj z odwróconym” jest czytelna, ale zużywa O(n) pamięci.",
+   "code": "bool IsPalindrome(string s)\n{\n    int l = 0, r = s.Length - 1;\n    while (l < r)\n    {\n        if (!char.IsLetterOrDigit(s[l])) { l++; continue; }\n        if (!char.IsLetterOrDigit(s[r])) { r--; continue; }\n        if (char.ToLowerInvariant(s[l]) != char.ToLowerInvariant(s[r])) return false;\n        l++; r--;\n    }\n    return true;\n}",
+   "lang": "csharp",
+   "tip": "Przypadki brzegowe: pusty string, jeden znak, same znaki interpunkcyjne (\".,!\" → true). char.IsLetterOrDigit obsługuje polskie litery."
+  },
+  {
+   "id": "algo-043",
+   "topic": "Typowe zadania live coding",
+   "level": 1,
+   "q": "Odwróć kolejność słów w zdaniu, usuwając nadmiarowe spacje (\"  Ala  ma kota \" → \"kota ma Ala\").",
+   "a": "Dzielę string po spacjach z RemoveEmptyEntries (to usuwa wielokrotne i skrajne spacje), odwracam tablicę i łączę pojedynczą spacją. Czas i pamięć O(n). Follow-up „w miejscu” na tablicy znaków: odwracam całą tablicę, a potem każde słowo osobno – O(1) dodatkowej pamięci.",
+   "code": "string ReverseWords(string s)\n{\n    var words = s.Split(' ', StringSplitOptions.RemoveEmptyEntries);\n    Array.Reverse(words);\n    return string.Join(' ', words);\n}\n\n// wariant „w miejscu”: Reverse(całość), potem Reverse(każde słowo)\n// \"ab cd\" → \"dc ba\" → \"cd ab\"",
+   "lang": "csharp",
+   "tip": "Uwaga na C# 14: words.Reverse() na tablicy może się zbindować do MemoryExtensions.Reverse (void, odwraca w miejscu) zamiast LINQ – jawne Array.Reverse albo Enumerable.Reverse(words) jest bezpieczne."
+  },
+  {
+   "id": "algo-044",
+   "topic": "Typowe zadania live coding",
+   "level": 2,
+   "q": "Znajdź duplikaty w kolekcji (każdy zduplikowany element zwróć raz).",
+   "a": "Jedno przejście z HashSet: HashSet.Add zwraca false, gdy element już był – wtedy to duplikat. Drugi HashSet pilnuje, żeby każdy duplikat zgłosić tylko raz. Czas O(n), pamięć O(n). Wersja LINQ z GroupBy jest krótsza, ale materializuje wszystkie grupy. Jeśli pamięć jest ograniczona, sortuję i porównuję sąsiadów – O(n log n) czasu, O(1) dodatkowej pamięci (przy sortowaniu w miejscu).",
+   "code": "IEnumerable<T> Duplicates<T>(IEnumerable<T> items)\n{\n    var seen = new HashSet<T>();\n    var reported = new HashSet<T>();\n    foreach (var x in items)\n        if (!seen.Add(x) && reported.Add(x))\n            yield return x;\n}\n\n// LINQ – czytelnie, ale materializuje grupy:\nvar dups = items.GroupBy(x => x).Where(g => g.Count() > 1).Select(g => g.Key);",
+   "lang": "csharp",
+   "tip": "Dopytaj o typ elementów: dla własnych klas HashSet potrzebuje poprawnych Equals/GetHashCode (najprościej record). Wariant „liczby 1..n w tablicy n+1” rozwiązuje się Floydem w O(1) pamięci."
+  },
+  {
+   "id": "algo-045",
+   "topic": "Typowe zadania live coding",
+   "level": 2,
+   "q": "Policz częstość słów w tekście i zwróć 3 najczęstsze (LINQ).",
+   "a": "Normalizuję tekst (małe litery), dzielę na słowa regexem po znakach niebędących literami, odfiltrowuję puste, grupuję i sortuję malejąco po liczności, a przy remisie alfabetycznie, żeby wynik był deterministyczny. Od .NET 9 jest CountBy, który zlicza bez tworzenia grup. Czas O(n + u log u), gdzie u to liczba unikalnych słów.",
+   "code": "var top = Regex.Split(text.ToLowerInvariant(), @\"\\W+\")\n    .Where(w => w.Length > 0)\n    .CountBy(w => w)                              // .NET 9: KeyValuePair<string, int>\n    .OrderByDescending(p => p.Value)\n    .ThenBy(p => p.Key)\n    .Take(3);\n\n// przed .NET 9:\n// .GroupBy(w => w).Select(g => (Word: g.Key, Count: g.Count()))\n//   .OrderByDescending(x => x.Count).ThenBy(x => x.Word).Take(3)",
+   "lang": "csharp",
+   "tip": "Sprawdź, czy rozumiesz, kiedy zapytanie się wykonuje (deferred execution) i że Count() na grupie liczysz raz – w Select, a nie w każdym OrderBy i Where."
+  },
+  {
+   "id": "algo-046",
+   "topic": "Typowe zadania live coding",
+   "level": 2,
+   "q": "Scal nachodzące na siebie przedziały, np. [[1,3],[2,6],[8,10],[15,18]] → [[1,6],[8,10],[15,18]].",
+   "a": "Sortuję przedziały po początku. Idę po kolei: jeśli bieżący zaczyna się nie później niż kończy ostatni scalony – rozszerzam koniec ostatniego do max z obu końców; w przeciwnym razie dodaję nowy przedział. Czas O(n log n) przez sortowanie, pamięć O(n) na wynik.",
+   "code": "int[][] Merge(int[][] intervals)\n{\n    var result = new List<int[]>();\n    foreach (var cur in intervals.OrderBy(i => i[0]))\n    {\n        if (result.Count > 0 && cur[0] <= result[^1][1])\n            result[^1][1] = Math.Max(result[^1][1], cur[1]);\n        else\n            result.Add([cur[0], cur[1]]);   // kopia – nie modyfikuję wejścia\n    }\n    return result.ToArray();\n}",
+   "lang": "csharp",
+   "deep": "Trzeba dopytać, czy przedziały „stykające się” ([1,2] i [2,3]) się łączą – to decyduje o <= vs <. Math.Max jest potrzebny, bo przedział może całkowicie zawierać się w poprzednim ([1,10] i [2,3]). Kopiowanie przedziału do wyniku chroni przed modyfikacją danych wejściowych przez referencję – częsty, subtelny bug. Pokrewne zadania: wstawienie nowego przedziału do posortowanej listy (O(n), bez sortowania), minimalna liczba sal konferencyjnych (sortowanie po starcie + min-heap końców, O(n log n)), wolne sloty w kalendarzach kilku osób. W prawdziwym systemie rezerwacji nakładanie się sprawdza się zwykle w bazie warunkiem start < otherEnd AND end > otherStart, z indeksem lub ograniczeniem (np. exclusion constraint w PostgreSQL)."
+  },
+  {
+   "id": "algo-047",
+   "topic": "Jak się zachować na live codingu",
+   "level": 1,
+   "q": "Dostajesz zadanie na live codingu. Co robisz w pierwszych 2–3 minutach, zanim napiszesz kod?",
+   "a": "Powtarzam zadanie własnymi słowami, żeby upewnić się, że dobrze je rozumiem. Zadaję pytania doprecyzowujące: rozmiar danych, zakresy wartości, puste/null wejście, duplikaty, czy dane są posortowane, czy mogę modyfikować wejście, co zwrócić, gdy nie ma wyniku. Przechodzę ręcznie przykład i jeden przypadek brzegowy. Potem mówię o podejściu brute force i jego złożoności, proponuję optymalizację i pytam, czy mogę zacząć implementację.",
+   "code": "1. Powtórz zadanie własnymi słowami\n2. Wejście: typ, rozmiar n, zakresy, null/puste, duplikaty, posortowane?\n3. Wyjście: format, co gdy brak wyniku (-1, null, wyjątek?)\n4. Przejdź ręcznie 1 przykład + 1 przypadek brzegowy\n5. Brute force + złożoność → pomysł na optymalizację\n6. \"Czy mogę zacząć od tego podejścia?\"",
+   "lang": "text",
+   "tip": "Rekruter ocenia proces, nie tylko wynik. Kandydat, który w ciszy od razu pisze kod i rozwiązuje zły problem, wypada gorzej niż ten, który dopytał i zrobił prostsze, ale poprawne rozwiązanie."
+  },
+  {
+   "id": "algo-048",
+   "topic": "Jak się zachować na live codingu",
+   "level": 2,
+   "q": "Dlaczego warto zacząć od rozwiązania brute force i jak „myśleć na głos” podczas live codingu?",
+   "a": "Brute force pokazuje, że rozumiem problem, daje punkt odniesienia do złożoności i często od razu wskazuje wąskie gardło (np. wewnętrzną pętlę wyszukiwania, którą zastąpi HashSet). Nie muszę go pisać – wystarczy opisać i podać złożoność, a potem zaproponować optymalizację. Myślenie na głos to komentowanie decyzji: co sprawdzam, dlaczego wybieram strukturę, jakie widzę ryzyka. Dzięki temu rekruter może podpowiedzieć, zanim pójdę w ślepą uliczkę.",
+   "code": "\"posortowana tablica\"            → binary search / two pointers\n\"spójna podtablica / podciąg\"    → sliding window / prefix sums\n\"czy istnieje / policz / pary\"   → HashSet / Dictionary\n\"top K / k-ty największy\"        → PriorityQueue (heap)\n\"najkrótsza ścieżka\"             → BFS (bez wag) / Dijkstra\n\"wszystkie kombinacje\"           → backtracking\n\"min/max / na ile sposobów\"      → programowanie dynamiczne\n\"nawiasy / najbliższy większy\"   → stos (monotonic stack)\n\"zależności / kolejność\"         → sortowanie topologiczne",
+   "lang": "text",
+   "deep": "Typowa ścieżka optymalizacji: znajdź operację powtarzaną w pętli i zapytaj, czy można ją przyspieszyć strukturą danych (hash, heap, posortowanie raz na początku) albo wcześniejszym przeliczeniem (prefix sums, memoizacja). Pomaga myślenie o „najlepszej teoretycznej złożoności” – jeśli trzeba przeczytać całe wejście, nie zejdziesz poniżej O(n). Gdy utkniesz, powiedz to wprost i opisz, co już wiesz – prośba o podpowiedź jest lepsza niż pięć minut ciszy. Pisz kod czytelny od razu: sensowne nazwy, małe funkcje pomocnicze (np. CanShip), wczesne returny. Nie optymalizuj mikro (Span, stackalloc), dopóki nie masz poprawnego rozwiązania i rekruter o to nie poprosi. Zarządzaj czasem: lepiej skończone rozwiązanie O(n log n) niż niedokończone O(n)."
+  },
+  {
+   "id": "algo-049",
+   "topic": "Jak się zachować na live codingu",
+   "level": 2,
+   "q": "Jak przetestować rozwiązanie na live codingu i jakie przypadki brzegowe sprawdzić?",
+   "a": "Najpierw dry run: przechodzę kod linijka po linijce na przykładzie z treści, śledząc wartości zmiennych. Potem przypadki brzegowe: puste wejście i null, jeden element, wszystkie elementy równe, duplikaty, wartości ujemne i zero, wartości skrajne (int.MaxValue, przepełnienie), dane już posortowane lub odwrotnie, brak rozwiązania. Jeśli jest IDE, piszę kilka testów xUnit z [Theory] – to szybkie i robi dobre wrażenie.",
+   "code": "[Theory]\n[InlineData(\"\", true)]                                  // pusty\n[InlineData(\"a\", true)]                                 // jeden znak\n[InlineData(\"ab\", false)]\n[InlineData(\"A man, a plan, a canal: Panama\", true)]\n[InlineData(\".,!\", true)]                               // same znaki nie-alfanumeryczne\npublic void IsPalindrome_Works(string input, bool expected) =>\n    Assert.Equal(expected, Solutions.IsPalindrome(input));",
+   "lang": "csharp",
+   "tip": "Pułapki liczbowe: Math.Abs(int.MinValue) rzuca OverflowException, a suma dwóch dużych int przepełnia się po cichu (domyślnie unchecked) – przy sumach używaj long."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "algo-q001",
+   "topic": "Big-O i złożoność",
+   "level": 1,
+   "q": "Jaka jest złożoność czasowa tego fragmentu?",
+   "code": "for (int i = 0; i < n; i++)\n    for (int j = 0; j < n; j++)\n        sum += i * j;",
+   "lang": "csharp",
+   "options": [
+    "O(n)",
+    "O(2n)",
+    "O(n log n)",
+    "O(n²)"
+   ],
+   "correct": 3,
+   "why": "Dwie zagnieżdżone pętle, każda po n iteracji, dają n · n operacji. O(2n) to po prostu O(n) i opisywałoby dwie pętle jedna po drugiej, a nie zagnieżdżone."
+  },
+  {
+   "id": "algo-q002",
+   "topic": "Big-O i złożoność",
+   "level": 2,
+   "q": "Jaka jest złożoność czasowa tej pętli?",
+   "code": "int count = 0;\nfor (int i = 1; i < n; i *= 2)\n    count++;",
+   "lang": "csharp",
+   "options": [
+    "O(n)",
+    "O(n / 2)",
+    "O(log n)",
+    "O(√n)"
+   ],
+   "correct": 2,
+   "why": "i podwaja się w każdej iteracji (1, 2, 4, 8, …), więc pętla wykona się ok. log₂ n razy. O(n/2) to wciąż O(n) i dotyczyłoby kroku i += 2."
+  },
+  {
+   "id": "algo-q003",
+   "topic": "Big-O i złożoność",
+   "level": 2,
+   "q": "List<int> ma Count == Capacity == 1000. Jaka jest złożoność TEGO jednego wywołania Add?",
+   "options": [
+    "O(1) – Add zawsze ma stały koszt",
+    "O(n) – alokuje większą tablicę i kopiuje wszystkie elementy",
+    "O(log n) – tablica rośnie logarytmicznie",
+    "O(n²) – każdy element jest kopiowany wielokrotnie"
+   ],
+   "correct": 1,
+   "why": "Gdy lista jest pełna, Add tworzy tablicę o podwojonej pojemności i kopiuje n elementów – ta jedna operacja to O(n). O(1) to koszt zamortyzowany dla ciągu operacji, a nie gwarancja dla każdego pojedynczego wywołania."
+  },
+  {
+   "id": "algo-q004",
+   "topic": "Big-O i złożoność",
+   "level": 3,
+   "q": "Jaka jest złożoność czasowa i pamięciowa naiwnej rekurencji?",
+   "code": "long Fib(int n) => n <= 1 ? n : Fib(n - 1) + Fib(n - 2);",
+   "lang": "csharp",
+   "options": [
+    "O(2ⁿ) czas, O(2ⁿ) pamięć",
+    "O(2ⁿ) czas, O(n) pamięć",
+    "O(n) czas, O(n) pamięć",
+    "O(n²) czas, O(1) pamięć"
+   ],
+   "correct": 1,
+   "why": "Każde wywołanie rozgałęzia się na dwa, więc liczba wywołań rośnie wykładniczo (dokładniej ok. 1,6ⁿ, co mieści się w O(2ⁿ)). Pamięć to jednak tylko maksymalna głębokość stosu – w danej chwili aktywna jest jedna ścieżka długości n. O(n) czasu dałaby dopiero memoizacja."
+  },
+  {
+   "id": "algo-q005",
+   "topic": "Kolekcje .NET – złożoność",
+   "level": 1,
+   "q": "Sprawdzasz 100 000 razy, czy id znajduje się na liście 100 000 dozwolonych id (List<int>). Co najlepiej zmienić?",
+   "options": [
+    "Zamienić List<int> na HashSet<int> – Contains O(1) zamiast O(n)",
+    "Posortować listę i dalej używać List.Contains",
+    "Zamienić List<int> na int[] – Contains na tablicy jest O(1)",
+    "Zamienić Contains na LINQ Any(x => x == id)"
+   ],
+   "correct": 0,
+   "why": "HashSet daje średnio O(1) na sprawdzenie, czyli łącznie O(n) zamiast O(n²). Sortowanie nie przyspiesza Contains (to wciąż liniowe przeszukanie – trzeba by użyć BinarySearch). Tablica i Any() też przeszukują liniowo."
+  },
+  {
+   "id": "algo-q006",
+   "topic": "Kolekcje .NET – złożoność",
+   "level": 2,
+   "q": "Jaka jest złożoność TryGetValue w SortedDictionary<TKey, TValue>?",
+   "options": [
+    "O(1) – haszowanie jak w Dictionary",
+    "O(n) – liniowe przeszukanie posortowanych kluczy",
+    "O(n log n) – kolekcja jest sortowana przy odczycie",
+    "O(log n) – to drzewo czerwono-czarne"
+   ],
+   "correct": 3,
+   "why": "SortedDictionary to zbalansowane drzewo binarne (red-black), więc wyszukiwanie, wstawianie i usuwanie kosztują O(log n). Nie używa haszowania, a dane są posortowane cały czas, nie przy odczycie."
+  },
+  {
+   "id": "algo-q007",
+   "topic": "Kolekcje .NET – złożoność",
+   "level": 2,
+   "q": "Co jest problemem wydajnościowym w tym kodzie dla dużego n?",
+   "code": "var list = new List<int>(items);\nwhile (list.Count > 0)\n{\n    var x = list[0];\n    list.RemoveAt(0);\n    Process(x);\n}",
+   "lang": "csharp",
+   "options": [
+    "list[0] jest O(n), bo indeksowanie listy jest liniowe",
+    "Nic – RemoveAt(0) w List<T> jest O(1)",
+    "RemoveAt(0) przesuwa wszystkie elementy – całość jest O(n²); lepiej Queue<T>",
+    "Konstruktor new List<int>(items) jest O(n²)"
+   ],
+   "correct": 2,
+   "why": "List<T> to tablica, więc usunięcie pierwszego elementu wymaga przesunięcia n − 1 pozostałych – n takich operacji daje O(n²). Queue<T> (bufor cykliczny) robi Dequeue w O(1). Indeksowanie listy jest O(1), a konstruktor kopiujący O(n)."
+  },
+  {
+   "id": "algo-q008",
+   "topic": "Kolekcje .NET – złożoność",
+   "level": 2,
+   "q": "Która operacja na LinkedList<T> ma złożoność O(n)?",
+   "options": [
+    "AddFirst(value)",
+    "RemoveLast()",
+    "Remove(value) – trzeba najpierw znaleźć węzeł",
+    "AddAfter(node, value), mając referencję do węzła"
+   ],
+   "correct": 2,
+   "why": "LinkedList<T> jest dwukierunkowa i zna głowę i ogon, więc operacje na końcach oraz wstawianie/usuwanie przy znanym węźle są O(1). Remove(value) musi jednak przeszukać listę, żeby znaleźć węzeł – O(n)."
+  },
+  {
+   "id": "algo-q009",
+   "topic": "Kolekcje .NET – złożoność",
+   "level": 2,
+   "q": "Co wypisze ten kod?",
+   "code": "var pq = new PriorityQueue<string, int>();\npq.Enqueue(\"A\", 3);\npq.Enqueue(\"B\", 1);\npq.Enqueue(\"C\", 2);\npq.Dequeue();\nConsole.WriteLine(pq.Peek());",
+   "lang": "csharp",
+   "options": [
+    "B",
+    "C",
+    "A",
+    "Kolejność jest nieokreślona – może być dowolna litera"
+   ],
+   "correct": 1,
+   "why": "PriorityQueue to min-heap: Dequeue zdejmuje element o najmniejszym priorytecie (B, 1). Peek zwraca kolejny najmniejszy – C z priorytetem 2. Niestabilność dotyczy tylko elementów o równym priorytecie."
+  },
+  {
+   "id": "algo-q010",
+   "topic": "Kolekcje .NET – złożoność",
+   "level": 3,
+   "q": "Do PriorityQueue<Job, int> dodajesz zadania T1, T2, T3 z tym samym priorytetem. W jakiej kolejności wyjdą?",
+   "options": [
+    "Kolejność nie jest gwarantowana – kolejka nie jest stabilna; dodaj numer sekwencyjny do priorytetu",
+    "Zawsze T1, T2, T3 – FIFO dla równych priorytetów",
+    "Zawsze T3, T2, T1 – LIFO dla równych priorytetów",
+    "Enqueue rzuci wyjątek przy powtórzonym priorytecie"
+   ],
+   "correct": 0,
+   "why": "Kopiec nie zachowuje kolejności wstawiania dla równych kluczy. Jeśli FIFO jest wymagane, używa się priorytetu złożonego, np. (priority, seq) jako tuple, które porównuje się leksykograficznie. Powtórzone priorytety są całkowicie legalne."
+  },
+  {
+   "id": "algo-q011",
+   "topic": "Tablice i stringi",
+   "level": 2,
+   "q": "Trzeba znaleźć maksymalną sumę k kolejnych elementów tablicy n liczb. Które podejście jest najlepsze?",
+   "options": [
+    "Dwie zagnieżdżone pętle – O(n·k) jest optymalne",
+    "Posortować i zsumować k największych – O(n log n)",
+    "Binary search po wyniku – O(log n)",
+    "Sliding window o stałym rozmiarze – O(n)"
+   ],
+   "correct": 3,
+   "why": "Przesuwając okno o jeden, dodaję nowy element i odejmuję najstarszy – każdy krok O(1), łącznie O(n). Sortowanie niszczy kolejność, więc „k największych” nie muszą być kolejnymi elementami. O(log n) jest niemożliwe, bo trzeba przeczytać całe wejście."
+  },
+  {
+   "id": "algo-q012",
+   "topic": "Tablice i stringi",
+   "level": 3,
+   "q": "Co wypisze ten kod dla nums = [-2, 1, -3, 4, -1, 2, 1, -5, 4]?",
+   "code": "int best = nums[0], cur = 0;\nforeach (var x in nums)\n{\n    cur = Math.Max(x, cur + x);\n    best = Math.Max(best, cur);\n}\nConsole.WriteLine(best);",
+   "lang": "csharp",
+   "options": [
+    "12",
+    "7",
+    "4",
+    "6"
+   ],
+   "correct": 3,
+   "why": "To algorytm Kadane'a – maksymalna suma spójnej podtablicy. Najlepsza jest [4, -1, 2, 1] = 6. 12 to suma wszystkich dodatnich liczb, ale one nie tworzą spójnej podtablicy bez ujemnych elementów pomiędzy."
+  },
+  {
+   "id": "algo-q013",
+   "topic": "Hash mapy",
+   "level": 1,
+   "q": "Two sum w nieposortowanej tablicy w czasie O(n) – jakiej struktury użyjesz?",
+   "options": [
+    "Stack<int>",
+    "SortedSet<int> – wyszukiwanie w O(1)",
+    "Dictionary<int, int> (wartość → indeks)",
+    "Two pointers bez sortowania"
+   ],
+   "correct": 2,
+   "why": "Słownik pozwala w O(1) sprawdzić, czy widzieliśmy już dopełnienie target − x, i od razu zwrócić jego indeks. SortedSet ma wyszukiwanie O(log n), a two pointers wymagają posortowanej tablicy (sortowanie gubi oryginalne indeksy i kosztuje O(n log n))."
+  },
+  {
+   "id": "algo-q014",
+   "topic": "Hash mapy",
+   "level": 2,
+   "q": "Co wypisze ten kod?",
+   "code": "class Point { public int X; public int Y; }\n\nvar set = new HashSet<Point> { new Point { X = 1, Y = 2 } };\nConsole.WriteLine(set.Contains(new Point { X = 1, Y = 2 }));",
+   "lang": "csharp",
+   "options": [
+    "True – oba obiekty mają te same wartości pól",
+    "False – klasa bez nadpisanych Equals/GetHashCode porównuje referencje",
+    "Nie skompiluje się – HashSet wymaga IEquatable<T>",
+    "True, ale tylko w trybie Release"
+   ],
+   "correct": 1,
+   "why": "Dla zwykłej klasy domyślne Equals i GetHashCode opierają się na tożsamości obiektu, więc nowa instancja z tymi samymi polami nie zostanie znaleziona. Rozwiązanie: record (równość po wartościach) albo nadpisanie Equals i GetHashCode / własny IEqualityComparer."
+  },
+  {
+   "id": "algo-q015",
+   "topic": "Hash mapy",
+   "level": 1,
+   "q": "Co wypisze ten kod?",
+   "code": "var set = new HashSet<string>();\nset.Add(\"a\");\nConsole.WriteLine(set.Add(\"a\"));",
+   "lang": "csharp",
+   "options": [
+    "False",
+    "True",
+    "Rzuci ArgumentException",
+    "Nie skompiluje się – Add zwraca void"
+   ],
+   "correct": 0,
+   "why": "HashSet<T>.Add zwraca bool: true, gdy element został dodany, false, gdy już był. To wygodne do wykrywania duplikatów. Wyjątek przy powtórzonym kluczu rzuca Dictionary.Add, nie HashSet.Add."
+  },
+  {
+   "id": "algo-q016",
+   "topic": "Stos i kolejka",
+   "level": 1,
+   "q": "Co wypisze ten kod?",
+   "code": "var s = new Stack<int>();\ns.Push(1); s.Push(2); s.Push(3);\ns.Pop();\nConsole.WriteLine(s.Peek());",
+   "lang": "csharp",
+   "options": [
+    "2",
+    "3",
+    "1",
+    "Rzuci InvalidOperationException"
+   ],
+   "correct": 0,
+   "why": "Stos to LIFO: po Push 1, 2, 3 na szczycie jest 3. Pop zdejmuje 3, a Peek podgląda nowy szczyt, czyli 2, nie usuwając go."
+  },
+  {
+   "id": "algo-q017",
+   "topic": "Stos i kolejka",
+   "level": 2,
+   "q": "Co zwróci algorytm sprawdzania nawiasów oparty na stosie dla \"([)]\"?",
+   "options": [
+    "true – liczba nawiasów otwierających i zamykających się zgadza",
+    "true – każdy typ nawiasu jest zbalansowany osobno",
+    "Rzuci wyjątek – Pop na pustym stosie",
+    "false – przy ')' na szczycie stosu jest '['"
+   ],
+   "correct": 3,
+   "why": "Po \"([\" na szczycie stosu jest '['. Zamykający ')' nie pasuje do '[', więc wynik to false. Samo liczenie nawiasów (także osobno dla każdego typu) nie wykrywa złego zagnieżdżenia – dlatego potrzebny jest stos."
+  },
+  {
+   "id": "algo-q018",
+   "topic": "Stos i kolejka",
+   "level": 3,
+   "q": "Jaka jest złożoność czasowa „next greater element” z monotonic stack, skoro w pętli for jest pętla while?",
+   "options": [
+    "O(n²) – pętla w pętli",
+    "O(n log n) – stos utrzymuje porządek jak przy sortowaniu",
+    "O(n) – każdy indeks jest raz wkładany na stos i co najwyżej raz zdejmowany",
+    "O(n · h), gdzie h to maksymalna wysokość stosu"
+   ],
+   "correct": 2,
+   "why": "Analiza zamortyzowana: zamiast mnożyć pętle, liczymy operacje push i pop. Każdy z n indeksów jest wkładany dokładnie raz i zdejmowany najwyżej raz, więc łącznie wszystkie iteracje while to co najwyżej n."
+  },
+  {
+   "id": "algo-q019",
+   "topic": "Listy wiązane",
+   "level": 2,
+   "q": "Jaka jest złożoność algorytmu Floyda (wolny i szybki wskaźnik) wykrywającego cykl w liście?",
+   "options": [
+    "O(n) czas, O(n) pamięć",
+    "O(n) czas, O(1) pamięć",
+    "O(n²) czas, O(1) pamięć",
+    "O(n log n) czas, O(1) pamięć"
+   ],
+   "correct": 1,
+   "why": "Szybki wskaźnik dogania wolny w cyklu w liczbie kroków proporcjonalnej do n, a algorytm trzyma tylko dwa wskaźniki. O(n) pamięci ma alternatywa z HashSet odwiedzonych węzłów."
+  },
+  {
+   "id": "algo-q020",
+   "topic": "Drzewa",
+   "level": 1,
+   "q": "Co daje przejście inorder (lewe poddrzewo, węzeł, prawe poddrzewo) po poprawnym BST?",
+   "options": [
+    "Wartości poziomami od korzenia",
+    "Wartości posortowane rosnąco",
+    "Wartości posortowane malejąco",
+    "Wartości w kolejności wstawiania"
+   ],
+   "correct": 1,
+   "why": "W BST wszystko w lewym poddrzewie jest mniejsze od węzła, a w prawym większe, więc inorder odwiedza wartości rosnąco. Poziomami przechodzi BFS (level order), a kolejności wstawiania drzewo w ogóle nie pamięta."
+  },
+  {
+   "id": "algo-q021",
+   "topic": "Drzewa",
+   "level": 2,
+   "q": "Wstawiasz do zwykłego (niebalansującego się) BST liczby 1, 2, 3, …, n w tej kolejności. Jaka będzie wysokość i koszt wyszukiwania?",
+   "options": [
+    "Wysokość n, wyszukiwanie O(n) – drzewo degeneruje się do listy",
+    "Wysokość log n, wyszukiwanie O(log n)",
+    "Wysokość n/2, wyszukiwanie O(log n)",
+    "Wysokość 1, wyszukiwanie O(1)"
+   ],
+   "correct": 0,
+   "why": "Każda kolejna liczba jest większa od poprzednich, więc trafia zawsze do prawego dziecka – powstaje łańcuch. O(log n) gwarantują tylko drzewa samobalansujące (red-black, AVL), jak te w SortedSet/SortedDictionary."
+  },
+  {
+   "id": "algo-q022",
+   "topic": "Drzewa",
+   "level": 1,
+   "q": "Jakiej struktury pomocniczej używa iteracyjny BFS, a jakiej iteracyjny DFS?",
+   "options": [
+    "BFS – Stack, DFS – Queue",
+    "Oba – PriorityQueue",
+    "BFS – HashSet, DFS – Dictionary",
+    "BFS – Queue, DFS – Stack"
+   ],
+   "correct": 3,
+   "why": "BFS przetwarza węzły warstwami w kolejności odkrycia (FIFO), więc potrzebuje kolejki. DFS schodzi jak najgłębiej i wraca (LIFO) – jawny stos albo stos wywołań w rekurencji. HashSet bywa potrzebny w grafach do zapamiętania odwiedzonych, ale nie wyznacza kolejności."
+  },
+  {
+   "id": "algo-q023",
+   "topic": "Drzewa",
+   "level": 3,
+   "q": "Jaki jest najniższy wspólny przodek (LCA) węzłów 2 i 5 w tym BST?",
+   "code": "        6\n      /   \\\n     2     8\n    / \\   / \\\n   0   4 7   9\n      / \\\n     3   5",
+   "lang": "text",
+   "options": [
+    "6",
+    "4",
+    "2",
+    "5"
+   ],
+   "correct": 2,
+   "why": "Węzeł może być przodkiem samego siebie. 5 leży w poddrzewie 2 (2 → 4 → 5), więc LCA to 2. W BST schodzimy od korzenia: 2 i 5 są mniejsze od 6, więc w lewo; w węźle 2 klucze się „rozdzielają” (2 jest równy węzłowi), więc to wynik."
+  },
+  {
+   "id": "algo-q024",
+   "topic": "Grafy",
+   "level": 2,
+   "q": "Szukasz najkrótszej ścieżki (najmniejszej liczby kroków) w labiryncie na siatce, gdzie każdy ruch kosztuje tyle samo. Jaki algorytm?",
+   "options": [
+    "DFS – szybciej dotrze do celu",
+    "Dijkstra – jest konieczny do najkrótszych ścieżek",
+    "BFS",
+    "Sortowanie topologiczne"
+   ],
+   "correct": 2,
+   "why": "W grafie bez wag BFS odwiedza pola w kolejności rosnącej odległości, więc pierwsze dotarcie do celu to najkrótsza ścieżka – O(V + E). Dijkstra też zadziała, ale niepotrzebnie płaci log V za kolejkę priorytetową. DFS nie gwarantuje najkrótszej ścieżki."
+  },
+  {
+   "id": "algo-q025",
+   "topic": "Grafy",
+   "level": 3,
+   "q": "Graf ma krawędzie o ujemnych wagach (bez ujemnych cykli). Co z algorytmem Dijkstry?",
+   "options": [
+    "Zadziała poprawnie, tylko wolniej",
+    "Może zwrócić złe wyniki – zakłada, że zdjęty z kolejki wierzchołek ma ostateczny dystans; użyj Bellmana-Forda",
+    "Wystarczy dodać stałą do wszystkich wag, aby zawsze był poprawny",
+    "PriorityQueue rzuci wyjątek przy ujemnym priorytecie"
+   ],
+   "correct": 1,
+   "why": "Ujemna krawędź może później skrócić drogę do wierzchołka, który Dijkstra już uznał za ostateczny. Dodanie stałej zmienia problem, bo karze ścieżki o większej liczbie krawędzi. Bellman-Ford działa w O(V·E) i wykrywa ujemne cykle. PriorityQueue akceptuje ujemne priorytety."
+  },
+  {
+   "id": "algo-q026",
+   "topic": "Grafy",
+   "level": 3,
+   "q": "W algorytmie Kahna (sortowanie topologiczne) po zakończeniu pętli lista wynikowa ma mniej wierzchołków niż graf. Co to oznacza?",
+   "options": [
+    "Graf zawiera cykl",
+    "Graf jest niespójny",
+    "W grafie są wierzchołki izolowane",
+    "Kolejka miała za małą pojemność początkową"
+   ],
+   "correct": 0,
+   "why": "Wierzchołki w cyklu nigdy nie osiągną stopnia wejściowego 0, więc nie trafią do kolejki. Graf niespójny lub z wierzchołkami izolowanymi jest w porządku – wierzchołki bez krawędzi wejściowych od razu trafiają do kolejki. Queue<T> rośnie automatycznie."
+  },
+  {
+   "id": "algo-q027",
+   "topic": "Rekurencja i backtracking",
+   "level": 1,
+   "q": "Co się stanie po uruchomieniu tego kodu?",
+   "code": "int Count(int n) => Count(n - 1) + 1;\n\ntry { Console.WriteLine(Count(10)); }\ncatch (Exception) { Console.WriteLine(\"złapany\"); }",
+   "lang": "csharp",
+   "options": [
+    "Wypisze \"złapany\"",
+    "Wypisze 10",
+    "Nie skompiluje się – brak warunku bazowego",
+    "Proces zostanie zakończony – StackOverflowException nie da się złapać"
+   ],
+   "correct": 3,
+   "why": "Brak warunku bazowego powoduje nieskończoną rekurencję i przepełnienie stosu. W .NET StackOverflowException kończy proces i nie da się jej obsłużyć catch-em. Kompilator nie wykrywa braku warunku bazowego."
+  },
+  {
+   "id": "algo-q028",
+   "topic": "Rekurencja i backtracking",
+   "level": 2,
+   "q": "Ile wyników zwraca generowanie wszystkich podzbiorów i wszystkich permutacji zbioru n różnych elementów?",
+   "options": [
+    "n² podzbiorów i 2ⁿ permutacji",
+    "n! podzbiorów i 2ⁿ permutacji",
+    "2ⁿ podzbiorów i n² permutacji",
+    "2ⁿ podzbiorów i n! permutacji"
+   ],
+   "correct": 3,
+   "why": "Każdy element jest albo w podzbiorze, albo nie – 2ⁿ możliwości. Permutacji jest n · (n − 1) · … · 1 = n!. Dlatego backtracking bez przycinania jest realny tylko dla małych n (ok. 20 dla podzbiorów, ok. 10 dla permutacji)."
+  },
+  {
+   "id": "algo-q029",
+   "topic": "Programowanie dynamiczne",
+   "level": 2,
+   "q": "Monety [1, 3, 4], kwota 6. Ile monet zwróci algorytm zachłanny (zawsze największa możliwa moneta), a ile programowanie dynamiczne?",
+   "options": [
+    "Oba 2",
+    "Oba 3",
+    "Zachłanny 3 (4+1+1), DP 2 (3+3)",
+    "Zachłanny 2, DP 3"
+   ],
+   "correct": 2,
+   "why": "Zachłanny bierze 4, potem dwa razy 1 – trzy monety. DP sprawdza wszystkie podproblemy i znajduje 3 + 3. Zachłanność jest poprawna tylko dla „kanonicznych” systemów monet, dlatego coin change to klasyczne DP."
+  },
+  {
+   "id": "algo-q030",
+   "topic": "Programowanie dynamiczne",
+   "level": 3,
+   "q": "Jaka jest długość najdłuższego ściśle rosnącego podciągu (LIS) dla [10, 9, 2, 5, 3, 7, 101, 18]?",
+   "options": [
+    "3",
+    "4",
+    "5",
+    "6"
+   ],
+   "correct": 1,
+   "why": "Np. 2, 3, 7, 18 albo 2, 5, 7, 101 – długość 4. Podciąg nie musi być spójny, ale musi zachować kolejność. Algorytm z tablicą tails i binary search liczy to w O(n log n)."
+  },
+  {
+   "id": "algo-q031",
+   "topic": "Sortowanie",
+   "level": 2,
+   "q": "Jaki porządek jest GWARANTOWANY w liście a?",
+   "code": "var people = new List<(string Name, int Age)>\n    { (\"Ala\", 30), (\"Bob\", 25), (\"Ewa\", 30) };\nvar a = people.OrderBy(p => p.Age).ToList();",
+   "lang": "csharp",
+   "options": [
+    "Bob, Ala, Ewa – OrderBy jest stabilne",
+    "Bob, Ewa, Ala",
+    "Bob, a potem Ala i Ewa w nieokreślonej kolejności",
+    "Ala, Ewa, Bob"
+   ],
+   "correct": 0,
+   "why": "LINQ OrderBy wykonuje sortowanie stabilne, więc Ala i Ewa (obie 30) zachowują kolejność z wejścia. Nieokreśloną kolejność równych elementów daje List<T>.Sort / Array.Sort (introsort, niestabilny)."
+  },
+  {
+   "id": "algo-q032",
+   "topic": "Sortowanie",
+   "level": 1,
+   "q": "Jaka jest pesymistyczna złożoność czasowa merge sorta i ile dodatkowej pamięci potrzebuje (wersja tablicowa)?",
+   "options": [
+    "O(n log n) czas, O(n) pamięci",
+    "O(n²) czas, O(1) pamięci",
+    "O(n log n) czas, O(1) pamięci",
+    "O(n) czas, O(n) pamięci"
+   ],
+   "correct": 0,
+   "why": "Merge sort zawsze dzieli na połowy (log n poziomów) i scala w O(n) na poziom, niezależnie od danych. Scalanie potrzebuje bufora O(n). O(n²) w najgorszym przypadku ma quicksort ze złym pivotem."
+  },
+  {
+   "id": "algo-q033",
+   "topic": "Sortowanie",
+   "level": 3,
+   "q": "Dlaczego Array.Sort w .NET (introsort) ma pesymistyczną złożoność O(n log n), choć bazuje na quicksorcie?",
+   "options": [
+    "Losuje pivot, więc O(n²) jest niemożliwe",
+    "Najpierw sprawdza, czy dane są już posortowane",
+    "Dla tablic powyżej 16 elementów używa merge sorta",
+    "Po przekroczeniu limitu głębokości rekurencji przełącza się na heapsort"
+   ],
+   "correct": 3,
+   "why": "Introsort zaczyna od quicksorta, ale gdy głębokość rekurencji przekroczy ok. 2·log n (oznaka złych pivotów), dany fragment sortuje heapsortem, który zawsze jest O(n log n). Małe fragmenty (do 16 elementów) sortuje insertion sortem. Losowy pivot zmniejsza tylko prawdopodobieństwo O(n²), ale go nie eliminuje."
+  },
+  {
+   "id": "algo-q034",
+   "topic": "Binary search",
+   "level": 1,
+   "q": "Jaki warunek musi być spełniony, aby użyć klasycznego binary search na tablicy?",
+   "options": [
+    "Tablica nie może zawierać duplikatów",
+    "Długość tablicy musi być potęgą dwójki",
+    "Tablica musi być posortowana według tego samego porządku co porównanie",
+    "Elementy muszą być typu liczbowego"
+   ],
+   "correct": 2,
+   "why": "Binary search odrzuca połowę danych na podstawie porównania ze środkiem, co ma sens tylko dla danych posortowanych. Duplikaty są dozwolone (zwrócony zostanie dowolny pasujący indeks), długość może być dowolna, a typ – dowolny porównywalny."
+  },
+  {
+   "id": "algo-q035",
+   "topic": "Binary search",
+   "level": 2,
+   "q": "Co wypisze ten kod?",
+   "code": "int[] a = [1, 3, 5, 7];\nConsole.WriteLine(Array.BinarySearch(a, 4));",
+   "lang": "csharp",
+   "options": [
+    "-1",
+    "-3",
+    "2",
+    "1"
+   ],
+   "correct": 1,
+   "why": "Gdy elementu nie ma, Array.BinarySearch zwraca dopełnienie bitowe indeksu, pod którym należałoby go wstawić. 4 trafiłoby na indeks 2, a ~2 = -3. Dzięki temu ~wynik daje miejsce wstawienia, a każda ujemna wartość oznacza „nie znaleziono”."
+  },
+  {
+   "id": "algo-q036",
+   "topic": "Bit manipulation",
+   "level": 1,
+   "q": "Co sprawdza wyrażenie x > 0 && (x & (x - 1)) == 0?",
+   "options": [
+    "Czy x jest parzyste",
+    "Czy x jest potęgą dwójki",
+    "Czy x jest liczbą pierwszą",
+    "Czy najstarszy bit x jest ustawiony"
+   ],
+   "correct": 1,
+   "why": "x & (x − 1) usuwa najmłodszy ustawiony bit. Wynik 0 oznacza, że był dokładnie jeden ustawiony bit, czyli x to potęga dwójki. Parzystość sprawdza się przez (x & 1) == 0. W .NET jest też BitOperations.IsPow2."
+  },
+  {
+   "id": "algo-q037",
+   "topic": "Bit manipulation",
+   "level": 2,
+   "q": "Co wypisze ten kod?",
+   "code": "int[] nums = [4, 1, 2, 1, 2];\nint r = 0;\nforeach (var x in nums) r ^= x;\nConsole.WriteLine(r);",
+   "lang": "csharp",
+   "options": [
+    "4",
+    "0",
+    "10",
+    "2"
+   ],
+   "correct": 0,
+   "why": "XOR jest przemienny i łączny, x ^ x = 0 i x ^ 0 = x, więc pary (1, 1) i (2, 2) się znoszą i zostaje 4 – element bez pary. 10 to zwykła suma elementów."
+  },
+  {
+   "id": "algo-q038",
+   "topic": "LRU cache i projektowanie struktur",
+   "level": 3,
+   "q": "Jakie struktury zapewnią LRU cache z Get i Put w O(1)?",
+   "options": [
+    "SortedDictionary posortowany po czasie ostatniego dostępu",
+    "Dictionary + Queue<TKey> – przy Get przesuwamy klucz na koniec kolejki",
+    "PriorityQueue ze znacznikiem czasu jako priorytetem",
+    "Dictionary klucz → węzeł + dwukierunkowa LinkedList z kolejnością użycia"
+   ],
+   "correct": 3,
+   "why": "Słownik daje O(1) dostęp do węzła, a lista dwukierunkowa – O(1) przeniesienie węzła na początek i usunięcie ostatniego. Z Queue nie da się usunąć elementu ze środka w O(1), a SortedDictionary i PriorityQueue kosztują O(log n) i nie mają taniej zmiany priorytetu."
+  },
+  {
+   "id": "algo-q039",
+   "topic": "Typowe zadania live coding",
+   "level": 2,
+   "q": "Co wypisze ten kod?",
+   "code": "var words = \"a b a c b a\".Split(' ');\nvar r = words.GroupBy(w => w)\n             .OrderByDescending(g => g.Count())\n             .Select(g => $\"{g.Key}:{g.Count()}\")\n             .First();\nConsole.WriteLine(r);",
+   "lang": "csharp",
+   "options": [
+    "b:2",
+    "a:1",
+    "a:3",
+    "c:1"
+   ],
+   "correct": 2,
+   "why": "GroupBy tworzy grupy a (3), b (2), c (1); OrderByDescending po liczności stawia a na początku, a First() bierze pierwszą grupę. Wynik to \"a:3\"."
+  },
+  {
+   "id": "algo-q040",
+   "topic": "Jak się zachować na live codingu",
+   "level": 1,
+   "q": "Rekruter podaje zadanie na live codingu. Co najlepiej zrobić najpierw?",
+   "options": [
+    "Od razu pisać optymalne rozwiązanie, żeby oszczędzić czas",
+    "W ciszy przemyśleć całe rozwiązanie, a odezwać się dopiero z gotowym kodem",
+    "Zadać pytania doprecyzowujące (rozmiar danych, przypadki brzegowe, format wyniku) i przejść przykład",
+    "Zapytać, czy można pominąć testowanie, żeby zdążyć"
+   ],
+   "correct": 2,
+   "why": "Rekruter ocenia proces: zrozumienie problemu, komunikację i podejście. Pytania doprecyzowujące chronią przed rozwiązaniem złego problemu, a głośne myślenie pozwala rekruterowi pomóc. Pisanie od razu lub w ciszy to najczęstsze przyczyny porażki na live codingu."
+  }
+ ]
+}

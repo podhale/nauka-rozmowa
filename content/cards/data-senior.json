@@ -1,0 +1,312 @@
+{
+  "cat": "data",
+  "name": "EF Core i SQL",
+  "cards": [
+    {
+      "id": "data-s001",
+      "topic": "Diagnostyka EF",
+      "level": 3,
+      "q": "Endpoint oparty na EF Core jest wolny tylko na produkcji. Jak diagnozujesz problem krok po kroku?",
+      "a": "Najpierw ustalam, czy czas idzie w bazie, czy w aplikacji: distributed tracing (OpenTelemetry) pokazuje spany zapytań SQL w ramach requestu, więc od razu widać N+1, jedno ciężkie zapytanie albo czekanie na połączenie z puli. Potem biorę konkretny SQL: logi kategorii Microsoft.EntityFrameworkCore.Database.Command (z czasem wykonania) albo ToQueryString(), a zapytanie znajduję w Query Store / pg_stat_statements dzięki TagWith. Dopiero na tym etapie patrzę na plan wykonania i indeksy, a po stronie EF na projekcje, tracking i liczbę round-tripów.",
+      "code": "public sealed class SlowQueryInterceptor(ILogger<SlowQueryInterceptor> log) : DbCommandInterceptor\n{\n    public override ValueTask<DbDataReader> ReaderExecutedAsync(DbCommand cmd,\n        CommandExecutedEventData e, DbDataReader result, CancellationToken ct = default)\n    {\n        if (e.Duration > TimeSpan.FromMilliseconds(500))\n            log.LogWarning(\"Slow query {Ms} ms: {Sql}\", e.Duration.TotalMilliseconds, cmd.CommandText);\n        return base.ReaderExecutedAsync(cmd, e, result, ct);\n    }\n}",
+      "lang": "csharp",
+      "tip": "Rekruter chce usłyszeć kolejność: zmierz → zlokalizuj (trace) → wyizoluj SQL → plan wykonania → poprawka → weryfikacja metryką, a nie „dodam indeks”.",
+      "deep": "Typowe produkcyjne przyczyny „lokalnie szybko, na prodzie wolno”: inna dystrybucja danych (tenant z milionem wierszy), parameter sniffing i plan dobrany pod nietypową wartość parametru, brak indeksu, który lokalnie nie był potrzebny, oraz wyczerpana pula połączeń, która wygląda jak wolna baza, choć zapytanie trwa 5 ms, a request czeka 2 s na połączenie. EF loguje ostrzeżenia, które warto podnieść do poziomu błędu w testach: wielokrotne Include bez split query, client evaluation, Skip/Take bez OrderBy. Logowanie wszystkich komend na Information w produkcji jest drogie; lepiej logować wolne komendy (DbCommandInterceptor z progiem, np. > 500 ms) i polegać na tracingu z próbkowaniem. EnableSensitiveDataLogging pokazuje wartości parametrów, ale na produkcji to wyciek danych osobowych do logów, więc włączam to tylko lokalnie. Metryki EF (meter Microsoft.EntityFrameworkCore, od EF 9; wcześniej event counters) i SqlClient dają liczbę aktywnych kontekstów, zapytań i stan puli połączeń, co pomaga wyłapać wycieki kontekstów."
+    },
+    {
+      "id": "data-s002",
+      "topic": "Diagnostyka EF",
+      "level": 2,
+      "q": "Do czego służą TagWith, TagWithCallSite i ToQueryString?",
+      "a": "TagWith dodaje komentarz SQL na początku wygenerowanego zapytania, więc zapytanie z Query Store, Profilera czy logów DBA da się przypisać do konkretnego miejsca w kodzie. TagWithCallSite automatycznie dopisuje plik i linię wywołania. ToQueryString zwraca SQL, który EF wygeneruje dla danego IQueryable, bez jego wykonania – przydatne w debugowaniu i testach.",
+      "code": "var orders = await db.Orders\n    .TagWith(\"GetCustomerOrders – lista zamówień klienta\")\n    .TagWithCallSite()\n    .Where(o => o.CustomerId == customerId)\n    .Select(o => new OrderDto(o.Id, o.Total))\n    .ToListAsync(ct);\n// -- GetCustomerOrders – lista zamówień klienta\n// -- file: OrdersHandler.cs:42\n// SELECT ...",
+      "lang": "csharp",
+      "deep": "Na produkcji, gdzie DBA widzi tylko tekst SQL, tagi są często jedynym szybkim sposobem powiązania zapytania z endpointem; dobrą praktyką jest tagowanie zapytań w handlerach nazwą use case’u. Tag zmienia tekst zapytania, ale jest stały, więc nie psuje cache planów; nie wolno jednak wkładać do tagu wartości zmiennych (np. Id użytkownika), bo każdy tekst to osobny wpis w plan cache. ToQueryString pokazuje SQL z deklaracjami parametrów, ale dla zapytań z wieloma Include i split query zwraca tylko pierwsze zapytanie. Warto pamiętać, że wygenerowany SQL zależy od providera i wersji EF – po upgrade’ie (np. EF 8 → 10) dobrze porównać SQL krytycznych zapytań, np. w testach snapshotowych."
+    },
+    {
+      "id": "data-s003",
+      "topic": "Change tracking",
+      "level": 3,
+      "q": "Musisz przetworzyć i zaktualizować 500 tys. rekordów przez EF Core. Jak to zrobić, żeby nie zabić pamięci i czasu?",
+      "a": "Jeśli logika da się wyrazić jednym warunkiem, używam ExecuteUpdate – zero ładowania encji. Jeśli potrzebna jest logika w C#, przetwarzam partiami (np. po 1000, keyset po Id), po każdym SaveChanges czyszczę ChangeTracker.Clear() albo używam nowego kontekstu na partię. Odczyt bez trackingu, a do zapisu tylko to, co zmieniam. Każda partia w osobnej transakcji, żeby nie trzymać locków przez godzinę i móc wznowić od ostatniego Id.",
+      "code": "long lastId = 0;\nwhile (true)\n{\n    var batch = await db.Customers.Where(c => c.Id > lastId)\n        .OrderBy(c => c.Id).Take(1000).ToListAsync(ct);\n    if (batch.Count == 0) break;\n    foreach (var c in batch) c.Segment = scorer.Compute(c);\n    await db.SaveChangesAsync(ct);\n    db.ChangeTracker.Clear();\n    lastId = batch[^1].Id;\n}",
+      "lang": "csharp",
+      "deep": "Koszt change trackera rośnie z liczbą śledzonych encji: DetectChanges (wołane przy SaveChanges, Entries, Add itp.) porównuje snapshoty wszystkich śledzonych obiektów, więc jeden kontekst z 500 tys. encji degraduje się mniej więcej kwadratowo w czasie pętli i trzyma GB w pamięci. AutoDetectChangesEnabled = false pomaga przy masowym Add, ale łatwo wtedy zgubić zmiany, więc wolę małe partie i Clear. Strumieniowanie przez AsAsyncEnumerable bez trackingu nie ładuje całego wyniku naraz, ale trzyma otwarte połączenie i reader – nie można w tym samym kontekście robić zapisów (bez MARS), więc odczyt i zapis rozdzielam. Paginacja offsetowa w takim jobie jest błędem: przy aktualizacji wierszy wpadających w filtr przesuwa się okno i rekordy są pomijane – stąd keyset po Id. Joby tego typu powinny być idempotentne i zapisywać checkpoint, bo na produkcji zostaną przerwane przez deploy."
+    },
+    {
+      "id": "data-s004",
+      "topic": "Bulk operations",
+      "level": 3,
+      "q": "Jak zaimportować milion wierszy z pliku do bazy, mając aplikację na EF Core?",
+      "a": "Zwykłe Add + SaveChanges odpada – nawet z batchingiem EF to wiele round-tripów, tracking i INSERT-y wiersz po wierszu. Do masowego wstawiania używam mechanizmu bazy: SqlBulkCopy (SQL Server) albo binarny COPY w Npgsql. Typowy wzorzec: bulk copy do tabeli staging, potem jeden MERGE/INSERT…SELECT z walidacją i deduplikacją do tabeli docelowej w transakcji. EF zostaje do reszty aplikacji; ExecuteUpdate/ExecuteDelete wystarczą do masowych zmian istniejących danych.",
+      "code": "using var bulk = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock, tx)\n{\n    DestinationTableName = \"staging.ProductImport\",\n    BatchSize = 50_000\n};\nawait bulk.WriteToServerAsync(reader, ct);   // IDataReader ze strumienia CSV\nawait db.Database.ExecuteSqlRawAsync(\"EXEC dbo.MergeProductImport\", ct);",
+      "lang": "csharp",
+      "deep": "Różnica rzędów wielkości: EF z batchingiem wstawia typowo tysiące wierszy na sekundę, SqlBulkCopy setki tysięcy, bo strumieniuje dane protokołem bulk load z minimalnym logowaniem (zależnie od recovery model i blokady TABLOCK). Tabela staging oddziela szybki, „głupi” załadunek od logiki biznesowej i pozwala zrobić upsert w jednym poleceniu zamiast tysięcy pojedynczych sprawdzeń. Biblioteki typu EFCore.BulkExtensions robią to za Ciebie na encjach EF, ale trzeba sprawdzić licencję (część narzędzi bulk jest komercyjna) i pamiętać, że omijają SaveChanges – interceptory audytu, domain events i walidacja się nie wykonają. Przy dużym imporcie trzeba też myśleć o blokadach i logu transakcji: jedna transakcja na milion wierszy może wywołać eskalację locka do tabeli i rozrost logu, więc często importuje się partiami po 50–100 tys. Jeśli import jest okresowy, ładuj do staging, a podmianę rób szybko (np. partition switch lub rename), żeby czytelnicy nie widzieli stanu pośredniego."
+    },
+    {
+      "id": "data-s005",
+      "topic": "Wydajność zapytań",
+      "level": 3,
+      "q": "Czym są compiled models w EF Core i kiedy je stosować?",
+      "a": "Przy pierwszym użyciu kontekstu EF buduje model (konwencje, konfiguracja OnModelCreating) – dla kilkuset encji to potrafi trwać sekundy i uderza w cold start. Compiled model to wygenerowany kod (dotnet ef dbcontext optimize), który od razu tworzy gotowy model, a podłącza się go przez UseModel. Ma sens przy dużych modelach i tam, gdzie liczy się czas startu: serverless, autoscaling, NativeAOT.",
+      "code": "// dotnet ef dbcontext optimize --output-dir CompiledModels --namespace App.Data.CompiledModels\nbuilder.Services.AddDbContextPool<AppDbContext>(o => o\n    .UseSqlServer(cs)\n    .UseModel(App.Data.CompiledModels.AppDbContextModel.Instance));",
+      "lang": "csharp",
+      "deep": "Compiled model nie przyspiesza samych zapytań – tylko budowę modelu przy starcie, więc dla małego modelu zysk jest pomijalny, a dochodzi koszt utrzymania: po każdej zmianie modelu trzeba go wygenerować ponownie, inaczej aplikacja działa na nieaktualnym modelu. Od EF 9 da się to zautomatyzować w buildzie przez integrację MSBuild, a precompiled queries (generowanie kodu zapytań w czasie kompilacji, potrzebne dla NativeAOT) są eksperymentalne. Mierzyć warto czas pierwszego requestu i czas startu pod, a nie benchmark pojedynczego zapytania. Kosztowne przy starcie bywa też pierwsze kompilowanie każdego zapytania LINQ – EF cache’uje plany zapytań, ale zapytania budowane dynamicznie (np. inna liczba warunków w każdym requeście lub Contains na liście stałych) zaśmiecają ten cache. Dla porównania: compiled queries (EF.CompileAsyncQuery) oszczędzają koszt translacji na gorącej ścieżce, a compiled models – koszt budowy modelu przy starcie."
+    },
+    {
+      "id": "data-s006",
+      "topic": "DbContext",
+      "level": 3,
+      "q": "API na EF Core ma obsłużyć kilka tysięcy RPS. Jakie ustawienia EF i infrastruktury sprawdzasz?",
+      "a": "Po stronie EF: AddDbContextPool, projekcje zamiast pełnych encji i NoTracking jako domyślne zachowanie dla odczytów, compiled queries na najgorętszych ścieżkach, async wszędzie. Po stronie infrastruktury: rozmiar puli połączeń (domyślnie Max Pool Size=100 w SqlClient), czas trzymania połączenia, cache dla danych rzadko zmiennych. Każdą zmianę weryfikuję testem obciążeniowym i metrykami, a nie intuicją.",
+      "code": "builder.Services.AddDbContextPool<ReadDbContext>(o => o\n    .UseSqlServer(readCs)\n    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking), poolSize: 1024);\n\nstatic readonly Func<ReadDbContext, int, Task<ProductDto?>> GetProduct =\n    EF.CompileAsyncQuery((ReadDbContext db, int id) =>\n        db.Products.Where(p => p.Id == id).Select(p => new ProductDto(p.Id, p.Name)).FirstOrDefault());",
+      "lang": "csharp",
+      "deep": "W praktyce najczęstszym wąskim gardłem nie jest narzut EF, tylko liczba i czas zapytań oraz połączeń. Pula połączeń jest per connection string i proces: 10 podów × 100 połączeń to 1000 sesji do bazy, co może przekroczyć jej limity – więcej instancji aplikacji nie zawsze znaczy więcej przepustowości. Objaw wyczerpania puli to timeouty „obtaining a connection from the pool” przy niskim CPU bazy; przyczyną bywa sync-over-async, długie transakcje albo trzymanie połączenia w czasie wywołania HTTP do innego serwisu. DbContext pooling oszczędza alokacje (sensowne przy bardzo wysokim RPS), ale nie zastąpi poprawnych zapytań. UseQueryTrackingBehavior(NoTracking) w kontekście tylko do odczytu zmniejsza pamięć i CPU, ale wymaga dyscypliny przy zapisach. Przy kilku tysiącach RPS często więcej daje output caching lub HybridCache na poziomie endpointu niż jakikolwiek tuning EF."
+    },
+    {
+      "id": "data-s007",
+      "topic": "Odporność połączeń",
+      "level": 3,
+      "q": "Jak działa EnableRetryOnFailure i jak współpracuje z jawnymi transakcjami?",
+      "a": "EnableRetryOnFailure włącza execution strategy, która ponawia operacje przy błędach przejściowych (zerwane połączenie, failover, throttling w Azure SQL). Problem: ponowić można tylko całą jednostkę pracy, więc przy ręcznie otwartej transakcji EF rzuca InvalidOperationException. Rozwiązanie: owinąć całą transakcję w strategy.ExecuteAsync – przy błędzie cały blok wykona się od nowa.",
+      "code": "var strategy = db.Database.CreateExecutionStrategy();\nawait strategy.ExecuteAsync(async () =>\n{\n    db.ChangeTracker.Clear();\n    await using var tx = await db.Database.BeginTransactionAsync(ct);\n    var account = await db.Accounts.SingleAsync(a => a.Id == id, ct);\n    account.Withdraw(amount);\n    db.Ledger.Add(new LedgerEntry(id, -amount, operationId));\n    await db.SaveChangesAsync(ct);\n    await tx.CommitAsync(ct);\n});",
+      "lang": "csharp",
+      "tip": "operationId z unikalnym indeksem w Ledger zabezpiecza przed podwójnym zapisem, gdy commit się udał, a klient dostał błąd.",
+      "deep": "Blok przekazany do ExecuteAsync musi dać się bezpiecznie powtórzyć: nie może mieć efektów ubocznych poza bazą (wysłany mail, wywołanie płatności) i powinien używać świeżego stanu – najlepiej nowego kontekstu lub ChangeTracker.Clear na początku, bo encje dodane w nieudanej próbie wciąż są śledzone. Najtrudniejszy przypadek to zerwanie połączenia w trakcie COMMIT: klient nie wie, czy transakcja się zatwierdziła, a ponowienie może zdublować dane. ExecuteInTransactionAsync przyjmuje funkcję verifySucceeded, która sprawdza w bazie, czy efekt już istnieje; alternatywą jest naturalna idempotencja (unikalny klucz biznesowy). Retry ma też koszty: przy przeciążonej bazie ponowienia z wielu instancji pogłębiają problem, więc liczba prób i maksymalne opóźnienie powinny być ograniczone, a timeout całego requestu krótszy niż suma retry. Retry nie obejmuje błędów logicznych (deadlock na SQL Server jest na liście błędów przejściowych, ale violation constraint już nie)."
+    },
+    {
+      "id": "data-s008",
+      "topic": "Concurrency",
+      "level": 3,
+      "q": "API działa w wielu instancjach. Jak zapewnić poprawność przy współbieżnych zmianach tych samych danych?",
+      "a": "Locki w pamięci procesu (lock, SemaphoreSlim) nic nie dają przy kilku instancjach – źródłem prawdy o współbieżności jest baza. Dla edycji przez użytkownika: optimistic concurrency z rowversion przekazywanym przez API (ETag / If-Match, 412 lub 409 przy konflikcie). Dla liczników i stanów magazynowych: atomowy warunkowy UPDATE (ExecuteUpdate z warunkiem w WHERE). Unikalne indeksy jako ostatnia linia obrony przed duplikatami. Rozproszony lock tylko wtedy, gdy chronię coś poza bazą.",
+      "code": "var affected = await db.Products\n    .Where(p => p.Id == productId && p.Stock >= qty)\n    .ExecuteUpdateAsync(s => s.SetProperty(p => p.Stock, p => p.Stock - qty), ct);\nif (affected == 0)\n    return Results.Conflict(\"Brak towaru\");",
+      "lang": "csharp",
+      "deep": "Wzorzec „odczytaj → zmień w C# → SaveChanges” bez tokena współbieżności to klasyczny lost update, który wychodzi dopiero pod obciążeniem. Optimistic concurrency skaluje się dobrze, dopóki konflikty są rzadkie; przy wysokiej kontencji (gorący rekord, np. licznik biletów na koncert) retry na konflikcie zamienia się w burzę ponowień i lepszy jest atomowy UPDATE … WHERE Stock >= @qty, sprawdzający liczbę zmienionych wierszy, albo przeniesienie kontencji do kolejki z jednym konsumentem na klucz. Pessimistic locking (UPDLOCK / SELECT FOR UPDATE) ma sens w krótkich transakcjach, ale trzyma blokady i grozi deadlockami. Rozproszone locki (Redis, sp_getapplock, blob lease) mają problem z wygaśnięciem lease w trakcie pracy (GC pause, sieć), więc do poprawności potrzebny jest fencing token sprawdzany przez zasób – sam lock to tylko optymalizacja. W API warto zwracać ETag z rowversion, bo standard HTTP daje gotową semantykę (If-Match → 412 Precondition Failed)."
+    },
+    {
+      "id": "data-s009",
+      "topic": "Migracje",
+      "level": 3,
+      "q": "Jak przeprowadzić zmianę schematu bez przestoju, np. zmianę nazwy kolumny, przy rolling deploy?",
+      "a": "Stosuję expand/contract w kilku wydaniach. Expand: dodaję nową kolumnę (nullable), aplikacja zapisuje do obu, a czyta ze starej. Migracja danych: backfill partiami w tle. Przełączenie: czytanie z nowej kolumny. Contract: gdy żadna działająca wersja nie używa starej kolumny, usuwam ją w kolejnym wydaniu. Każdy krok jest zgodny wstecz, więc stara i nowa wersja aplikacji mogą działać jednocześnie, a rollback aplikacji nic nie psuje.",
+      "code": "// Release 1 (expand)\nmigrationBuilder.AddColumn<string>(\"FullName\", \"Customers\", nullable: true);\n// job: UPDATE TOP (5000) Customers SET FullName = Name WHERE FullName IS NULL (w pętli)\n// Release 2: kod czyta FullName, nadal pisze do obu\n// Release 3 (contract)\nmigrationBuilder.DropColumn(\"Name\", \"Customers\");",
+      "lang": "csharp",
+      "deep": "EF dla zmiany nazwy właściwości wygeneruje RenameColumn – to atomowe w bazie, ale podczas rolling deploy stare pody nadal odwołują się do starej nazwy i dostają błędy SQL, więc każdą wygenerowaną migrację trzeba przejrzeć pod kątem operacji destrukcyjnych (rename, drop, zmiana typu, NOT NULL bez domyślnej wartości). Niebezpieczne są też operacje blokujące dużą tabelę: dodanie indeksu bez ONLINE = ON, zmiana typu kolumny, dodanie kolumny NOT NULL z wartością domyślną na starszych wersjach silników – w EF da się to obsłużyć przez migrationBuilder.Sql z odpowiednimi opcjami. Backfill milionów wierszy jednym UPDATE-em w migracji trzyma locki i rozdyma log transakcji, więc robi się go partiami poza migracją (job), a migracja schematu ma trwać sekundy. Kolejność w pipeline: migracja expand przed wdrożeniem kodu, migracja contract po wdrożeniu i po upewnieniu się, że rollback nie będzie potrzebny. Dobrze mieć test w CI, który wykrywa w nowej migracji operacje typu DropColumn/RenameColumn i wymaga świadomego oznaczenia."
+    },
+    {
+      "id": "data-s010",
+      "topic": "Multi-tenancy",
+      "level": 3,
+      "q": "Jakie są modele multi-tenancy w dostępie do danych i jak zaimplementować je w EF Core?",
+      "a": "Trzy modele: wspólna baza z kolumną TenantId (tanio, łatwo skalować liczbę tenantów, ryzyko wycieku i noisy neighbor), schema per tenant (lepsza izolacja, ale migracje N razy) i baza per tenant (najlepsza izolacja, backup/restore per klient, data residency, najdroższe operacyjnie). W EF: dla wspólnej bazy – global query filter na TenantId z serwisu kontekstu tenanta plus ustawianie TenantId w SaveChanges; dla bazy per tenant – connection string wybierany per request przez fabrykę lub OnConfiguring.",
+      "code": "public class AppDbContext(DbContextOptions<AppDbContext> o, ITenantContext tenant) : DbContext(o)\n{\n    protected override void OnModelCreating(ModelBuilder b)\n    {\n        b.Entity<Order>().HasQueryFilter(o => o.TenantId == tenant.TenantId);\n    }\n}\n// TenantId ustawiany w SaveChangesInterceptor dla encji w stanie Added",
+      "lang": "csharp",
+      "deep": "Global query filter to wygoda, a nie zabezpieczenie: IgnoreQueryFilters, surowy SQL, ExecuteUpdate na złym zbiorze czy zapytanie w jobie bez kontekstu tenanta mogą ominąć filtr, więc dla wrażliwych danych dodaje się drugą warstwę – Row-Level Security w bazie (SESSION_CONTEXT ustawiany w DbConnectionInterceptor) oraz testy, które sprawdzają, że każda encja z TenantId ma filtr. W EF 10 doszły nazwane filtry, więc soft delete i tenant można wyłączać niezależnie. Schema per tenant wymaga własnej IModelCacheKeyFactory, bo EF cache’uje model per typ kontekstu i bez tego wszyscy dostaną schemat pierwszego tenanta; przy setkach schematów rośnie też pamięć na modele. Przy bazie per tenant migracje uruchamia się osobnym procesem iterującym po tenantach, z obsługą częściowej porażki, a pula połączeń jest per connection string, co przy tysiącach baz zjada zasoby (stąd elastic pools i podejście hybrydowe: mali klienci we wspólnej bazie, duzi we własnej). Z poolingiem kontekstu tenant nie może być ustawiany w konstruktorze – trzeba go ustawić po wypożyczeniu kontekstu."
+    },
+    {
+      "id": "data-s011",
+      "topic": "Skalowanie odczytów",
+      "level": 3,
+      "q": "Jak odciążyć bazę główną od odczytów: read replicas i osobny read model (CQRS)?",
+      "a": "Najprostszy krok to read replica: osobny ReadDbContext (NoTracking) wskazujący na replikę, używany przez query handlery, a zapisy idą przez kontekst na primary. Trzeba zaakceptować replication lag – odczyt tuż po zapisie może pokazać stare dane. Kolejny poziom to osobny read model: zdenormalizowane tabele/widoki lub inna baza (np. wyszukiwarka) aktualizowane eventami, zoptymalizowane pod konkretne ekrany.",
+      "code": "builder.Services.AddDbContext<WriteDbContext>(o => o.UseSqlServer(primaryCs));\nbuilder.Services.AddDbContext<ReadDbContext>(o => o\n    .UseSqlServer(replicaCs) // np. ApplicationIntent=ReadOnly\n    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking));",
+      "lang": "csharp",
+      "deep": "Read-your-writes rozwiązuje się na kilka sposobów: kierowanie odczytów danego użytkownika na primary przez kilka sekund po zapisie, zwracanie stanu bezpośrednio z komendy, albo optymistyczny update w UI. Opóźnienie repliki zwykle jest rzędu milisekund, ale pod obciążeniem zapisu lub przy długich zapytaniach na replice potrafi urosnąć do minut – trzeba to monitorować i mieć fallback na primary. Osobny read model daje najlepsze zapytania (jeden SELECT bez JOIN-ów na ekran), ale wprowadza eventual consistency, potrzebę odbudowy projekcji (replay) i kod synchronizacji z gwarancjami outboxa i idempotencji. Po stronie odczytów często sprawdza się Dapper lub surowy SQL, bo nie potrzeba change trackera, a w EF – projekcje do DTO. Zanim zaproponuję replikę, sprawdzam, czy nie wystarczą indeksy, poprawne zapytania i cache – replika podwaja koszt bazy i dokłada złożoność."
+    },
+    {
+      "id": "data-s012",
+      "topic": "Skalowanie odczytów",
+      "level": 3,
+      "q": "Czy EF Core ma cache drugiego poziomu? Jak cache’ować wyniki zapytań?",
+      "a": "EF Core nie ma wbudowanego cache drugiego poziomu (w przeciwieństwie do NHibernate) – identity map w change trackerze działa tylko w obrębie jednego kontekstu. Są biblioteki oparte na interceptorach, które cache’ują wyniki zapytań, ale zwykle wolę cache na poziomie aplikacji: HybridCache (pakiet 9.x+, działa też na .NET 8) lub IDistributedCache dla gotowych DTO konkretnego use case’u, z jawną invalidacją po zapisie.",
+      "code": "public Task<ProductDto?> GetAsync(int id, CancellationToken ct) =>\n    cache.GetOrCreateAsync($\"product:{id}\",\n        async token => await db.Products.Where(p => p.Id == id)\n            .Select(p => new ProductDto(p.Id, p.Name, p.Price)).FirstOrDefaultAsync(token),\n        tags: [\"products\"], cancellationToken: ct).AsTask();\n\n// po zapisie: await cache.RemoveAsync($\"product:{id}\", ct);",
+      "lang": "csharp",
+      "deep": "Cache na poziomie zapytań EF jest kuszący, bo jest „przezroczysty”, ale trudno go poprawnie unieważniać: bulk operacje, zmiany z innych serwisów czy z SQL-a omijają mechanizm i cache serwuje stare dane, a klucze cache oparte na tekście zapytania i parametrach mnożą się bez kontroli. Cache DTO na poziomie use case’u ma jasny klucz (product:42), znany właściciel invalidacji i można go połączyć z tagami (HybridCache obsługuje RemoveByTagAsync). HybridCache daje L1 w pamięci + L2 rozproszone oraz ochronę przed cache stampede (jedno wyliczenie dla wielu równoległych żądań tego samego klucza). Przy wielu instancjach L1 jest lokalne, więc po invalidacji inne pody mogą przez chwilę serwować stare dane – trzeba dobrać krótki TTL L1 albo powiadamiać przez pub/sub. Cache to też ryzyko pomieszania danych tenantów: tenant musi być częścią klucza."
+    },
+    {
+      "id": "data-s013",
+      "topic": "Transakcje",
+      "level": 3,
+      "q": "Jak zaimplementować transactional outbox na EF Core?",
+      "a": "Encje zbierają domain events, a SaveChangesInterceptor (lub override SaveChanges) zamienia je na wiersze tabeli Outbox, zanim EF wykona zapis – więc zmiany biznesowe i wiadomości lądują w tej samej transakcji SaveChanges bez jawnego BeginTransaction. Osobny BackgroundService czyta nieprzetworzone wiersze, publikuje na broker i oznacza je jako przetworzone. Konsumenci muszą być idempotentni, bo gwarancja to at-least-once.",
+      "code": "public sealed class OutboxInterceptor(TimeProvider clock) : SaveChangesInterceptor\n{\n    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(\n        DbContextEventData e, InterceptionResult<int> r, CancellationToken ct = default)\n    {\n        var db = e.Context!;\n        var events = db.ChangeTracker.Entries<IHasDomainEvents>()\n            .SelectMany(x => x.Entity.PullDomainEvents()).ToList();\n        db.Set<OutboxMessage>().AddRange(events.Select(ev => OutboxMessage.From(ev, clock.GetUtcNow())));\n        return base.SavingChangesAsync(e, r, ct);\n    }\n}",
+      "lang": "csharp",
+      "deep": "Przy wielu instancjach publishera trzeba zapobiec przetwarzaniu tego samego wiersza równolegle: SELECT … WITH (UPDLOCK, READPAST, ROWLOCK) w SQL Server lub FOR UPDATE SKIP LOCKED w PostgreSQL, albo pojedynczy lider. Kolejność wiadomości jest gwarantowana tylko, jeśli przetwarzasz sekwencyjnie per agregat (np. partycjonowanie po AggregateId) – równoległe publikowanie miesza kolejność. Polling co sekundę dokłada opóźnienie i obciążenie bazy; alternatywą jest CDC (Debezium) czytający log transakcji. Tabela Outbox rośnie, więc potrzebny jest job czyszczący przetworzone wpisy oraz indeks filtrowany na nieprzetworzonych. Wiadomość, której nie da się opublikować (zła serializacja), nie może blokować kolejki na zawsze – licznik prób i stan „dead”. Zanim napiszę własny, rozważam gotowe implementacje (MassTransit EF outbox, Wolverine, NServiceBus), bo mają już rozwiązane te edge case’y."
+    },
+    {
+      "id": "data-s014",
+      "topic": "Interceptory",
+      "level": 3,
+      "q": "Jak zbudować audyt zmian (kto, kiedy, co zmienił – stare i nowe wartości) w EF Core?",
+      "a": "W SaveChangesInterceptor przechodzę po ChangeTracker.Entries() w stanie Added/Modified/Deleted i dla zmodyfikowanych właściwości zapisuję OriginalValue i CurrentValue do tabeli AuditLog, razem z użytkownikiem (z serwisu ICurrentUser) i czasem z TimeProvider. Wpisy audytu dodaję do tego samego kontekstu, więc zapisują się atomowo z danymi. Dla klucza generowanego przez bazę uzupełniam go w SavedChanges.",
+      "code": "foreach (var entry in ctx.ChangeTracker.Entries<IAuditable>()\n             .Where(e => e.State is EntityState.Modified))\n{\n    foreach (var p in entry.Properties.Where(p => p.IsModified))\n        ctx.Set<AuditLog>().Add(new AuditLog(\n            entry.Metadata.ClrType.Name, entry.Property(\"Id\").CurrentValue!.ToString()!,\n            p.Metadata.Name, p.OriginalValue?.ToString(), p.CurrentValue?.ToString(),\n            user.Id, clock.GetUtcNow()));\n}",
+      "lang": "csharp",
+      "deep": "Stare wartości są wiarygodne tylko, gdy encja była załadowana z bazy i śledzona; przy wzorcu db.Update(detachedEntity) EF oznacza wszystkie kolumny jako zmodyfikowane, a OriginalValues równe są bieżącym – audyt pokaże „zmiany” bez starych wartości. Audyt przez SaveChanges nie widzi ExecuteUpdate/ExecuteDelete, surowego SQL ani zmian spoza aplikacji; jeśli audyt jest wymogiem prawnym, lepsza jest warstwa w bazie: temporal tables, CDC lub triggery. Tabela audytu szybko staje się największą w bazie, więc warto ją partycjonować lub wynosić asynchronicznie (np. przez outbox do osobnego magazynu). Trzeba uważać na dane wrażliwe (hasła, PESEL) – lista kolumn wyłączonych z audytu lub maskowanie. Przy DbContext pooling interceptor zarejestrowany jako singleton nie może trzymać stanu requestu – użytkownika pobiera z IHttpContextAccessor lub scoped serwisu przez kontekst."
+    },
+    {
+      "id": "data-s015",
+      "topic": "Konfiguracja modelu",
+      "level": 3,
+      "q": "Kiedy mapować dane do kolumn JSON w EF Core i jakie są ograniczenia?",
+      "a": "EF Core (od 7) mapuje owned types do kolumny JSON przez ToJson(), od EF 8 kolekcje prymitywów (List<string>) trafiają do JSON automatycznie, a EF 10 dodaje mapowanie complex types do JSON i obsługę natywnego typu json w SQL Server 2025/Azure SQL. Daje to elastyczny, zagnieżdżony dokument w wierszu relacyjnym i LINQ, który tłumaczy się na funkcje JSON bazy. Stosuję to dla danych, które czyta się i zapisuje razem z encją: ustawienia, adres, atrybuty produktu o zmiennym schemacie.",
+      "code": "modelBuilder.Entity<Order>().OwnsOne(o => o.Shipping, b =>\n{\n    b.ToJson();\n    b.OwnsMany(s => s.Parcels);\n});\nvar q = db.Orders.Where(o => o.Shipping.Address.City == \"Kraków\"); // JSON_VALUE w SQL",
+      "lang": "csharp",
+      "deep": "Kiedy NIE: gdy po polach JSON trzeba często filtrować, sortować, łączyć lub egzekwować więzy integralności – indeksowanie JSON jest ograniczone (w SQL Server przez kolumny obliczane, w PostgreSQL jsonb ma GIN), a planista ma gorsze statystyki. Zmiana struktury dokumentu nie ma migracji schematu: stare wiersze zostają w starym kształcie, więc trzeba zaplanować wersjonowanie lub migrację danych skryptem. Aktualizacja jednego pola w JSON zwykle oznacza zapis całego dokumentu (EF ma tu optymalizacje, ale duże dokumenty i tak kosztują), a duże dokumenty zwiększają I/O przy każdym odczycie wiersza. W PostgreSQL jsonb jest dojrzały i dobrze indeksowany, więc granica „JSON vs tabela” przesuwa się tam bardziej na korzyść JSON. Na rozmowie dobrze brzmi zasada: JSON dla agregatu, który ładujesz w całości, kolumny relacyjne dla wszystkiego, po czym szukasz."
+    },
+    {
+      "id": "data-s016",
+      "topic": "Konfiguracja modelu",
+      "level": 3,
+      "q": "Czym są temporal tables i jak EF Core je obsługuje?",
+      "a": "Temporal tables (system-versioned, SQL Server) automatycznie zapisują poprzednie wersje wierszy do tabeli historii z okresem ważności. EF Core (od 6) konfiguruje je przez IsTemporal() i udostępnia zapytania TemporalAsOf, TemporalAll, TemporalBetween, TemporalFromTo, TemporalContainedIn. Nadają się do audytu „jak wyglądał rekord w chwili X”, odtwarzania przypadkowo usuniętych danych i raportów historycznych – bez pisania własnych triggerów.",
+      "code": "modelBuilder.Entity<Product>().ToTable(\"Products\", t => t.IsTemporal(h =>\n    h.UseHistoryTable(\"ProductsHistory\")));\n\nvar asOfYesterday = await db.Products\n    .TemporalAsOf(DateTime.UtcNow.AddDays(-1))\n    .SingleAsync(p => p.Id == id);",
+      "lang": "csharp",
+      "deep": "Historia zapisuje się w bazie niezależnie od tego, czy zmianę zrobił EF, ExecuteUpdate czy ręczny SQL, więc to mocniejszy audyt niż interceptor – ale bez informacji „kto”, chyba że dodasz kolumnę ModifiedBy aktualizowaną przy zapisie. Kolumny okresu (PeriodStart/PeriodEnd) są w EF shadow properties, czas jest w UTC i odpowiada początkowi transakcji, co bywa mylące przy długich transakcjach. Tabela historii rośnie przy każdym UPDATE, także wtedy, gdy wartość się nie zmieniła, więc dla często aktualizowanych tabel trzeba ustawić retencję (HISTORY_RETENTION_PERIOD) i pomyśleć o indeksach na historii. Zmiany schematu tabeli temporalnej wymagają, by EF w migracji wyłączył i włączył wersjonowanie – EF to obsługuje, ale migracje na dużej tabeli historii trzeba sprawdzić. To funkcja SQL Server/Azure SQL; w PostgreSQL potrzebne są rozszerzenia lub własne rozwiązanie."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "data-sq001",
+      "topic": "Diagnostyka EF",
+      "level": 2,
+      "q": "DBA zgłasza, że w Query Store jedno zapytanie zjada 40% CPU bazy. Aplikacja ma kilkaset zapytań EF w różnych handlerach. Jak najlepiej przygotować kod, żeby takie zgłoszenia dało się szybko przypisać do miejsca w kodzie?",
+      "options": [
+        "Włączyć EnableSensitiveDataLogging na produkcji, żeby logi zawierały pełne zapytania z wartościami",
+        "Oznaczać zapytania przez TagWith/TagWithCallSite, bo komentarz trafia do tekstu SQL widocznego w Query Store",
+        "Przepisać krytyczne zapytania na procedury składowane, bo tylko one mają nazwę w Query Store",
+        "Ustawić logowanie EF na poziom Trace i szukać zapytania w logach po czasie wykonania"
+      ],
+      "correct": 1,
+      "why": "Tag to komentarz w tekście SQL, więc DBA widzi go w Query Store, Profilerze i Extended Events bez dostępu do logów aplikacji. Sensitive data logging na produkcji to wyciek danych osobowych i nie pomaga DBA. Procedury składowane to ogromna zmiana dla problemu diagnostycznego. Logi na poziomie Trace są bardzo kosztowne i trudno je skorelować z danymi z bazy."
+    },
+    {
+      "id": "data-sq002",
+      "topic": "Wydajność zapytań",
+      "level": 3,
+      "q": "Zespół włączył globalnie QuerySplittingBehavior.SplitQuery. Lista blogów ze stronicowaniem czasem pokazuje posty przypisane do niewłaściwych blogów albo ich brak. Co jest najbardziej prawdopodobną przyczyną?",
+      "options": [
+        "Split query nie obsługuje Skip/Take – trzeba wrócić do single query",
+        "Brak transakcji – split query zawsze wymaga poziomu Serializable",
+        "Brak deterministycznego sortowania – OrderBy po kolumnie nieunikalnej (lub brak OrderBy) daje różną kolejność w kolejnych zapytaniach split",
+        "Change tracker myli encje, bo split query wymaga AsNoTrackingWithIdentityResolution"
+      ],
+      "correct": 2,
+      "why": "Przy split query EF wykonuje osobne zapytanie dla kolekcji, powtarzając w nim filtr i stronicowanie zapytania głównego. Jeśli kolejność nie jest deterministyczna (np. OrderBy po dacie bez tie-breakera po Id), Skip/Take w drugim zapytaniu może wybrać inne wiersze niż w pierwszym. Rozwiązanie: OrderBy po unikalnym kluczu (lub dodany ThenBy(Id)). Split query działa ze stronicowaniem; transakcja może pomóc na spójność między zapytaniami, ale nie naprawi niedeterministycznej kolejności."
+    },
+    {
+      "id": "data-sq003",
+      "topic": "Change tracking",
+      "level": 3,
+      "q": "Job importuje 300 tys. rekordów: w pętli Add, a co 1000 rekordów SaveChangesAsync, cały czas na tym samym kontekście. Pierwsze partie trwają 200 ms, ostatnie po kilkanaście sekund, a pamięć rośnie. Co jest przyczyną i jak to naprawić?",
+      "options": [
+        "Change tracker trzyma wszystkie dodane encje, a DetectChanges skanuje je przy każdym zapisie – po każdej partii ChangeTracker.Clear() lub nowy kontekst",
+        "Baza przebudowuje indeksy po każdym INSERT – trzeba wyłączyć indeksy na czas importu",
+        "SaveChangesAsync otwiera nową transakcję za każdym razem – trzeba objąć całość jedną transakcją",
+        "Batching EF jest wyłączony domyślnie – trzeba ustawić MaxBatchSize(1)"
+      ],
+      "correct": 0,
+      "why": "Po SaveChanges encje nie znikają z kontekstu – przechodzą w stan Unchanged i dalej są śledzone. Każde kolejne DetectChanges przechodzi po wszystkich, więc czas rośnie z liczbą przetworzonych rekordów, a pamięć z nimi. Jedna wielka transakcja tylko pogorszy locki i log. Batching jest domyślnie włączony, a MaxBatchSize(1) by go wyłączył. Indeksy dają stały narzut na wiersz, nie rosnący w czasie."
+    },
+    {
+      "id": "data-sq004",
+      "topic": "Odporność połączeń",
+      "level": 3,
+      "q": "Po dodaniu EnableRetryOnFailure ten kod zaczął rzucać InvalidOperationException. Dlaczego i jaka jest poprawka?",
+      "code": "await using var tx = await db.Database.BeginTransactionAsync();\ndb.Orders.Add(order);\nawait db.SaveChangesAsync();\ndb.Payments.Add(payment);\nawait db.SaveChangesAsync();\nawait tx.CommitAsync();",
+      "lang": "csharp",
+      "options": [
+        "Retry wymaga MARS w connection stringu – trzeba dodać MultipleActiveResultSets=True",
+        "Transakcja musi być rozpoczęta przez TransactionScope zamiast BeginTransactionAsync",
+        "SaveChangesAsync nie może być wołane dwa razy w transakcji przy włączonym retry – trzeba połączyć zapisy w jedno SaveChanges",
+        "Execution strategy z retry nie obsługuje transakcji rozpoczętych przez użytkownika – całość trzeba wykonać w db.Database.CreateExecutionStrategy().ExecuteAsync(...)"
+      ],
+      "correct": 3,
+      "why": "Strategia ponawiania może powtórzyć tylko całą jednostkę pracy, a nie pojedyncze polecenie w środku otwartej transakcji, więc EF wykrywa ręcznie rozpoczętą transakcję i rzuca wyjątek. Poprawka: owinąć blok z BeginTransaction…Commit w strategy.ExecuteAsync, dbając o to, by blok był powtarzalny. MARS i TransactionScope nie mają tu znaczenia; dwa SaveChanges w transakcji są poprawne."
+    },
+    {
+      "id": "data-sq005",
+      "topic": "Concurrency",
+      "level": 3,
+      "q": "Sklep działa na 6 instancjach API. Przy sprzedaży limitowanej (100 sztuk) system sprzedał 137 sztuk. Kod: odczyt produktu, if (p.Stock >= qty) p.Stock -= qty; SaveChangesAsync. Encja nie ma tokena współbieżności. Jaka poprawka jest najlepsza?",
+      "options": [
+        "Owinąć logikę w lock(_sync) w serwisie zarejestrowanym jako Singleton",
+        "Wykonać atomowy warunkowy UPDATE (ExecuteUpdate z warunkiem Stock >= qty w WHERE) i sprawdzić liczbę zmienionych wierszy",
+        "Zwiększyć poziom izolacji do Read Committed",
+        "Dodać cache stanu magazynowego w Redis z TTL 1 s, żeby ograniczyć liczbę odczytów"
+      ],
+      "correct": 1,
+      "why": "Klasyczny lost update: kilka requestów czyta ten sam Stock i każdy go zmniejsza. lock w procesie nie działa przy 6 instancjach. Read Committed to domyślny poziom i nie chroni przed lost update. Cache pogarsza sytuację, bo dokłada nieaktualne odczyty. Atomowy UPDATE … WHERE Stock >= @qty wykonuje sprawdzenie i zmianę w jednej operacji w bazie; 0 zmienionych wierszy oznacza brak towaru. Alternatywą jest rowversion z obsługą konfliktu, ale przy gorącym rekordzie spowoduje dużo ponowień."
+    },
+    {
+      "id": "data-sq006",
+      "topic": "Migracje",
+      "level": 2,
+      "q": "Developer zmienił nazwę właściwości Customer.Name na FullName, EF wygenerował migrację z RenameColumn. Wdrożenie: migracja w pipeline, potem rolling update 5 podów. Co się stanie?",
+      "options": [
+        "Nic złego – RenameColumn jest atomowy, więc nie ma okna niespójności",
+        "EF automatycznie mapuje starą nazwę kolumny w starych podach dzięki __EFMigrationsHistory",
+        "Migracja się nie wykona, bo EF nie pozwala zmieniać nazw kolumn w tabelach z danymi",
+        "Do końca rolling update stare pody będą dostawać błędy SQL (Invalid column name 'Name'), a rollback aplikacji też nie zadziała"
+      ],
+      "correct": 3,
+      "why": "Zmiana nazwy jest atomowa w bazie, ale stare pody mają w kodzie starą nazwę kolumny i od chwili migracji ich zapytania się wywalają. Rollback do starej wersji kodu też nie pomoże, bo schemat jest już nowy. Poprawnie: expand/contract – dodać nową kolumnę, pisać do obu, backfill, przełączyć odczyt, usunąć starą w kolejnym wydaniu. __EFMigrationsHistory przechowuje tylko listę zastosowanych migracji."
+    },
+    {
+      "id": "data-sq007",
+      "topic": "Multi-tenancy",
+      "level": 3,
+      "q": "Aplikacja używa schemy per tenant: w OnModelCreating wywołuje modelBuilder.HasDefaultSchema(_tenant.Schema). Lokalnie z jednym tenantem wszystko działa, na produkcji wszyscy tenanci widzą dane tenanta, który zalogował się pierwszy po starcie. Dlaczego?",
+      "options": [
+        "EF buduje model raz i cache’uje go per typ kontekstu – OnModelCreating nie wykona się dla kolejnych tenantów; potrzebna jest własna IModelCacheKeyFactory uwzględniająca schemat",
+        "HasDefaultSchema działa tylko w migracjach, a w runtime ignorowany jest schemat",
+        "Pula połączeń SqlClient zapamiętuje domyślny schemat sesji – trzeba wyłączyć pooling połączeń",
+        "Kontekst jest zarejestrowany jako Scoped, a powinien być Transient"
+      ],
+      "correct": 0,
+      "why": "OnModelCreating wykonuje się raz dla danego klucza cache modelu, którym domyślnie jest typ kontekstu. Każdy kolejny kontekst dostaje ten sam model ze schematem pierwszego tenanta. Własna IModelCacheKeyFactory zwracająca klucz (typ, schemat) powoduje zbudowanie modelu per schemat. Lifetime kontekstu i pula połączeń nie mają związku z mapowaniem schematu w modelu."
+    },
+    {
+      "id": "data-sq008",
+      "topic": "Skalowanie odczytów",
+      "level": 2,
+      "q": "Query handlery czytają z read replica. Po utworzeniu zamówienia (POST na primary) frontend od razu pobiera listę zamówień i czasem nowego zamówienia na niej nie ma. Które rozwiązanie jest najrozsądniejsze?",
+      "options": [
+        "Wyłączyć replikę i czytać wszystko z primary",
+        "Dodać Thread.Sleep(1000) przed odpowiedzią na POST",
+        "Zapewnić read-your-writes: przez krótki czas po zapisie kierować odczyty tego użytkownika na primary lub zwrócić utworzony zasób z komendy i dopisać go w UI",
+        "Ustawić na replice poziom izolacji Serializable"
+      ],
+      "correct": 2,
+      "why": "To replication lag – replika jest asynchroniczna. Wyłączenie repliki usuwa jej sens, sleep nie gwarantuje niczego i spowalnia wszystkich, a poziom izolacji nie wpływa na opóźnienie replikacji. Standardowe podejścia to read-your-writes (sticky do primary po zapisie, ewentualnie na podstawie znacznika wersji) albo zwrócenie stanu z komendy i optymistyczna aktualizacja UI."
+    },
+    {
+      "id": "data-sq009",
+      "topic": "Transakcje",
+      "level": 3,
+      "q": "Outbox publisher (BackgroundService) działa w każdej z 3 instancji API i co sekundę robi: pobierz 100 wierszy z ProcessedAt IS NULL, opublikuj, ustaw ProcessedAt. Konsumenci dostają każdą wiadomość 2–3 razy. Co zrobić?",
+      "options": [
+        "Nic – to normalne przy at-least-once i nie wymaga zmian",
+        "Przenieść publikację do SaveChangesInterceptor, żeby wysyłać wiadomości od razu po zapisie",
+        "Wydłużyć interwał pollingu do 30 s, żeby instancje rzadziej się nakładały",
+        "Blokować pobierane wiersze (UPDLOCK, READPAST / FOR UPDATE SKIP LOCKED) w transakcji lub wybrać jednego lidera, a konsumentów i tak zostawić idempotentnych"
+      ],
+      "correct": 3,
+      "why": "Duplikaty przy at-least-once są dopuszczalne sporadycznie (awarie), ale systematyczne potrojenie to błąd publishera: trzy instancje pobierają te same wiersze. Blokady z READPAST/SKIP LOCKED sprawiają, że każda instancja bierze inne wiersze; alternatywą jest leader election. Publikacja z interceptora wraca do problemu dual write, a dłuższy polling tylko zmniejsza prawdopodobieństwo i dodaje opóźnienie."
+    },
+    {
+      "id": "data-sq010",
+      "topic": "Interceptory",
+      "level": 2,
+      "q": "Audyt zmian cen działa przez SaveChangesInterceptor. Biznes zauważył, że w AuditLog brakuje zmian wprowadzonych przez nocny job przeceniający 50 tys. produktów, choć ceny w bazie się zmieniły. Co jest najbardziej prawdopodobną przyczyną?",
+      "options": [
+        "Interceptor nie działa w BackgroundService, bo nie ma HttpContext",
+        "Job używa ExecuteUpdateAsync, który wykonuje UPDATE bezpośrednio w bazie i omija SaveChanges oraz jego interceptory",
+        "Job używa AsNoTracking przy odczycie, więc SaveChanges nie zapisuje zmian",
+        "Interceptory są wyłączone dla operacji powyżej MaxBatchSize"
+      ],
+      "correct": 1,
+      "why": "ExecuteUpdate/ExecuteDelete nie przechodzą przez change tracker ani SaveChanges, więc SaveChangesInterceptor ich nie widzi. Gdyby job użył AsNoTracking i SaveChanges, ceny by się nie zmieniły. Brak HttpContext może dać pustego użytkownika, ale nie brak wpisów. Rozwiązania: dopisać audyt w jobie jawnie, użyć temporal tables/CDC albo DbCommandInterceptor dla takich operacji."
+    }
+  ]
+}

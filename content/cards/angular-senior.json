@@ -1,0 +1,310 @@
+{
+ "cat": "angular",
+ "name": "Angular",
+ "cards": [
+  {
+   "id": "angular-s001",
+   "topic": "Architektura",
+   "level": 3,
+   "q": "Jak zorganizować dużą aplikację Angular w monorepo Nx i pilnować granic domen?",
+   "a": "Dzielę kod na biblioteki według dwóch osi: domena (`scope:orders`, `scope:billing`, `scope:shared`) i typ (`type:feature`, `type:ui`, `type:data-access`, `type:util`). Aplikacja jest cienką powłoką, która składa leniwie ładowane biblioteki feature. Reguła lint `@nx/enforce-module-boundaries` z tagami wymusza kierunki zależności: feature może używać ui/data-access/util, ui nie zna data-access, a domeny nie importują się nawzajem poza `scope:shared`. Każda biblioteka ma publiczne API (`index.ts`) – głębokie importy są zabronione.",
+   "code": "// eslint.config – fragment\n'@nx/enforce-module-boundaries': ['error', {\n  depConstraints: [\n    { sourceTag: 'type:feature', onlyDependOnLibsWithTags: ['type:ui', 'type:data-access', 'type:util'] },\n    { sourceTag: 'type:ui', onlyDependOnLibsWithTags: ['type:ui', 'type:util'] },\n    { sourceTag: 'scope:orders', onlyDependOnLibsWithTags: ['scope:orders', 'scope:shared'] },\n  ],\n}]",
+   "lang": "typescript",
+   "deep": "Zyski są nie tylko architektoniczne: graf projektu pozwala uruchamiać `nx affected -t lint test build` tylko dla bibliotek dotkniętych zmianą, a cache obliczeń (lokalny lub zdalny) sprawia, że CI dużego repo nie rośnie liniowo z liczbą zespołów. Granulacja: za drobne biblioteki (jedna na komponent) dają narzut konfiguracji, za grube – tracimy cache i czytelność granic; dobrym punktem startu jest biblioteka per feature/ekran i osobne biblioteki data-access per domena. Komunikacja między domenami idzie przez kontrakty w `shared` (typy, tokeny DI, eventy), a nie przez import serwisu innej domeny. Typowy dług: biblioteka `shared/utils` rosnąca w nieskończoność – wtedy dzielę ją wg domen. Nx nie jest jedyną opcją (sam Angular CLI obsługuje wiele projektów w workspace), ale bez narzędzia do wymuszania granic i affected/caching duże monorepo szybko degraduje. `nx graph` to dobre narzędzie na rozmowę i code review architektury."
+  },
+  {
+   "id": "angular-s002",
+   "topic": "Architektura",
+   "level": 3,
+   "q": "Jak w świecie standalone zastąpić CoreModule/SharedModule i jak granice providerów wpływają na lazy loading?",
+   "a": "`core` to już nie moduł, a zestaw funkcji `provide*` (np. `provideCore()` zwracające `EnvironmentProviders` z `makeEnvironmentProviders`), wywoływanych raz w `app.config.ts`. `shared` to zbiór samodzielnych komponentów, dyrektyw i pipe'ów importowanych tam, gdzie są potrzebne – bez 'wielkiego SharedModule', który ciągnie wszystko do każdego chunka. Serwisy feature'a rejestruję w `providers` trasy, dzięki czemu trafiają do leniwego chunka i mają własny environment injector.",
+   "code": "export function provideCore(): EnvironmentProviders {\n  return makeEnvironmentProviders([\n    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),\n    { provide: ErrorHandler, useClass: AppErrorHandler },\n  ]);\n}\n// trasa feature'a\n{ path: 'orders', providers: [OrdersStore], loadChildren: () => import('./orders.routes') }",
+   "lang": "typescript",
+   "deep": "Pułapki: serwis z `providedIn: 'root'` używany tylko w jednym leniwym feature trafia do chunka tego feature (tree-shaking), ale instancja i tak żyje w root – nie zostanie zniszczona po opuszczeniu trasy. Gdy chcę stan per feature, daję serwis w `providers` trasy; uwaga – environment injector trasy nie jest niszczony przy wyjściu z trasy, więc stan per wizyta (np. kreator) daję w `providers` komponentu. Drugi problem: dwa providery tego samego serwisu (root i trasa) dają dwie instancje i 'znikający' stan – częsty bug przy refaktoryzacji z NgModule. `makeEnvironmentProviders` gwarantuje, że funkcja provide nie zostanie użyta w `providers` komponentu (błąd typu), co chroni przed przypadkowym tworzeniem singletonów per komponent. Inicjalizacja przy starcie: `provideAppInitializer` (v19+) lub `provideEnvironmentInitializer`."
+  },
+  {
+   "id": "angular-s003",
+   "topic": "Mikrofrontendy",
+   "level": 3,
+   "q": "Module Federation czy Native Federation i kiedy mikrofrontendy w ogóle mają sens?",
+   "a": "Mikrofrontendy rozwiązują problem organizacyjny, nie techniczny: kilka niezależnych zespołów, które muszą wdrażać swoje części osobno, z własnym cyklem wydawniczym. Module Federation to mechanizm webpacka (w Angularze np. przez `@angular-architects/module-federation`), więc wymaga pozostania przy webpacku. Native Federation (`@angular-architects/native-federation`) realizuje ten sam model na standardach przeglądarki (ES modules, import maps), jest niezależna od bundlera i działa z domyślnym, opartym o esbuild application builderem – dla nowych projektów to naturalny wybór.",
+   "tip": "Na rozmowie najwięcej punktów daje odpowiedź 'zależy od struktury organizacji' + konkretne koszty, a nie entuzjazm dla technologii.",
+   "deep": "Koszty: współdzielone zależności (Angular, RxJS, biblioteka UI) muszą być singletonami w zgodnych wersjach – w praktyce wymusza to koordynację aktualizacji Angulara między zespołami, czyli część niezależności znika. Do tego: integracja w runtime (błąd remote'a w produkcji zamiast błędu kompilacji), wersjonowanie kontraktów między shellem a remote'ami, spójność UX/design systemu, routing i stan współdzielony między aplikacjami, testy E2E całości, większy initial load przy złym podziale. Kiedy NIE: jeden lub dwa zespoły, wspólny release, motywacją jest 'wolny build' – to rozwiązuje monorepo z Nx (affected, cache) i lazy loading. Kiedy TAK: wiele zespołów/organizacji, różne cykle wdrożeń, stopniowa migracja dużego systemu (np. strangler pattern z AngularJS lub innego frameworka). Alternatywy lżejsze: osobne aplikacje pod różnymi ścieżkami z reverse proxy albo Web Components (Angular Elements) dla osadzania widżetów."
+  },
+  {
+   "id": "angular-s004",
+   "topic": "Performance",
+   "level": 3,
+   "q": "Jak profilować i debugować change detection w dużej aplikacji?",
+   "a": "Zaczynam od Angular DevTools: zakładka Profiler nagrywa cykle CD i pokazuje, które komponenty były sprawdzane, ile to trwało i co wyzwoliło cykl. Szukam cykli wyzwalanych przez zdarzenia wysokiej częstotliwości (scroll, mousemove, timery), komponentów Default sprawdzanych bez potrzeby i drogich bindingów (metody w szablonach). Uzupełniam to panelem Performance w Chrome: długie taski, layout thrashing, GC. W konsoli dev mode `ng.getComponent(el)` i `ng.applyChanges(cmp)` pozwalają szybko sprawdzić stan komponentu.",
+   "deep": "Typowe znaleziska i naprawy: 1) Listener `window:scroll`/`mousemove` w aplikacji z Zone.js uruchamia CD całej aplikacji przy każdym zdarzeniu – rejestruję go poza strefą (`ngZone.runOutsideAngular`) i aktualizuję sygnał tylko przy przekroczeniu progu; w zoneless problem znika, bo zdarzenie samo nie wyzwala CD, o ile nie zmienia stanu. 2) setInterval w bibliotece (np. polling, animacje) – to samo. 3) Komponenty Default w dużych listach – OnPush. 4) Gettery i metody w szablonach robiące filter/sort – computed. 5) ExpressionChanged w dev mode – zwykle zapis do stanu w trakcie renderu. Od v20 Angular potrafi raportować swoje fazy w osobnej ścieżce panelu Performance w Chrome (włączenie w dev mode przez `ng.enableProfiling()`), co łączy dane frameworka z resztą timeline'u. Zawsze mierzę przed i po; końcowe czasy porównuję w Chrome Performance na buildzie produkcyjnym, bo dev mode ma dodatkowe sprawdzenia i zafałszowuje wyniki – Angular DevTools i `ng.enableProfiling()` wymagają trybu dev, więc służą do znalezienia przyczyny, a nie do pomiaru końcowego."
+  },
+  {
+   "id": "angular-s005",
+   "topic": "Performance",
+   "level": 3,
+   "q": "Jak analizować i kontrolować rozmiar bundla w dużej aplikacji?",
+   "a": "Pierwsza linia obrony to `budgets` w `angular.json` – build ostrzega lub failuje po przekroczeniu limitu dla initial i dla pojedynczych chunków, więc regres wychodzi w CI, a nie u użytkownika. Do analizy buduję z `--stats-json` (application builder generuje metafile esbuild) i otwieram go w analizatorze bundla esbuild albo używam `source-map-explorer` na source mapach. Patrzę głównie na initial bundle: co trafiło do main, a powinno być leniwe.",
+   "code": "\"budgets\": [\n  { \"type\": \"initial\", \"maximumWarning\": \"500kB\", \"maximumError\": \"1mb\" },\n  { \"type\": \"anyComponentStyle\", \"maximumWarning\": \"4kB\", \"maximumError\": \"8kB\" }\n]\n// ng build --stats-json  -> dist/<app>/stats.json",
+   "lang": "json",
+   "deep": "Najczęstsze przyczyny puchnięcia: ciężkie biblioteki zaimportowane w kodzie startowym (wykresy, edytory, moment z locale, lodash w CommonJS), import z 'barrel' wspólnej biblioteki, który przez efekty uboczne ciągnie cały moduł, komponenty używane w @defer, ale też importowane gdzie indziej w tym samym pliku (blokuje wydzielenie), oraz CommonJS, którego esbuild nie potrafi dobrze tree-shakować (CLI ostrzega o takich zależnościach). Naprawy: lazy routes i @defer dla ciężkich widoków, dynamiczny `import()` dla bibliotek używanych rzadko (np. eksport do PDF dopiero po kliknięciu), zamiana na wersje ESM (lodash-es) lub natywne API (Intl zamiast bibliotek dat do formatowania), `sideEffects: false` w package.json własnych bibliotek. Liczby referencyjne zależą od projektu, ale rozsądne budżety initial to setki KB, nie megabajty – i ważniejsze od wartości jest to, żeby budżet był ustawiony i pilnowany."
+  },
+  {
+   "id": "angular-s006",
+   "topic": "@defer",
+   "level": 3,
+   "q": "Jakie strategie @defer stosować w dużej aplikacji, żeby poprawić metryki, a nie je pogorszyć?",
+   "a": "Defer daję tam, gdzie treść jest poniżej linii zgięcia albo pojawia się po interakcji: komentarze, rekomendacje, wykresy, edytory, dialogi. Łączę trigger renderu z wcześniejszym prefetchem (`on viewport; prefetch on idle`), żeby użytkownik nie czekał na pobranie chunka przy przewinięciu. Placeholder ma zarezerwowane wymiary, żeby nie powodować CLS. Treści LCP i above the fold nigdy nie defer'uję.",
+   "code": "@defer (on viewport; prefetch on idle) {\n  <app-recommendations [productId]=\"id()\" />\n} @placeholder {\n  <div class=\"reco-skeleton\" style=\"min-height: 320px\"></div>\n} @loading (after 100ms; minimum 500ms) {\n  <app-spinner />\n}",
+   "lang": "html",
+   "deep": "Szczegóły, które robią różnicę: `@loading (after 100ms; minimum 500ms)` zapobiega migotaniu spinnera przy szybkim łączu; `on interaction` dla dialogów i zakładek ładuje kod dopiero na intencję użytkownika, a `prefetch on hover` skraca czas reakcji. Zagnieżdżone defery z tym samym triggerem mogą tworzyć kaskadę żądań (najpierw chunk rodzica, potem dziecka) – lepiej spłaszczyć lub prefetchować. Na SSR bez incremental hydration serwer renderuje tylko placeholder, więc treść ważna dla SEO nie powinna być w @defer; z incremental hydration (`hydrate on viewport`) serwer renderuje pełny HTML, a JS ładuje się i hydratuje dopiero przy triggerze – to najlepsze połączenie SEO i małego JS. Weryfikacja: zakładka Network (czy chunk faktycznie powstał i kiedy się ładuje) i Lighthouse/CWV przed i po; ostrzeżenie kompilatora o zależnościach, które nie mogły być wydzielone, trzeba traktować poważnie."
+  },
+  {
+   "id": "angular-s007",
+   "topic": "Performance",
+   "level": 2,
+   "q": "Jak obsłużyć listy z tysiącami elementów – virtual scrolling i alternatywy?",
+   "a": "CDK `ScrollingModule` daje `cdk-virtual-scroll-viewport` z `*cdkVirtualFor`: w DOM istnieją tylko elementy widoczne plus bufor, więc koszt renderu nie zależy od długości listy. Strategia o stałej wysokości (`itemSize`) jest stabilna i szybka. Alternatywy: paginacja lub infinite scroll (mniej danych w ogóle), a dla prostych przypadków CSS `content-visibility: auto`. Do tego `track item.id` i lekkie komponenty wierszy z OnPush.",
+   "code": "<cdk-virtual-scroll-viewport itemSize=\"48\" class=\"list\">\n  <app-row *cdkVirtualFor=\"let item of items(); trackBy: trackById\" [item]=\"item\" />\n</cdk-virtual-scroll-viewport>",
+   "lang": "html",
+   "deep": "Trade-offy virtual scrollingu: elementy o zmiennej wysokości są trudne – strategia autosize jest w `@angular/cdk-experimental`, więc produkcyjnie często normalizuję wysokości lub mierzę i ustalam stałą. Ctrl+F przeglądarki nie znajdzie elementów spoza DOM, a czytniki ekranu widzą tylko fragment listy – trzeba dodać informację o liczbie elementów (`aria-setsize`/`aria-posinset` lub komunikat) i dobrą nawigację klawiaturą. Zachowanie scrolla przy powrocie na stronę i sticky nagłówki tabel wymagają dodatkowej pracy. Dane: wirtualizacja DOM nie pomaga, jeśli komponent trzyma 100 tys. obiektów i liczy filtry na każdym znaku – wtedy filtrowanie/paginacja po stronie serwera. Próg opłacalności zależy od złożoności wiersza; przy prostych wierszach kilkaset elementów zwykle nie wymaga wirtualizacji."
+  },
+  {
+   "id": "angular-s008",
+   "topic": "SSR",
+   "level": 3,
+   "q": "Jak dobrać tryb renderowania (SSR, SSG, CSR) per trasa i jakie są pułapki cache'owania?",
+   "a": "W `@angular/ssr` definiuję server routes z `RenderMode`: `Prerender` (SSG – HTML generowany w buildzie, idealny dla stron publicznych o stabilnej treści, z `getPrerenderParams` dla tras z parametrami), `Server` (SSR na żądanie – treść dynamiczna, ale ważna dla SEO/LCP) i `Client` (CSR – strefy po zalogowaniu, panele admina). Hydracja z event replay łączy to z interaktywnością, a incremental hydration ogranicza JS dla ciężkich fragmentów.",
+   "code": "export const serverRoutes: ServerRoute[] = [\n  { path: '', renderMode: RenderMode.Prerender },\n  { path: 'products/:id', renderMode: RenderMode.Prerender,\n    getPrerenderParams: async () => (await inject(Catalog).ids()).map(id => ({ id })) },\n  { path: 'account/**', renderMode: RenderMode.Client },\n  { path: '**', renderMode: RenderMode.Server },\n];",
+   "lang": "typescript",
+   "deep": "Pułapki: 1) Treść per użytkownik w trasie Prerender lub w odpowiedzi SSR cache'owanej przez CDN – ryzyko wycieku danych jednego użytkownika do innych; strefy zalogowane daję jako Client albo Server bez współdzielonego cache. 2) HttpTransferCache domyślnie przenosi odpowiedzi GET/HEAD, ale pomija żądania z nagłówkiem Authorization (konfigurowalne w `withHttpTransferCacheOptions`) – stąd 'zdublowane' żądania po hydracji. 3) Koszt SSR to CPU serwera i TTFB – przy dużym ruchu cache na poziomie CDN dla anonimowych stron, a Prerender tam, gdzie się da. 4) Kod przeglądarkowy i biblioteki dotykające `window` przy imporcie – lazy import w afterNextRender. 5) Rozbieżności DOM (np. niepoprawne HTML jak `<div>` w `<p>`, bezpośrednie manipulacje DOM) – hydration mismatch; awaryjnie `ngSkipHydration` na komponencie, ale to dług. Konfiguracja tras serwerowych zmieniała się między v19 a v20 (w v20 `provideServerRendering(withRoutes(...))`) – warto sprawdzić dokumentację używanej wersji."
+  },
+  {
+   "id": "angular-s009",
+   "topic": "i18n",
+   "level": 3,
+   "q": "Wbudowane i18n (@angular/localize) czy biblioteka runtime (np. Transloco) – jak wybrać?",
+   "a": "Wbudowane i18n działa w czasie kompilacji: teksty oznaczam atrybutem `i18n` w szablonach i `$localize` w TS, `ng extract-i18n` generuje plik źródłowy (XLIFF/JSON), a build tworzy osobną wersję aplikacji na każdy locale (np. `/pl/`, `/en/`). Zalety: zero narzutu w runtime, pełne ICU (plural, select), integracja z pipe'ami formatującymi przez locale data. Wada: zmiana języka = przeładowanie na inną wersję. Biblioteki runtime ładują tłumaczenia jako JSON i pozwalają zmienić język bez przeładowania kosztem narzutu i braku sprawdzania w kompilacji.",
+   "code": "<h1 i18n=\"nagłówek koszyka|Tytuł strony koszyka@@cartTitle\">Twój koszyk</h1>\n<span i18n>{count, plural, =0 {brak produktów} one {1 produkt} few {{{count}} produkty} many {{{count}} produktów} other {{{count}} produktu}}</span>\n// TS: const msg = $localize`:@@saved:Zapisano zmiany`;",
+   "lang": "html",
+   "deep": "Kryteria: jeśli język wybiera się raz (domena/ścieżka, ustawienie konta) i ważne jest SEO oraz wydajność – @angular/localize; jeśli produkt wymaga przełączania języka w locie albo tłumaczenia przychodzą z CMS po wdrożeniu – runtime. Koszty buildu: N locale = N buildów i N artefaktów do wdrożenia (serwer/CDN musi kierować na właściwą ścieżkę); przy SSR każdy locale ma swój serwer/bundle. Istnieje wariant pośredni: `loadTranslations()` przed bootstrapem pozwala wczytać tłumaczenia w runtime przy starcie (jeden build), ale nadal bez przełączania w locie. Niezależnie od wyboru: identyfikatory tłumaczeń (`@@id`) zamiast generowanych z treści, żeby zmiana przecinka nie unieważniała tłumaczenia; `meaning|description` dla tłumaczy; liczby, daty i waluty przez pipe'y z `LOCALE_ID`, nigdy ręczne formatowanie; testy z pseudo-lokalizacją (długie teksty, RTL), żeby wyłapać łamiący się layout."
+  },
+  {
+   "id": "angular-s010",
+   "topic": "Dostępność (a11y)",
+   "level": 3,
+   "q": "Jak zapewnić dostępność w dużej aplikacji Angular – narzędzia i praktyki?",
+   "a": "Podstawą jest semantyczny HTML: `button` zamiast klikalnego `div`, etykiety formularzy, nagłówki w hierarchii, alt dla obrazów – dopiero potem ARIA. Angular CDK `a11y` daje gotowe klocki: `cdkTrapFocus` dla dialogów, `FocusMonitor` (rozróżnienie focus z klawiatury i myszy), `LiveAnnouncer` do komunikatów dla czytników ekranu, `ListKeyManager`/`ActiveDescendantKeyManager` do nawigacji strzałkami. W SPA trzeba zadbać o focus i tytuł po nawigacji (`title` w trasach). Jakość pilnuję automatycznie (reguły accessibility w angular-eslint, axe w testach E2E) i ręcznie (klawiatura, czytnik ekranu).",
+   "code": "@Component({\n  imports: [A11yModule],\n  template: `<div role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"t\" cdkTrapFocus cdkTrapFocusAutoCapture>\n    <h2 id=\"t\">Usuń zamówienie</h2> ...\n  </div>`,\n})\nexport class ConfirmDialog {}",
+   "lang": "typescript",
+   "deep": "Specyfika SPA: po zmianie trasy przeglądarka nie ogłasza nowej strony, więc przenoszę focus na główny nagłówek lub region `main` i aktualizuję `document.title` (TitleStrategy). Dynamiczne treści (toasty, wyniki wyszukiwania, błędy walidacji) ogłaszam przez `LiveAnnouncer` lub `aria-live`. Komponenty z biblioteki design systemu muszą mieć dostępność wbudowaną: role, stany (`aria-expanded`, `aria-selected`), obsługę klawiatury zgodną z ARIA Authoring Practices – inaczej każdy zespół naprawia to osobno. Angular w v21 udostępnił pakiet `@angular/aria` z headless, dostępnymi prymitywami (developer preview – API może się zmieniać), który może być bazą własnych komponentów. Automaty łapią tylko część problemów (kontrast, brak etykiet, role), ale nie ocenią sensowności kolejności fokusu czy komunikatów – dlatego ręczny test klawiaturą jest obowiązkowy. Wymagania prawne (np. European Accessibility Act obowiązujący od 2025 r. dla wielu usług w UE) sprawiają, że to temat biznesowy, nie tylko 'nice to have'."
+  },
+  {
+   "id": "angular-s011",
+   "topic": "Bezpieczeństwo",
+   "level": 3,
+   "q": "Jak wdrożyć CSP i Trusted Types w aplikacji Angular i co może się popsuć?",
+   "a": "CSP ogranicza, skąd można ładować i wykonywać skrypty – nawet gdy XSS się zdarzy, wstrzyknięty inline script się nie wykona. Angular wstawia inline style (np. komponenty), więc przy restrykcyjnym CSP potrzebny jest nonce: atrybut `ngCspNonce` na elemencie root lub token `CSP_NONCE`, z wartością generowaną per żądanie przez serwer. Trusted Types (`require-trusted-types-for 'script'`) sprawiają, że przeglądarka odrzuca przypisania do niebezpiecznych sinków DOM (innerHTML itp.) bez obiektu Trusted Type – Angular ma wbudowane polityki, które trzeba dopuścić w nagłówku.",
+   "code": "Content-Security-Policy:\n  script-src 'self' 'nonce-{RANDOM}';\n  style-src 'self' 'nonce-{RANDOM}';\n  require-trusted-types-for 'script';\n  trusted-types angular angular#bundler;",
+   "lang": "text",
+   "deep": "Polityki Angulara: `angular` (sanitizowane wartości), `angular#unsafe-bypass` (wymagana, jeśli używamy `bypassSecurityTrust*`), `angular#unsafe-jit` (kompilacja JIT, w produkcji z AOT niepotrzebna) i `angular#bundler` (leniwe chunki ładowane przez bundler). Brak którejś skutkuje błędami w konsoli i niedziałającymi funkcjami – dlatego wdrażam najpierw w trybie `Content-Security-Policy-Report-Only` i zbieram raporty. Co się psuje: biblioteki zewnętrzne piszące do innerHTML, `eval`/`new Function` (niektóre biblioteki szablonów, stare wersje), inline handlery w HTML z CMS, skrypty analityczne wstrzykiwane przez tag managery. Nonce wymaga dynamicznego generowania index.html (SSR lub serwer podmieniający placeholder), więc przy czysto statycznym hostingu alternatywą jest CSP oparte o hashe – Angular CLI ma opcję `autoCsp` generującą hashe dla skryptów inline (wprowadzona w v19 jako developer preview – trzeba sprawdzić status). CSP to obrona w głąb, nie zamiennik sanitizacji i walidacji na backendzie."
+  },
+  {
+   "id": "angular-s012",
+   "topic": "Aktualizacje wersji",
+   "level": 3,
+   "q": "Jak przeprowadzić aktualizację dużej aplikacji o kilka wersji Angulara?",
+   "a": "Aktualizuję o jedną wersję major na raz, zgodnie z przewodnikiem update.angular.dev dla mojej ścieżki wersji. Każdy krok: `ng update @angular/core@X @angular/cli@X` (plus Material/CDK i inne pakiety `@angular/*`), które uruchamia automatyczne migracje kodu, potem build, testy, przejrzenie ostrzeżeń o deprecations i osobny commit/PR. Zależności zewnętrzne (NgRx, biblioteki UI) muszą wspierać docelową wersję – sprawdzam ich peer dependencies przed startem, bo to zwykle one blokują aktualizację.",
+   "code": "ng update                                   # lista dostępnych aktualizacji\nng update @angular/core@20 @angular/cli@20\nng update @angular/material@20\n# kolejny krok dopiero po zielonym CI\nng update @angular/core@21 @angular/cli@21",
+   "lang": "bash",
+   "deep": "Kontekst polityki: wersje major wychodzą co ok. 6 miesięcy, każda ma 6 miesięcy aktywnego wsparcia i 12 miesięcy LTS (łącznie 18), a zdeprecjonowane API są usuwane zwykle nie wcześniej niż po dwóch wersjach major – dlatego warto na bieżąco usuwać deprecations, zamiast kumulować je na 'wielką migrację'. Opcjonalne migracje (control flow, signal inputs, inject, standalone) nie są wymagane przez ng update i uruchamiam je osobno, żeby nie mieszać aktualizacji z refaktoryzacją. W monorepo Nx `nx migrate` aktualizuje Angulara i pluginy Nx razem i generuje plik migracji do uruchomienia. Ryzyka: zmiany zachowań bez błędu kompilacji (np. timing efektów w v19, domyślne ustawienia nowych projektów jak zoneless w v21 – one nie zmieniają istniejących aplikacji, ale warto to wiedzieć), wymagana wersja TypeScript i Node. Pomaga dobre pokrycie testami E2E krytycznych ścieżek i wdrożenie za feature flagą lub canary. Budżet: regularne aktualizacje co pół roku są tańsze niż skok o 4 wersje co dwa lata."
+  },
+  {
+   "id": "angular-s013",
+   "topic": "Zarządzanie stanem",
+   "level": 3,
+   "q": "Porównaj podejścia do zarządzania stanem w dużej aplikacji Angular i kryteria wyboru.",
+   "a": "Najpierw rozdzielam rodzaje stanu: stan serwerowy (dane z API: cache, ładowanie, invalidacja), stan UI lokalny (otwarty panel, wartości formularza), stan współdzielony klienta (koszyk, użytkownik, filtry między ekranami) i stan URL (paginacja, filtry w query params). Narzędzia: sygnały w komponencie dla lokalnego; serwis z sygnałami lub NgRx SignalStore dla współdzielonego; resource/httpResource albo biblioteka do server state dla danych z API; router jako źródło prawdy dla stanu w URL; klasyczny NgRx Store, gdy potrzebny jest ścisły przepływ zdarzeń, audyt akcji i time-travel debugging.",
+   "tip": "Dobra odpowiedź zaczyna się od pytania 'jaki to rodzaj stanu?', a nie od nazwy biblioteki.",
+   "deep": "Kryteria wyboru: liczba zespołów (konwencje i przewidywalność są ważniejsze przy 10 zespołach niż przy jednym), złożoność przepływów (wiele efektów reagujących na te same zdarzenia przemawia za modelem zdarzeniowym – NgRx Store lub plugin zdarzeń SignalStore), wymagania debugowania (Redux DevTools), koszt nauki i boilerplate'u. Klasyczny błąd to wrzucenie stanu serwerowego do globalnego store'a i ręczne odtwarzanie cache, loading, error i invalidacji w każdym feature – to jest właśnie to, co rozwiązują resource lub biblioteki typu TanStack Query (adapter Angular oznaczony jako experimental). Drugi błąd to duplikowanie stanu URL w store (filtry w query params i w store rozjeżdżają się) – URL jest źródłem prawdy, a store/komponent go odczytuje (np. przez withComponentInputBinding). Hybryda jest normalna: NgRx Store dla kilku domen o złożonym przepływie, SignalStore/serwisy dla reszty, sygnały lokalnie. Ważne, by decyzja była spisana (ADR) i stosowana konsekwentnie."
+  },
+  {
+   "id": "angular-s014",
+   "topic": "Design system",
+   "level": 3,
+   "q": "Jak zaprojektować bibliotekę komponentów / design system w Angularze?",
+   "a": "Fundament to Angular CDK: Overlay i Portal (popovery, dialogi), a11y (focus trap, key managers), Listbox, Menu, Dialog, DragDrop, Table, virtual scroll – dostarczają zachowanie i dostępność bez narzuconego wyglądu. Na tym buduję komponenty z przemyślanym API: sygnałowe inputy, `model()` dla kontrolek, content projection (`ng-content` ze slotami) dla elastycznej treści, `ngTemplateOutlet` dla szablonów przekazywanych przez użytkownika, host directives do współdzielenia zachowań (focus ring, tooltip, disabled). Wygląd przez design tokeny jako CSS custom properties.",
+   "code": "@Component({\n  selector: 'ui-button',\n  hostDirectives: [{ directive: FocusRing }, { directive: Disableable, inputs: ['disabled'] }],\n  host: { '[class]': '`btn btn--${variant()}`' },\n  template: `<ng-content select=\"[uiIcon]\" /><span class=\"label\"><ng-content /></span>`,\n})\nexport class UiButton {\n  variant = input<'primary' | 'secondary' | 'danger'>('primary');\n}",
+   "lang": "typescript",
+   "deep": "Decyzje API: konfiguracja przez inputy jest prosta, ale szybko eksploduje (20 inputów na przycisk); kompozycja przez projekcję i dyrektywy (`<app-card><app-card-header>…`) jest elastyczniejsza. Kontrolki formularzy implementują ControlValueAccessor, żeby działały z Reactive Forms. Host directives pozwalają zbudować np. `Disableable`, `Focusable` raz i dołączyć do wielu komponentów, jawnie wystawiając ich inputy. Dystrybucja: biblioteka budowana ng-packagr (`ng generate library`) w Angular Package Format, z secondary entry points (`@org/ui/button`, `@org/ui/table`), żeby aplikacje nie ciągnęły całości; semver i changelog, bo każda zmiana API to breaking change dla wielu zespołów. Jakość: Storybook jako dokumentacja i katalog, testy wizualnej regresji, testy a11y w CI. Style: `ViewEncapsulation.Emulated` + custom properties jako publiczne API stylów, bez `::ng-deep` po stronie konsumentów; tryb ciemny i branding przez podmianę tokenów. Rozważam też headless podejście (`@angular/aria` w developer preview w v21) jako bazę zachowań."
+  },
+  {
+   "id": "angular-s015",
+   "topic": "Obsługa błędów",
+   "level": 3,
+   "q": "Jak zaprojektować globalną obsługę błędów w aplikacji Angular?",
+   "a": "Warstwy: 1) Interceptor HTTP mapuje błędy transportu na zrozumiałe dla aplikacji (401 → odświeżenie tokenu lub wylogowanie, 403 → strona braku dostępu, 5xx/sieć → retry z backoffem dla żądań idempotentnych, komunikat), ale nie połyka ich – przekazuje dalej `throwError`. 2) Feature obsługuje błędy, które ma sens obsłużyć lokalnie (stan 'error' w resource/store, komunikat w UI). 3) Własny `ErrorHandler` łapie wszystko nieobsłużone: loguje do systemu monitoringu z kontekstem (użytkownik, trasa, wersja aplikacji) i pokazuje ogólny komunikat. Od v20 `provideBrowserGlobalErrorListeners()` kieruje do ErrorHandler także nieobsłużone błędy i odrzucone Promise z poziomu `window`.",
+   "code": "@Injectable()\nexport class AppErrorHandler implements ErrorHandler {\n  private injector = inject(Injector);\n  handleError(error: unknown): void {\n    const monitoring = this.injector.get(Monitoring);\n    monitoring.capture(error, { url: location.pathname });\n    this.injector.get(Toasts).error('Coś poszło nie tak. Spróbuj ponownie.');\n  }\n}\n// providers: [provideBrowserGlobalErrorListeners(), { provide: ErrorHandler, useClass: AppErrorHandler }]",
+   "lang": "typescript",
+   "deep": "Szczegóły: ErrorHandler dostaje błędy z change detection, handlerów zdarzeń, efektów i lifecycle hooków; błędy nawigacji routera obsługuję przez `withNavigationErrorHandler` (np. nieudany import chunka po wdrożeniu nowej wersji – sensowna reakcja to pełne przeładowanie strony). ErrorHandler jest tworzony wcześnie, więc zależności (np. serwis toastów korzystający z Router/HttpClient) pobieram leniwie przez Injector, żeby uniknąć cyklicznych zależności. Interceptor zwracający `EMPTY` lub `of(null)` na błąd to antywzorzec: strumień kończy się bez wartości, komponent zostaje w stanie ładowania i nikt się nie dowiaduje o błędzie. Retry tylko dla GET/idempotentnych i z limitem, inaczej podwójne zamówienia. Po stronie backendu .NET warto zwracać ProblemDetails – interceptor ma wtedy spójny format (`title`, `status`, `errors` dla walidacji), który można mapować na błędy formularza. Nie loguj danych osobowych ani tokenów w raportach błędów."
+  },
+  {
+   "id": "angular-s016",
+   "topic": "Konfiguracja runtime",
+   "level": 2,
+   "q": "Konfiguracja build-time (environment.ts) czy runtime (config.json) – kiedy co?",
+   "a": "Pliki `environment.*.ts` podmieniane przez `fileReplacements` są wkompilowane w bundle – każde środowisko wymaga osobnego buildu. To dobre dla flag, które naprawdę zależą od buildu (np. włączenie narzędzi deweloperskich). Dla adresów API, kluczy publicznych, feature flag per środowisko stosuję konfigurację runtime: aplikacja przy starcie pobiera `/config.json` w `provideAppInitializer`, a wartości udostępnia przez InjectionToken lub serwis. Dzięki temu jeden artefakt (np. obraz Dockera) jest promowany przez test → staging → produkcja – 'build once, deploy many'.",
+   "code": "export const APP_CONFIG = new InjectionToken<AppConfig>('APP_CONFIG');\n// main.ts\nfetch('/config.json')\n  .then(r => r.json())\n  .then((cfg: AppConfig) => bootstrapApplication(App, {\n    providers: [...appConfig.providers, { provide: APP_CONFIG, useValue: cfg }],\n  }));",
+   "lang": "typescript",
+   "deep": "Szczegóły implementacji: `provideAppInitializer` (v19+, zastępuje APP_INITIALIZER) blokuje bootstrap do rozwiązania Promise/Observable, więc config musi być mały i szybki; plik config.json nie może być cache'owany agresywnie (krótki Cache-Control lub wersjonowanie). Alternatywa: pobranie configu w `main.ts` przed `bootstrapApplication` i przekazanie go jako `{ provide: APP_CONFIG, useValue }` – wtedy config jest dostępny synchronicznie wszędzie, także w fabrykach providerów. W kontenerze plik generuje się przy starcie z zmiennych środowiskowych (np. skrypt entrypoint lub endpoint backendu). Przy SSR config można czytać na serwerze z env i przekazać przez TransferState. Nigdy nie umieszczam sekretów w żadnej konfiguracji frontendu – wszystko, co trafia do przeglądarki, jest publiczne."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "angular-sq001",
+   "topic": "Architektura",
+   "level": 2,
+   "q": "W monorepo Nx biblioteka `orders-ui` (tag `type:ui`) zaczęła importować serwis z `orders-data-access` (tag `type:data-access`). Reguły depConstraints pozwalają ui zależeć tylko od ui i util. Co się stanie?",
+   "options": [
+    "Lint z regułą @nx/enforce-module-boundaries zgłosi błąd i CI odrzuci zmianę",
+    "Build się nie powiedzie, bo Angular nie pozwala importować serwisów do komponentów UI",
+    "Nic – tagi Nx są tylko dokumentacją",
+    "Nx automatycznie przeniesie serwis do biblioteki ui"
+   ],
+   "correct": 0,
+   "why": "Tagi i depConstraints są egzekwowane przez regułę lint @nx/enforce-module-boundaries – naruszenie kierunku zależności to błąd lint (zwykle blokujący CI). Kompilator TypeScript/Angular nie zna tych reguł, więc sam build by przeszedł. Właściwa poprawka: komponent UI dostaje dane przez input, a serwis wstrzykuje komponent feature."
+  },
+  {
+   "id": "angular-sq002",
+   "topic": "Mikrofrontendy",
+   "level": 3,
+   "q": "Jeden zespół 8 osób rozwija aplikację, wdraża wszystko razem raz na sprint i narzeka, że build oraz testy w CI trwają 25 minut. Architekt proponuje mikrofrontendy z Module Federation. Co jest najlepszą rekomendacją?",
+   "options": [
+    "Wdrożyć Module Federation, bo każda część będzie budowana osobno",
+    "Pozostać przy jednej aplikacji, ale wprowadzić podział na biblioteki z affected/cache (np. Nx) i lazy loading – mikrofrontendy rozwiązują problem niezależnych zespołów, którego tu nie ma",
+    "Przepisać na Native Federation, bo jest szybsza od webpacka",
+    "Wyłączyć testy w CI dla gałęzi feature"
+   ],
+   "correct": 1,
+   "why": "Mikrofrontendy mają sens przy wielu niezależnych zespołach i osobnych cyklach wdrożeń; wnoszą koszty integracji w runtime, wersjonowania współdzielonych zależności i spójności UX. Problem wolnego CI rozwiązuje inkrementalność: uruchamianie tylko testów i buildów dotkniętych zmianą oraz cache obliczeń. Native Federation to też mikrofrontendy – nie zmienia rachunku. Wyłączanie testów to obniżenie jakości."
+  },
+  {
+   "id": "angular-sq003",
+   "topic": "Performance",
+   "level": 3,
+   "q": "Aplikacja (z Zone.js) ma komponent nagłówka z kodem poniżej. Profiler pokazuje setki cykli change detection całej aplikacji podczas przewijania. Jaka poprawka jest najlepsza?",
+   "code": "@HostListener('window:scroll')\nonScroll() {\n  this.compact = window.scrollY > 80;\n}",
+   "lang": "typescript",
+   "options": [
+    "Dodać OnPush do komponentu nagłówka – to zatrzyma CD w całej aplikacji",
+    "Zastąpić HostListener metadanymi `host: { '(window:scroll)': ... }`",
+    "Wywołać `cdr.detach()` w nagłówku",
+    "Zarejestrować listener poza strefą (`ngZone.runOutsideAngular` + addEventListener) i aktualizować sygnał `compact` tylko gdy wartość faktycznie się zmienia"
+   ],
+   "correct": 3,
+   "why": "Każde zdarzenie scroll obsłużone przez Angular w Zone.js wyzwala CD od korzenia, niezależnie od OnPush nagłówka (OnPush ogranicza tylko sprawdzanie tego poddrzewa). Metadane host to ten sam listener w strefie. detach wyłącza odświeżanie nagłówka, ale nie zatrzymuje cykli. Listener poza strefą nie wyzwala CD, a zmiana sygnału tylko przy przejściu progu odświeży jeden widok. W zoneless problem w tej postaci nie występuje."
+  },
+  {
+   "id": "angular-sq004",
+   "topic": "Performance",
+   "level": 2,
+   "q": "Po dodaniu funkcji eksportu do PDF initial bundle urósł o 600 KB, a build ostrzega o przekroczeniu budżetu. Biblioteka PDF jest używana tylko po kliknięciu 'Eksportuj'. Co zrobić?",
+   "code": "async exportPdf() {\n  const { jsPDF } = await import('jspdf');\n  const doc = new jsPDF();\n  // ...\n}",
+   "lang": "typescript",
+   "options": [
+    "Podnieść budżet w angular.json, bo funkcja jest potrzebna",
+    "Przenieść import biblioteki do serwisu z `providedIn: 'root'` – tree-shaking ją usunie",
+    "Załadować bibliotekę dynamicznym `import()` w handlerze kliknięcia (osobny chunk), a wpływ potwierdzić analizą `--stats-json`",
+    "Włączyć SSR, żeby biblioteka wykonywała się na serwerze"
+   ],
+   "correct": 2,
+   "why": "Statyczny import w kodzie startowym umieszcza bibliotekę w initial bundle. Dynamiczny `import()` tworzy osobny chunk pobierany dopiero przy pierwszym użyciu. Tree-shaking nie usunie kodu, który jest używany, niezależnie od miejsca. Podnoszenie budżetu ukrywa regres, a SSR nie zmniejsza JS wysyłanego do przeglądarki."
+  },
+  {
+   "id": "angular-sq005",
+   "topic": "@defer",
+   "level": 2,
+   "q": "Po owinięciu sekcji hero (z obrazem LCP) w `@defer (on viewport)` Lighthouse pokazuje gorszy LCP i CLS. Dlaczego?",
+   "options": [
+    "@defer nie działa z NgOptimizedImage",
+    "Treść above the fold jest renderowana dopiero po pobraniu chunka i zastąpieniu placeholdera – opóźnia to LCP i przesuwa layout; hero powinien renderować się od razu",
+    "Trigger viewport nie działa dla elementów widocznych od startu",
+    "Brakuje `prefetch on idle`, który by to naprawił"
+   ],
+   "correct": 1,
+   "why": "Defer opóźnia render do pobrania i wykonania osobnego chunka, a placeholder jest potem podmieniany – dla elementu LCP to dodatkowe opóźnienie i przesunięcie layoutu. Trigger viewport zadziała od razu (element jest widoczny), ale kod i tak musi się pobrać. Prefetch nieco skróci czas, ale nie usunie problemu. @defer jest dla treści poniżej linii zgięcia lub po interakcji."
+  },
+  {
+   "id": "angular-sq006",
+   "topic": "SSR",
+   "level": 3,
+   "q": "Trasa `/account/orders` (dane zalogowanego użytkownika) ma w server routes `RenderMode.Prerender`. Co jest najbardziej prawdopodobnym skutkiem?",
+   "options": [
+    "Strona będzie generowana przy każdym żądaniu z ciasteczkami użytkownika",
+    "Build się nie powiedzie, bo Prerender wymaga getPrerenderParams",
+    "HTML zostanie wygenerowany raz w czasie buildu bez kontekstu użytkownika (np. pusty lub z błędem autoryzacji), więc trasa powinna mieć tryb Client lub Server",
+    "Angular automatycznie przełączy trasę na CSR po wykryciu nagłówka Authorization"
+   ],
+   "correct": 2,
+   "why": "Prerender (SSG) generuje statyczny HTML podczas buildu – nie ma wtedy żądania użytkownika ani jego sesji. Dla treści per użytkownik właściwy jest Client (CSR) albo Server (SSR na żądanie, bez współdzielonego cache CDN). getPrerenderParams jest potrzebne tylko dla tras z parametrami. Angular nie przełącza trybów automatycznie."
+  },
+  {
+   "id": "angular-sq007",
+   "topic": "SSR",
+   "level": 3,
+   "q": "Aplikacja z SSR i `provideClientHydration()` po hydracji wysyła ponownie te same żądania GET, które były wykonane na serwerze. Interceptor dodaje do nich nagłówek Authorization. Dlaczego transfer cache nie działa?",
+   "options": [
+    "Transfer cache działa tylko z withFetch()",
+    "Transfer cache wymaga ręcznego użycia TransferState dla każdego żądania",
+    "Transfer cache obsługuje tylko httpResource, a nie HttpClient",
+    "Domyślnie HttpTransferCache pomija żądania z nagłówkami autoryzacji (można to zmienić w withHttpTransferCacheOptions, świadomie oceniając ryzyko)"
+   ],
+   "correct": 3,
+   "why": "HttpTransferCache domyślnie cache'uje GET/HEAD, ale wyklucza żądania z nagłówkiem Authorization (i podobnymi), żeby nie osadzać danych prywatnych w HTML. Opcja `includeRequestsWithAuthHeaders` w withHttpTransferCacheOptions to zmienia. Mechanizm działa automatycznie dla HttpClient (więc i dla httpResource), niezależnie od withFetch."
+  },
+  {
+   "id": "angular-sq008",
+   "topic": "Bezpieczeństwo",
+   "level": 3,
+   "q": "Po włączeniu nagłówka `require-trusted-types-for 'script'; trusted-types angular` przestał działać komponent wyświetlający zaufany HTML z CMS przez `bypassSecurityTrustHtml`. Reszta aplikacji działa. Co jest przyczyną?",
+   "options": [
+    "Trusted Types blokują każde użycie [innerHTML]",
+    "bypassSecurityTrust* korzysta z osobnej polityki `angular#unsafe-bypass`, której nie dopuszczono w nagłówku",
+    "Trzeba dodać nonce do elementu z innerHTML",
+    "Angular nie wspiera Trusted Types – trzeba je wyłączyć"
+   ],
+   "correct": 1,
+   "why": "Angular tworzy wartości Trusted Types przez polityki: `angular` dla wartości po sanitizacji, a `angular#unsafe-bypass` dla wartości oznaczonych jako zaufane przez bypassSecurityTrust*. Jeśli druga polityka nie jest dozwolona, przypisanie zostanie zablokowane. Zwykłe [innerHTML] z sanitizacją działa z polityką `angular`; nonce dotyczy skryptów i stylów, nie treści innerHTML."
+  },
+  {
+   "id": "angular-sq009",
+   "topic": "Obsługa błędów",
+   "level": 2,
+   "q": "Interceptor obsługuje błędy jak poniżej. Komponent ładuje dane przez `toSignal(this.api.getOrders(), { initialValue: undefined })` i pokazuje spinner, dopóki wartość jest undefined. Co zobaczy użytkownik przy błędzie 500?",
+   "code": "export const errorInterceptor: HttpInterceptorFn = (req, next) => {\n  const toasts = inject(Toasts);\n  return next(req).pipe(catchError(err => {\n    toasts.error('Błąd serwera');\n    return EMPTY;\n  }));\n};",
+   "lang": "typescript",
+   "options": [
+    "Toast z błędem i spinner, który nigdy nie znika – strumień zakończył się bez wartości i bez błędu, więc komponent o niczym się nie dowiedział",
+    "Toast i komunikat błędu w komponencie, bo toSignal przekaże błąd",
+    "Pustą listę zamówień",
+    "Błąd w konsoli zgłoszony przez ErrorHandler"
+   ],
+   "correct": 0,
+   "why": "`EMPTY` kończy strumień bez emisji – nie ma ani wartości, ani błędu. toSignal zostaje przy initialValue (undefined), więc spinner wisi, a ErrorHandler niczego nie dostaje. Interceptor powinien po obsłużeniu efektów (toast, log) przekazać błąd dalej przez `throwError(() => err)`, a feature zdecydować o stanie UI."
+  },
+  {
+   "id": "angular-sq010",
+   "topic": "Konfiguracja runtime",
+   "level": 2,
+   "q": "Firma buduje jeden obraz Dockera z frontendem i promuje go przez test, staging i produkcję. Adres API różni się w każdym środowisku. Jakie rozwiązanie jest właściwe?",
+   "options": [
+    "environment.test.ts, environment.staging.ts, environment.prod.ts z fileReplacements",
+    "Wpisanie wszystkich adresów do kodu i wybór po `location.hostname`",
+    "Zmienna `process.env.API_URL` odczytywana w serwisie w przeglądarce",
+    "Plik config.json generowany przy starcie kontenera ze zmiennych środowiskowych i wczytywany przed bootstrapem lub w provideAppInitializer"
+   ],
+   "correct": 3,
+   "why": "fileReplacements to konfiguracja build-time – wymaga osobnego buildu na środowisko, co przeczy promowaniu jednego artefaktu. Wybór po hostname działa, ale wymaga zmian w kodzie przy każdym nowym środowisku i ujawnia wszystkie adresy. `process.env` nie istnieje w przeglądarce. Runtime config (config.json z env kontenera) pozwala zbudować raz i wdrożyć wszędzie."
+  }
+ ]
+}

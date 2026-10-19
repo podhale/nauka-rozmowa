@@ -1,0 +1,27 @@
+<div class="wrap">
+  <header class="top">
+    <a class="brand" routerLink="/"><b><i>.NET</i> + <em>Angular</em></b><span class="muted" style="font-size:.85rem">rozmowa</span></a>
+    <span class="sync" [class.on]="sync.status() === 'synced'" [class.busy]="sync.status() === 'saving' || sync.status() === 'connecting'">{{ syncLabel() }}</span>
+  </header>
+
+  @if (!inSession()) {
+    <nav class="tabs" aria-label="Nawigacja">
+      @for (t of tabs; track t.path) {
+        <a [routerLink]="t.path" routerLinkActive #rla="routerLinkActive" [routerLinkActiveOptions]="{ exact: t.exact }" [attr.aria-current]="rla.isActive ? 'page' : null">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="t.icon" /></svg>{{ t.label }}
+        </a>
+      }
+    </nav>
+  }
+
+  <main>
+    @if (content.error(); as err) {
+      <div class="empty"><h3>Coś poszło nie tak</h3><p class="muted">{{ err }}</p></div>
+    } @else if (!content.loaded()) {
+      <div class="empty"><p class="muted">Wczytuję bazę pytań…</p></div>
+    } @else {
+      <router-outlet />
+    }
+  </main>
+</div>
+@if (ui.toast(); as t) { <div class="toast" role="status">{{ t }}</div> }

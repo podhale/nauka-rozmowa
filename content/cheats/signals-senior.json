@@ -1,0 +1,79 @@
+{
+ "cat": "signals",
+ "sheets": [
+  {
+   "topic": "Migracja na sygnały",
+   "points": [
+    "Migracja **przyrostowa** – sygnały i dekoratory współistnieją; partie per katalog/biblioteka, osobne PR-y.",
+    "Schematics: `@angular/core:signal-input-migration`, `output-migration`, `signal-queries-migration` lub zbiorczo `@angular/core:signals`; opcja `--path`.",
+    "Schematics są konserwatywne – pomijają i raportują niebezpieczne przypadki (np. input, do którego komponent zapisuje); `--best-effort-mode` migruje agresywniej.",
+    "Kolejność: liście drzewa (prezentacyjne) → kontenery → serwisy stanu → OnPush wszędzie → zoneless.",
+    "`ngOnChanges` i settery inputów → `computed` / `linkedSignal`; input zapisywany przez komponent → `model()`.",
+    "Serwisy: BehaviorSubject → prywatny signal + `asReadonly()`; tymczasowy adapter `toObservable` dla starych konsumentów.",
+    "RxJS zostaje dla zdarzeń i orkiestracji – usuwamy Subjecty-jako-stan i ręczne subskrypcje."
+   ],
+   "pitfalls": [
+    "`toObservable` emituje asynchronicznie i tylko ostatnią wartość – inaczej niż BehaviorSubject.",
+    "Testy po migracji: `setInput` zamiast przypisania pola.",
+    "Mieszanie aktualizacji wersji Angulara z migracją na sygnały w jednym PR."
+   ],
+   "code": "ng generate @angular/core:signals --path=libs/orders",
+   "lang": "bash",
+   "say": "Migruję przyrostowo: najpierw schematics per biblioteka, od liści drzewa, potem serwisy stanu z adapterem toObservable, a RxJS zostawiam tam, gdzie modeluje zdarzenia."
+  },
+  {
+   "topic": "SSR i hydracja",
+   "points": [
+    "Stan sygnałów **nie jest przenoszony** z serwera do klienta – klient startuje od wartości początkowych.",
+    "Różne wartości na serwerze i kliencie (`Date.now`, `Math.random`, localStorage) → mismatch lub mignięcie treści.",
+    "Dane HTTP przenosi **HttpTransferCache** (HttpClient, httpResource); inny stan – ręcznie `TransferState`.",
+    "Effect wykonuje się też na serwerze; kod przeglądarkowy → `afterNextRender` / `afterRenderEffect` (nie działają na serwerze).",
+    "Zoneless SSR: stabilność z **PendingTasks** – własny async owiń w `inject(PendingTasks).run(...)`.",
+    "Incremental hydration: fragmenty `@defer (hydrate on ...)` są niezhydratowane do triggera – ich sygnały/efekty jeszcze nie działają."
+   ],
+   "pitfalls": [
+    "`localStorage` w inicjalizatorze sygnału → ReferenceError na serwerze.",
+    "Goły `fetch` w resource zamiast httpResource – brak transfer cache, podwójne żądania."
+   ],
+   "code": "private tasks = inject(PendingTasks);\nasync loadExtra() {\n  await this.tasks.run(async () => {\n    this.extra.set(await this.sdk.fetchExtra());\n  });\n}",
+   "lang": "typescript",
+   "say": "Na serwerze sygnały działają, ale ich stan nie przechodzi do klienta – start musi być deterministyczny, dane przenoszę transfer cache, a kod przeglądarkowy uruchamiam po renderze."
+  },
+  {
+   "topic": "Zoneless",
+   "points": [
+    "Włączenie: `provideZonelessChangeDetection()` + usunięcie zone.js z `polyfills`; domyślne w nowych projektach od v21.",
+    "Psuje się: zwykłe pola zmieniane w `setTimeout`/callbackach/subskrypcjach bez sygnału lub `markForCheck`.",
+    "`NgZone.onStable` / `onMicrotaskEmpty` **nie emitują** (NoopNgZone) – zamiennik: `afterNextRender` / `afterEveryRender`.",
+    "`ngZone.run` / `runOutsideAngular` nadal można wołać (no-op).",
+    "Testy: `fakeAsync`/`waitForAsync` wymagają zone.js – w Vitest fake timers + `await fixture.whenStable()`.",
+    "Wykrywanie cichych bindingów w dev: `provideCheckNoChangesConfig({ exhaustive: true, interval })` (v20+, developer preview).",
+    "Ścieżka: OnPush wszędzie → sygnały → zoneless; co działa z OnPush, prawie zawsze działa zoneless."
+   ],
+   "pitfalls": [
+    "Zostawienie zone.js w testach maskuje błędy zoneless.",
+    "Biblioteki-wrappery bez wsparcia zoneless – widok odświeża się dopiero 'przy następnym kliknięciu'."
+   ],
+   "code": "export const appConfig: ApplicationConfig = {\n  providers: [\n    provideZonelessChangeDetection(),\n    provideBrowserGlobalErrorListeners(),\n  ],\n};",
+   "lang": "typescript",
+   "say": "Zoneless wymaga, by każda zmiana stanu widoku szła przez sygnały, markForCheck lub zdarzenia szablonu – najpierw OnPush i sygnały, potem wyłączam zone.js i zastępuję NgZone.onStable przez afterNextRender."
+  },
+  {
+   "topic": "Wydajność",
+   "points": [
+    "Granulacja Angulara to **widok komponentu**, nie węzeł DOM – mniejsze komponenty = mniejszy obszar odświeżenia.",
+    "OnPush + sygnały w szablonach: odświeżane tylko widoki-konsumenci, niezmienieni rodzice OnPush pomijani.",
+    "**Equality cutoff**: computed zwracający prymityw (np. `isSelected`) odcina zmiany, które nie zmieniają wyniku.",
+    "Sygnał czytany przez tysiące widoków → computed per element lub input z rodzica.",
+    "Duży obiekt stanu w jednym sygnale → każda zmiana to nowa referencja; rozbij stan lub użyj SignalStore (sygnał per właściwość).",
+    "Unikaj effect/toSignal per wiersz listy; `track item.id`; virtual scroll dla długich list.",
+    "Mierz przed i po: Angular DevTools Profiler (wymaga trybu dev) pokazuje, co jest sprawdzane; czasy porównuj w Chrome Performance na buildzie produkcyjnym."
+   ],
+   "pitfalls": [
+    "Computed zwracające nową tablicę przy każdej zmianie – brak cutoff.",
+    "Optymalizacja bez pomiaru."
+   ],
+   "say": "Fine-grained w Angularze to OnPush, sygnały czytane w szablonach i equality cutoff w computed – granulacją jest widok, więc dzielę duże szablony i odcinam propagację selektorami."
+  }
+ ]
+}

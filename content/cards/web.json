@@ -1,0 +1,583 @@
+{
+  "cat": "web",
+  "name": "HTTP, REST i bezpieczeństwo",
+  "cards": [
+    {
+      "id": "web-001",
+      "topic": "REST",
+      "level": 1,
+      "q": "Czym jest REST i jak projektujesz zasoby w REST API?",
+      "a": "REST to styl architektoniczny oparty na zasobach identyfikowanych przez URI i operacjach wyrażonych metodami HTTP, z bezstanową komunikacją (każde żądanie niesie wszystko, co potrzebne). Zasoby nazywam rzeczownikami w liczbie mnogiej (/orders, /orders/42/items), akcję określa metoda, a nie URL (nie /getOrders ani /createOrder). Relacje wyrażam zagnieżdżeniem z umiarem (max 1–2 poziomy), filtrowanie i paginację przez query string, a wynik przez poprawne kody statusu.",
+      "code": "GET    /api/orders?status=paid&page=2   -> lista\nGET    /api/orders/42                   -> jeden zasób\nPOST   /api/orders                      -> utworzenie (201 + Location)\nPUT    /api/orders/42                   -> pełna podmiana\nPATCH  /api/orders/42                   -> częściowa zmiana\nDELETE /api/orders/42                   -> usunięcie (204)",
+      "lang": "text",
+      "tip": "Operacje, które nie pasują do CRUD (np. anulowanie), można modelować jako pod-zasób lub akcję: POST /orders/42/cancellation."
+    },
+    {
+      "id": "web-002",
+      "topic": "REST",
+      "level": 1,
+      "q": "Które metody HTTP są bezpieczne, a które idempotentne?",
+      "a": "Bezpieczne (safe) nie zmieniają stanu serwera: GET, HEAD, OPTIONS (i TRACE). Idempotentne to takie, których wielokrotne wykonanie daje ten sam stan serwera co jednokrotne: wszystkie bezpieczne plus PUT i DELETE. POST nie jest idempotentny (każde wywołanie może utworzyć nowy zasób), PATCH nie jest gwarantowanie idempotentny. Ma to znaczenie praktyczne: przeglądarki, proxy i biblioteki retry mogą bezpiecznie ponawiać metody idempotentne.",
+      "tip": "Idempotencja dotyczy stanu serwera, nie odpowiedzi – drugi DELETE może zwrócić 404 i nadal jest idempotentny."
+    },
+    {
+      "id": "web-003",
+      "topic": "REST",
+      "level": 2,
+      "q": "PUT vs PATCH – czym się różnią?",
+      "a": "PUT zastępuje cały zasób przesłaną reprezentacją – pominięte pola są traktowane jako wyczyszczone/domyślne – i jest idempotentny. PATCH wprowadza częściową zmianę. Popularne formaty PATCH to JSON Merge Patch (RFC 7396, application/merge-patch+json – wysyłasz tylko zmienione pola, null usuwa) i JSON Patch (RFC 6902, application/json-patch+json – lista operacji add/remove/replace/test). W praktyce wiele API używa PATCH z prostym DTO z opcjonalnymi polami.",
+      "code": "PATCH /api/users/7\nContent-Type: application/merge-patch+json\n\n{ \"displayName\": \"Ania\", \"phone\": null }",
+      "lang": "text"
+    },
+    {
+      "id": "web-004",
+      "topic": "REST",
+      "level": 3,
+      "q": "Czym jest HATEOAS i model dojrzałości Richardsona?",
+      "a": "Model Richardsona opisuje poziomy: 0 – jeden endpoint i RPC przez HTTP, 1 – zasoby, 2 – zasoby + poprawne metody i kody statusu, 3 – hipermedia (HATEOAS). HATEOAS oznacza, że odpowiedź zawiera linki do możliwych dalszych akcji (np. _links.cancel), więc klient nawiguje po API bez sztywnego kodowania URL-i. W praktyce większość API produkcyjnych to poziom 2 – HATEOAS dodaje złożoność, a klienci (np. Angular) i tak mają zakodowaną logikę.",
+      "code": "{\n  \"id\": 42,\n  \"status\": \"paid\",\n  \"_links\": {\n    \"self\":   { \"href\": \"/api/orders/42\" },\n    \"cancel\": { \"href\": \"/api/orders/42/cancellation\", \"method\": \"POST\" }\n  }\n}",
+      "lang": "json",
+      "tip": "Szczera odpowiedź 'robimy poziom 2 i wiem, czemu nie 3' brzmi lepiej niż udawanie pełnego REST."
+    },
+    {
+      "id": "web-005",
+      "topic": "Kody HTTP",
+      "level": 1,
+      "q": "Omów klasy kodów statusu HTTP i najważniejsze kody 2xx i 5xx.",
+      "a": "1xx informacyjne, 2xx sukces, 3xx przekierowania, 4xx błąd klienta, 5xx błąd serwera. Z 2xx: 200 OK, 201 Created (z Location), 202 Accepted (przyjęte do późniejszego przetworzenia), 204 No Content. Z 5xx: 500 Internal Server Error (nieoczekiwany błąd), 502 Bad Gateway (proxy dostało złą odpowiedź od upstreamu), 503 Service Unavailable (przeciążenie/maintenance, można dodać Retry-After), 504 Gateway Timeout (upstream nie odpowiedział na czas).",
+      "tip": "Zasada: 4xx = klient musi coś zmienić w żądaniu; 5xx = problem po stronie serwera, ponowienie może pomóc."
+    },
+    {
+      "id": "web-006",
+      "topic": "Kody HTTP",
+      "level": 2,
+      "q": "Jakie znasz kody 3xx i czym różnią się 301/302 od 307/308?",
+      "a": "301 Moved Permanently i 308 Permanent Redirect – zasób przeniesiony na stałe (cache'owalne, wyszukiwarki aktualizują adres). 302 Found i 307 Temporary Redirect – tymczasowo. Różnica: przy 301/302 klienci historycznie zmieniali POST na GET, a 307/308 gwarantują zachowanie metody i body. 303 See Other mówi 'pobierz wynik GET-em z innego URL' (wzorzec Post/Redirect/Get). 304 Not Modified to nie przekierowanie, tylko odpowiedź na warunkowy GET – zasób się nie zmienił, użyj kopii z cache.",
+      "tip": "UseHttpsRedirection w ASP.NET Core domyślnie używa 307 – żeby nie zmieniać metody."
+    },
+    {
+      "id": "web-007",
+      "topic": "Kody HTTP",
+      "level": 1,
+      "q": "401 vs 403 – jaka jest różnica?",
+      "a": "401 Unauthorized (mimo nazwy) oznacza brak lub nieprawidłowe uwierzytelnienie – serwer nie wie, kim jesteś; powinien dołączyć nagłówek WWW-Authenticate, a klient może się zalogować lub odświeżyć token. 403 Forbidden oznacza, że serwer wie, kim jesteś, ale nie masz uprawnień – ponowne logowanie nie pomoże. W ASP.NET Core to odpowiednio Challenge i Forbid. W Angularze interceptor zwykle na 401 próbuje odświeżyć token, a na 403 pokazuje komunikat o braku dostępu.",
+      "tip": "Czasem zamiast 403 zwraca się 404, żeby nie ujawniać istnienia zasobu (np. cudzego zamówienia)."
+    },
+    {
+      "id": "web-008",
+      "topic": "Kody HTTP",
+      "level": 2,
+      "q": "400 vs 422 – kiedy który?",
+      "a": "400 Bad Request – żądanie jest źle sformułowane: niepoprawny JSON, zły typ, brak wymaganego parametru. 422 Unprocessable Content (RFC 9110) – składnia jest poprawna, ale treść jest semantycznie nie do przetworzenia, np. data końca przed datą początku albo reguła biznesowa. Oba podejścia spotyka się w praktyce; ASP.NET Core z [ApiController] domyślnie zwraca 400 z ValidationProblemDetails dla błędów walidacji. Najważniejsza jest spójność w całym API i format ProblemDetails.",
+      "tip": "Nie ma jednej 'jedynej słusznej' odpowiedzi – pokaż, że znasz obie konwencje i wybierasz spójnie."
+    },
+    {
+      "id": "web-009",
+      "topic": "Kody HTTP",
+      "level": 2,
+      "q": "Kiedy używasz 409 Conflict i 412 Precondition Failed?",
+      "a": "409 Conflict – żądanie jest poprawne, ale koliduje z bieżącym stanem zasobu: duplikat unikalnego e-maila, próba zmiany zamówienia w statusie, który na to nie pozwala, konflikt wersji przy optimistic concurrency. 412 Precondition Failed – nie spełniono warunku z nagłówka, typowo If-Match z ETagiem: klient chce zapisać zmiany do wersji, która w międzyczasie się zmieniła. 412 to standardowy, HTTP-owy sposób realizacji optimistic concurrency; 409 jest bardziej ogólny.",
+      "tip": "W EF Core DbUpdateConcurrencyException (z kolumną rowversion) mapuje się zwykle na 409 lub 412."
+    },
+    {
+      "id": "web-010",
+      "topic": "Kody HTTP",
+      "level": 2,
+      "q": "404 vs 204 vs 200 z pustą listą – kiedy co?",
+      "a": "GET pojedynczego zasobu, którego nie ma – 404 Not Found. GET kolekcji bez wyników (np. wyszukiwanie) – 200 z pustą tablicą, bo kolekcja istnieje, tylko jest pusta; klient nie musi wtedy obsługiwać przypadku specjalnego. 204 No Content – operacja się udała i celowo nie ma treści: typowo DELETE albo PUT/PATCH bez zwracania zasobu. Zwracanie 204 dla 'nie znaleziono' to błąd semantyczny.",
+      "tip": "Angular HttpClient przy 204 daje null w body – warto o tym pamiętać przy typowaniu odpowiedzi."
+    },
+    {
+      "id": "web-011",
+      "topic": "Caching",
+      "level": 2,
+      "q": "Jak działa ETag i żądania warunkowe?",
+      "a": "ETag to identyfikator wersji reprezentacji (np. hash treści lub rowversion). Serwer zwraca go w nagłówku, klient przy kolejnym GET wysyła If-None-Match: \"etag\" – jeśli zasób się nie zmienił, serwer odpowiada 304 Not Modified bez body, co oszczędza transfer. Przy zapisie klient wysyła If-Match: \"etag\" – jeśli ktoś zmienił zasób w międzyczasie, serwer zwraca 412 Precondition Failed. To daje zarówno cache, jak i optimistic concurrency.",
+      "code": "GET /api/products/5\n<- 200 OK\n<- ETag: \"a1b2c3\"\n\nGET /api/products/5\nIf-None-Match: \"a1b2c3\"\n<- 304 Not Modified\n\nPUT /api/products/5\nIf-Match: \"a1b2c3\"\n<- 412 Precondition Failed   (jeśli ktoś zmienił zasób)",
+      "lang": "text"
+    },
+    {
+      "id": "web-012",
+      "topic": "Caching",
+      "level": 2,
+      "q": "Jakie są najważniejsze dyrektywy Cache-Control?",
+      "a": "max-age=N – odpowiedź świeża przez N sekund; s-maxage – to samo, ale dla współdzielonych cache (CDN/proxy). public – może być w cache współdzielonym; private – tylko w cache przeglądarki (dane użytkownika). no-cache – można zapisać, ale przed użyciem trzeba zwalidować z serwerem (ETag). no-store – nie zapisywać nigdzie (dane wrażliwe). immutable – zasób się nie zmieni (np. pliki z hashem w nazwie, jak bundle Angulara). must-revalidate – po wygaśnięciu nie wolno serwować nieświeżej kopii.",
+      "code": "Cache-Control: public, max-age=31536000, immutable   # main.abc123.js\nCache-Control: no-cache                              # index.html\nCache-Control: private, no-store                     # /api/me/payment-methods",
+      "lang": "text",
+      "tip": "Częste pomylenie: no-cache NIE znaczy 'nie cache'uj' – to robi no-store."
+    },
+    {
+      "id": "web-013",
+      "topic": "CORS",
+      "level": 2,
+      "q": "Czym jest CORS i jak działa preflight?",
+      "a": "Same-Origin Policy blokuje w przeglądarce odczyt odpowiedzi z innego originu (schemat + host + port). CORS to mechanizm, którym serwer nagłówkami Access-Control-Allow-* zezwala wybranym originom na dostęp. Dla żądań 'nie-prostych' – metody inne niż GET/HEAD/POST, własne nagłówki (np. Authorization) albo Content-Type: application/json – przeglądarka najpierw wysyła preflight OPTIONS z Origin i Access-Control-Request-Method/-Headers. Dopiero po pozytywnej odpowiedzi wysyła właściwe żądanie. Access-Control-Max-Age pozwala cache'ować wynik preflightu.",
+      "code": "OPTIONS /api/orders\nOrigin: https://app.example.com\nAccess-Control-Request-Method: PUT\nAccess-Control-Request-Headers: authorization, content-type\n\n<- 204 No Content\n<- Access-Control-Allow-Origin: https://app.example.com\n<- Access-Control-Allow-Methods: GET, POST, PUT, DELETE\n<- Access-Control-Allow-Headers: authorization, content-type\n<- Access-Control-Max-Age: 600",
+      "lang": "text",
+      "tip": "CORS egzekwuje przeglądarka – nie chroni API przed curl/Postmanem i nie zastępuje autoryzacji."
+    },
+    {
+      "id": "web-014",
+      "topic": "Auth",
+      "level": 1,
+      "q": "Uwierzytelnianie a autoryzacja – czym się różnią?",
+      "a": "Uwierzytelnianie (authentication) odpowiada na pytanie 'kim jesteś?' – weryfikacja tożsamości przez hasło, token, certyfikat, passkey. Autoryzacja (authorization) – 'co możesz zrobić?' – sprawdzenie ról, claimów, polityk i własności zasobu. Autoryzacja zawsze następuje po uwierzytelnieniu. W ASP.NET Core: middleware UseAuthentication ustawia HttpContext.User na podstawie schematu (np. JwtBearer, Cookie), a UseAuthorization sprawdza polityki ([Authorize], RequireAuthorization).",
+      "tip": "Błąd uwierzytelnienia = 401, brak uprawnień = 403."
+    },
+    {
+      "id": "web-015",
+      "topic": "JWT",
+      "level": 1,
+      "q": "Z czego składa się JWT?",
+      "a": "JWT to trzy części base64url rozdzielone kropkami: header (alg, typ, kid), payload z claimami (iss – wystawca, sub – podmiot, aud – odbiorca, exp – wygaśnięcie, iat, nbf oraz własne claimy, np. role) i signature – podpis headera i payloadu. Typowy JWT jest podpisany (JWS), a nie szyfrowany: każdy może odczytać payload, ale nie zmieni go bez unieważnienia podpisu. Dlatego nie umieszcza się w nim sekretów ani danych wrażliwych.",
+      "code": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9   <- header  {\"alg\":\"RS256\",\"typ\":\"JWT\"}\n.eyJzdWIiOiI0MiIsImV4cCI6MTc2MDAwMDAwMH0 <- payload {\"sub\":\"42\",\"exp\":1760000000}\n.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV...  <- signature",
+      "lang": "text"
+    },
+    {
+      "id": "web-016",
+      "topic": "JWT",
+      "level": 2,
+      "q": "Jak API powinno walidować JWT i czym różni się HS256 od RS256?",
+      "a": "API musi sprawdzić podpis, wystawcę (iss), odbiorcę (aud), czas ważności (exp/nbf) i dozwolony algorytm – nigdy nie akceptować alg 'none' ani algorytmu narzuconego przez token. HS256 to HMAC ze wspólnym sekretem: kto weryfikuje, ten może też podpisać – dobre tylko w obrębie jednej usługi. RS256/ES256 to podpis asymetryczny: identity provider podpisuje kluczem prywatnym, API weryfikuje publicznym (z JWKS pod adresem z discovery), co jest standardem przy OAuth/OIDC. W ASP.NET Core robi to AddJwtBearer.",
+      "code": "builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)\n    .AddJwtBearer(o =>\n    {\n        o.Authority = \"https://login.example.com/\";  // klucze z JWKS\n        o.Audience = \"orders-api\";\n        o.TokenValidationParameters.ClockSkew = TimeSpan.FromSeconds(30);\n    });",
+      "lang": "csharp",
+      "tip": "Domyślny ClockSkew to 5 minut – token 'wygasły' działa jeszcze chwilę, co bywa zaskoczeniem w testach."
+    },
+    {
+      "id": "web-017",
+      "topic": "JWT",
+      "level": 3,
+      "q": "Gdzie przechowywać tokeny w SPA (Angular)? Co z localStorage i wzorcem BFF?",
+      "a": "localStorage/sessionStorage są dostępne dla każdego JS na stronie, więc jedna podatność XSS (albo złośliwa zależność npm) pozwala wykraść token i używać go z dowolnego miejsca. Lepsze opcje: access token tylko w pamięci aplikacji + refresh token w ciasteczku HttpOnly, Secure, SameSite; albo – obecnie rekomendowany dla aplikacji z wrażliwymi danymi – wzorzec BFF (Backend for Frontend): logowanie OIDC obsługuje backend, przeglądarka dostaje tylko sesyjne ciasteczko HttpOnly, a tokeny nigdy nie trafiają do JS. Przy ciasteczkach trzeba pamiętać o ochronie CSRF.",
+      "tip": "Żadne miejsce nie chroni w pełni przed XSS – atakujący może wykonywać żądania z przeglądarki ofiary. Ale brak możliwości wykradzenia tokenu znacząco ogranicza skutki."
+    },
+    {
+      "id": "web-018",
+      "topic": "JWT",
+      "level": 2,
+      "q": "Jak działają refresh tokeny i dlaczego access tokeny są krótkotrwałe?",
+      "a": "Access tokenu (JWT) zwykle nie da się odwołać przed exp, bo API waliduje go lokalnie bez pytania serwera. Dlatego ma krótki czas życia (np. 5–15 minut), a do uzyskania nowego służy długowieczny refresh token, wysyłany tylko do serwera autoryzacji, który można odwołać. Dobra praktyka to refresh token rotation: każde użycie wydaje nowy refresh token, a ponowne użycie starego (reuse detection) unieważnia całą rodzinę tokenów – sygnał kradzieży. W Angularze interceptor łapie 401, odświeża token raz (współdzieląc trwające odświeżanie) i ponawia żądanie.",
+      "tip": "Follow-up: 'jak wylogować użytkownika natychmiast?' – krótki exp + odwołanie refresh tokenu, a w razie potrzeby denylista jti."
+    },
+    {
+      "id": "web-019",
+      "topic": "OAuth/OIDC",
+      "level": 2,
+      "q": "Czym różni się OAuth 2.0 od OpenID Connect?",
+      "a": "OAuth 2.0 to framework autoryzacji delegowanej: aplikacja dostaje access token, by w imieniu użytkownika (lub swoim) wywołać API – OAuth nie mówi, kim jest użytkownik. OpenID Connect to warstwa tożsamości na OAuth 2.0: dodaje ID token (JWT z informacjami o użytkowniku, dla klienta), endpoint userinfo, scope openid i discovery (.well-known/openid-configuration). Krótko: OAuth – dostęp do API, OIDC – logowanie. Przykładowi dostawcy: Entra ID, Auth0, Keycloak, Duende IdentityServer.",
+      "tip": "ID token jest dla klienta, access token dla API – nie wysyłaj ID tokenu do API jako tokenu dostępowego."
+    },
+    {
+      "id": "web-020",
+      "topic": "OAuth/OIDC",
+      "level": 3,
+      "q": "Opisz flow Authorization Code z PKCE. Dlaczego nie Implicit?",
+      "a": "Klient generuje losowy code_verifier i liczy code_challenge = BASE64URL(SHA256(verifier)). Przekierowuje użytkownika do /authorize z code_challenge i method S256. Po zalogowaniu serwer autoryzacji wraca na redirect_uri z jednorazowym kodem. Klient wymienia kod na tokeny w /token, dołączając code_verifier – serwer sprawdza, czy pasuje do challenge. Dzięki temu przechwycony kod jest bezużyteczny. Implicit (token bezpośrednio w URL) jest przestarzały – tokeny wyciekały przez historię i nagłówek Referer; OAuth 2.1 go usuwa i wymaga PKCE dla wszystkich klientów.",
+      "code": "1. SPA:  code_verifier = random(43-128 znaków)\n         code_challenge = BASE64URL(SHA256(code_verifier))\n2. GET /authorize?response_type=code&client_id=spa&redirect_uri=...\n         &scope=openid%20profile%20api&state=xyz\n         &code_challenge=...&code_challenge_method=S256\n3. Redirect -> https://app/callback?code=AUTH_CODE&state=xyz\n4. POST /token  grant_type=authorization_code&code=AUTH_CODE\n         &code_verifier=...&redirect_uri=...",
+      "lang": "text",
+      "tip": "state chroni przed CSRF w procesie logowania, nonce (OIDC) przed replay ID tokenu."
+    },
+    {
+      "id": "web-021",
+      "topic": "Cookies",
+      "level": 2,
+      "q": "Jakie atrybuty ciasteczek są ważne dla bezpieczeństwa?",
+      "a": "HttpOnly – ciasteczko niedostępne dla JavaScriptu (document.cookie), co chroni sesję przed kradzieżą przez XSS. Secure – wysyłane tylko po HTTPS. SameSite: Strict – nie wysyłane przy żadnym żądaniu cross-site; Lax (Chrome/Edge stosują je domyślnie dla ciasteczek bez atrybutu SameSite, Firefox i Safari nie – dlatego SameSite ustawia się jawnie) – wysyłane przy nawigacji top-level GET, ale nie przy cross-site POST/fetch; None – zawsze, ale wymaga Secure. Do tego sensowne Path/Domain, krótki czas życia i prefiks __Host- (wymusza Secure, Path=/ i brak Domain).",
+      "code": "Set-Cookie: __Host-session=abc123; Path=/; Secure; HttpOnly; SameSite=Lax",
+      "lang": "text"
+    },
+    {
+      "id": "web-022",
+      "topic": "Autoryzacja",
+      "level": 2,
+      "q": "Jak działa policy-based authorization w ASP.NET Core?",
+      "a": "Polityka to nazwany zestaw wymagań (requirements). Proste polityki buduję z gotowych klocków: RequireRole, RequireClaim, RequireAuthenticatedUser, RequireAssertion. Dla własnej logiki definiuję IAuthorizationRequirement i AuthorizationHandler<T>, który wywołuje context.Succeed. Wszystkie wymagania polityki muszą być spełnione (AND), a dla jednego wymagania wystarczy, że jeden handler je spełni (OR). Politykę przypinam przez [Authorize(Policy = ...)] lub RequireAuthorization. To lepsze niż rozsiane po kodzie role, bo reguła jest w jednym miejscu.",
+      "code": "builder.Services.AddAuthorizationBuilder()\n    .AddPolicy(\"CanManageOrders\", p => p\n        .RequireAuthenticatedUser()\n        .RequireClaim(\"scope\", \"orders.write\"))\n    .AddPolicy(\"Adult\", p => p.AddRequirements(new MinimumAgeRequirement(18)));\n\nbuilder.Services.AddSingleton<IAuthorizationHandler, MinimumAgeHandler>();\n\napp.MapDelete(\"/api/orders/{id}\", DeleteOrder).RequireAuthorization(\"CanManageOrders\");",
+      "lang": "csharp"
+    },
+    {
+      "id": "web-023",
+      "topic": "Bezpieczeństwo",
+      "level": 3,
+      "q": "Czym jest Broken Access Control / IDOR i jak się przed nim bronić?",
+      "a": "Broken Access Control to pierwsze miejsce w OWASP Top 10. IDOR (Insecure Direct Object Reference) to jego klasyczny przypadek: GET /api/orders/123 zwraca zamówienie, choć należy do innego użytkownika – wystarczy zmienić id. [Authorize] sprawdza tylko, że ktoś jest zalogowany. Obrona: każde zapytanie filtruję po właścicielu/tenancie (np. WHERE UserId = currentUser albo globalny query filter w EF Core) lub używam resource-based authorization przez IAuthorizationService. Zasada deny by default i testy na dostęp do cudzych zasobów. Nieprzewidywalne id (GUID) utrudnia zgadywanie, ale nie zastępuje kontroli dostępu.",
+      "code": "app.MapGet(\"/api/orders/{id:int}\", async Task<Results<Ok<OrderDto>, NotFound>> (\n    int id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>\n{\n    var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);\n    var order = await db.Orders\n        .Where(o => o.Id == id && o.UserId == userId)   // kontrola własności\n        .Select(o => new OrderDto(o.Id, o.Total))\n        .FirstOrDefaultAsync(ct);\n    return order is null ? TypedResults.NotFound() : TypedResults.Ok(order);\n}).RequireAuthorization();",
+      "lang": "csharp"
+    },
+    {
+      "id": "web-024",
+      "topic": "Bezpieczeństwo",
+      "level": 1,
+      "q": "Czym jest SQL injection i jak się przed nim chronić w .NET?",
+      "a": "SQL injection to wstrzyknięcie fragmentu SQL przez dane wejściowe, gdy zapytanie jest sklejane ze stringów – atakujący może czytać lub modyfikować dowolne dane. Obrona: zawsze zapytania parametryzowane. EF Core w LINQ parametryzuje automatycznie; FromSql/ExecuteSql z interpolowanym stringiem też zamieniają wartości na parametry (FormattableString), natomiast FromSqlRaw ze sklejonym stringiem jest niebezpieczne. W Dapperze/ADO.NET – parametry. Nazw kolumn do sortowania nie da się sparametryzować, więc biorę je z whitelisty.",
+      "code": "// Bezpieczne – interpolacja zamieniana na parametr @p0\nvar users = await db.Users\n    .FromSql($\"SELECT * FROM Users WHERE Email = {email}\")\n    .ToListAsync(ct);\n\n// NIEBEZPIECZNE – sklejanie stringów\nvar bad = await db.Users\n    .FromSqlRaw(\"SELECT * FROM Users WHERE Email = '\" + email + \"'\")\n    .ToListAsync(ct);",
+      "lang": "csharp"
+    },
+    {
+      "id": "web-025",
+      "topic": "Bezpieczeństwo",
+      "level": 2,
+      "q": "Czym jest XSS i jak Angular przed nim chroni?",
+      "a": "Cross-Site Scripting to wstrzyknięcie złośliwego skryptu, który wykona się w przeglądarce ofiary (np. kradzież tokenu, akcje w jej imieniu). Rodzaje: stored, reflected, DOM-based. Angular domyślnie traktuje wszystkie wartości jako niezaufane: interpolacja escapuje tekst, a bindowanie do [innerHTML], URL-i czy stylów przechodzi przez sanitizer. Ryzyko pojawia się, gdy obchodzimy ochronę: bypassSecurityTrustHtml na danych użytkownika, bezpośrednia manipulacja DOM (ElementRef.nativeElement.innerHTML) czy szablony budowane z danych użytkownika. Dodatkowa warstwa to Content Security Policy.",
+      "code": "<!-- bezpieczne: tekst zostanie zescapowany -->\n<p>{{ comment.body }}</p>\n\n<!-- sanitizowane: skrypty i handlery zdarzeń zostaną usunięte -->\n<div [innerHTML]=\"comment.html\"></div>",
+      "lang": "html",
+      "tip": "Backend też powinien walidować/sanitizować HTML, jeśli go przyjmuje – inne klienty mogą nie mieć ochrony Angulara."
+    },
+    {
+      "id": "web-026",
+      "topic": "Bezpieczeństwo",
+      "level": 2,
+      "q": "Czym jest CSRF i kiedy API jest na niego podatne?",
+      "a": "Cross-Site Request Forgery to zmuszenie przeglądarki zalogowanego użytkownika do wysłania żądania do naszej aplikacji z obcej strony – przeglądarka automatycznie dołącza ciasteczka. Dotyczy więc uwierzytelniania opartego o cookies; API z tokenem Bearer w nagłówku Authorization nie jest podatne, bo obca strona nie może go dodać. Obrona: SameSite=Lax/Strict, antiforgery tokeny (synchronizer token lub double-submit cookie), sprawdzanie Origin, brak zmian stanu w GET. Angular HttpClient ma wbudowane wsparcie: czyta ciasteczko XSRF-TOKEN i wysyła nagłówek X-XSRF-TOKEN, a ASP.NET Core antiforgery można skonfigurować pod te nazwy.",
+      "tip": "Częsty błąd w odpowiedzi: 'CORS chroni przed CSRF'. Nie – proste żądania cross-site (np. formularz POST) wychodzą bez preflightu."
+    },
+    {
+      "id": "web-027",
+      "topic": "Bezpieczeństwo",
+      "level": 3,
+      "q": "Jak poprawnie przechowywać hasła?",
+      "a": "Nigdy otwartym tekstem ani szyfrowaniem odwracalnym, i nie szybkim hashem (MD5, SHA-1, SHA-256), bo GPU liczy miliardy takich hashy na sekundę. Używa się celowo wolnych funkcji z unikalną solą per użytkownik: Argon2id (rekomendacja OWASP), scrypt, bcrypt lub PBKDF2 z dużą liczbą iteracji. ASP.NET Core Identity PasswordHasher używa PBKDF2 (HMAC-SHA512, 100 000 iteracji od .NET 7) i zapisuje wersję formatu, więc przy logowaniu może zrehashować hasło mocniejszymi parametrami. Do porównań używa się porównania w stałym czasie. Najlepiej w ogóle nie trzymać haseł – delegować logowanie do identity providera.",
+      "code": "var hasher = new PasswordHasher<AppUser>();\nstring hash = hasher.HashPassword(user, password);\n\nvar result = hasher.VerifyHashedPassword(user, hash, providedPassword);\n// Success | SuccessRehashNeeded | Failed",
+      "lang": "csharp"
+    },
+    {
+      "id": "web-028",
+      "topic": "Sekrety",
+      "level": 2,
+      "q": "Jak zarządzasz sekretami (connection stringi, klucze API) w aplikacji .NET?",
+      "a": "Sekrety nigdy nie trafiają do repozytorium ani appsettings.json. Lokalnie używam User Secrets (dotnet user-secrets) – plik secrets.json w profilu użytkownika, poza repo, ładowany tylko w Development; nie jest szyfrowany, więc to narzędzie deweloperskie, nie produkcyjne. Na produkcji: Azure Key Vault (lub AWS Secrets Manager, HashiCorp Vault) z dostępem przez managed identity – bez żadnego hasła w konfiguracji – albo zmienne środowiskowe/sekrety orkiestratora. Dodatkowo skanowanie sekretów w CI i rotacja kluczy; wyciekły sekret trzeba unieważnić, a nie tylko usunąć z historii gita.",
+      "code": "dotnet user-secrets init\ndotnet user-secrets set \"ConnectionStrings:Default\" \"Host=localhost;Password=dev\"\n\n# Program.cs (produkcja):\n# builder.Configuration.AddAzureKeyVault(\n#     new Uri(\"https://my-vault.vault.azure.net/\"), new DefaultAzureCredential());",
+      "lang": "bash"
+    },
+    {
+      "id": "web-029",
+      "topic": "HTTPS",
+      "level": 2,
+      "q": "Czym jest HSTS i jak wymusić HTTPS w ASP.NET Core?",
+      "a": "HTTPS zapewnia poufność i integralność (TLS). Samo przekierowanie z HTTP na HTTPS (UseHttpsRedirection) zostawia lukę: pierwsze żądanie po HTTP można przechwycić (SSL stripping). HSTS (nagłówek Strict-Transport-Security) mówi przeglądarce: przez max-age łącz się z tą domeną tylko po HTTPS, nawet gdy użytkownik wpisze http://. includeSubDomains rozszerza to na subdomeny, a lista preload wbudowana w przeglądarki chroni nawet pierwszą wizytę. W ASP.NET Core UseHsts() włącza się poza Development (domyślny max-age to 30 dni).",
+      "code": "if (!app.Environment.IsDevelopment())\n{\n    app.UseHsts();   // Strict-Transport-Security: max-age=2592000\n}\napp.UseHttpsRedirection();",
+      "lang": "csharp",
+      "tip": "Dla czystego API (bez przeglądarek) przekierowanie HTTP->HTTPS bywa niewskazane – lepiej nie nasłuchiwać na HTTP wcale, żeby tokeny nie poszły otwartym tekstem."
+    },
+    {
+      "id": "web-030",
+      "topic": "Architektura",
+      "level": 3,
+      "q": "REST vs gRPC vs GraphQL vs SignalR/WebSockets – kiedy co?",
+      "a": "REST – domyślny wybór dla publicznych API i SPA: prosty, cache'owalny przez HTTP, wszędzie wspierany. gRPC – komunikacja service-to-service: HTTP/2, kontrakt w .proto, binarny Protobuf, generowane klienty, streaming dwukierunkowy, wysoka wydajność; w przeglądarce tylko przez gRPC-Web. GraphQL – gdy wiele różnych klientów potrzebuje różnych kształtów danych z wielu źródeł (rozwiązuje over/under-fetching), kosztem trudniejszego cache, ryzyka N+1 (DataLoader) i kosztownych zapytań; w .NET np. Hot Chocolate. SignalR (WebSockets z fallbackiem do SSE/long polling) – real-time push z serwera: powiadomienia, czat, dashboardy; przy wielu instancjach potrzebny backplane (Redis) lub Azure SignalR Service. Do prostego jednokierunkowego strumienia wystarczą Server-Sent Events.",
+      "tip": "Dobra odpowiedź wskazuje kryteria (klient, wydajność, kierunek komunikacji, cache, tooling), a nie 'X jest najlepszy'."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "web-q001",
+      "topic": "REST",
+      "level": 1,
+      "q": "Która metoda HTTP jest idempotentna, ale NIE jest bezpieczna (safe)?",
+      "options": [
+        "GET",
+        "PUT",
+        "POST",
+        "PATCH"
+      ],
+      "correct": 1,
+      "why": "PUT zmienia stan serwera (więc nie jest safe), ale wielokrotne wysłanie tej samej reprezentacji daje ten sam stan (idempotentny). GET jest i bezpieczny, i idempotentny. POST nie jest ani bezpieczny, ani idempotentny. PATCH nie ma gwarancji idempotencji (np. operacja 'dodaj element do listy')."
+    },
+    {
+      "id": "web-q002",
+      "topic": "Kody HTTP",
+      "level": 1,
+      "q": "Zalogowany użytkownik z rolą 'User' wywołuje endpoint wymagający roli 'Admin'. Jaki status powinien dostać?",
+      "options": [
+        "401 Unauthorized",
+        "500 Internal Server Error",
+        "400 Bad Request",
+        "403 Forbidden"
+      ],
+      "correct": 3,
+      "why": "Serwer wie, kim jest użytkownik (uwierzytelnienie się powiodło), ale nie ma on uprawnień – to 403. 401 oznacza brak lub niepoprawne uwierzytelnienie, a ponowne logowanie nic tu nie zmieni. 400 dotyczy błędnego żądania, a 500 błędu serwera."
+    },
+    {
+      "id": "web-q003",
+      "topic": "REST",
+      "level": 2,
+      "q": "Klient wysyła DELETE /api/items/5 – dostaje 204. Ponawia to samo żądanie i dostaje 404. Czy DELETE jest nadal idempotentny?",
+      "options": [
+        "Tak – idempotencja dotyczy stanu serwera po żądaniu, a ten jest identyczny (zasób nie istnieje); kod odpowiedzi może się różnić",
+        "Nie – drugie wywołanie powinno zwrócić 204, inaczej API łamie specyfikację HTTP",
+        "Tak, ale tylko jeśli serwer używa soft delete",
+        "Nie – idempotentna metoda musi zwracać zawsze ten sam kod statusu"
+      ],
+      "correct": 0,
+      "why": "RFC 9110 definiuje idempotencję przez zamierzony efekt na serwerze, a nie przez identyczną odpowiedź. Po pierwszym i każdym kolejnym DELETE zasobu nie ma. Zwracanie 404 lub 204 przy powtórce to decyzja projektowa – obie są poprawne. Sposób usuwania (soft/hard) nie ma znaczenia."
+    },
+    {
+      "id": "web-q004",
+      "topic": "CORS",
+      "level": 2,
+      "q": "Angular (https://app.example.com) wysyła do https://api.example.com żądanie POST z Content-Type: application/json. Co zrobi przeglądarka?",
+      "options": [
+        "Wyśle POST bez nagłówka Origin, bo to ta sama domena główna",
+        "Wyśle POST od razu, bo POST jest metodą prostą",
+        "Najpierw wyśle preflight OPTIONS, bo application/json nie jest 'prostym' Content-Type",
+        "Nie wyśle nic – subdomeny tej samej domeny nie mogą się komunikować"
+      ],
+      "correct": 2,
+      "why": "Origin to schemat + host + port, więc app. i api. to różne originy. POST jest prosty tylko z Content-Type application/x-www-form-urlencoded, multipart/form-data lub text/plain i bez niestandardowych nagłówków. application/json (podobnie jak nagłówek Authorization) wymusza preflight. Komunikacja jest możliwa, jeśli API odpowie odpowiednimi nagłówkami CORS."
+    },
+    {
+      "id": "web-q005",
+      "topic": "CORS",
+      "level": 2,
+      "q": "API nie ma skonfigurowanego CORS. Atakujący wywołuje je z własnego serwera przez curl. Co się stanie?",
+      "options": [
+        "Żądanie zostanie zablokowane przez Same-Origin Policy systemu operacyjnego",
+        "Serwer odrzuci żądanie z błędem CORS",
+        "Żądanie się powiedzie normalnie – CORS egzekwuje tylko przeglądarka, więc API musi mieć własne uwierzytelnianie i autoryzację",
+        "curl dostanie odpowiedź, ale bez body"
+      ],
+      "correct": 2,
+      "why": "Same-Origin Policy i CORS to mechanizmy przeglądarki chroniące użytkownika przed tym, by obca strona czytała dane w jego imieniu. Klienci spoza przeglądarki ich nie stosują. Brak nagłówków CORS nie powoduje po stronie serwera żadnego odrzucenia."
+    },
+    {
+      "id": "web-q006",
+      "topic": "JWT",
+      "level": 1,
+      "q": "Programista chce umieścić w payloadzie JWT numer PESEL użytkownika, 'bo token jest podpisany'. Co jest nie tak?",
+      "options": [
+        "Problemem jest tylko rozmiar tokenu",
+        "Podpis chroni przed modyfikacją, ale nie przed odczytem – payload to base64url, który każdy może zdekodować",
+        "Nic – podpisany token jest zaszyfrowany kluczem serwera",
+        "Payload JWT nie może zawierać liczb"
+      ],
+      "correct": 1,
+      "why": "Standardowy JWT (JWS) jest podpisany, a nie szyfrowany: header i payload to zwykłe base64url, dostępne np. w jwt.io czy narzędziach przeglądarki. Dane wrażliwe nie powinny trafiać do tokenu (ewentualnie JWE, ale to rzadkie i nie zwalnia z minimalizacji danych). Rozmiar ma znaczenie, ale to nie główny problem."
+    },
+    {
+      "id": "web-q007",
+      "topic": "JWT",
+      "level": 3,
+      "q": "Która konfiguracja walidacji JWT w API jest najbardziej niebezpieczna?",
+      "options": [
+        "Akceptowanie algorytmu wskazanego w nagłówku tokenu bez ograniczenia listy dozwolonych algorytmów",
+        "Pobieranie kluczy publicznych z endpointu JWKS identity providera",
+        "Ustawienie ClockSkew na 30 sekund zamiast domyślnych 5 minut",
+        "Walidowanie claimu aud dla konkretnego API"
+      ],
+      "correct": 0,
+      "why": "Jeśli API ufa polu alg z tokenu, możliwe są ataki 'alg: none' (brak podpisu) lub algorithm confusion (np. podpisanie HS256 kluczem publicznym RSA traktowanym jako sekret HMAC). Biblioteka musi wymuszać oczekiwane algorytmy i klucze. Krótszy ClockSkew, JWKS i walidacja audience to dobre praktyki."
+    },
+    {
+      "id": "web-q008",
+      "topic": "JWT",
+      "level": 2,
+      "q": "Jakie jest główne ryzyko przechowywania access tokenu w localStorage w aplikacji Angular?",
+      "options": [
+        "Token wygaśnie po zamknięciu karty",
+        "Przeglądarka automatycznie dołączy token do żądań na inne domeny (CSRF)",
+        "localStorage ma limit 4 KB, który JWT zawsze przekracza",
+        "Każdy skrypt na stronie (np. wstrzyknięty przez XSS lub złośliwą zależność) może odczytać i wykraść token"
+      ],
+      "correct": 3,
+      "why": "localStorage jest w pełni dostępny dla JavaScriptu z tego samego originu, więc XSS pozwala wyeksportować token i używać go poza przeglądarką ofiary. Dane w localStorage nie wygasają same (to cecha sessionStorage przy zamknięciu karty) i nie są dołączane automatycznie do żądań – dlatego to nie jest wektor CSRF. Limit localStorage to zwykle około 5 MB."
+    },
+    {
+      "id": "web-q009",
+      "topic": "OAuth/OIDC",
+      "level": 3,
+      "q": "Przed czym przede wszystkim chroni PKCE w flow Authorization Code?",
+      "options": [
+        "Przed użyciem przechwyconego kodu autoryzacyjnego – bez oryginalnego code_verifier nie da się go wymienić na tokeny",
+        "Przed XSS w aplikacji klienckiej",
+        "Przed kradzieżą access tokenu z localStorage",
+        "Przed atakami brute force na hasło użytkownika"
+      ],
+      "correct": 0,
+      "why": "Kod autoryzacyjny wraca w URL przekierowania i może zostać przechwycony (np. przez złośliwą aplikację z tym samym custom scheme, logi, historię). PKCE wiąże kod z sekretem (code_verifier) znanym tylko instancji klienta, która rozpoczęła flow. PKCE nie chroni przed XSS, kradzieżą zapisanego tokenu ani zgadywaniem haseł."
+    },
+    {
+      "id": "web-q010",
+      "topic": "Cookies",
+      "level": 2,
+      "q": "Backend ustawia Set-Cookie: session=abc; SameSite=None; HttpOnly – bez atrybutu Secure. Jak zachowają się nowoczesne przeglądarki?",
+      "options": [
+        "Zapiszą je normalnie – Secure jest tylko zaleceniem",
+        "Zapiszą je i potraktują jak SameSite=Strict",
+        "Odrzucą ciasteczko – SameSite=None wymaga atrybutu Secure",
+        "Zapiszą je i będą wysyłać tylko po HTTP"
+      ],
+      "correct": 2,
+      "why": "Chrome, Firefox i Safari wymagają, by ciasteczko z SameSite=None miało Secure; w przeciwnym razie jest odrzucane. To częsta przyczyna 'znikającej sesji' przy aplikacjach cross-site. SameSite=None oznacza wysyłanie także w kontekście cross-site, więc musi iść tylko po HTTPS."
+    },
+    {
+      "id": "web-q011",
+      "topic": "Bezpieczeństwo",
+      "level": 3,
+      "q": "Angular HttpClient ma włączoną domyślną ochronę XSRF, a backend ustawia ciasteczko XSRF-TOKEN. Kiedy Angular NIE doda nagłówka X-XSRF-TOKEN?",
+      "options": [
+        "Nigdy – nagłówek jest dodawany do każdego żądania",
+        "Przy żądaniach GET/HEAD oraz przy żądaniach do innego originu (np. absolutny URL do API na innej domenie)",
+        "Tylko gdy ciasteczko ma atrybut HttpOnly",
+        "Przy wszystkich żądaniach POST"
+      ],
+      "correct": 1,
+      "why": "Interceptor XSRF w Angularze dodaje nagłówek tylko do żądań modyfikujących (nie GET/HEAD) kierowanych na ten sam origin co aplikacja – żeby nie wysłać tokenu do obcego serwera. Starsze wersje po prostu pomijały wszystkie absolutne URL-e; nowsze porównują origin, więc absolutny URL do własnego originu też dostanie nagłówek. Ciasteczko XSRF-TOKEN musi być czytelne dla JS, więc nie może mieć HttpOnly – przy HttpOnly Angular nie odczyta go w ogóle, a nie 'tylko wtedy pominie'."
+    },
+    {
+      "id": "web-q012",
+      "topic": "Bezpieczeństwo",
+      "level": 2,
+      "q": "Co jest główną podatnością w tym endpoincie?",
+      "code": "app.MapGet(\"/api/invoices/{id:int}\", async (int id, AppDbContext db) =>\n    await db.Invoices.FindAsync(id) is { } inv\n        ? Results.Ok(inv)\n        : Results.NotFound())\n   .RequireAuthorization();",
+      "lang": "csharp",
+      "options": [
+        "SQL injection przez parametr id",
+        "IDOR / Broken Access Control – każdy zalogowany użytkownik pobierze dowolną fakturę, zmieniając id",
+        "Użycie FindAsync zamiast FirstOrDefaultAsync",
+        "Brak CORS"
+      ],
+      "correct": 1,
+      "why": "RequireAuthorization sprawdza tylko, czy użytkownik jest zalogowany. Brakuje weryfikacji, czy faktura należy do niego (lub jego firmy/tenanta). Należy filtrować po właścicielu albo użyć resource-based authorization. id jest typem int bindowanym przez framework i EF Core parametryzuje zapytanie, więc SQL injection tu nie ma; CORS i wybór metody zapytania nie są problemem bezpieczeństwa."
+    },
+    {
+      "id": "web-q013",
+      "topic": "Bezpieczeństwo",
+      "level": 2,
+      "q": "Które z poniższych wywołań EF Core jest podatne na SQL injection (name pochodzi od użytkownika)?",
+      "options": [
+        "db.Users.FromSqlRaw(\"SELECT * FROM Users WHERE Name = '\" + name + \"'\")",
+        "db.Database.ExecuteSql($\"DELETE FROM Users WHERE Name = {name}\")",
+        "db.Users.Where(u => u.Name == name)",
+        "db.Users.FromSql($\"SELECT * FROM Users WHERE Name = {name}\")"
+      ],
+      "correct": 0,
+      "why": "FromSqlRaw wykonuje przekazany string dosłownie, więc sklejenie z danymi użytkownika pozwala wstrzyknąć SQL. FromSql i ExecuteSql przyjmują FormattableString i zamieniają interpolowane wartości na parametry DbParameter. LINQ Where jest tłumaczone na zapytanie parametryzowane."
+    },
+    {
+      "id": "web-q014",
+      "topic": "Hasła",
+      "level": 1,
+      "q": "Którą metodę należy wybrać do przechowywania haseł użytkowników?",
+      "options": [
+        "MD5, bo i tak nikt nie zna oryginalnego hasła",
+        "Argon2id lub PBKDF2 z unikalną solą i dużą liczbą iteracji (np. PasswordHasher z ASP.NET Core Identity)",
+        "Szyfrowanie AES z kluczem w Key Vault",
+        "SHA-256 z jedną globalną solą"
+      ],
+      "correct": 1,
+      "why": "Do haseł służą celowo wolne funkcje KDF z solą per użytkownik, które utrudniają ataki słownikowe i GPU. SHA-256 jest zbyt szybki, a jedna globalna sól nie chroni przed atakiem na całą bazę naraz. Szyfrowanie jest odwracalne – kto zdobędzie klucz, ma wszystkie hasła. MD5 jest szybki i od dawna złamany."
+    },
+    {
+      "id": "web-q015",
+      "topic": "Caching",
+      "level": 2,
+      "q": "Klient wysyła GET z nagłówkiem If-None-Match: \"v7\", a aktualny ETag zasobu to nadal \"v7\". Jaka jest poprawna odpowiedź?",
+      "options": [
+        "204 No Content",
+        "412 Precondition Failed",
+        "200 OK z pełną treścią i tym samym ETagiem",
+        "304 Not Modified bez body – klient używa swojej kopii z cache"
+      ],
+      "correct": 3,
+      "why": "If-None-Match przy GET to warunek 'wyślij tylko jeśli się zmieniło'. Skoro ETag się zgadza, serwer odpowiada 304 bez treści, oszczędzając transfer. 412 jest odpowiedzią na niespełnione If-Match (przy zapisach), a 204 oznacza sukces bez treści, a nie walidację cache."
+    },
+    {
+      "id": "web-q016",
+      "topic": "Caching",
+      "level": 3,
+      "q": "Dwóch użytkowników edytuje ten sam produkt. Obaj pobrali go z ETag \"v3\". Pierwszy zapisuje (PUT z If-Match: \"v3\") – nowy ETag to \"v4\". Co powinien dostać drugi przy PUT z If-Match: \"v3\"?",
+      "options": [
+        "304 Not Modified",
+        "412 Precondition Failed – warunek If-Match nie jest spełniony, więc zapis nie nadpisze cudzych zmian",
+        "200 OK – ostatni zapis wygrywa",
+        "428 Precondition Required"
+      ],
+      "correct": 1,
+      "why": "To optimistic concurrency na poziomie HTTP: If-Match pozwala zapisać tylko wtedy, gdy zasób ma oczekiwaną wersję. Ponieważ wersja to już v4, serwer zwraca 412, a klient może pobrać aktualny stan i rozwiązać konflikt. 'Last write wins' to dokładnie problem, którego unikamy. 304 dotyczy warunkowych GET, a 428 zwraca się, gdy klient w ogóle nie wysłał wymaganego nagłówka warunkowego."
+    },
+    {
+      "id": "web-q017",
+      "topic": "Caching",
+      "level": 2,
+      "q": "Co oznacza nagłówek Cache-Control: no-cache?",
+      "options": [
+        "Odpowiedzi nie wolno zapisywać w żadnym cache",
+        "Odpowiedź może być cache'owana tylko przez przeglądarkę, nie przez CDN",
+        "Odpowiedź można zapisać w cache, ale przed każdym użyciem trzeba ją zwalidować z serwerem",
+        "Odpowiedź jest ważna do zamknięcia przeglądarki"
+      ],
+      "correct": 2,
+      "why": "no-cache wymusza rewalidację (np. przez ETag/If-None-Match), ale nie zabrania przechowywania – dlatego dobrze pasuje do index.html SPA. Zakaz zapisu to no-store. Ograniczenie do cache przeglądarki to private."
+    },
+    {
+      "id": "web-q018",
+      "topic": "HTTPS",
+      "level": 3,
+      "q": "Serwis ma HSTS z max-age=31536000, ale nie jest na liście preload. Który scenariusz pozostaje niechroniony?",
+      "options": [
+        "Pierwsza wizyta użytkownika (lub pierwsza po wygaśnięciu max-age) przez http:// – przeglądarka jeszcze nie zna polityki HSTS",
+        "Każda wizyta po wpisaniu adresu http://",
+        "Żądania do subdomen, mimo includeSubDomains",
+        "Żądania wykonywane przez aplikację Angular po zalogowaniu"
+      ],
+      "correct": 0,
+      "why": "Przeglądarka uczy się HSTS z nagłówka odebranego po HTTPS i zapamiętuje go na max-age. Przed pierwszym kontaktem nic nie wie, więc pierwsze żądanie po HTTP można przechwycić (SSL stripping). Lista preload wbudowana w przeglądarki usuwa tę lukę. Kolejne wizyty, subdomeny z includeSubDomains i żądania aplikacji są już chronione."
+    },
+    {
+      "id": "web-q019",
+      "topic": "Architektura",
+      "level": 1,
+      "q": "Panel administracyjny ma na bieżąco pokazywać nowe zamówienia bez odświeżania strony. Co wybierzesz w stacku .NET + Angular?",
+      "options": [
+        "GraphQL query wykonywane przy każdym kliknięciu",
+        "gRPC unary wywoływane z przeglądarki",
+        "Polling REST co 100 ms",
+        "SignalR – serwer wypycha zdarzenia do klientów przez WebSockets (z fallbackiem)"
+      ],
+      "correct": 3,
+      "why": "Potrzebna jest komunikacja push z serwera w czasie rzeczywistym – do tego służy SignalR (klient @microsoft/signalr w Angularze). gRPC w przeglądarce wymaga gRPC-Web i nie jest typowym wyborem dla UI. Agresywny polling marnuje zasoby, a GraphQL query to wciąż pull."
+    },
+    {
+      "id": "web-q020",
+      "topic": "Architektura",
+      "level": 2,
+      "q": "Dwa wewnętrzne mikroserwisy w .NET wymieniają bardzo dużo małych komunikatów i potrzebują silnie typowanego kontraktu oraz streamingu. Co jest najlepszym wyborem?",
+      "options": [
+        "gRPC – HTTP/2, binarny Protobuf, kontrakt .proto z generowanymi klientami i streaming",
+        "GraphQL z subskrypcjami",
+        "SignalR z backplane Redis",
+        "REST z JSON i HATEOAS"
+      ],
+      "correct": 0,
+      "why": "gRPC jest projektowany do wydajnej komunikacji service-to-service: kompaktowa serializacja, multipleksowanie HTTP/2, kontrakt-first i streaming w obu kierunkach. REST z JSON ma większy narzut i brak wymuszonego kontraktu, GraphQL służy głównie elastycznemu pobieraniu danych przez klientów, a SignalR – push do klientów, zwykle przeglądarek."
+    },
+    {
+      "id": "web-q021",
+      "topic": "Autoryzacja",
+      "level": 3,
+      "q": "Polityka 'CanEditDocument' ma jedno wymaganie EditRequirement, obsługiwane przez dwa handlery: IsOwnerHandler i IsEditorRoleHandler. Użytkownik jest edytorem, ale nie właścicielem; IsOwnerHandler po prostu nie wywołuje Succeed ani Fail. Jaki jest wynik?",
+      "options": [
+        "Dostęp odmówiony – brak wywołania Succeed oznacza automatyczny Fail",
+        "Wyjątek – jedno wymaganie nie może mieć dwóch handlerów",
+        "Dostęp przyznany – wystarczy, że jeden handler spełni wymaganie, a żaden nie wywołał Fail",
+        "Dostęp odmówiony – wszystkie handlery muszą wywołać Succeed"
+      ],
+      "correct": 2,
+      "why": "W ASP.NET Core wiele handlerów dla jednego wymagania działa jak OR: wymaganie jest spełnione, jeśli którykolwiek wywoła Succeed i żaden nie wywoła jawnie Fail. Niewywołanie niczego oznacza 'nie mam zdania'. Wszystkie wymagania w polityce muszą zostać spełnione (AND). Rejestrowanie wielu handlerów dla jednego wymagania jest zamierzonym wzorcem."
+    },
+    {
+      "id": "web-q022",
+      "topic": "Sekrety",
+      "level": 2,
+      "q": "Okazało się, że connection string do produkcyjnej bazy (z hasłem) od miesiąca jest w appsettings.json w publicznym repozytorium. Co jest najważniejszym pierwszym krokiem?",
+      "options": [
+        "Przenieść connection string do appsettings.Production.json",
+        "Przepisać historię gita (force push), co usuwa problem całkowicie",
+        "Usunąć plik w nowym commicie – to wystarczy",
+        "Natychmiast zmienić (zrotować) hasło do bazy, a potem przenieść sekret do Key Vault/zmiennych środowiskowych"
+      ],
+      "correct": 3,
+      "why": "Sekret, który był publiczny, trzeba uznać za skompromitowany – boty skanują GitHuba w ciągu minut. Usunięcie w nowym commicie zostawia go w historii, a przepisanie historii nie unieważnia kopii, które ktoś już pobrał. Inny plik appsettings w repo to ten sam problem. Kolejność: rotacja, przeniesienie do bezpiecznego magazynu, ewentualnie czyszczenie historii i skanowanie sekretów w CI."
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+<section class="view">
+  <div class="card stack" style="gap:16px">
+    <div class="hero">
+      <div>
+        <p class="eyebrow">Na dziś</p>
+        <div class="big">{{ total() }}<small>{{ total() | plural: 'karta' : 'karty' : 'kart' }}</small></div>
+        <p class="muted" style="margin-top:6px">{{ due() }} do powtórki · {{ fresh() }} {{ fresh() | plural: 'nowa' : 'nowe' : 'nowych' }}</p>
+      </div>
+      <div class="streak">
+        <b class="num">{{ store.streak() }}</b>
+        <span class="muted" style="font-size:.8rem">{{ store.streak() | plural: 'dzień' : 'dni' : 'dni' }} z rzędu</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn primary wide" [disabled]="!total()" (click)="session.startDaily()">
+        {{ total() ? 'Zacznij powtórkę' : 'Na dziś wszystko zrobione' }}
+      </button>
+      <button class="btn" (click)="session.startQuickQuiz()">Szybki test <small>10</small></button>
+      <button class="btn" (click)="session.startInterview()">Próbna rozmowa</button>
+      @if (wrongCount()) {
+        <button class="btn ghost wide" (click)="session.startWrongQuiz()">Popraw błędy z testów <small>{{ wrongCount() }}</small></button>
+      }
+    </div>
+  </div>
+
+  @if (weak().length) {
+    <div class="card stack">
+      <div class="row" style="justify-content:space-between">
+        <h3>Twoja ściąga na dziś</h3>
+        <a class="linkbtn" routerLink="/sciagi" [queryParams]="{ tryb: 'moja' }">Cała ściąga</a>
+      </div>
+      <div class="list sheetlist">
+        @for (w of weak(); track w.cat + w.topic) {
+          <a class="li" [routerLink]="['/sciaga', w.cat, w.topic]">
+            <span style="min-width:0"><app-cat-tag [cat]="w.cat" /><br /><b>{{ w.topic }}</b></span>
+            <span class="muted">→</span>
+          </a>
+        }
+      </div>
+    </div>
+  }
+
+  <div class="stack">
+    <div class="row" style="justify-content:space-between">
+      <h2>Obszary</h2>
+      <span class="muted num" style="font-size:.85rem">{{ seen() }}/{{ content.cards().length }} kart poznanych</span>
+    </div>
+    @for (g of groups(); track g.name) {
+      <div class="group-h"><span [class]="'dot ' + g.kind"></span><span class="eyebrow">{{ g.name }}</span></div>
+      <div class="card cats" style="padding:4px 14px">
+        @for (r of g.rows; track r.cat) {
+          <button class="cat" (click)="openCategory(r.cat)">
+            <span [class]="'dot ' + g.kind"></span>
+            <span style="min-width:0">
+              <span class="name">{{ content.catName(r.cat) }}</span>
+              <span class="meta" style="display:block">
+                {{ r.n }} kart · {{ r.qn }} pytań
+                @if (r.due) { · <b style="color:var(--warn)">{{ r.due }} do powtórki</b> }
+                @if (r.acc !== null) { · test {{ r.acc }}% }
+              </span>
+              <span class="bar"><span class="m" [style.width.%]="r.pm"></span><span class="l" [style.width.%]="r.pl"></span></span>
+            </span>
+            <span class="pct">{{ r.pm | number: '1.0-0' }}%</span>
+          </button>
+        }
+      </div>
+    }
+    <p class="muted" style="font-size:.8rem">
+      <span style="color:var(--good)">■</span> opanowane (powtórka za 7+ dni) · <span style="color:var(--warn)">■</span> w nauce
+    </p>
+  </div>
+</section>
