@@ -1,0 +1,925 @@
+{
+  "module": "ops",
+  "title": "DevOps, testy i jakość",
+  "order": 6,
+  "lessons": [
+    {
+      "id": "ops-docker",
+      "cat": "devops",
+      "title": "Docker dla aplikacji .NET + Angular",
+      "level": 2,
+      "minutes": 14,
+      "intro": "Nauczysz się, czym jest obraz i kontener (na prostych analogiach), jak krok po kroku napisać Dockerfile dla API w .NET i dla Angulara z nginx oraz jak odpalić całość z bazą i Redisem jedną komendą. Na rozmowach o Dockera pytają prawie zawsze – i od razu słychać różnicę między „umiem wpisać docker run” a „rozumiem, co się dzieje pod spodem”.",
+      "sections": [
+        {
+          "h": "Po co to jest: obraz i kontener na chłopski rozum",
+          "text": "Znasz problem „u mnie działa”? Na Twoim laptopie jest .NET 10, na serwerze .NET 9, a u kolegi brakuje jakiejś biblioteki. Docker rozwiązuje to tak: pakujesz aplikację **razem ze wszystkim, czego potrzebuje**, do jednej paczki.\n\nAnalogia z kuchni:\n- **Obraz (image)** to słoik z gotowym, zapakowanym daniem i przepisem na etykiecie. Nie da się go zmienić – można tylko zrobić nowy słoik.\n- **Kontener (container)** to danie wyjęte ze słoika i podgrzane na talerzu. Z jednego słoika (obrazu) możesz nałożyć wiele porcji (kontenerów).\n- **Rejestr (registry)**, np. Docker Hub albo Azure Container Registry, to sklep ze słoikami. `docker push` = odstawiasz słoik do sklepu, `docker pull` = kupujesz.\n\nW języku programisty: **obraz to klasa, kontener to instancja tej klasy**.\n\nKontener to **nie** maszyna wirtualna. Maszyna wirtualna to cały osobny komputer z własnym systemem – jak osobny dom. Kontener to zwykły proces na Twoim systemie, który ma „klapki na oczach”: widzi tylko swoje pliki, swoje procesy i swoją sieć. To jak pokój w mieszkaniu – wspólne fundamenty (jądro systemu, czyli kernel), ale osobne drzwi. Dlatego kontener startuje w ułamku sekundy."
+        },
+        {
+          "h": "Co z tego wynika w praktyce",
+          "text": "Trzy rzeczy, które trzeba zapamiętać od razu:\n\n1. **Kontener jest jednorazowy.** Wszystko, co zapisze w swoich plikach, znika, gdy go usuniesz – jak notatki na tablicy, którą ktoś zmazuje. Dane, które mają przetrwać, trzymasz w **volume** (wydzielony „dysk” podpięty do kontenera) albo w bazie danych czy blob storage.\n2. **Obraz się nie zmienia.** Ma etykietę, czyli **tag** (np. `shop-api:1.4.2`). Ten sam obraz idzie na test i na produkcję – zmienia się tylko konfiguracja, np. adres bazy.\n3. **Logi wypisuj na konsolę** (stdout), a nie do pliku. Plik zniknie razem z kontenerem, a konsolę platforma (Kubernetes, Azure) zbierze sama.\n\nŹle → dobrze w nazewnictwie: `shop-api:latest` na produkcji (nie wiadomo, która to wersja, rollback to zgadywanie) → `shop-api:1.4.2` albo tag z numerem commita (`shop-api:3f2a91c`)."
+        },
+        {
+          "h": "Warstwy i cache – dlaczego kolejność linijek ma znaczenie",
+          "text": "**Dockerfile** to przepis na obraz: lista kroków wykonywanych od góry do dołu. Każdy krok typu `COPY` albo `RUN` tworzy **warstwę** – coś jak kolejną kalkę położoną na poprzedniej.\n\nDocker pamięta warstwy (**cache**). Analogia: robisz lasagne warstwa po warstwie. Jeśli zmienisz trzecią warstwę, wszystkie nad nią musisz ułożyć od nowa – ale dwóch spodnich nie ruszasz. Tak samo Docker: zmiana w jednym kroku = przebudowa tego kroku **i wszystkich kolejnych**.\n\nDlatego ustawiamy kroki od „rzadko się zmienia” do „często się zmienia”:\n1. Kopiujesz tylko plik projektu (`.csproj` albo `package.json`) – zmienia się rzadko.\n2. Pobierasz paczki (`dotnet restore` / `npm ci`) – długo trwa, więc niech się cache'uje.\n3. Dopiero teraz kopiujesz cały kod – zmienia się przy każdym commicie.\n\nŹle: `COPY . .` na początku, potem `restore`. Każda zmiana jednej linijki w `.cs` = pobieranie wszystkich paczek od nowa (minuty). Dobrze: najpierw `.csproj` i `restore`, potem `COPY . .` (sekundy).\n\nPułapka: **usunięcie pliku w późniejszym kroku nie zmniejsza obrazu**. Plik dalej leży na niższej kalce. To samo z hasłem – skopiowane, a potem usunięte, nadal da się wyciągnąć z obrazu."
+        },
+        {
+          "h": "Dockerfile dla API w .NET krok po kroku (multi-stage)",
+          "text": "Do zbudowania aplikacji potrzebujesz ciężkiego **SDK** (kompilator, narzędzia – ok. 800 MB). Do jej uruchomienia wystarczy lekki **runtime** (`aspnet` – ok. 200 MB). **Multi-stage build** to Dockerfile z dwoma etapami: w pierwszym budujesz, w drugim bierzesz tylko gotowy wynik. Jak warsztat i salon: w warsztacie są wszystkie narzędzia, do salonu wynosisz tylko gotowy mebel.\n\nCo robi poniższy plik, linijka po linijce:\n1. `FROM ... sdk:10.0 AS build` – etap „warsztat” na obrazie z SDK.\n2. Kopiujemy tylko pliki `.csproj` i robimy `restore` – to się cache'uje.\n3. `COPY . .` i `dotnet publish` – kompilacja do katalogu `/app/publish`.\n4. `FROM ... aspnet:10.0` – nowy, czysty etap „salon”.\n5. `COPY --from=build` – przenosimy tylko skompilowane DLL-ki. SDK i kod źródłowy zostają w warsztacie.\n6. `USER $APP_UID` – aplikacja nie działa jako administrator (root).\n\nFakty, o które lubią dopytać:\n- Od **.NET 8** obrazy słuchają na porcie **8080**, nie 80. Po migracji stare `-p 5000:80` przestaje działać.\n- Od .NET 8 w obrazie jest zwykły użytkownik **`app`**. Zwykły użytkownik nie może używać portów poniżej 1024 – stąd zmiana na 8080.\n- W **.NET 10** obrazy domyślnie bazują na **Ubuntu** (24.04), a nie na Debianie. Są też warianty **chiseled** – „odchudzone” obrazy bez shella i menedżera pakietów, więc atakujący ma mniej narzędzi.",
+          "code": "FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build\nWORKDIR /src\nCOPY [\"Shop.Api/Shop.Api.csproj\", \"Shop.Api/\"]\nCOPY [\"Shop.Domain/Shop.Domain.csproj\", \"Shop.Domain/\"]\nRUN dotnet restore \"Shop.Api/Shop.Api.csproj\"\nCOPY . .\nRUN dotnet publish \"Shop.Api/Shop.Api.csproj\" -c Release -o /app/publish --no-restore\n\nFROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final\nWORKDIR /app\nCOPY --from=build /app/publish .\nUSER $APP_UID\nEXPOSE 8080\nENTRYPOINT [\"dotnet\", \"Shop.Api.dll\"]",
+          "lang": "dockerfile"
+        },
+        {
+          "h": "Angular w kontenerze: zbuduj w Node, podawaj przez nginx",
+          "text": "Zbudowany Angular to tylko pliki statyczne: HTML, JS, CSS. Do ich podawania nie potrzeba Node.js – wystarczy prosty serwer plików, np. **nginx** (lekki serwer WWW). Ten sam schemat warsztat → salon:\n1. Etap `node`: `npm ci` (instalacja paczek dokładnie wg `package-lock.json`) i `ng build`.\n2. Etap `nginx`: kopiujesz wynik z `dist/<projekt>/browser` do katalogu nginx.\n\nPułapka nr 1 – **odświeżenie strony daje 404**. Użytkownik jest na `/orders/15` i wciska F5. Przeglądarka pyta nginx o plik `/orders/15`, a takiego pliku nie ma – tę ścieżkę zna tylko Angular. Rozwiązanie: powiedz nginx „jak nie znajdziesz pliku, oddaj `index.html`” (`try_files $uri $uri/ /index.html;`). Angular się załaduje i sam pokaże właściwą stronę.\n\nPułapka nr 2 – **konfiguracja per środowisko**. `environment.ts` jest „wypiekany” w pliki JS w czasie buildu. Żeby zmienić adres API, trzeba by budować osobny obraz na każde środowisko. Dwa popularne wyjścia:\n- aplikacja przy starcie pobiera `/config.json`, a ten plik podmieniasz przy wdrożeniu;\n- frontend i API są pod jednym adresem, a nginx przekazuje `/api` do backendu – frontend używa ścieżek względnych i nie musi znać adresu API.",
+          "code": "FROM node:22-alpine AS build\nWORKDIR /app\nCOPY package.json package-lock.json ./\nRUN npm ci\nCOPY . .\nRUN npx ng build --configuration production\n\nFROM nginx:1.27-alpine\nCOPY nginx.conf /etc/nginx/conf.d/default.conf\nCOPY --from=build /app/dist/shop-web/browser /usr/share/nginx/html\nEXPOSE 80\n\n# nginx.conf (fragment):\n# location / { try_files $uri $uri/ /index.html; }",
+          "lang": "dockerfile"
+        },
+        {
+          "h": ".dockerignore i docker compose: całość jedną komendą",
+          "text": "`COPY . .` kopiuje cały katalog. Bez pliku **`.dockerignore`** (działa jak `.gitignore`, ale dla Dockera) do obrazu trafiają `bin/`, `obj/`, `node_modules/`, `.git`, a czasem `.env` z hasłami. Efekt: wolny build, psujący się cache i wyciek sekretów. Wpisz tam co najmniej: `**/bin`, `**/obj`, `**/node_modules`, `.git`, `.env`.\n\n**Docker Compose** to plik YAML, w którym opisujesz kilka kontenerów naraz: API, bazę, Redisa. Komenda `docker compose up` stawia wszystko razem – jak zamówienie zestawu obiadowego zamiast każdego dania osobno.\n\nCo trzeba wiedzieć:\n- Kontenery widzą się **po nazwie serwisu**. Źle: `Host=localhost` (dla kontenera API „localhost” to on sam!). Dobrze: `Host=db`.\n- `depends_on` czeka tylko, aż kontener bazy **wystartuje**, a nie aż baza będzie **gotowa**. To jak wejść do restauracji, gdy kucharz dopiero zakłada fartuch. Rozwiązanie: `healthcheck` w bazie + `condition: service_healthy`, a w aplikacji ponawianie połączeń (w EF Core `EnableRetryOnFailure`).\n- `${DB_PASSWORD}` bierze wartość z pliku `.env`, który nie trafia do repo.",
+          "code": "services:\n  api:\n    build: ./src/Shop.Api\n    ports: [\"5080:8080\"]\n    environment:\n      ConnectionStrings__Db: \"Host=db;Database=shop;Username=shop;Password=${DB_PASSWORD}\"\n      ConnectionStrings__Redis: \"redis:6379\"\n    depends_on:\n      db: { condition: service_healthy }\n      redis: { condition: service_started }\n  db:\n    image: postgres:17\n    environment: { POSTGRES_USER: shop, POSTGRES_PASSWORD: \"${DB_PASSWORD}\", POSTGRES_DB: shop }\n    volumes: [\"dbdata:/var/lib/postgresql/data\"]\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U shop\"]\n      interval: 5s\n  redis:\n    image: redis:7-alpine\nvolumes:\n  dbdata:",
+          "lang": "yaml"
+        },
+        {
+          "h": "Konfiguracja i sekrety: źle → dobrze",
+          "text": "Zasada: **jeden obraz, różne ustawienia z zewnątrz**. Jak jeden ekspres do kawy, do którego wsypujesz różną kawę – nie kupujesz nowego ekspresu na każdy smak.\n\nW .NET to proste, bo konfiguracja czyta zmienne środowiskowe. Podwójny podkreślnik zamienia się na dwukropek: `ConnectionStrings__Db` = `ConnectionStrings:Db` w `appsettings.json`. Środowisko wybierasz zmienną `ASPNETCORE_ENVIRONMENT`.\n\nŹle (sekret zostaje w obrazie na zawsze):\n- `ENV DB_PASSWORD=tajne` w Dockerfile;\n- `ARG DB_PASSWORD` (argumenty budowania widać w historii obrazu);\n- `appsettings.Production.json` z hasłem skopiowany do obrazu.\n\nDobrze:\n- lokalnie: plik `.env` (w `.gitignore`) albo User Secrets;\n- na serwerze: zmienne lub sekrety wstrzykiwane przy starcie (Kubernetes Secrets);\n- najlepiej: **Azure Key Vault** (sejf na hasła w chmurze), do którego aplikacja loguje się przez **Managed Identity** (tożsamość nadaną przez Azure – bez żadnego hasła w kodzie).\n\nJeśli sekret jest potrzebny tylko **w trakcie budowania** (np. token do prywatnego feedu NuGet), użyj `RUN --mount=type=secret,...` – sekret jest dostępny tylko w tej jednej linijce i nie zostaje w żadnej warstwie."
+        },
+        {
+          "h": "Najczęstsze błędy i jak o tym mówić na rozmowie",
+          "text": "Szybka lista „nie rób tak”:\n- tag `latest` na produkcji;\n- obraz SDK jako końcowy (ogromny, z kompilatorem);\n- aplikacja jako root – w .NET 8+ wystarczy `USER $APP_UID`;\n- brak `.dockerignore`, `COPY . .` przed `restore`;\n- logi do pliku w kontenerze;\n- `localhost` w connection stringu w compose;\n- `BackgroundService` ignorujący `CancellationToken` – przy zatrzymaniu kontener dostaje sygnał SIGTERM („kończ pracę”) i ma kilka–kilkadziesiąt sekund na posprzątanie.\n\nJak opowiedzieć o Dockerze na rozmowie – schemat **co → dlaczego → konfiguracja → pułapki**: „Mamy multi-stage Dockerfile: SDK do budowania, aspnet do uruchomienia, więc obraz jest mały i bez narzędzi. Angular budujemy w Node i serwujemy z nginx z fallbackiem do index.html. Ten sam obraz idzie na wszystkie środowiska, konfiguracja przez zmienne, sekrety z Key Vault przez Managed Identity. Po przejściu na .NET 8 pilnowaliśmy portu 8080 i użytkownika app”.\n\nNiuanse seniorskie: skanowanie obrazów pod kątem podatności (Trivy, Defender for Containers), obrazy chiseled, budowanie obrazu bez Dockerfile przez `dotnet publish /t:PublishContainer`, trimming i Native AOT (mniejszy obraz, ale ograniczenia przy refleksji)."
+        }
+      ],
+      "takeaways": [
+        "Obraz to niezmienny szablon z warstw, kontener to uruchomiona instancja z cienką warstwą zapisu – dane trwałe trzymaj w volume lub usłudze zewnętrznej.",
+        "Kolejność instrukcji decyduje o cache: najpierw pliki zależności i restore, potem kod źródłowy.",
+        "Multi-stage build: SDK do kompilacji, aspnet (lub chiseled) do uruchomienia; Angular budujesz w Node i serwujesz statycznie z nginx z fallbackiem do index.html.",
+        "Od .NET 8 obrazy słuchają na 8080 i mają nieuprzywilejowanego użytkownika app (USER $APP_UID); w .NET 10 domyślną bazą jest Ubuntu.",
+        "Jeden obraz na wszystkie środowiska – konfiguracja przez zmienne środowiskowe (Sekcja__Klucz), sekrety z zewnętrznego magazynu, nigdy w ENV/ARG/warstwach.",
+        ".dockerignore przyspiesza build i chroni przed wyciekiem bin/obj/node_modules/.env do obrazu.",
+        "W compose serwisy widzą się po nazwie; depends_on bez healthchecka nie czeka na gotowość bazy."
+      ],
+      "interview": [
+        "Czym różni się obraz od kontenera, a kontener od maszyny wirtualnej?",
+        "Jak napiszesz Dockerfile dla API w .NET, żeby obraz był mały i build szybki?",
+        "Jak przekazujesz konfigurację i sekrety do kontenera? Czego unikać?",
+        "Jak zkonteneryzować aplikację Angular i obsłużyć konfigurację per środowisko?",
+        "Po migracji na .NET 8 aplikacja w kontenerze przestała odpowiadać na porcie 80 – dlaczego?"
+      ],
+      "exam": [
+        {
+          "id": "ops-docker-e1",
+          "q": "Zmieniasz jeden plik .cs, a build obrazu za każdym razem od nowa pobiera wszystkie pakiety NuGet. Jaka jest najbardziej prawdopodobna przyczyna?",
+          "options": [
+            "Brak instrukcji EXPOSE w Dockerfile",
+            "COPY . . wykonywane przed dotnet restore, więc każda zmiana kodu unieważnia warstwę restore",
+            "Użycie obrazu aspnet zamiast sdk w etapie końcowym",
+            "Brak USER $APP_UID w Dockerfile"
+          ],
+          "correct": 1,
+          "why": "Cache warstw unieważnia się od pierwszej zmienionej instrukcji. Kopiując najpierw tylko .csproj i robiąc restore, a dopiero potem resztę kodu, zmiany w .cs nie ruszają warstwy z pakietami."
+        },
+        {
+          "id": "ops-docker-e2",
+          "q": "W jednym RUN pobierasz archiwum 300 MB, w kolejnym RUN je usuwasz. Co dzieje się z rozmiarem obrazu?",
+          "options": [
+            "Obraz zmniejsza się o 300 MB, bo plik został usunięty",
+            "Docker automatycznie scala warstwy i usuwa plik",
+            "Obraz nadal zawiera te 300 MB, bo plik jest w warstwie, w której go dodano",
+            "Build kończy się błędem, bo nie można usuwać plików z poprzednich warstw"
+          ],
+          "correct": 2,
+          "why": "Warstwy są addytywne – usunięcie w późniejszej warstwie tylko maskuje plik. Trzeba sprzątać w tym samym RUN albo użyć multi-stage."
+        },
+        {
+          "id": "ops-docker-e3",
+          "q": "Po aktualizacji obrazu bazowego z .NET 6 na .NET 8 mapowanie -p 5000:80 przestało działać. Dlaczego?",
+          "options": [
+            "Obrazy ASP.NET Core od .NET 8 domyślnie słuchają na porcie 8080",
+            ".NET 8 wymaga HTTPS i wyłącza HTTP",
+            "Port 80 jest zarezerwowany dla nginx w obrazie aspnet",
+            "Kestrel od .NET 8 słucha tylko na localhost"
+          ],
+          "correct": 0,
+          "why": "Od .NET 8 domyślny port w obrazach to 8080 (ASPNETCORE_HTTP_PORTS), m.in. dlatego, że proces działa jako nieuprzywilejowany użytkownik app, który nie może bindować portów poniżej 1024."
+        },
+        {
+          "id": "ops-docker-e4",
+          "q": "Użytkownik odświeża w przeglądarce adres /orders/15 aplikacji Angular serwowanej przez nginx i dostaje 404. Co naprawi problem?",
+          "options": [
+            "Włączenie HashLocationStrategy jest jedynym rozwiązaniem",
+            "Dodanie EXPOSE 4200 w Dockerfile",
+            "Zbudowanie aplikacji w trybie development",
+            "Konfiguracja try_files $uri $uri/ /index.html; w nginx"
+          ],
+          "correct": 3,
+          "why": "Routing SPA działa po stronie klienta; serwer dla nieznanych ścieżek musi zwracać index.html, a resztą zajmie się Angular Router."
+        },
+        {
+          "id": "ops-docker-e5",
+          "q": "Który sposób przekazania hasła do bazy jest poprawny dla obrazu używanego na wielu środowiskach?",
+          "options": [
+            "ENV DB_PASSWORD=... w Dockerfile",
+            "ARG DB_PASSWORD przekazany przez --build-arg",
+            "Zmienna środowiskowa lub sekret wstrzyknięty przy uruchomieniu (najlepiej z Key Vault przez Managed Identity)",
+            "Plik appsettings.Production.json z hasłem skopiowany do obrazu"
+          ],
+          "correct": 2,
+          "why": "ENV, ARG i pliki w obrazie zostają w metadanych/warstwach. Konfiguracja i sekrety mają przychodzić z zewnątrz w czasie uruchomienia."
+        },
+        {
+          "id": "ops-docker-e6",
+          "q": "W docker compose API ma connection string Host=localhost;Port=5432, a Postgres działa jako serwis db. API nie może się połączyć. Dlaczego?",
+          "options": [
+            "W kontenerze localhost wskazuje na sam kontener API; trzeba użyć nazwy serwisu db",
+            "Postgres w compose nasłuchuje tylko na IPv6",
+            "Trzeba dodać ports: 5432:5432 w serwisie api",
+            "Compose nie wspiera połączeń między kontenerami bez Kubernetes"
+          ],
+          "correct": 0,
+          "why": "Każdy kontener ma własny namespace sieciowy. W sieci compose serwisy są osiągalne po nazwie (DNS), więc Host=db."
+        },
+        {
+          "id": "ops-docker-e7",
+          "q": "Masz depends_on: [db] w serwisie api, a mimo to API przy starcie pada z błędem połączenia do bazy. Co jest najlepszą poprawką?",
+          "options": [
+            "Zamienić kolejność serwisów w pliku YAML",
+            "Dodać healthcheck do db, użyć condition: service_healthy i dodatkowo retry połączeń w aplikacji",
+            "Dodać restart: always do serwisu db",
+            "Uruchomić bazę w tym samym kontenerze co API"
+          ],
+          "correct": 1,
+          "why": "Samo depends_on czeka tylko na start kontenera, nie na gotowość bazy. Healthcheck + service_healthy rozwiązuje start, a retry w aplikacji (np. EnableRetryOnFailure) chroni przed chwilowymi awariami."
+        },
+        {
+          "id": "ops-docker-e8",
+          "q": "Dlaczego frontend Angular z environment.ts utrudnia podejście „jeden obraz na wszystkie środowiska”?",
+          "options": [
+            "Bo nginx nie potrafi serwować plików TypeScript",
+            "Bo environment.ts jest czytany przez Node przy każdym żądaniu",
+            "Bo Angular nie wspiera zmiennych środowiskowych w przeglądarce w ogóle, więc konfiguracja jest niemożliwa",
+            "Bo wartości z environment.ts są wkompilowane w bundle w czasie buildu, więc zmiana wymaga przebudowy"
+          ],
+          "correct": 3,
+          "why": "environment.ts jest podmieniany na etapie buildu (fileReplacements). Rozwiązaniem jest runtime config (np. /config.json ładowany przy starcie) albo ścieżki względne z proxy /api."
+        },
+        {
+          "id": "ops-docker-e9",
+          "q": "Jaki jest główny cel pliku .dockerignore?",
+          "options": [
+            "Określa, które obrazy bazowe Docker ma ignorować przy pull",
+            "Wyklucza pliki z build contextu – szybszy build, stabilniejszy cache i brak wycieku np. .env czy bin/obj do obrazu",
+            "Wyłącza wybrane instrukcje Dockerfile w trybie debug",
+            "Określa, które porty nie mają być publikowane"
+          ],
+          "correct": 1,
+          "why": ".dockerignore działa jak .gitignore dla build contextu wysyłanego do daemona/BuildKit."
+        },
+        {
+          "id": "ops-docker-e10",
+          "q": "Potrzebujesz tokena do prywatnego feedu NuGet tylko w czasie buildu. Co jest najbezpieczniejsze?",
+          "options": [
+            "RUN --mount=type=secret z BuildKit, tak by token nie trafił do żadnej warstwy",
+            "ARG NUGET_TOKEN, bo build-args nie są zapisywane",
+            "Skopiowanie nuget.config z tokenem i usunięcie go w następnym RUN",
+            "ENV NUGET_TOKEN w etapie build, bo multi-stage i tak go nie skopiuje"
+          ],
+          "correct": 0,
+          "why": "Secret mount udostępnia sekret tylko na czas danej instrukcji i nie zapisuje go w warstwie. ARG jest widoczny w historii, a usunięcie w kolejnym RUN nie usuwa pliku z warstwy."
+        }
+      ]
+    },
+    {
+      "id": "ops-k8s-cicd",
+      "cat": "devops",
+      "title": "Kubernetes i CI/CD w pigułce",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Zrozumiesz, po co jest Kubernetes i co oznaczają jego podstawowe klocki (Pod, Deployment, Service, Ingress, ConfigMap, Secret), a potem przejdziesz krok po kroku drogę kodu od commita do produkcji w pipeline CI/CD. Od programisty .NET nikt nie oczekuje administrowania klastrem, ale oczekuje, że wie, co się dzieje z jego aplikacją po merge'u do main.",
+      "sections": [
+        {
+          "h": "Po co Kubernetes: kierownik zmiany zamiast ręcznego pilnowania",
+          "text": "Docker uruchamia kontenery na jednej maszynie. Na produkcji chcesz więcej: kilka kopii aplikacji na kilku serwerach, automatyczny restart po awarii, rozkładanie ruchu i wdrażanie nowej wersji bez przerwy w działaniu. Program, który to ogarnia, to **orkiestrator**, a standardem jest **Kubernetes** (w skrócie K8s). W chmurze kupujesz go jako usługę: AKS w Azure, EKS w AWS, GKE w Google.\n\nAnalogia: Kubernetes to **kierownik zmiany w fabryce**. Nie mówisz mu „uruchom maszynę 3, a jak się zepsuje, to włącz maszynę 7”. Mówisz: „ma działać 3 maszyny z produktem w wersji 1.4.2”. Kierownik sam pilnuje, żeby tak było – jak ktoś zachoruje, bierze zastępstwo.\n\nTo się nazywa podejście **deklaratywne**: opisujesz, *jaki stan chcesz*, a nie *jakie kroki wykonać*. Opis zapisujesz w plikach YAML (**manifestach**) i wysyłasz do klastra komendą `kubectl apply` albo z pipeline'u. Wariant **GitOps**: narzędzie w klastrze (Argo CD, Flux) samo co chwilę porównuje klaster z repozytorium i wyrównuje różnice."
+        },
+        {
+          "h": "Podstawowe klocki: Pod, Deployment, Service, Ingress",
+          "text": "Analogia z restauracji sieciowej:\n- **Pod** – jeden kucharz przy stanowisku. Najmniejsza jednostka: zwykle jeden kontener z własnym adresem IP. Kucharze się zmieniają (Pody są tworzone i usuwane), więc nie przywiązujesz się do konkretnego.\n- **Deployment** – grafik zmiany: „ma być 3 kucharzy od burgerów, w wersji przepisu 1.4.2”. Pilnuje liczby kopii (**replik**) i podmienia je przy zmianie wersji.\n- **Service** – okienko wydawania z numerem. Klient nie szuka konkretnego kucharza, tylko idzie do okienka „burgery”, a ono przekazuje zamówienie któremuś z wolnych. Technicznie: stały adres i nazwa (np. `shop-api`) dla grupy Podów wybranych po **etykietach** (labels, np. `app: shop-api`).\n- **Ingress** – recepcja przy wejściu do budynku: „`/api` – proszę do okienka API, reszta – do frontendu”. Obsługuje też HTTPS. Potrzebuje zainstalowanego **Ingress Controllera** (np. NGINX). Nowszy następca to **Gateway API**.\n\nTypowa droga żądania w aplikacji .NET + Angular:\n1. Przeglądarka woła `shop.example.com/api/orders`.\n2. Ingress widzi `/api` i przekazuje do Service `shop-api`.\n3. Service wybiera jeden z 3 Podów API.\n4. Pod łączy się z bazą (często poza klastrem, np. Azure SQL).\n\nWarto znać z nazwy: **StatefulSet** (dla aplikacji ze stałym dyskiem, np. baz), **DaemonSet** (po jednym Podzie na każdym serwerze, np. zbieracz logów), **Job/CronJob** (zadanie jednorazowe/cykliczne)."
+        },
+        {
+          "h": "Konfiguracja i sprawdzanie zdrowia (probes)",
+          "text": "**ConfigMap** to zwykłe ustawienia (adresy, flagi), **Secret** – wrażliwe (hasła, klucze). Oba wstrzykujesz do Poda jako zmienne środowiskowe albo pliki. Pułapka: Secret jest domyślnie tylko zakodowany **base64** – to nie szyfrowanie, tylko „zapis innym alfabetem”. Kto ma dostęp, ten odczyta. Dlatego w praktyce dochodzą uprawnienia (RBAC), szyfrowanie i często Azure Key Vault.\n\n**Probes** (sondy) to pytania, które Kubernetes co chwilę zadaje aplikacji. Analogia z kelnerem:\n- **liveness** – „czy żyjesz?”. Kelner nie odpowiada → zemdlał → wymieniamy go (restart kontenera).\n- **readiness** – „czy możesz teraz przyjmować zamówienia?”. Kelner mówi „nie, kuchnia nie działa” → przestajemy mu kierować gości, ale go nie zwalniamy (Pod wypada z Service, bez restartu).\n- **startup** – „czy już się przebrałeś?”. Dla wolno startujących aplikacji – dopóki nie odpowie „tak”, pozostałe pytania czekają.\n\nŹle: liveness sprawdza bazę danych. Baza ma 2 minuty awarii → wszystkie Pody API są restartowane w kółko, choć restart nic nie da. Dobrze: liveness sprawdza tylko „proces działa”, a bazę sprawdza readiness. W ASP.NET Core robisz dwa endpointy health checków: `/health/live` i `/health/ready`."
+        },
+        {
+          "h": "Zasoby i manifest Deploymentu linijka po linijce",
+          "text": "**requests** to „rezerwacja stolika”: tyle CPU i pamięci Pod ma zagwarantowane, a Kubernetes na tej podstawie wybiera serwer, na którym go postawi. **limits** to „górna granica rachunku”:\n- przekroczysz limit **pamięci** → kontener zostaje zabity (status **OOMKilled**, od out of memory);\n- przekroczysz limit **CPU** → nie zabija, tylko spowalnia (throttling).\n\n.NET widzi limity kontenera i dopasowuje do nich pracę Garbage Collectora.\n\nCo mówi manifest poniżej:\n1. `replicas: 3` – mają działać 3 kopie.\n2. `selector` / `labels` – Deployment rozpoznaje „swoje” Pody po etykiecie `app: shop-api`.\n3. `strategy` – jak podmieniać wersje (o tym w następnej sekcji).\n4. `image` – konkretny tag obrazu z rejestru.\n5. `envFrom` – wczytaj wszystkie ustawienia z ConfigMapy.\n6. `resources` – rezerwacja i limit.\n7. `readinessProbe` / `livenessProbe` – pod jakie adresy pytać o zdrowie.",
+          "code": "apiVersion: apps/v1\nkind: Deployment\nmetadata: { name: shop-api }\nspec:\n  replicas: 3\n  selector: { matchLabels: { app: shop-api } }\n  strategy: { rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }\n  template:\n    metadata: { labels: { app: shop-api } }\n    spec:\n      containers:\n      - name: api\n        image: myacr.azurecr.io/shop-api:1.4.2\n        ports: [{ containerPort: 8080 }]\n        envFrom: [{ configMapRef: { name: shop-api-config } }]\n        resources:\n          requests: { cpu: 100m, memory: 256Mi }\n          limits: { memory: 512Mi }\n        readinessProbe: { httpGet: { path: /health/ready, port: 8080 } }\n        livenessProbe: { httpGet: { path: /health/live, port: 8080 } }",
+          "lang": "yaml"
+        },
+        {
+          "h": "Wymiana wersji: rolling update, rollback, Helm",
+          "text": "**Rolling update** to wymiana kucharzy w trakcie pracy, bez zamykania restauracji. Przy `maxSurge: 1` i `maxUnavailable: 0`:\n1. Kubernetes dokłada 1 nowy Pod (w nowej wersji) – teraz są 4.\n2. Czeka, aż nowy Pod odpowie „gotowy” na readiness.\n3. Wyłącza 1 stary Pod – znowu 3.\n4. Powtarza, aż wszystkie są nowe.\n\nBez readiness probe krok 2 nie ma sensu – ruch trafi do Poda, który jeszcze się nie rozgrzał, i użytkownicy zobaczą błędy.\n\n**Rollback** (powrót do poprzedniej wersji): `kubectl rollout undo deployment/shop-api`. Ważne: w trakcie wymiany przez chwilę działają **obie wersje naraz** – kod i baza muszą to znieść.\n\n**Helm** to „NuGet dla Kubernetesa”. **Chart** to paczka szablonów YAML z parametrami w pliku `values.yaml`. Ten sam chart instalujesz na dev, test i prod, podając inne wartości (liczba replik, adresy). Helm pamięta historię i umie `helm rollback`. Alternatywa: **Kustomize** – bazowe pliki plus „nakładki” per środowisko."
+        },
+        {
+          "h": "CI/CD: droga kodu od commita do produkcji",
+          "text": "**CI** (Continuous Integration, ciągła integracja) – każdy push i Pull Request jest automatycznie budowany i testowany; czerwony wynik blokuje merge. **CD** (Continuous Delivery/Deployment) – każda zmiana jest gotowa do wdrożenia jednym zatwierdzeniem (Delivery) albo wdraża się sama (Deployment). **Pipeline** to taśma produkcyjna, która robi to automatycznie.\n\nEtapy krok po kroku:\n1. **Build** – `dotnet build`, `npm ci`, `ng build`, linter.\n2. **Test** – testy jednostkowe i integracyjne, raport pokrycia, analiza statyczna (np. SonarQube).\n3. **Publish** – budowa obrazu, tag = numer commita, skan podatności, wysłanie do rejestru.\n4. **Deploy** – na dev automatycznie, na prod po zatwierdzeniu przez człowieka.\n\nZłota zasada: **zbuduj raz, wdrażaj wiele razy**. Źle: osobny build na test i na prod (mogą wyjść różne obrazy). Dobrze: jeden obraz przechodzi przez kolejne środowiska, zmienia się tylko konfiguracja.\n\n**GitHub Actions**: plik w `.github/workflows/`, `on:` mówi kiedy, `jobs:` co; `needs:` ustala kolejność, `environment: production` włącza zatwierdzanie. Do Azure loguj się przez **OIDC** – zaufanie między GitHubem a Azure zamiast hasła w sekretach. **Azure Pipelines**: plik `azure-pipelines.yml`, struktura `stages → jobs → steps`, gotowe zadania (`DotNetCoreCLI@2`, `Docker@2`) i Environments z zatwierdzeniami. Pojęcia te same, inna składnia.",
+          "code": "on:\n  push: { branches: [main] }\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-dotnet@v4\n        with: { dotnet-version: '10.0.x' }\n      - run: dotnet test --configuration Release\n      - run: docker build -t myacr.azurecr.io/shop-api:${{ github.sha }} .\n      # logowanie do rejestru przez OIDC, potem docker push\n  deploy-prod:\n    needs: build\n    runs-on: ubuntu-latest\n    environment: production   # czeka na zatwierdzenie\n    steps:\n      - run: helm upgrade --install shop ./chart --set image.tag=${{ github.sha }}",
+          "lang": "yaml"
+        },
+        {
+          "h": "Strategie wdrożeń i migracje bazy",
+          "text": "Cztery sposoby wypuszczania nowej wersji:\n- **Rolling** – wymiana po kolei (patrz wyżej). Tanio, ale przez chwilę działają dwie wersje.\n- **Blue-green** – dwie identyczne „sceny”: niebieska gra, zielona się szykuje. Gotowe? Przełączasz cały ruch. Problem? Przełączasz z powrotem. W Azure App Service to **deployment slots** i „swap”.\n- **Canary** – „kanarek w kopalni”: nowa wersja dostaje np. 5% ruchu, patrzysz na błędy, potem 25%, 100%.\n- **Feature flags** – kod jest wdrożony, ale funkcja wyłączona przełącznikiem. Oddziela wdrożenie od udostępnienia użytkownikom.\n\n**Migracje bazy** psują wdrożenia najczęściej. Źle: `Database.Migrate()` przy starcie, gdy działają 4 repliki – 4 Pody naraz próbują zmieniać schemat. Dobrze: osobny krok w pipeline przed wdrożeniem – **migration bundle** (`dotnet ef migrations bundle`, plik wykonywalny z migracjami) albo skrypt idempotentny (można go puścić wiele razy bez szkody).\n\nZmiana schematu musi działać ze starą i nową wersją kodu jednocześnie. Wzorzec **expand/contract** (rozszerz/zwęź) przy zmianie nazwy kolumny:\n1. Dodaj nową kolumnę (nullable).\n2. Wdróż kod, który pisze do obu.\n3. Przepisz stare dane.\n4. W kolejnym wydaniu usuń starą kolumnę."
+        },
+        {
+          "h": "Diagnostyka i jak o tym mówić na rozmowie",
+          "text": "Pod się nie uruchamia? Kolejność działań:\n1. `kubectl get pods` – jaki status? `ImagePullBackOff` = nie da się pobrać obrazu (zły tag, brak uprawnień). `CrashLoopBackOff` = aplikacja startuje i pada w kółko.\n2. `kubectl describe pod <nazwa>` – zdarzenia: OOMKilled, nieudane probes.\n3. `kubectl logs <nazwa> --previous` – logi z poprzedniego, „umarłego” uruchomienia.\n4. Jeśli nowa wersja jest zła: `kubectl rollout undo` albo `helm rollback`.\n\nNa rozmowie opowiadaj **przepływem**: „Po merge'u pipeline buduje i testuje, publikuje obraz otagowany numerem commita do rejestru, wdraża na dev automatycznie, a na produkcję po zatwierdzeniu. Migracje idą osobnym krokiem i są wstecznie kompatybilne. Rolling update z readiness probe, rollback przez Helm”. To pokazuje, że rozumiesz cały cykl, nawet jeśli klastrem zarządzał zespół platformowy.\n\nNiuanse seniorskie: GitOps (Argo CD), autoskalowanie (HPA – dokładanie Podów przy większym obciążeniu), PodDisruptionBudget, sekrety przez External Secrets z Key Vault, Gateway API zamiast Ingress."
+        }
+      ],
+      "takeaways": [
+        "Kubernetes działa deklaratywnie: opisujesz stan pożądany, a kontrolery w pętli go utrzymują.",
+        "Deployment zarządza replikami Podów, Service daje im stały adres po etykietach, Ingress kieruje ruch HTTP z zewnątrz.",
+        "Liveness restartuje martwy proces (bez sprawdzania zależności), readiness wyłącza Pod z ruchu; bez readiness rolling update powoduje błędy.",
+        "requests służą do schedulingu, limits to sufit – przekroczenie pamięci kończy się OOMKilled, CPU – throttlingiem.",
+        "Secret w K8s to tylko base64; produkcyjnie szyfrowanie, RBAC lub zewnętrzny Key Vault.",
+        "Pipeline: build → test → publish (jeden obraz otagowany SHA) → deploy przez środowiska z zatwierdzeniami; do chmury loguj się przez OIDC.",
+        "Migracje bazy jako osobny krok i wstecznie kompatybilne (expand/contract), bo w czasie wdrożenia działają dwie wersje."
+      ],
+      "interview": [
+        "Jaka jest różnica między liveness a readiness probe i co w nich sprawdzasz?",
+        "Opisz pipeline CI/CD, z którym pracowałeś – jakie etapy, jak wygląda wdrożenie na produkcję?",
+        "Jak wdrożyć zmianę schematu bazy bez przestoju?",
+        "Czym różnią się strategie rolling, blue-green i canary?",
+        "Pod jest w stanie CrashLoopBackOff – jak to zdiagnozujesz?"
+      ],
+      "exam": [
+        {
+          "id": "ops-k8s-cicd-e1",
+          "q": "Liveness probe API sprawdza połączenie z bazą danych. Baza ma 2-minutową awarię. Co się stanie?",
+          "options": [
+            "Nic, probes dotyczą tylko startu kontenera",
+            "Kubernetes przełączy ruch na zapasową bazę",
+            "Kubelet zacznie restartować wszystkie Pody API, choć restart nie pomoże i pogorszy sytuację",
+            "Pody zostaną tylko wyjęte z Service do czasu powrotu bazy"
+          ],
+          "correct": 2,
+          "why": "Nieudana liveness probe powoduje restart kontenera. Zależności zewnętrzne sprawdza się w readiness, która jedynie wyjmuje Pod z ruchu."
+        },
+        {
+          "id": "ops-k8s-cicd-e2",
+          "q": "Do czego służy obiekt Service w Kubernetesie?",
+          "options": [
+            "Daje stały adres i nazwę DNS dla zmiennego zbioru Podów wybranych po etykietach",
+            "Uruchamia zadanie cykliczne w klastrze",
+            "Przechowuje konfigurację aplikacji",
+            "Definiuje liczbę replik i strategię aktualizacji"
+          ],
+          "correct": 0,
+          "why": "Pody mają zmienne IP; Service zapewnia stabilny punkt dostępu i load balancing po selektorze etykiet. Repliki definiuje Deployment."
+        },
+        {
+          "id": "ops-k8s-cicd-e3",
+          "q": "Kontener .NET z limitem pamięci 512Mi regularnie znika ze statusem OOMKilled. Co to oznacza?",
+          "options": [
+            "Kontener przekroczył limit CPU i został spowolniony",
+            "Proces przekroczył limit pamięci i został zabity przez system",
+            "Readiness probe zwróciła błąd",
+            "Obraz nie mógł zostać pobrany z rejestru"
+          ],
+          "correct": 1,
+          "why": "Przekroczenie limitu pamięci kończy się zabiciem kontenera (OOMKilled). Przekroczenie limitu CPU powoduje tylko throttling."
+        },
+        {
+          "id": "ops-k8s-cicd-e4",
+          "q": "Jak domyślnie przechowywane są dane w obiekcie Secret w Kubernetesie?",
+          "options": [
+            "Zaszyfrowane kluczem z Azure Key Vault",
+            "Hashowane bcryptem, więc nie da się ich odczytać",
+            "Przechowywane wyłącznie w pamięci węzła",
+            "Zakodowane base64, co nie jest szyfrowaniem"
+          ],
+          "correct": 3,
+          "why": "Base64 to tylko kodowanie. Bezpieczeństwo zapewnia RBAC, szyfrowanie etcd albo zewnętrzny magazyn sekretów."
+        },
+        {
+          "id": "ops-k8s-cicd-e5",
+          "q": "Dlaczego w pipeline zaleca się „zbuduj raz, wdrażaj wiele razy”?",
+          "options": [
+            "Bo budowanie obrazu jest płatne w GitHub Actions",
+            "Bo na produkcję trafia dokładnie ten sam, przetestowany artefakt, a środowiska różnią się tylko konfiguracją",
+            "Bo Kubernetes nie pozwala na różne obrazy w różnych namespace'ach",
+            "Bo Helm wymaga jednego obrazu na chart"
+          ],
+          "correct": 1,
+          "why": "Przebudowa na każde środowisko może dać inny wynik (inne zależności, inny kod). Promowanie jednego artefaktu daje powtarzalność."
+        },
+        {
+          "id": "ops-k8s-cicd-e6",
+          "q": "API ma 4 repliki i przy starcie wywołuje Database.Migrate(). Jakie jest główne ryzyko?",
+          "options": [
+            "Kilka Podów jednocześnie próbuje wykonać migracje, co grozi konfliktami i błędami wdrożenia",
+            "Migrate() nie działa w kontenerach Linux",
+            "EF Core zablokuje odczyty do końca dnia",
+            "Readiness probe zawsze zwróci sukces"
+          ],
+          "correct": 0,
+          "why": "Równoległe migracje przy starcie wielu instancji to wyścig. Lepiej uruchomić migration bundle lub skrypt idempotentny jako osobny krok/Job przed deployem."
+        },
+        {
+          "id": "ops-k8s-cicd-e7",
+          "q": "Chcesz zmienić nazwę kolumny bez przestoju, przy rolling update. Które podejście jest poprawne?",
+          "options": [
+            "Zmienić nazwę kolumny w jednej migracji i wdrożyć nowy kod w tym samym kroku",
+            "Wyłączyć aplikację na czas migracji – inaczej się nie da",
+            "Expand/contract: dodać nową kolumnę, pisać do obu, przenieść dane, starą usunąć w kolejnym wydaniu",
+            "Użyć liveness probe, żeby stare Pody nie dostawały ruchu"
+          ],
+          "correct": 2,
+          "why": "W czasie rolling update działa stara i nowa wersja kodu, więc schemat musi obsługiwać obie. Expand/contract rozkłada zmianę na kompatybilne kroki."
+        },
+        {
+          "id": "ops-k8s-cicd-e8",
+          "q": "Czym canary release różni się od blue-green?",
+          "options": [
+            "Canary wymaga dwóch pełnych środowisk, blue-green nie",
+            "Blue-green działa tylko w Kubernetesie",
+            "Nie różnią się – to synonimy",
+            "Canary kieruje do nowej wersji najpierw mały procent ruchu i zwiększa go stopniowo, blue-green przełącza cały ruch naraz"
+          ],
+          "correct": 3,
+          "why": "Blue-green to przełączenie 100% ruchu między dwoma środowiskami (w App Service: sloty). Canary to stopniowe zwiększanie udziału nowej wersji przy obserwacji metryk."
+        },
+        {
+          "id": "ops-k8s-cicd-e9",
+          "q": "Jaka jest zaleta logowania z GitHub Actions do Azure przez OIDC (federated credentials)?",
+          "options": [
+            "Pipeline nie przechowuje długożyjącego sekretu; dostaje krótkotrwały token powiązany z repo/środowiskiem",
+            "OIDC jest szybsze przy budowaniu obrazów",
+            "OIDC pozwala pominąć zatwierdzenia środowiska production",
+            "OIDC szyfruje obrazy w rejestrze"
+          ],
+          "correct": 0,
+          "why": "Federacja tożsamości eliminuje hasła/klucze w sekretach repo – mniej rzeczy może wyciec i nie trzeba ich rotować."
+        },
+        {
+          "id": "ops-k8s-cicd-e10",
+          "q": "Rolling update z maxUnavailable: 0 i maxSurge: 1 – jak przebiega?",
+          "options": [
+            "Wszystkie stare Pody są usuwane, potem tworzone nowe",
+            "Tworzony jest jeden nowy Pod, po przejściu readiness usuwany jeden stary, i tak dalej – pojemność nie spada",
+            "Nowa wersja dostaje 1% ruchu",
+            "Kubernetes tworzy drugi klaster i przełącza DNS"
+          ],
+          "correct": 1,
+          "why": "maxSurge pozwala na jeden dodatkowy Pod ponad liczbę replik, a maxUnavailable: 0 zabrania zmniejszenia liczby gotowych Podów."
+        }
+      ]
+    },
+    {
+      "id": "ops-azure",
+      "cat": "devops",
+      "title": "Azure dla dewelopera .NET",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Poznasz najważniejsze usługi Azure, z którymi spotyka się programista .NET: gdzie uruchomić aplikację (App Service, Container Apps, Functions), jak trzymać sekrety bez haseł (Key Vault + Managed Identity), jak monitorować (Application Insights), jak przesyłać wiadomości (Service Bus, Event Grid) i gdzie trzymać dane. Na rozmowach .NET Azure pojawia się bardzo często – zwykle jako „gdzie byś to wdrożył i dlaczego?”.",
+      "sections": [
+        {
+          "h": "Chmura na chłopski rozum: IaaS, PaaS, serverless",
+          "text": "Chmura to wynajmowanie cudzych komputerów i gotowych usług zamiast kupowania własnych serwerów. Różne poziomy „ile robisz sam” najłatwiej porównać do jedzenia:\n- **IaaS** (Infrastructure as a Service) – wynajmujesz pustą kuchnię: maszyna wirtualna, sam instalujesz system, aktualizacje, runtime. Najwięcej kontroli, najwięcej pracy.\n- **PaaS** (Platform as a Service) – wynajmujesz kuchnię z kucharzem, przynosisz tylko przepis: wrzucasz swoją aplikację, a Azure dba o serwer, system i łatki. Przykład: App Service.\n- **Serverless** – zamawiasz na wynos i płacisz za porcję: kod uruchamia się, gdy coś się wydarzy, a płacisz za wykonania. Przykład: Azure Functions.\n\nDla dewelopera .NET najważniejsza decyzja to zwykle: **App Service, Container Apps czy Functions?** Kilka pojęć, które przewiną się w całej lekcji:\n- **Resource group** – folder, w którym trzymasz powiązane zasoby (np. wszystko dla „shop-prod”); usuwasz folder = usuwasz wszystko.\n- **Region** – centrum danych, np. Poland Central, West Europe.\n- **Subskrypcja** – konto rozliczeniowe, na które idą koszty."
+        },
+        {
+          "h": "Gdzie uruchomić aplikację: App Service, Container Apps, Functions",
+          "text": "**App Service** – klasyczny hosting aplikacji webowych. Wrzucasz zbudowane API (albo kontener) i działa pod adresem `twojaapka.azurewebsites.net`. Płacisz za **App Service Plan**, czyli „wynajęte maszyny”, na których może działać kilka aplikacji. Ważne funkcje:\n- **deployment slots** – druga kopia aplikacji (np. „staging”), na którą wdrażasz, sprawdzasz i robisz **swap** z produkcją. Rollback = swap z powrotem.\n- autoskalowanie (więcej instancji przy większym ruchu), własne domeny, certyfikaty.\n\n**Container Apps** – uruchamia Twoje kontenery bez zarządzania Kubernetesem (pod spodem jest K8s, ale go nie widzisz). Umie **skalować do zera** (brak ruchu = brak kosztów) i skalować się wg zdarzeń, np. długości kolejki (mechanizm KEDA). Dobra opcja dla mikroserwisów i workerów.\n\n**Azure Functions** – kawałek kodu odpalany przez **trigger** (wyzwalacz): żądanie HTTP, wiadomość w kolejce, nowy plik w Storage, harmonogram (timer). Jak dzwonek do drzwi – kod „budzi się”, gdy ktoś zadzwoni. **Bindings** pozwalają deklaratywnie czytać i zapisywać dane bez pisania klienta. W nowych projektach używa się modelu **isolated worker** (funkcje w osobnym procesie, pełna kontrola nad wersją .NET); stary model in-process jest wygaszany.\n\nJak wybrać – prosta ściąga:\n1. Zwykłe API/MVC, mały zespół, szybki start → **App Service**.\n2. Masz już kontenery, kilka serwisów, chcesz skalować do zera → **Container Apps**.\n3. Zadania wyzwalane zdarzeniami, nieregularny ruch (przetwarzanie plików, nocne joby) → **Functions**.\n4. Duży system, wiele zespołów, potrzebujesz pełnej kontroli → **AKS** (zarządzany Kubernetes)."
+        },
+        {
+          "h": "Sekrety bez haseł: Key Vault + Managed Identity",
+          "text": "**Azure Key Vault** to sejf w chmurze na hasła, klucze i certyfikaty. Ale żeby otworzyć sejf, aplikacja potrzebuje… klucza. Gdzie go trzymać? To problem „kury i jajka”.\n\nRozwiązanie to **Managed Identity** (tożsamość zarządzana). Analogia: zamiast dawać pracownikowi kartkę z kodem do drzwi, dajesz mu **identyfikator z jego zdjęciem** – drzwi rozpoznają go same. Azure nadaje Twojej aplikacji (App Service, Container App, Function) tożsamość, a Ty w Key Vault dajesz tej tożsamości uprawnienie „może czytać sekrety”. W kodzie **nie ma żadnego hasła**.\n\nDwa rodzaje:\n- **system-assigned** – przypisana do jednego zasobu, znika razem z nim;\n- **user-assigned** – osobny zasób, który można podpiąć do kilku aplikacji.\n\nW kodzie używasz `DefaultAzureCredential` z biblioteki `Azure.Identity`. To „sprytny klucz”, który próbuje po kolei różnych źródeł: na serwerze – Managed Identity, na Twoim laptopie – konta, którym zalogowałeś się w Visual Studio lub `az login`. Ten sam kod działa lokalnie i w chmurze.\n\nUprawnienia nadaje się przez **RBAC** (Role-Based Access Control – dostęp na podstawie ról), np. rola „Key Vault Secrets User”. Ta sama Managed Identity może też logować się do Azure SQL, Storage czy Service Bus – i tam też znikają hasła z connection stringów.",
+          "code": "using Azure.Identity;\n\nvar builder = WebApplication.CreateBuilder(args);\nvar credential = new DefaultAzureCredential();\n\n// Sekrety z Key Vault trafiają do zwykłego IConfiguration\nbuilder.Configuration.AddAzureKeyVault(\n    new Uri(\"https://shop-kv.vault.azure.net/\"), credential);\n\n// Sekret \"ConnectionStrings--Db\" w Key Vault = klucz \"ConnectionStrings:Db\"\nvar dbConn = builder.Configuration.GetConnectionString(\"Db\");",
+          "lang": "csharp"
+        },
+        {
+          "h": "Monitoring: Application Insights",
+          "text": "**Application Insights** to „czarna skrzynka” Twojej aplikacji – część usługi **Azure Monitor**. Zbiera automatycznie:\n- **requesty** – każde żądanie HTTP, czas, kod odpowiedzi;\n- **dependencies** – wywołania bazy, innych API, Service Bus;\n- **exceptions** – wyjątki ze stack trace;\n- **logi** (traces) z `ILogger` i **metryki** (CPU, pamięć, liczba żądań).\n\nNajciekawsze funkcje: **Application Map** (rysunek, kto kogo woła i gdzie są błędy), **Transaction search** (całe żądanie przez kilka serwisów), **Live Metrics**, alerty (np. „więcej niż 5% błędów 500 przez 5 minut → mail/Teams”). Zapytania piszesz w języku **KQL** (Kusto Query Language) – coś jak SQL do logów.\n\nObecnie zalecany sposób podłączenia to **OpenTelemetry** (otwarty standard telemetrii) z dystrybucją Azure Monitor: pakiet `Azure.Monitor.OpenTelemetry.AspNetCore` i jedna linijka `builder.Services.AddOpenTelemetry().UseAzureMonitor();`. Połączenie wskazuje zmienna `APPLICATIONINSIGHTS_CONNECTION_STRING`.\n\nPułapka: wszystko kosztuje. Logowanie każdego żądania na poziomie Debug w produkcji potrafi dać rachunek większy niż za hosting. Używa się **sampling** (zapisywanie tylko części telemetrii) i rozsądnych poziomów logów."
+        },
+        {
+          "h": "Komunikacja: Service Bus, Event Grid (i Event Hubs)",
+          "text": "Gdy serwisy mają się komunikować bez czekania na siebie, używasz wiadomości. Trzy usługi, które łatwo pomylić:\n\n**Service Bus** – niezawodna **poczta polecona** dla ważnych poleceń biznesowych („utwórz fakturę dla zamówienia 15”).\n- **Queue** (kolejka) – jeden nadawca, jeden odbiorca przetwarza wiadomość.\n- **Topic + subscriptions** – jedna wiadomość trafia do wielu subskrybentów (publish/subscribe).\n- **Dead-letter queue** – „przegródka na listy nie do doręczenia”: wiadomości, których nie udało się przetworzyć po kilku próbach, lądują tam do analizy.\n- Do tego sesje (kolejność w ramach klucza), wykrywanie duplikatów, transakcje.\n\n**Event Grid** – **system powiadomień**, jak dzwonek „przyszła paczka”. Lekkie zdarzenia o tym, że coś się stało (np. „w Blob Storage pojawił się nowy plik”), rozsyłane do odbiorców (Function, webhook). Event Grid sam **wypycha** (push) zdarzenie do odbiorcy.\n\n**Event Hubs** – **taśmociąg** na ogromne strumienie danych (telemetria, logi, kliknięcia – miliony zdarzeń na sekundę), odpowiednik Kafki.\n\nŚciąga: polecenie biznesowe, które nie może zginąć → Service Bus. Reakcja na zdarzenie w Azure → Event Grid. Strumień danych → Event Hubs.\n\nOdbierając wiadomość z Service Bus, potwierdzasz ją (**complete**) dopiero **po** przetworzeniu. Jeśli aplikacja padnie w trakcie, wiadomość wróci do kolejki. Konsekwencja: wiadomość może przyjść **więcej niż raz**, więc obsługa powinna być **idempotentna** (dwukrotne przetworzenie daje ten sam efekt).",
+          "code": "await using var client = new ServiceBusClient(\n    \"shop-sb.servicebus.windows.net\", new DefaultAzureCredential());\n\n// Wysyłanie\nServiceBusSender sender = client.CreateSender(\"orders\");\nawait sender.SendMessageAsync(new ServiceBusMessage(\n    BinaryData.FromObjectAsJson(new { OrderId = 15 })) { MessageId = \"order-15\" });\n\n// Odbieranie\nServiceBusProcessor processor = client.CreateProcessor(\"orders\");\nprocessor.ProcessMessageAsync += async args =>\n{\n    var order = args.Message.Body.ToObjectFromJson<OrderCreated>();\n    await HandleAsync(order);                       // idempotentnie!\n    await args.CompleteMessageAsync(args.Message);  // potwierdź PO przetworzeniu\n};\nprocessor.ProcessErrorAsync += args => Task.CompletedTask; // tu loguj błąd\nawait processor.StartProcessingAsync();",
+          "lang": "csharp"
+        },
+        {
+          "h": "Dane i tożsamość: Azure SQL, Storage, Entra ID",
+          "text": "**Azure SQL Database** – SQL Server jako usługa: kopie zapasowe, aktualizacje i wysoka dostępność robi Azure. Wybierasz model zakupu (DTU albo vCore) i opcjonalnie tryb **serverless** (automatyczna pauza, gdy nikt nie używa). Pułapka: w chmurze zdarzają się chwilowe błędy połączenia (**transient faults**) – w EF Core włącz `EnableRetryOnFailure()`, który ponowi próbę.\n\n**Azure Storage** – „dysk w chmurze” w kilku odmianach:\n- **Blob** – pliki (zdjęcia, PDF-y, backupy); odpowiednik S3.\n- **Queue** – prosta kolejka (mniej funkcji niż Service Bus).\n- **Table** – prosta baza klucz-wartość.\n- **Files** – udział sieciowy.\n\nPliki dla przeglądarki udostępniasz przez **SAS** (Shared Access Signature) – link z wbudowanym, ograniczonym czasowo pozwoleniem, np. „można pobrać ten plik przez 15 minut”. Źle: publiczny kontener z fakturami. Dobrze: prywatny kontener + krótkotrwały SAS generowany przez API.\n\n**Microsoft Entra ID** (dawniej Azure Active Directory) – usługa tożsamości: logowanie użytkowników i aplikacji przez OAuth 2.0 / OpenID Connect. Typowy układ .NET + Angular:\n1. Rejestrujesz dwie aplikacje (**app registrations**): SPA i API.\n2. Angular loguje użytkownika biblioteką **MSAL** (`@azure/msal-angular`) i dostaje access token.\n3. Interceptor dokleja token do żądań do API.\n4. API sprawdza token przez **Microsoft.Identity.Web** (`AddMicrosoftIdentityWebApi`)."
+        },
+        {
+          "h": "Pułapki, odpowiedniki w AWS i jak o tym mówić na rozmowie",
+          "text": "Najczęstsze błędy:\n- connection stringi z hasłami w `appsettings.json` zamiast Managed Identity i Key Vault;\n- wszystko w jednym regionie i jednej instancji, bez planu na awarię;\n- brak retry dla Azure SQL i Service Bus;\n- telemetria bez samplingu i bez budżetów kosztów (**Cost Management** – alerty, gdy wydatki przekroczą próg);\n- infrastruktura „wyklikana” w portalu zamiast opisana kodem. **Infrastructure as Code** (Bicep, Terraform) – infrastruktura jako pliki w repo, powtarzalna i przeglądana w PR.\n\nOdpowiedniki w AWS (warto znać, bo klienci w outsourcingu bywają „na AWS”):\n- App Service → Elastic Beanstalk; Container Apps → App Runner / ECS Fargate; AKS → EKS;\n- Functions → Lambda; Key Vault → Secrets Manager / KMS; Managed Identity → IAM Roles;\n- App Insights → CloudWatch + X-Ray; Service Bus → SQS (kolejki) + SNS (pub/sub); Event Grid → EventBridge;\n- Azure SQL → RDS; Blob Storage → S3; Entra ID → IAM Identity Center / Cognito (dla użytkowników aplikacji).\n\nJak odpowiadać na „jak wdrożyłbyś tę aplikację w Azure?” – podaj **wybór z uzasadnieniem**: „API i Angular w Container Apps albo App Service, baza w Azure SQL, pliki w Blob z SAS, sekrety w Key Vault czytane przez Managed Identity, asynchroniczne procesy przez Service Bus z dead-letter i idempotentną obsługą, monitoring przez OpenTelemetry do Application Insights z alertami, infrastruktura w Bicep, wdrożenie z GitHub Actions przez OIDC”. Niuans seniorski: trade-offy kosztów i skalowania (skalowanie do zera vs zimny start, App Service Plan płatny nawet bez ruchu)."
+        }
+      ],
+      "takeaways": [
+        "IaaS = sam zarządzasz maszyną, PaaS = wrzucasz aplikację (App Service), serverless = płacisz za wykonania (Functions).",
+        "App Service dla klasycznych API, Container Apps dla kontenerów i skalowania do zera, Functions dla zadań wyzwalanych zdarzeniami, AKS dla pełnej kontroli.",
+        "Managed Identity + DefaultAzureCredential eliminuje hasła z kodu – aplikacja loguje się do Key Vault, SQL, Storage i Service Bus swoją tożsamością.",
+        "Application Insights zbiera requesty, zależności, wyjątki i logi; dziś podłącza się je przez OpenTelemetry (UseAzureMonitor), pilnując samplingu i kosztów.",
+        "Service Bus to niezawodne polecenia (kolejki, topiki, dead-letter), Event Grid to powiadomienia o zdarzeniach, Event Hubs to strumienie dużych ilości danych.",
+        "Wiadomości mogą przyjść więcej niż raz – potwierdzaj po przetworzeniu i obsługuj idempotentnie.",
+        "Pliki udostępniaj przez krótkotrwały SAS, a logowanie użytkowników przez Entra ID z MSAL w Angularze i Microsoft.Identity.Web w API."
+      ],
+      "interview": [
+        "Kiedy wybrałbyś App Service, kiedy Container Apps, a kiedy Azure Functions?",
+        "Jak bezpiecznie przechowujesz sekrety aplikacji w Azure? Czym jest Managed Identity?",
+        "Czym różni się Service Bus od Event Grid? Co to jest dead-letter queue?",
+        "Jak monitorujesz aplikację w Azure i jak znajdziesz przyczynę wolnego żądania?",
+        "Jak zaprojektowałbyś logowanie użytkowników w aplikacji Angular + .NET API z Entra ID?"
+      ],
+      "exam": [
+        {
+          "id": "ops-azure-e1",
+          "q": "Jaki problem rozwiązuje Managed Identity?",
+          "options": [
+            "Przyspiesza zapytania do Azure SQL",
+            "Pozwala aplikacji uwierzytelniać się do usług Azure (np. Key Vault) bez przechowywania haseł czy kluczy w konfiguracji",
+            "Zastępuje logowanie użytkowników końcowych w aplikacji Angular",
+            "Automatycznie szyfruje ruch HTTP aplikacji"
+          ],
+          "correct": 1,
+          "why": "Azure nadaje zasobowi tożsamość, której nadajesz role RBAC. Dzięki temu nie ma sekretu potrzebnego do otwarcia sejfu – problem „kury i jajka” znika."
+        },
+        {
+          "id": "ops-azure-e2",
+          "q": "Co robi DefaultAzureCredential?",
+          "options": [
+            "Tworzy nowe konto użytkownika w Entra ID",
+            "Szyfruje connection string w appsettings.json",
+            "Próbuje po kolei różnych źródeł poświadczeń – w Azure Managed Identity, lokalnie np. konta z Visual Studio lub az login",
+            "Generuje SAS dla Blob Storage"
+          ],
+          "correct": 2,
+          "why": "Dzięki łańcuchowi źródeł ten sam kod działa na laptopie programisty i w chmurze bez zmian i bez haseł."
+        },
+        {
+          "id": "ops-azure-e3",
+          "q": "Masz zadanie: po wrzuceniu pliku do Blob Storage wygeneruj miniaturę. Ruch jest nieregularny. Co najlepiej pasuje?",
+          "options": [
+            "Azure Function z triggerem (np. Blob lub Event Grid), płatna za wykonania",
+            "Maszyna wirtualna działająca 24/7 z zadaniem sprawdzającym katalog co sekundę",
+            "Osobny klaster AKS",
+            "App Service Plan Premium z jedną aplikacją MVC"
+          ],
+          "correct": 0,
+          "why": "Zadanie wyzwalane zdarzeniem i nieregularne to klasyczny przypadek serverless – płacisz za wykonania, a skalowanie robi platforma."
+        },
+        {
+          "id": "ops-azure-e4",
+          "q": "Polecenie „wystaw fakturę dla zamówienia” nie może zginąć, a przy błędzie przetwarzania ma trafić do analizy. Którą usługę wybierasz?",
+          "options": [
+            "Event Hubs, bo jest najszybszy",
+            "Event Grid, bo wypycha zdarzenia do odbiorców",
+            "Application Insights",
+            "Service Bus z kolejką i dead-letter queue"
+          ],
+          "correct": 3,
+          "why": "Service Bus to niezawodny broker dla poleceń biznesowych: potwierdzanie po przetworzeniu, ponowienia i dead-letter queue."
+        },
+        {
+          "id": "ops-azure-e5",
+          "q": "Dlaczego obsługa wiadomości z Service Bus powinna być idempotentna?",
+          "options": [
+            "Bo Service Bus usuwa wiadomości przed ich przetworzeniem",
+            "Bo ta sama wiadomość może zostać dostarczona więcej niż raz, np. gdy aplikacja padnie przed potwierdzeniem",
+            "Bo idempotentność jest wymagana do włączenia sesji",
+            "Bo inaczej wiadomość trafi do Event Grid"
+          ],
+          "correct": 1,
+          "why": "Model at-least-once: wiadomość niepotwierdzona wraca do kolejki. Dwukrotne przetworzenie musi dawać ten sam efekt."
+        },
+        {
+          "id": "ops-azure-e6",
+          "q": "Do czego służą deployment slots w App Service?",
+          "options": [
+            "Do przechowywania sekretów",
+            "Do dzielenia bazy danych na partycje",
+            "Do wdrożenia na kopię (np. staging), sprawdzenia jej i zamiany (swap) z produkcją, z łatwym powrotem",
+            "Do uruchamiania Azure Functions w tym samym planie"
+          ],
+          "correct": 2,
+          "why": "Sloty to praktyczna realizacja blue-green: swap przełącza ruch, a rollback to swap z powrotem."
+        },
+        {
+          "id": "ops-azure-e7",
+          "q": "Użytkownicy mają pobierać swoje faktury PDF z Blob Storage. Co jest najlepszym rozwiązaniem?",
+          "options": [
+            "Prywatny kontener i krótkotrwały link SAS generowany przez API po sprawdzeniu uprawnień",
+            "Publiczny kontener z losowymi nazwami plików",
+            "Klucz konta Storage wysłany do aplikacji Angular",
+            "Przesyłanie plików przez Event Grid"
+          ],
+          "correct": 0,
+          "why": "SAS daje ograniczony czasowo i zakresowo dostęp do konkretnego pliku, bez ujawniania kluczy i bez publicznego dostępu."
+        },
+        {
+          "id": "ops-azure-e8",
+          "q": "Jaki jest dziś zalecany sposób wysyłania telemetrii z ASP.NET Core do Application Insights?",
+          "options": [
+            "Ręczne zapisywanie logów do pliku i wgrywanie go do Storage",
+            "Event Hubs z własnym parserem",
+            "Wyłącznie Live Metrics w portalu",
+            "OpenTelemetry z dystrybucją Azure Monitor (UseAzureMonitor)"
+          ],
+          "correct": 3,
+          "why": "Microsoft rekomenduje OpenTelemetry jako standard; dystrybucja Azure Monitor wysyła traces, metryki i logi do Application Insights."
+        },
+        {
+          "id": "ops-azure-e9",
+          "q": "Aplikacja na Azure SQL czasem rzuca chwilowe błędy połączenia, które same znikają. Co zrobić w EF Core?",
+          "options": [
+            "Zwiększyć poziom logowania do Trace",
+            "Włączyć EnableRetryOnFailure, bo w chmurze transient faults są normalne",
+            "Przenieść bazę do kontenera z aplikacją",
+            "Wyłączyć connection pooling"
+          ],
+          "correct": 1,
+          "why": "Chwilowe błędy (transient faults) są w chmurze oczekiwane; strategia ponowień z backoffem je obsługuje."
+        },
+        {
+          "id": "ops-azure-e10",
+          "q": "Która para odpowiedników Azure → AWS jest poprawna?",
+          "options": [
+            "Service Bus → S3",
+            "Key Vault → Lambda",
+            "Azure Functions → Lambda, Blob Storage → S3",
+            "Entra ID → CloudWatch"
+          ],
+          "correct": 2,
+          "why": "Functions odpowiada Lambdzie, Blob – S3. Service Bus to SQS/SNS, Key Vault – Secrets Manager/KMS, CloudWatch – Azure Monitor."
+        }
+      ]
+    },
+    {
+      "id": "ops-testing",
+      "cat": "testing",
+      "title": "Strategia testów w .NET i Angularze",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Zrozumiesz, jakie są rodzaje testów i ile których pisać (piramida vs trofeum), a potem zobaczysz konkretne narzędzia: xUnit i mocki w .NET, testy integracyjne z WebApplicationFactory i Testcontainers, TestBed z Vitest w Angularze oraz Playwright dla testów end-to-end. Na rozmowie pytanie „jak testujesz?” pada niemal zawsze – i dobrze, jeśli odpowiedź to strategia, a nie tylko nazwa frameworka.",
+      "sections": [
+        {
+          "h": "Po co testy i jakie są rodzaje",
+          "text": "Test to mały program, który sprawdza, czy Twój kod robi to, co powinien. Analogia: testy to **siatka asekuracyjna pod linoskoczkiem** – możesz śmiało zmieniać i refaktorować kod, bo jak spadniesz (coś zepsujesz), siatka to złapie, zanim zobaczy to klient.\n\nTrzy podstawowe rodzaje, na przykładzie samochodu:\n- **Unit test (jednostkowy)** – sprawdzasz jedną część osobno, np. czy świeca daje iskrę. W kodzie: jedna klasa lub metoda, bez bazy, sieci i plików. Bardzo szybkie (milisekundy).\n- **Integration test (integracyjny)** – sprawdzasz, czy części współpracują, np. silnik ze skrzynią biegów. W kodzie: API + prawdziwa baza, serializacja JSON, middleware, konfiguracja DI. Wolniejsze (sekundy).\n- **E2E (end-to-end)** – jazda próbna całym autem. W kodzie: prawdziwa przeglądarka klika po aplikacji, która gada z prawdziwym API i bazą. Najwolniejsze i najbardziej kruche, ale najbliżej rzeczywistości.\n\nKażdy test ma strukturę **AAA**:\n1. **Arrange** – przygotuj dane i obiekty.\n2. **Act** – wykonaj sprawdzaną operację.\n3. **Assert** – sprawdź wynik."
+        },
+        {
+          "h": "Piramida czy trofeum – ile których testów",
+          "text": "**Piramida testów** (klasyka): dużo testów jednostkowych na dole, mniej integracyjnych w środku, kilka E2E na górze. Logika: im niżej, tym szybciej i taniej.\n\n**Trofeum testów** (Kent C. Dodds, popularne we frontendzie): najszersza część to testy **integracyjne**, bo dają najwięcej pewności za rozsądną cenę. Do tego statyczna analiza na dole (TypeScript, linter), trochę unitów i kilka E2E.\n\nW praktyce .NET + Angular sensowny miks wygląda tak:\n- **unit** – dla logiki biznesowej z rozgałęzieniami: wyliczanie rabatu, walidacja, reguły domenowe, pipe'y i serwisy w Angularze;\n- **integracyjne API** – dla każdego ważnego endpointu: żądanie HTTP → odpowiedź, z prawdziwą bazą w kontenerze;\n- **komponentowe** w Angularze – komponent z szablonem, sprawdzany jak widzi go użytkownik;\n- **E2E** – tylko kilka najważniejszych ścieżek: logowanie, złożenie zamówienia, płatność.\n\nCo testować? Zachowanie i ryzyko, a nie linijki. Źle: test, czy getter zwraca pole, albo czy kontroler wywołał metodę serwisu. Dobrze: „zamówienie powyżej 200 zł dostaje darmową dostawę”, „niezalogowany dostaje 401”. **Pokrycie kodu** (code coverage – procent linijek wykonanych przez testy) to wskazówka, gdzie testów brakuje, a nie cel sam w sobie – 100% nie oznacza braku błędów."
+        },
+        {
+          "h": "Unit testy w .NET: xUnit i mocki",
+          "text": "**xUnit** to najpopularniejszy framework testów w .NET (alternatywy: NUnit, MSTest). Metoda z `[Fact]` to jeden test, z `[Theory]` + `[InlineData]` – ten sam test dla wielu zestawów danych. Aktualna wersja to xUnit v3.\n\n**Mock** to „dubler kaskaderski” – udaje prawdziwą zależność (np. repozytorium czy bramkę płatności), żebyś mógł testować klasę w izolacji. Możesz mu powiedzieć, co ma zwrócić, i sprawdzić, czy został wywołany. Popularne biblioteki: **Moq** i **NSubstitute** (czytelniejsza składnia). Rodzaje dublerów w skrócie: **stub** zwraca przygotowane dane, **mock** sprawdza wywołania, **fake** to uproszczona działająca implementacja (np. repozytorium w pamięci).\n\nCo się dzieje w przykładzie:\n1. Tworzymy podróbkę `IPriceProvider` i ustawiamy, że produkt kosztuje 120 zł.\n2. Tworzymy prawdziwy `CartService`, wstrzykując podróbkę.\n3. Wywołujemy `Total`.\n4. Sprawdzamy, że przy kodzie rabatowym wynik to 108 zł.\n\nPułapka: **nadmierne mockowanie**. Jeśli w teście mockujesz pięć zależności i sprawdzasz kolejność wywołań, test opisuje implementację, a nie zachowanie – przy każdym refaktorze pęka, choć nic nie zepsułeś. Mockuj granice systemu (zewnętrzne API, czas, płatności), a nie każdą klasę. Czas wstrzykuj przez `TimeProvider` zamiast `DateTime.Now`.",
+          "code": "public class CartServiceTests\n{\n    [Theory]\n    [InlineData(null, 120)]\n    [InlineData(\"RABAT10\", 108)]\n    public void Total_applies_discount_code(string? code, decimal expected)\n    {\n        // Arrange\n        var prices = Substitute.For<IPriceProvider>();\n        prices.GetPrice(\"SKU-1\").Returns(120m);\n        var sut = new CartService(prices);\n\n        // Act\n        var total = sut.Total([new CartLine(\"SKU-1\", 1)], code);\n\n        // Assert\n        Assert.Equal(expected, total);\n    }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Testy integracyjne API: WebApplicationFactory + Testcontainers",
+          "text": "**WebApplicationFactory** (pakiet `Microsoft.AspNetCore.Mvc.Testing`) uruchamia całe Twoje API **w pamięci** – z prawdziwym `Program.cs`, middleware, DI, routingiem i serializacją – i daje `HttpClient`, który wysyła do niego żądania bez sieci. To jak próba generalna w teatrze: wszystko prawdziwe, tylko bez publiczności.\n\nA baza? Opcje:\n- Źle: provider **InMemory** EF Core – nie jest relacyjny, nie sprawdza ograniczeń (unikalność, klucze obce), nie obsługuje transakcji jak SQL. Testy przechodzą, produkcja pada.\n- Dobrze: **Testcontainers** – biblioteka, która na czas testów uruchamia **prawdziwą bazę w kontenerze Docker** (PostgreSQL, SQL Server, Redis…) i sprząta po wszystkim. Ten sam silnik co na produkcji.\n\nCo robi przykład:\n1. `IAsyncLifetime` – xUnit wywoła `InitializeAsync` przed testami: startujemy kontener z Postgresem.\n2. `UseSetting` podmienia connection string w aplikacji na adres kontenera.\n3. Test wysyła prawdziwe żądanie `POST /api/orders` i sprawdza kod odpowiedzi.\n\nWskazówki: współdziel kontener między testami (fixture), a dane czyść między testami (np. biblioteka **Respawn**) – start kontenera trwa kilka sekund, więc nie rób go w każdym teście. Zewnętrzne API (płatności, mail) podmieniasz w `ConfigureTestServices` na fałszywki.",
+          "code": "public class OrdersApiTests : IAsyncLifetime\n{\n    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder()\n        .WithImage(\"postgres:17\").Build();\n    private WebApplicationFactory<Program> _factory = null!;\n    public async ValueTask InitializeAsync()\n    {\n        await _db.StartAsync();\n        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>\n            b.UseSetting(\"ConnectionStrings:Db\", _db.GetConnectionString()));\n    }\n    [Fact]\n    public async Task Post_order_returns_201()\n    {\n        var client = _factory.CreateClient();\n        var res = await client.PostAsJsonAsync(\"/api/orders\", new { Sku = \"SKU-1\", Qty = 2 });\n        Assert.Equal(HttpStatusCode.Created, res.StatusCode);\n    }\n    public async ValueTask DisposeAsync() { await _factory.DisposeAsync(); await _db.DisposeAsync(); }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Testy w Angularze: TestBed, Vitest, Playwright",
+          "text": "**TestBed** to „stół warsztatowy” Angulara: buduje mini-aplikację z Twoim komponentem i jego zależnościami, żebyś mógł go wyrenderować i sprawdzić w teście. **Test runner** to program, który uruchamia testy: w nowych projektach Angular 21 domyślnie to **Vitest** (szybki, nowoczesny); w starszych projektach spotkasz Karma + Jasmine (Karma jest wycofywana) albo **Jest**.\n\nCo robi przykład komponentu:\n1. Konfigurujemy TestBed z samodzielnym (standalone) komponentem.\n2. Tworzymy komponent i ustawiamy mu input `items` przez `setInput` (działa też z inputami-sygnałami).\n3. `detectChanges()` – każemy Angularowi odświeżyć widok.\n4. Sprawdzamy, co **widzi użytkownik** – tekst w HTML – a nie prywatne pola klasy.\n\nSerwisy z `HttpClient` testujesz z `provideHttpClientTesting()` i `HttpTestingController` – przechwytujesz żądanie i odpowiadasz sztucznymi danymi.\n\n**Playwright** to narzędzie do testów E2E: steruje prawdziwą przeglądarką (Chromium, Firefox, WebKit), sam czeka na elementy (**auto-waiting**) i nagrywa ślad (trace) z błędów. Elementy wybieraj tak, jak widzi je użytkownik: `getByRole('button', { name: 'Zapłać' })`, a nie po kruchych klasach CSS typu `.btn-x23`. Alternatywa: Cypress.",
+          "code": "// cart-total.component.spec.ts (Vitest + TestBed)\ndescribe('CartTotalComponent', () => {\n  it('shows sum of items', async () => {\n    await TestBed.configureTestingModule({ imports: [CartTotalComponent] }).compileComponents();\n    const fixture = TestBed.createComponent(CartTotalComponent);\n    fixture.componentRef.setInput('items', [{ price: 10, qty: 2 }]);\n    fixture.detectChanges();\n    expect(fixture.nativeElement.textContent).toContain('20');\n  });\n});\n\n// e2e/order.spec.ts (Playwright)\ntest('user can add product to cart', async ({ page }) => {\n  await page.goto('/products');\n  await page.getByRole('button', { name: 'Dodaj do koszyka' }).first().click();\n  await page.getByRole('link', { name: 'Koszyk' }).click();\n  await expect(page.getByText('Razem')).toBeVisible();\n});",
+          "lang": "typescript"
+        },
+        {
+          "h": "Flaky testy i TDD",
+          "text": "**Flaky test** (niestabilny) to test, który raz przechodzi, raz nie – bez zmiany kodu. Jest gorszy niż brak testu, bo uczy zespół ignorować czerwony pipeline („a, to znowu ten, puść jeszcze raz”). Typowe przyczyny i lekarstwa:\n- **czas** – `DateTime.Now`, strefy czasowe, północ → wstrzykuj `TimeProvider` (w testach `FakeTimeProvider`);\n- **sztywne czekanie** – `Thread.Sleep(2000)` / `waitForTimeout` → czekaj na warunek (auto-waiting w Playwright, `await` na wynik);\n- **współdzielone dane** – testy zależą od kolejności, jeden zostawia śmieci dla drugiego → każdy test przygotowuje swoje dane i sprząta (Respawn, unikalne id);\n- **losowość i równoległość** – stałe ziarno (seed), brak statycznego stanu;\n- **zewnętrzne usługi** – prawdziwe API płatności w teście → fałszywka lub kontener.\n\nZasada: flaky test naprawiasz albo oznaczasz i usuwasz z bramki, ale nie zostawiasz „do puszczania drugi raz”.\n\n**TDD** (Test-Driven Development) to pisanie testu **przed** kodem, w cyklu **red → green → refactor**:\n1. **Red** – napisz test na nowe zachowanie; nie przechodzi (kod nie istnieje).\n2. **Green** – napisz najprostszy kod, który go spełnia.\n3. **Refactor** – popraw kod, testy pilnują, że nic się nie zepsuło.\n\nTDD wymusza mały, testowalny design i od razu daje siatkę. Nie zawsze się opłaca (prototypy, UI), więc na rozmowie lepiej powiedzieć szczerze, kiedy go używasz, niż deklarować „zawsze TDD”."
+        },
+        {
+          "h": "Jak mówić o testach na rozmowie",
+          "text": "Pytanie „jak testujesz?” to zaproszenie do opisania **strategii**. Dobra odpowiedź ma trzy części:\n1. **Co i na jakim poziomie**: „Logikę domenową unit testami w xUnit, endpointy testami integracyjnymi na WebApplicationFactory z prawdziwą bazą w Testcontainers, komponenty w Angularze przez TestBed z Vitest, a kilka krytycznych ścieżek Playwrightem”.\n2. **Dlaczego tak**: „Integracyjne łapią błędy w mapowaniu, walidacji, konfiguracji DI i SQL, których unit z mockami nie widzi; E2E jest mało, bo są wolne i kruche”.\n3. **Jak to działa w procesie**: testy w pipeline blokują merge, flaky testy naprawiamy od razu, przy bugu najpierw piszemy test, który go odtwarza.\n\nPytania-pułapki i krótkie odpowiedzi:\n- „Mock czy prawdziwa baza?” – mock dla granic systemu, prawdziwa baza w kontenerze dla zapytań i transakcji; nie InMemory.\n- „Ile pokrycia?” – pokrycie to wskaźnik, nie cel; ważniejsze, czy testy łapią regresje w krytycznych miejscach.\n- „Jak testować kod z `DateTime.Now`?” – `TimeProvider` i `FakeTimeProvider`.\n\nNiuanse seniorskie: testy kontraktowe między serwisami (Pact), mutation testing (Stryker.NET – sprawdza, czy testy wykrywają celowo wprowadzone błędy), testy architektury (NetArchTest), testy wydajnościowe (k6, NBomber)."
+        }
+      ],
+      "takeaways": [
+        "Unit testy sprawdzają pojedynczą logikę w izolacji, integracyjne – współpracę z prawdziwą infrastrukturą, E2E – całą aplikację w przeglądarce.",
+        "Piramida stawia na unity, trofeum na testy integracyjne; w praktyce: unity dla logiki, integracyjne dla API, kilka E2E dla krytycznych ścieżek.",
+        "Mockuj granice systemu (zewnętrzne API, czas), a nie każdą klasę – nadmierne mockowanie testuje implementację zamiast zachowania.",
+        "WebApplicationFactory uruchamia API w pamięci, a Testcontainers daje prawdziwą bazę w Dockerze; provider InMemory EF Core nie zastąpi relacyjnej bazy.",
+        "W Angularze komponenty testujesz przez TestBed (w Angular 21 domyślnie z Vitest), sprawdzając to, co widzi użytkownik; E2E w Playwright z selektorami po roli.",
+        "Flaky testy wynikają głównie z czasu, sztywnego czekania i współdzielonych danych – naprawiaj je od razu.",
+        "TDD to cykl red → green → refactor; pokrycie kodu to wskazówka, nie cel."
+      ],
+      "interview": [
+        "Jaka jest Twoja strategia testów w projekcie .NET + Angular?",
+        "Czym różni się test jednostkowy od integracyjnego? Kiedy używasz mocków?",
+        "Jak testujesz endpointy API z bazą danych?",
+        "Co to są flaky testy i jak sobie z nimi radzisz?",
+        "Czy stosujesz TDD? Opisz cykl red-green-refactor."
+      ],
+      "exam": [
+        {
+          "id": "ops-testing-e1",
+          "q": "Czym różni się test integracyjny od jednostkowego?",
+          "options": [
+            "Integracyjny sprawdza współpracę kilku elementów, często z prawdziwą infrastrukturą (np. API + baza), jednostkowy – pojedynczą logikę w izolacji",
+            "Integracyjny zawsze używa przeglądarki",
+            "Jednostkowy wymaga bazy danych, integracyjny nie",
+            "Nie ma różnicy, to kwestia nazewnictwa w zespole"
+          ],
+          "correct": 0,
+          "why": "Unit testy izolują logikę (zależności zastąpione dublerami), integracyjne sprawdzają, czy części poprawnie ze sobą współpracują."
+        },
+        {
+          "id": "ops-testing-e2",
+          "q": "Dlaczego provider InMemory w EF Core to słaby wybór do testów integracyjnych?",
+          "options": [
+            "Bo jest za wolny",
+            "Bo nie zachowuje się jak relacyjna baza – nie sprawdza m.in. ograniczeń unikalności i kluczy obcych ani prawdziwego SQL",
+            "Bo nie da się go użyć z xUnit",
+            "Bo wymaga Dockera"
+          ],
+          "correct": 1,
+          "why": "Testy na InMemory mogą przechodzić, choć na prawdziwej bazie kod padnie. Lepiej uruchomić prawdziwy silnik w Testcontainers."
+        },
+        {
+          "id": "ops-testing-e3",
+          "q": "Co daje WebApplicationFactory<Program>?",
+          "options": [
+            "Generuje automatycznie testy dla wszystkich kontrolerów",
+            "Uruchamia prawdziwą przeglądarkę do testów UI",
+            "Uruchamia całe API w pamięci (middleware, DI, routing) i daje HttpClient do wysyłania do niego żądań",
+            "Tworzy mocki wszystkich zależności"
+          ],
+          "correct": 2,
+          "why": "To host testowy dla ASP.NET Core – test przechodzi przez cały pipeline aplikacji bez prawdziwej sieci."
+        },
+        {
+          "id": "ops-testing-e4",
+          "q": "Test sprawdza, czy OrderService wywołał kolejno trzy metody pięciu zamockowanych zależności. Po refaktorze bez zmiany zachowania test pada. Co jest problemem?",
+          "options": [
+            "Za mało mocków",
+            "Brak atrybutu [Theory]",
+            "Test powinien używać Thread.Sleep",
+            "Nadmierne mockowanie – test opisuje implementację zamiast zachowania"
+          ],
+          "correct": 3,
+          "why": "Testy przywiązane do szczegółów wywołań pękają przy refaktorze. Lepiej sprawdzać efekt (wynik, stan) i mockować tylko granice systemu."
+        },
+        {
+          "id": "ops-testing-e5",
+          "q": "Test E2E czasem pada, bo przycisk nie zdążył się pojawić. Jaka jest najlepsza poprawka?",
+          "options": [
+            "Dodać waitForTimeout(5000) przed kliknięciem",
+            "Polegać na auto-waiting Playwright i lokatorach (getByRole) oraz asercjach czekających na warunek",
+            "Uruchamiać test trzy razy i uznać za zaliczony, jeśli raz przejdzie",
+            "Usunąć test z repozytorium"
+          ],
+          "correct": 1,
+          "why": "Sztywne czekanie jest i wolne, i niestabilne. Czekanie na warunek eliminuje przyczynę flakiness."
+        },
+        {
+          "id": "ops-testing-e6",
+          "q": "Jak najlepiej testować kod, który zależy od bieżącej daty (np. wygasanie promocji o północy)?",
+          "options": [
+            "Uruchamiać testy tylko w określonych godzinach",
+            "Używać DateTime.Now i tolerancji w asercjach",
+            "Wstrzykiwać TimeProvider i w testach używać FakeTimeProvider z ustawionym czasem",
+            "Zmieniać zegar systemowy w teście"
+          ],
+          "correct": 2,
+          "why": "TimeProvider (od .NET 8) pozwala kontrolować czas w testach – test jest deterministyczny."
+        },
+        {
+          "id": "ops-testing-e7",
+          "q": "Jaki jest poprawny cykl TDD?",
+          "options": [
+            "Red: napisz nieprzechodzący test → Green: najprostszy kod, który go spełnia → Refactor: popraw kod przy zielonych testach",
+            "Napisz kod → napisz testy → refaktoryzuj testy",
+            "Green → Red → Refactor",
+            "Refactor → Red → Green"
+          ],
+          "correct": 0,
+          "why": "Test powstaje przed kodem i najpierw musi nie przechodzić – to dowód, że testuje nowe zachowanie."
+        },
+        {
+          "id": "ops-testing-e8",
+          "q": "Jak w teście komponentu Angular najlepiej sprawdzić wynik?",
+          "options": [
+            "Odczytując prywatne pola klasy komponentu",
+            "Sprawdzając, czy wywołano ngOnInit",
+            "Porównując snapshot całego obiektu komponentu",
+            "Sprawdzając wyrenderowany DOM – to, co widzi użytkownik – po detectChanges"
+          ],
+          "correct": 3,
+          "why": "Testowanie przez DOM sprawdza zachowanie, a nie szczegóły implementacji, więc test przetrwa refaktor."
+        },
+        {
+          "id": "ops-testing-e9",
+          "q": "Co mówi wysokie pokrycie kodu (np. 95%)?",
+          "options": [
+            "Że w kodzie nie ma błędów",
+            "Że testy wykonują większość linijek – ale nie gwarantuje, że sprawdzają poprawne zachowanie",
+            "Że testy integracyjne nie są potrzebne",
+            "Że wszystkie testy są stabilne"
+          ],
+          "correct": 1,
+          "why": "Pokrycie mierzy, co zostało wykonane, a nie co zostało sensownie sprawdzone. To wskazówka, gdzie brakuje testów."
+        },
+        {
+          "id": "ops-testing-e10",
+          "q": "Testy integracyjne z Testcontainers trwają bardzo długo, bo każdy test startuje nowy kontener bazy. Co poprawić?",
+          "options": [
+            "Przejść na provider InMemory",
+            "Wyłączyć testy integracyjne w CI",
+            "Współdzielić kontener między testami (fixture) i czyścić dane między testami, np. Respawnem",
+            "Zwiększyć timeout testów"
+          ],
+          "correct": 2,
+          "why": "Start kontenera jest drogi; jeden kontener na klasę/kolekcję testów plus reset danych daje szybkość i izolację."
+        }
+      ]
+    },
+    {
+      "id": "ops-observability",
+      "cat": "devops",
+      "title": "Logowanie, monitoring i debugowanie produkcji",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Nauczysz się, jak sprawić, żeby aplikacja na produkcji „mówiła”, co się z nią dzieje: structured logging z ILogger i Serilog, correlation id, metryki, tracing z OpenTelemetry i health checki. Na koniec przejdziesz krok po kroku, jak szukać przyczyny incydentu i kiedy sięgnąć po dotnet-counters, dotnet-trace i dotnet-dump. Pytanie „na produkcji coś jest wolne – co robisz?” to klasyk rozmów na mid i senior.",
+      "sections": [
+        {
+          "h": "Po co: trzy filary obserwowalności",
+          "text": "Na swoim komputerze możesz postawić breakpoint. Na produkcji nie – tam aplikacja jest jak **samolot w powietrzu**, a Ty jesteś w wieży kontroli. Widzisz tylko to, co samolot wysyła: przyrządy i rozmowy z pilotem. **Observability** (obserwowalność) to zdolność zrozumienia, co dzieje się w systemie, wyłącznie na podstawie danych, które on wysyła.\n\nTrzy filary (rodzaje danych):\n- **Logi** – dziennik pokładowy: pojedyncze zdarzenia z opisem („zamówienie 15 nie przeszło walidacji”). Odpowiadają na pytanie **co dokładnie się stało?**\n- **Metryki** – wskaźniki na desce rozdzielczej: liczby w czasie (żądania na sekundę, % błędów, zużycie pamięci). Odpowiadają na **czy jest dobrze i od kiedy jest źle?** Są tanie i nadają się do alertów.\n- **Traces (ślady)** – trasa lotu: droga jednego żądania przez wiele serwisów z czasami każdego odcinka. Odpowiadają na **gdzie ucieka czas lub gdzie leci błąd?**\n\nTypowa współpraca: metryka odpala alert („5% błędów 500”), trace pokazuje, który serwis zawodzi, log z tego serwisu mówi dlaczego."
+        },
+        {
+          "h": "Structured logging: ILogger i Serilog, źle → dobrze",
+          "text": "**Structured logging** (logowanie strukturalne) to zapisywanie logów jako danych z polami, a nie jako zwykłego tekstu. Analogia: tekst to notatka na serwetce, struktura to formularz z rubrykami – po formularzach da się szukać („pokaż wszystkie z OrderId = 15”).\n\nW .NET używasz interfejsu `ILogger<T>` z **message template** – szablonu z nazwanymi miejscami `{OrderId}`:\n- Źle: `_logger.LogInformation($\"Order {orderId} paid\")` – interpolacja skleja tekst, pole `OrderId` ginie, a napis buduje się nawet, gdy poziom logowania jest wyłączony.\n- Dobrze: `_logger.LogInformation(\"Order {OrderId} paid\", orderId)` – `OrderId` staje się osobnym, przeszukiwalnym polem.\n\n**Poziomy logów** od najgadatliwszego: Trace, Debug, Information, Warning, Error, Critical. Na produkcji zwykle Information dla aplikacji i Warning dla bibliotek frameworka. Error = coś się nie udało i ktoś powinien spojrzeć, Warning = coś dziwnego, ale obsłużone.\n\n**Serilog** to popularna biblioteka, która podpina się pod `ILogger` i dodaje **sinki** (miejsca docelowe: konsola w JSON, Seq, Elasticsearch, Application Insights) oraz **enrichers** (dokładanie pól do każdego logu, np. nazwy maszyny). Kod aplikacji dalej używa `ILogger` – Serilog to tylko „silnik”. Dla gorących ścieżek jest atrybut `[LoggerMessage]` – generator kodu tworzy szybkie metody logujące bez alokacji.\n\nCzego **nie logować**: haseł, tokenów, numerów kart, pełnych danych osobowych (RODO).",
+          "code": "builder.Services.AddSerilog((services, cfg) => cfg\n    .ReadFrom.Configuration(builder.Configuration)\n    .Enrich.FromLogContext()\n    .WriteTo.Console(new Serilog.Formatting.Compact.CompactJsonFormatter()));\n\npublic class PaymentService(ILogger<PaymentService> logger)\n{\n    public void Pay(int orderId, decimal amount)\n    {\n        using (logger.BeginScope(new Dictionary<string, object> { [\"OrderId\"] = orderId }))\n        {\n            logger.LogInformation(\"Charging {Amount} PLN\", amount); // log ma też OrderId ze scope\n        }\n    }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Correlation id: jak połączyć logi jednego żądania",
+          "text": "Na produkcji jednocześnie leci tysiąc żądań i ich logi się przeplatają. Jak znaleźć wszystkie logi **jednego** żądania – szczególnie gdy przeszło przez frontend, API i workera z kolejki? Potrzebujesz **correlation id** – wspólnego numeru, jak numer przesyłki kurierskiej, który widnieje na każdym etapie trasy.\n\nW nowoczesnym .NET nie musisz go wymyślać:\n1. Przychodzące żądanie dostaje **TraceId** (dostępny przez `Activity.Current`). Jeśli przyszło z nagłówkiem **`traceparent`** (standard W3C Trace Context), .NET kontynuuje istniejący ślad.\n2. `HttpClient` automatycznie dokleja `traceparent` do wywołań innych serwisów.\n3. Biblioteki Service Bus czy Kafka przenoszą go we właściwościach wiadomości.\n4. Logi z `ILogger` automatycznie dostają `TraceId` i `SpanId`.\n\nDobre praktyki:\n- zwracaj `traceId` w odpowiedzi błędu – ASP.NET Core robi to w **ProblemDetails** (standardowy format błędów JSON). Użytkownik zgłasza „błąd, traceId abc123”, a Ty od razu masz wszystkie logi;\n- dokładaj do scope'u logów identyfikatory biznesowe (OrderId, UserId), żeby szukać też po nich."
+        },
+        {
+          "h": "Metryki, tracing i OpenTelemetry",
+          "text": "**OpenTelemetry** (OTel) to otwarty standard zbierania logów, metryk i śladów. Analogia: **uniwersalna ładowarka USB-C** – instrumentujesz aplikację raz, a dane wysyłasz gdzie chcesz: Application Insights, Grafana/Prometheus, Jaeger, Datadog. Format przesyłu to **OTLP**.\n\nPojęcia tracingu:\n- **trace** – cała podróż żądania;\n- **span** – jeden odcinek (np. „zapytanie SQL – 120 ms”, „wywołanie API płatności – 800 ms”). Spany tworzą drzewo. W .NET span to `Activity`.\n\nCo robi konfiguracja poniżej:\n1. `AddAspNetCoreInstrumentation` – span dla każdego przychodzącego żądania.\n2. `AddHttpClientInstrumentation` – span dla każdego wywołania wychodzącego.\n3. `AddSource(\"Shop\")` – Twoje własne spany z `ActivitySource`.\n4. Metryki ASP.NET Core i runtime (GC, wątki) oraz własne liczniki z `Meter`.\n5. `UseOtlpExporter` – wysyłka do kolektora lub backendu.\n\nJakie metryki obserwować? Metoda **RED** dla usług: **R**ate (żądania/s), **E**rrors (% błędów), **D**uration (czas – patrz na **percentyle** p95/p99, a nie średnią, bo średnia ukrywa wolne żądania). Lokalnie świetnie sprawdza się **.NET Aspire Dashboard**, który pokazuje logi, ślady i metryki z OTel.",
+          "code": "builder.Services.AddOpenTelemetry()\n    .ConfigureResource(r => r.AddService(\"shop-api\"))\n    .WithTracing(t => t\n        .AddAspNetCoreInstrumentation()\n        .AddHttpClientInstrumentation()\n        .AddSource(\"Shop\"))\n    .WithMetrics(m => m\n        .AddAspNetCoreInstrumentation()\n        .AddRuntimeInstrumentation()\n        .AddMeter(\"Shop\"))\n    .UseOtlpExporter();\n\n// własny span i metryka\nstatic readonly ActivitySource Source = new(\"Shop\");\nstatic readonly Counter<long> Orders = new Meter(\"Shop\").CreateCounter<long>(\"shop.orders.created\");\nusing (var activity = Source.StartActivity(\"CalculateDiscount\")) { /* ... */ }\nOrders.Add(1);",
+          "lang": "csharp"
+        },
+        {
+          "h": "Health checks",
+          "text": "**Health check** to endpoint, który odpowiada na pytanie „czy ze mną wszystko w porządku?”. Pytają go load balancer, Kubernetes, App Service i systemy monitoringu – jak lekarz, który co chwilę mierzy puls.\n\nRozróżniaj dwa rodzaje (jak liveness i readiness w Kubernetesie):\n- **live** – „czy proces żyje?” – bez sprawdzania zależności; jeśli nie odpowiada, restart ma sens;\n- **ready** – „czy mogę obsługiwać ruch?” – sprawdza bazę, Redisa, kolejkę; jeśli nie, ruch omija tę instancję.\n\nCo robi przykład:\n1. Rejestrujemy sprawdzenie bazy (`AddDbContextCheck` z pakietu EF Core) i Redisa z tagiem `ready`.\n2. `/health/live` – predykat `_ => false`, czyli nie uruchamia żadnych sprawdzeń, tylko potwierdza, że aplikacja odpowiada.\n3. `/health/ready` – uruchamia sprawdzenia z tagiem `ready`.\n\nPułapki: health check, który sam robi ciężkie zapytanie co 5 sekund z 20 instancji (obciąża bazę), oraz publiczny endpoint zwracający szczegóły infrastruktury – ogranicz dostęp lub zwracaj tylko status.",
+          "code": "builder.Services.AddHealthChecks()\n    .AddDbContextCheck<ShopDb>(tags: [\"ready\"])\n    .AddRedis(builder.Configuration.GetConnectionString(\"Redis\")!, tags: [\"ready\"]);\n\nvar app = builder.Build();\napp.MapHealthChecks(\"/health/live\", new HealthCheckOptions { Predicate = _ => false });\napp.MapHealthChecks(\"/health/ready\", new HealthCheckOptions\n{\n    Predicate = check => check.Tags.Contains(\"ready\")\n});",
+          "lang": "csharp"
+        },
+        {
+          "h": "Narzędzia diagnostyczne: dotnet-counters, dotnet-trace, dotnet-dump",
+          "text": "Gdy logi i metryki nie wystarczają, sięgasz po narzędzia CLI .NET (instalowane przez `dotnet tool install -g`). Analogia medyczna:\n- **dotnet-counters** – **ciśnieniomierz**: podgląd na żywo liczników procesu – CPU, pamięć, liczba odśmiecań GC, długość kolejki puli wątków, żądania/s, wyjątki/s. Pierwszy krok, bo nic nie psuje i szybko pokazuje kierunek.\n- **dotnet-trace** – **EKG z zapisem**: nagrywa przez kilkadziesiąt sekund, co robi proces (gdzie CPU spędza czas, zdarzenia GC). Plik `.nettrace` otwierasz w PerfView, Visual Studio albo konwertujesz do speedscope.\n- **dotnet-dump** – **zdjęcie rentgenowskie**: zrzut całej pamięci procesu w danej chwili. Komendy w `dotnet-dump analyze`: `clrstack` (stosy wątków – co robią w tej chwili), `dumpheap -stat` (jakie obiekty zajmują pamięć), `gcroot` (kto trzyma obiekt przy życiu). Do samej sterty jest lżejszy **dotnet-gcdump**.\n\nKtóre narzędzie do jakiego objawu:\n- wysokie CPU → counters, potem **trace** (gorące metody);\n- rosnąca pamięć (wyciek) → counters (rośnie sterta po GC?), potem dwa **gcdumpy/dumpy** w odstępie czasu i porównanie;\n- aplikacja „wisi”, żądania stoją, CPU niskie → **dump** i `clrstack`; często to **thread pool starvation** (wyczerpanie puli wątków) przez `.Result` / `.Wait()` na kodzie async – counters pokażą rosnącą kolejkę puli wątków.\n\nW kontenerach narzędzia uruchamiasz w kontenerze (lub sidecarze) albo zbierasz zrzut automatycznie przy awarii zmiennymi `DOTNET_DbgEnableMiniDump`. Uwaga: dump zawiera dane z pamięci, w tym potencjalnie dane osobowe i sekrety – traktuj go jak dane wrażliwe."
+        },
+        {
+          "h": "Incydent na produkcji: krok po kroku",
+          "text": "Dzwoni telefon: „aplikacja jest wolna i rzuca błędy”. Spokojna procedura:\n1. **Oceń skalę** – metryki: od kiedy? ilu użytkowników? jakie endpointy? Skok błędów albo czasu odpowiedzi na wykresie RED.\n2. **Sprawdź, co się zmieniło** – najczęstsza przyczyna incydentów to zmiana: wdrożenie, migracja, zmiana konfiguracji, feature flag, nagły wzrost ruchu, awaria zależności.\n3. **Najpierw ratuj, potem badaj** – jeśli winne jest wdrożenie, zrób rollback (swap slotów, `helm rollback`) albo wyłącz flagę. Przywrócenie działania jest ważniejsze niż znalezienie winnego linijki.\n4. **Zawęź** – trace wolnego żądania: który span trwa najdłużej (SQL? zewnętrzne API?). Application Map pokaże czerwoną zależność.\n5. **Znajdź przyczynę** – logi z tym TraceId, wyjątki, ewentualnie counters/trace/dump na jednej instancji.\n6. **Napraw i zabezpiecz** – poprawka, test odtwarzający problem, alert, który złapie to wcześniej.\n7. **Postmortem bez szukania winnych** (blameless) – co się stało, dlaczego, co zmieniamy w procesie.\n\nTypowe przyczyny w aplikacjach .NET: brak indeksu lub zapytanie N+1 w EF Core, wyczerpana pula połączeń do bazy, sync-over-async, wyciek pamięci przez statyczne kolekcje/eventy/cache bez limitu, timeouty bez limitu przy wywołaniach zewnętrznych API, brak retry/circuit breakera."
+        },
+        {
+          "h": "Pułapki i jak o tym mówić na rozmowie",
+          "text": "Czego unikać:\n- logowanie przez interpolację stringów zamiast message template;\n- logowanie wszystkiego na Debug w produkcji (koszty, szum) albo za mało, by cokolwiek ustalić;\n- logowanie danych wrażliwych;\n- alerty na wszystko – zespół przestaje je czytać („alert fatigue”); alertuj na objawy widoczne dla użytkownika (błędy, czas), nie na każde CPU 80%;\n- średnia zamiast percentyli;\n- health check liveness zależny od bazy.\n\nJak opowiedzieć na rozmowie: „Logujemy strukturalnie przez ILogger z Serilogiem do konsoli w JSON, zbierane centralnie. OpenTelemetry daje nam traces i metryki do Application Insights/Grafany, TraceId z W3C traceparent łączy logi między serwisami i jest w ProblemDetails. Mamy health checki live/ready i alerty na RED. Przy incydencie: metryki → co się zmieniło → rollback, jeśli trzeba → trace → logi → ewentualnie dotnet-counters i dump”.\n\nNiuanse seniorskie: **SLI/SLO** (mierzalny wskaźnik i cel, np. 99,9% żądań poniżej 500 ms) i error budget, sampling tracingu (head vs tail), kardynalność metryk (nie wkładaj UserId do etykiet metryk – eksplozja serii), koszty przechowywania telemetrii."
+        }
+      ],
+      "takeaways": [
+        "Logi mówią co się stało, metryki czy jest dobrze i od kiedy źle, trace'y gdzie ucieka czas – używa się ich razem.",
+        "Loguj strukturalnie message template'ami ({OrderId}), nie interpolacją; Serilog to silnik pod ILogger z sinkami i enricherami.",
+        "Correlation id w .NET daje TraceId z W3C traceparent – przenoszony automatycznie przez HttpClient i dołączany do logów oraz ProblemDetails.",
+        "OpenTelemetry to standard instrumentacji (traces, metryki, logi) niezależny od backendu; obserwuj RED i percentyle p95/p99 zamiast średniej.",
+        "Health check live nie sprawdza zależności, ready – sprawdza; to podstawa dla load balancera i Kubernetesa.",
+        "dotnet-counters na start, dotnet-trace dla wysokiego CPU, dotnet-dump/gcdump dla wycieków i zawieszeń (np. thread pool starvation).",
+        "Przy incydencie: oceń skalę, sprawdź co się zmieniło, najpierw przywróć działanie (rollback), potem szukaj przyczyny i zrób blameless postmortem."
+      ],
+      "interview": [
+        "Na produkcji API nagle zwalnia – jak krok po kroku szukasz przyczyny?",
+        "Czym jest structured logging i dlaczego nie używać interpolacji stringów w logach?",
+        "Jak śledzisz jedno żądanie przechodzące przez kilka serwisów?",
+        "Co to jest OpenTelemetry i jakie dane zbiera?",
+        "Aplikacja .NET zużywa coraz więcej pamięci – jak zdiagnozujesz wyciek?"
+      ],
+      "exam": [
+        {
+          "id": "ops-observability-e1",
+          "q": "Dlaczego _logger.LogInformation(\"Order {OrderId} paid\", id) jest lepsze niż _logger.LogInformation($\"Order {id} paid\")?",
+          "options": [
+            "Bo interpolacja nie działa w .NET 10",
+            "Bo message template zapisuje OrderId jako osobne, przeszukiwalne pole i nie buduje stringa, gdy poziom jest wyłączony",
+            "Bo szablon automatycznie szyfruje wartość",
+            "Nie ma różnicy, oba zapisują to samo"
+          ],
+          "correct": 1,
+          "why": "Interpolacja skleja tekst przed wywołaniem – traci się strukturę i płaci za formatowanie nawet przy wyłączonym poziomie."
+        },
+        {
+          "id": "ops-observability-e2",
+          "q": "Który filar obserwowalności najlepiej odpowie na pytanie „w którym serwisie i w którym kroku żądanie traci 2 sekundy”?",
+          "options": [
+            "Distributed tracing (spany z czasami)",
+            "Metryka liczby żądań na sekundę",
+            "Health check",
+            "Log startu aplikacji"
+          ],
+          "correct": 0,
+          "why": "Trace pokazuje drzewo spanów jednego żądania z czasem każdego odcinka, także między serwisami."
+        },
+        {
+          "id": "ops-observability-e3",
+          "q": "Jak w nowoczesnym .NET przenoszony jest correlation id między serwisami przez HTTP?",
+          "options": [
+            "Trzeba ręcznie dodać nagłówek X-Request-Id w każdym wywołaniu",
+            "Przez ciasteczko sesyjne",
+            "Przez nagłówek W3C traceparent, który HttpClient dodaje automatycznie na podstawie bieżącej Activity",
+            "Przez zmienną środowiskową"
+          ],
+          "correct": 2,
+          "why": ".NET używa W3C Trace Context; ASP.NET Core odczytuje traceparent, a HttpClient propaguje go dalej."
+        },
+        {
+          "id": "ops-observability-e4",
+          "q": "Dlaczego dla czasu odpowiedzi patrzy się na p95/p99 zamiast średniej?",
+          "options": [
+            "Bo średnia jest trudniejsza do policzenia",
+            "Bo percentyle są tańsze w przechowywaniu",
+            "Bo tak wymaga OpenTelemetry",
+            "Bo średnia ukrywa wolne żądania – 5% użytkowników może czekać bardzo długo przy dobrej średniej"
+          ],
+          "correct": 3,
+          "why": "Percentyle pokazują doświadczenie najwolniej obsłużonych użytkowników, które średnia uśrednia do niewidoczności."
+        },
+        {
+          "id": "ops-observability-e5",
+          "q": "API przestaje odpowiadać przy wzroście ruchu, CPU jest niskie, a dotnet-counters pokazuje rosnącą kolejkę puli wątków. Co jest najbardziej prawdopodobne?",
+          "options": [
+            "Wyciek pamięci w stercie LOH",
+            "Thread pool starvation, np. przez blokowanie .Result/.Wait() na kodzie async",
+            "Za mało rdzeni CPU",
+            "Za wysoki poziom logowania"
+          ],
+          "correct": 1,
+          "why": "Blokujące oczekiwanie na async zajmuje wątki puli; nowe żądania czekają w kolejce przy niskim CPU. Dump z clrstack potwierdzi, gdzie wątki stoją."
+        },
+        {
+          "id": "ops-observability-e6",
+          "q": "Które narzędzie wybierzesz jako pierwszy, bezpieczny krok, żeby zobaczyć na żywo GC, pamięć i żądania/s procesu?",
+          "options": [
+            "dotnet-counters",
+            "dotnet-dump collect",
+            "Debugger podpięty do produkcji z breakpointami",
+            "dotnet ef migrations"
+          ],
+          "correct": 0,
+          "why": "dotnet-counters jest lekki i nie zatrzymuje procesu – szybko pokazuje kierunek. Dump i trace to kolejne, cięższe kroki."
+        },
+        {
+          "id": "ops-observability-e7",
+          "q": "Co powinien sprawdzać endpoint /health/live?",
+          "options": [
+            "Połączenie z bazą, Redisem i Service Busem",
+            "Poprawność wszystkich migracji",
+            "Tylko to, że proces odpowiada – bez zależności zewnętrznych",
+            "Czas odpowiedzi zewnętrznego API płatności"
+          ],
+          "correct": 2,
+          "why": "Liveness służy do decyzji o restarcie; awaria zależności nie jest powodem do restartu procesu. Zależności sprawdza ready."
+        },
+        {
+          "id": "ops-observability-e8",
+          "q": "Po wdrożeniu nowej wersji gwałtownie rośnie odsetek błędów 500. Co zrobić najpierw?",
+          "options": [
+            "Zacząć analizę dumpa pamięci",
+            "Poczekać, aż ruch spadnie",
+            "Zwiększyć poziom logowania do Trace na produkcji i obserwować przez godzinę",
+            "Przywrócić działanie – rollback lub wyłączenie flagi – a potem szukać przyczyny"
+          ],
+          "correct": 3,
+          "why": "Najpierw ograniczasz wpływ na użytkowników. Ostatnia zmiana jest najczęstszą przyczyną, a rollback jest szybki."
+        },
+        {
+          "id": "ops-observability-e9",
+          "q": "Pamięć procesu rośnie przez godziny i nie spada po GC. Jak potwierdzisz, co ją zajmuje?",
+          "options": [
+            "Zrobić dwa zrzuty (gcdump/dump) w odstępie czasu i porównać statystyki sterty, a gcroot pokaże, kto trzyma obiekty",
+            "Zrestartować aplikację – to rozwiąże przyczynę",
+            "Włączyć dotnet-counters i czekać, aż wskaże klasę",
+            "Przejrzeć logi z poziomu Information"
+          ],
+          "correct": 0,
+          "why": "Porównanie stert pokazuje, które typy rosną, a gcroot – łańcuch referencji trzymający je przy życiu (np. statyczny cache bez limitu)."
+        },
+        {
+          "id": "ops-observability-e10",
+          "q": "Dlaczego nie warto dodawać UserId jako etykiety (tagu) metryki?",
+          "options": [
+            "Bo metryki nie obsługują tekstu",
+            "Bo to łamie W3C Trace Context",
+            "Bo tworzy ogromną kardynalność – osobną serię dla każdego użytkownika, co zabija wydajność i koszty systemu metryk",
+            "Bo OpenTelemetry automatycznie usuwa takie etykiety"
+          ],
+          "correct": 2,
+          "why": "Metryki agregują po kombinacjach etykiet; wysokokardynalne wartości (UserId, OrderId) należą do logów i trace'ów, nie do metryk."
+        }
+      ]
+    }
+  ]
+}

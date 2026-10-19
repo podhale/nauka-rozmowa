@@ -113,7 +113,20 @@ export class ProgressStore {
       .map(([k, weight]) => { const [cat, topic] = k.split('|'); return { cat, topic, weight }; });
   }
 
+  lessonProgress(id: string) { return this._state().lessons?.[id]; }
+
   // ---------- commands ----------
+  markLessonRead(id: string): void {
+    this.update(s => ({ ...s, lessons: { ...s.lessons, [id]: { ...(s.lessons?.[id] ?? {}), read: Date.now(), t: Date.now() } }, days: bump(s.days) }));
+  }
+  /** Stores an exam score (percent) for a lesson id or "module:<id>"; keeps the best. */
+  recordExam(key: string, pct: number, passMark = 80): void {
+    this.update(s => {
+      const prev = s.lessons?.[key];
+      const best = Math.max(prev?.best ?? 0, pct);
+      return { ...s, lessons: { ...s.lessons, [key]: { ...(prev ?? {}), best, passed: best >= passMark, t: Date.now() } } };
+    });
+  }
   gradeCard(id: string, g: Grade, countsAsNew: boolean): void {
     this.update(s => {
       const k = dayKey();

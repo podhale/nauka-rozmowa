@@ -8,11 +8,12 @@ import { SessionService } from '../../core/session.service';
 import { shuffle, dayKey } from '../../core/srs';
 import { SyncService } from '../../core/sync.service';
 import { Theme, UiStateService } from '../../core/ui-state.service';
+import { ShowMore } from '../../shared/show-more';
 import { CatTag, LevelBadge, PluralPipe } from '../../shared/ui';
 
 @Component({
   selector: 'app-stats-page',
-  imports: [CatTag, LevelBadge, PluralPipe, DatePipe, RouterLink],
+  imports: [CatTag, LevelBadge, PluralPipe, DatePipe, RouterLink, ShowMore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './stats.page.html',
 })
@@ -50,8 +51,11 @@ export class StatsPage {
     }
     return out;
   });
-  protected readonly weak = computed(() => { this.store.state(); return this.store.weakTopics(8); });
-  protected readonly history = computed(() => [...this.store.state().hist].reverse().slice(0, 10));
+  protected readonly weak = computed(() => { this.store.state(); return this.store.weakTopics(200); });
+  protected readonly weakLimit = signal(8);
+  protected readonly histLimit = signal(10);
+  protected readonly Math = Math;
+  protected readonly history = computed(() => [...this.store.state().hist].reverse());
   protected readonly modeLabel: Record<string, string> = { quiz: 'Test', cards: 'Fiszki', interview: 'Próbna rozmowa' };
   protected readonly newPerDayOptions = [5, 10, 15, 25, 40];
   protected readonly levels: { l: Level; label: string }[] = [{ l: 1, label: 'Junior' }, { l: 2, label: 'Mid' }, { l: 3, label: 'Senior' }];

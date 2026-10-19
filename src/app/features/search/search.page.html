@@ -1,0 +1,91 @@
+<section class="view">
+  <div class="stack" style="gap:8px">
+    <h1>Szukaj</h1>
+    <input #q class="search" type="search" placeholder="np. async deadlock, signal effect, N+1, SOLID…" autocomplete="off"
+      aria-label="Szukaj w bazie" [value]="s.query()" (input)="s.query.set($any($event.target).value)" />
+    <div class="chips">
+      @for (o of kindOptions; track o.k) {
+        <button class="chip" [attr.aria-pressed]="s.kinds().has(o.k)" (click)="toggleKind(o.k)">
+          {{ o.label }} @if (s.query().trim()) { <small class="muted num">{{ counts()[o.k] }}</small> }
+        </button>
+      }
+    </div>
+    <div class="row" style="gap:8px;flex-wrap:nowrap">
+      <select style="flex:1;min-width:0" aria-label="Obszar" [value]="s.cat()" (change)="s.cat.set($any($event.target).value)">
+        <option value="all">Wszystkie obszary</option>
+        @for (c of content.categories(); track c.cat) { <option [value]="c.cat">{{ c.name }}</option> }
+      </select>
+      <select aria-label="Poziom" [value]="s.level()" (change)="setLevel($any($event.target).value)">
+        @for (o of levelOptions; track o.l) { <option [value]="o.l">{{ o.label }}</option> }
+      </select>
+    </div>
+  </div>
+
+  @if (!s.query().trim()) {
+    <div class="stack">
+      <p class="muted">Szukam w {{ content.cards().length }} fiszkach, {{ content.quiz().length }} pytaniach testowych i {{ content.cheatCount() }} ściągach. Polskie znaki są opcjonalne, kilka słów zawęża wyniki.</p>
+      <div class="chips">
+        @for (x of suggestions; track x) { <button class="chip" (click)="s.query.set(x)">{{ x }}</button> }
+      </div>
+    </div>
+  } @else if (!result().total) {
+    <div class="empty"><h3>Nic nie znaleziono</h3><p class="muted">Spróbuj krótszej frazy, innego obszaru albo poziomu.</p></div>
+  } @else {
+    <p class="muted" style="font-size:.85rem">
+      {{ result().total }} {{ result().total | plural: 'wynik' : 'wyniki' : 'wyników' }}
+
+    </p>
+    <div class="stack" style="gap:10px">
+      @for (h of visible(); track h.kind + h.id) {
+        <article class="card hit">
+          <button class="hit-head" (click)="toggle(h.kind + h.id)" [attr.aria-expanded]="expanded() === h.kind + h.id">
+            <span class="tags">
+              <span class="pill" [class.ok]="h.kind === 'sheet'" [class.mid]="h.kind === 'quiz'">{{ h.kind === 'card' ? 'Fiszka' : h.kind === 'quiz' ? 'Test' : 'Ściąga' }}</span>
+              <app-cat-tag [cat]="h.cat" /><span class="tag">· {{ h.topic }}</span>
+              @if (h.level) { <app-level [level]="h.level" /> }
+              @if (h.kind === 'card') { <span [class]="cardState(h.id)"></span> }
+            </span>
+            <span class="hit-title" [innerHTML]="h.title | highlight: s.query()"></span>
+            @if (expanded() !== h.kind + h.id) { <span class="hit-snippet muted" [innerHTML]="h.snippet | highlight: s.query()"></span> }
+          </button>
+
+          @if (expanded() === h.kind + h.id) {
+            <div class="hit-body">
+              @switch (h.kind) {
+                @case ('card') {
+                  @if (h.card; as c) {
+                    <div class="row" style="gap:10px;align-items:flex-start"><p style="white-space:pre-line;flex:1;min-width:0" [innerHTML]="c.a | highlight: s.query()"></p>@if (c.tr) { <app-speak [text]="c.a" /> }</div>
+                    @if (c.tr) { <p class="trans" [innerHTML]="c.tr | highlight: s.query()"></p> }
+                    @if (c.pron) { <p class="pron"><b>Wymowa:</b> {{ c.pron }}</p> }
+                    <app-code [code]="c.code" [lang]="c.lang" />
+                    @if (c.deep) { <details class="deep" open><summary>Pogłębienie (senior)</summary><div class="in"><p [innerHTML]="c.deep | highlight: s.query()"></p></div></details> }
+                    @if (c.tip) { <div class="tip"><b>Na rozmowie:</b> <span [innerHTML]="c.tip | rich"></span></div> }
+                    <div class="minirow">
+                      <button class="btn" style="min-height:40px" (click)="practiceCard(c.id)">Ćwicz tę fiszkę</button>
+                      @if (content.sheet(c.cat, c.topic)) { <a class="linkbtn" [routerLink]="['/sciaga', c.cat, c.topic]">Ściąga: {{ c.topic }}</a> }
+                    </div>
+                  }
+                }
+                @case ('quiz') {
+                  @if (h.question; as q) {
+                    <app-code [code]="q.code" [lang]="q.lang" />
+                    <ul class="optlist">
+                      @for (o of q.options; track $index) { <li [class.ok]="$index === q.correct" [innerHTML]="o | highlight: s.query()"></li> }
+                    </ul>
+                    <p class="muted" [innerHTML]="q.why | highlight: s.query()"></p>
+                    <div class="minirow">
+                      <button class="btn" style="min-height:40px" (click)="practiceQuestion(q.id)">Rozwiąż jako test</button>
+                      @if (content.sheet(q.cat, q.topic)) { <a class="linkbtn" [routerLink]="['/sciaga', q.cat, q.topic]">Ściąga: {{ q.topic }}</a> }
+                    </div>
+                  }
+                }
+                @case ('sheet') { <app-cheat-sheet [cat]="h.cat" [topic]="h.topic" [showTitle]="false" /> }
+              }
+            </div>
+          }
+        </article>
+      }
+    </div>
+    <app-show-more [total]="result().hits.length" [shown]="visible().length" [step]="30" (more)="limit.set(limit() + 30)" (all)="limit.set(result().hits.length)" />
+  }
+</section>

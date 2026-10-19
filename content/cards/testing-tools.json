@@ -1,0 +1,347 @@
+{
+  "cat": "testing",
+  "name": "Testy (.NET i Angular)",
+  "cards": [
+    {
+      "id": "testing-t001",
+      "topic": "Biblioteki do mockowania: porównanie",
+      "level": 1,
+      "q": "Jak zapisać w FakeItEasy test serwisu zamówień: zwrócenie zamówienia z repozytorium i sprawdzenie, że zapisano je i wysłano e-mail? Scenariusz: `OrderService.ConfirmAsync(id)` pobiera zamówienie z `IOrderRepository.GetAsync`, zatwierdza je, zapisuje przez `SaveAsync` i wysyła e-mail przez `IEmailSender.SendAsync(to, subject)`.",
+      "a": "W FakeItEasy fake tworzy się przez `A.Fake<T>()` i od razu jest to obiekt typu `T` (bez `.Object` jak w Moq). Całą konfigurację i weryfikację robi się przez `A.CallTo(() => ...)`: z `.Returns(...)` to stub, z `.MustHaveHappenedOnceExactly()` – asercja interakcji. Dopasowanie dowolnego argumentu to `A<T>._` (lub `A<T>.Ignored`), a warunek – `A<T>.That.Matches(pred)`. Dla metod zwracających `Task<T>` można podać samą wartość w `Returns`, a nieskonfigurowane metody async zwracają już zakończony `Task`, więc `SaveAsync`/`SendAsync` nie trzeba ustawiać.",
+      "code": "var repo = A.Fake<IOrderRepository>();\nvar email = A.Fake<IEmailSender>();\nvar order = new Order(7, \"ala@x.pl\");\nA.CallTo(() => repo.GetAsync(7)).Returns(order);\nvar sut = new OrderService(repo, email);\n\nawait sut.ConfirmAsync(7);\n\nA.CallTo(() => repo.SaveAsync(order)).MustHaveHappenedOnceExactly();\nA.CallTo(() => email.SendAsync(\"ala@x.pl\", A<string>._))\n    .MustHaveHappenedOnceExactly();",
+      "lang": "csharp",
+      "tip": "Jedno wejście `A.CallTo` do wszystkiego to główny argument zwolenników FakeItEasy: składnia jest spójna i czyta się ją jak zdanie."
+    },
+    {
+      "id": "testing-t002",
+      "topic": "Biblioteki do mockowania: porównanie",
+      "level": 1,
+      "q": "Jak ten sam test serwisu zamówień (stub `GetAsync`, weryfikacja `SaveAsync` i `SendAsync`) wygląda w Moq i w NSubstitute?",
+      "a": "W Moq tworzę `Mock<T>`, konfiguruję `Setup(...).ReturnsAsync(...)`, do serwisu przekazuję `mock.Object`, a na końcu `Verify(..., Times.Once())`; dowolny argument to `It.IsAny<T>()`. W NSubstitute `Substitute.For<T>()` zwraca od razu obiekt typu `T`, stub to wywołanie metody + `.Returns(...)`, weryfikacja to `Received(1)`, a dowolny argument – `Arg.Any<T>()`. Przy metodach async w NSubstitute warto `await`-ować `Received(...)` – kompilator i analizatory nie zgłaszają wtedy ostrzeżenia o nieawaitowanym `Task`. Funkcjonalnie wynik jest ten sam; różni się tylko ceremonia.",
+      "code": "// Moq\nvar repo = new Mock<IOrderRepository>();\nvar email = new Mock<IEmailSender>();\nrepo.Setup(r => r.GetAsync(7)).ReturnsAsync(order);\nawait new OrderService(repo.Object, email.Object).ConfirmAsync(7);\nrepo.Verify(r => r.SaveAsync(order), Times.Once());\nemail.Verify(e => e.SendAsync(\"ala@x.pl\", It.IsAny<string>()), Times.Once());\n\n// NSubstitute\nvar repo2 = Substitute.For<IOrderRepository>();\nvar email2 = Substitute.For<IEmailSender>();\nrepo2.GetAsync(7).Returns(order);\nawait new OrderService(repo2, email2).ConfirmAsync(7);\nawait repo2.Received(1).SaveAsync(order);\nawait email2.Received(1).SendAsync(\"ala@x.pl\", Arg.Any<string>());",
+      "lang": "csharp",
+      "tip": "Ściąga z odpowiedników: Moq `It.IsAny<T>()` = NSubstitute `Arg.Any<T>()` = FakeItEasy `A<T>._`; Moq `Times.Once()` = `Received(1)` = `MustHaveHappenedOnceExactly()`."
+    },
+    {
+      "id": "testing-t003",
+      "topic": "Biblioteki do mockowania: porównanie",
+      "level": 2,
+      "q": "Czym różnią się strict i loose mocki i jak włącza się je w Moq, NSubstitute i FakeItEasy?",
+      "a": "Loose mock przy nieskonfigurowanym wywołaniu zwraca wartość domyślną (null, 0, pustą kolekcję, zakończony `Task`) i nie protestuje. Strict mock rzuca wyjątek przy każdym wywołaniu, którego nie skonfigurowano. Wszystkie trzy biblioteki domyślnie są loose. W Moq strict włącza się przez `new Mock<T>(MockBehavior.Strict)`, w FakeItEasy przez `A.Fake<T>(o => o.Strict())`, a NSubstitute w ogóle nie ma trybu strict – to świadoma decyzja projektowa. Domyślnie wybieram loose i weryfikuję tylko interakcje, które są efektem biznesowym (zapis, e-mail), bo strict przywiązuje test do każdego szczegółu implementacji.",
+      "code": "// Moq\nvar repo = new Mock<IOrderRepository>(MockBehavior.Strict);\nrepo.Setup(r => r.GetAsync(7)).ReturnsAsync(order);\n// wywołanie SaveAsync bez Setup -> MockException\n\n// FakeItEasy\nvar email = A.Fake<IEmailSender>(o => o.Strict());\n\n// NSubstitute: brak trybu strict; zamiast tego np.\n// email.DidNotReceiveWithAnyArgs().SendAsync(default!, default!);",
+      "lang": "csharp",
+      "tip": "Strict bywa sensowny punktowo: przy zależności, której wywołanie ma poważne skutki (np. płatność) i chcesz mieć pewność, że nic innego nie zostanie wywołane.",
+      "deep": "Strict mocki sprawiają, że każda refaktoryzacja dodająca nieszkodliwe wywołanie (logowanie, dodatkowe zapytanie `ExistsAsync`) psuje testy, mimo że zachowanie się nie zmieniło – to klasyczny objaw over-mockingu. Z drugiej strony loose mock może ukryć błąd: nieskonfigurowane `GetAsync` zwróci null i test może przejść inną ścieżką, niż zakładał autor. Dlatego przy loose warto asertywnie sprawdzać wynik (a nie tylko brak wyjątku). Kompromis w Moq to loose + `VerifyNoOtherCalls()` tylko na wybranym mocku; w FakeItEasy podobną rolę pełni strict na pojedynczym fake'u, a w NSubstitute – jawne `DidNotReceive...`."
+    },
+    {
+      "id": "testing-t004",
+      "topic": "Biblioteki do mockowania: porównanie",
+      "level": 3,
+      "q": "Moq, NSubstitute czy FakeItEasy – którą bibliotekę wybierasz do nowego projektu i od czego to zależy?",
+      "a": "Funkcjonalnie pokrywają ten sam zakres: interfejsy i członki `virtual`/`abstract`, dopasowanie argumentów, async, przechwytywanie argumentów, weryfikacja liczby wywołań. Wybór to głównie ergonomia i spójność w zespole: Moq jest najbardziej rozpowszechniony i ma jawny model `Mock<T>`/`.Object` oraz tryb strict; NSubstitute ma najkrótszą składnię i dobrze się czyta, ale nie ma strict; FakeItEasy ma jedno wejście `A.CallTo` i strict per fake. W nowym projekcie najczęściej wybieram NSubstitute (z NSubstitute.Analyzers) albo zostaję przy tym, czego używa reszta organizacji – mieszanie dwóch bibliotek w jednym repo to koszt bez zysku.",
+      "tip": "Dobry follow-up: \"a czy w ogóle mockować?\" – repozytorium EF Core często lepiej testować na prawdziwej bazie (Testcontainers), a mocki zostawić dla granic systemu.",
+      "deep": "Kryteria, które realnie biorę pod uwagę: (1) czytelność w code review – NSubstitute i FakeItEasy mają mniej szumu niż `Setup`/`Object`; (2) pułapki składni – w NSubstitute konfiguracja niewirtualnego członka po cichu nic nie robi, więc analizatory są obowiązkowe, w Moq błędy wychodzą częściej w runtime jako `NotSupportedException`; (3) potrzeba strict – jeśli zespół go chce, NSubstitute odpada; (4) ekosystem – AutoFixture ma integracje z wszystkimi trzema (AutoMoq, AutoNSubstitute, AutoFakeItEasy); (5) zaufanie do utrzymania – po incydencie SponsorLink w Moq 4.20 (2023) część firm przeszła na NSubstitute, choć zmianę szybko wycofano. Migracja między bibliotekami jest mechaniczna, ale przy tysiącach testów kosztowna, więc decyzję podejmuje się raz, na poziomie organizacji. Niezależnie od biblioteki ważniejsze jest, żeby mockować tylko granice (I/O, zewnętrzne usługi), a nie każdą klasę."
+    },
+    {
+      "id": "testing-t005",
+      "topic": "Frameworki testowe: xUnit, NUnit, MSTest",
+      "level": 1,
+      "q": "Jakie są odpowiedniki podstawowych atrybutów w xUnit, NUnit i MSTest?",
+      "a": "Test bez parametrów to `[Fact]` w xUnit, `[Test]` w NUnit i `[TestMethod]` w MSTest. Test parametryzowany: `[Theory]` + `[InlineData]` / `[MemberData]` w xUnit, `[TestCase]` / `[TestCaseSource]` w NUnit, `[DataRow]` / `[DynamicData]` w MSTest. Setup i teardown przed każdym testem: konstruktor i `Dispose` w xUnit, `[SetUp]`/`[TearDown]` w NUnit, `[TestInitialize]`/`[TestCleanup]` w MSTest. Raz na klasę: `IClassFixture<T>` w xUnit, `[OneTimeSetUp]`/`[OneTimeTearDown]` w NUnit, statyczne `[ClassInitialize]`/`[ClassCleanup]` w MSTest.",
+      "code": "                 xUnit                  NUnit                     MSTest\nTest             [Fact]                 [Test]                    [TestMethod]\nParametry        [Theory]+[InlineData]  [TestCase]                [TestMethod]+[DataRow]\nDane z metody    [MemberData]           [TestCaseSource]          [DynamicData]\nPrzed testem     konstruktor            [SetUp]                   [TestInitialize]\nPo teście        Dispose/DisposeAsync   [TearDown]                [TestCleanup]\nRaz na klasę     IClassFixture<T>       [OneTimeSetUp]            [ClassInitialize] (static)\nRaz na assembly  [assembly: AssemblyFixture] (v3)  [SetUpFixture]  [AssemblyInitialize]\nPominięcie       [Fact(Skip=\"...\")]     [Ignore(\"...\")]           [Ignore]\nKategoria        [Trait(\"Category\",..)] [Category(\"...\")]         [TestCategory(\"...\")]",
+      "lang": "text",
+      "tip": "Na rozmowie wystarczy pewnie wymienić trójkę Fact/Test/TestMethod i Theory/TestCase/DataRow oraz powiedzieć, że xUnit nie ma atrybutu setup – używa konstruktora."
+    },
+    {
+      "id": "testing-t006",
+      "topic": "Frameworki testowe: xUnit, NUnit, MSTest",
+      "level": 2,
+      "q": "Jak wygląda cykl życia klasy testowej w xUnit, NUnit i MSTest i jakie to ma konsekwencje?",
+      "a": "xUnit i MSTest tworzą nową instancję klasy testowej dla każdej metody testowej, więc pola instancji są świeże w każdym teście, a setup to konstruktor (xUnit) lub `[TestInitialize]` (MSTest). NUnit domyślnie tworzy jedną instancję na całą klasę (fixture) i wszystkie testy dzielą jej pola – dlatego stan resetuje się w `[SetUp]`. Od NUnit 3.13 można to zmienić atrybutem `[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]`. Kosztowne zasoby współdzielone (kontener bazy, `WebApplicationFactory`) trzyma się w fixture: `IClassFixture`/`ICollectionFixture` w xUnit, `[OneTimeSetUp]` w NUnit, statyczne `[ClassInitialize]` w MSTest.",
+      "code": "// NUnit: jedna instancja na klasę -> reset w [SetUp]\n[TestFixture]\npublic class CartTests\n{\n    private Cart _cart = null!;\n\n    [SetUp]\n    public void Init() => _cart = new Cart();\n\n    [Test]\n    public void Add_increases_count()\n    {\n        _cart.Add(\"SKU-1\");\n        Assert.That(_cart.Count, Is.EqualTo(1));\n    }\n}",
+      "lang": "csharp",
+      "tip": "Typowa pułapka przy migracji z xUnit do NUnit: inicjalizacja w inicjalizatorze pola zamiast w `[SetUp]` – testy zaczynają od siebie zależeć.",
+      "deep": "Model „instancja per test” wymusza izolację i dlatego xUnit go wybrał – testy nie mogą przypadkiem przekazywać sobie stanu przez pola. Ceną jest to, że współdzielenie zasobów musi być jawne (fixtures wstrzykiwane przez konstruktor), co dobrze dokumentuje zależności. Model NUnit jest wygodniejszy przy drogim setupie w polach, ale sprzyja testom zależnym od kolejności, które ujawniają się dopiero przy równoległym uruchamianiu lub losowej kolejności. W MSTest `[ClassInitialize]` musi być statyczne i przyjmuje `TestContext`, więc stan współdzielony trzyma się w polach statycznych – trzeba uważać przy równoległości. W xUnit async setup/teardown robi się przez `IAsyncLifetime`, w NUnit i MSTest metody setup mogą po prostu zwracać `Task`."
+    },
+    {
+      "id": "testing-t007",
+      "topic": "Frameworki testowe: xUnit, NUnit, MSTest",
+      "level": 2,
+      "q": "Jak działa równoległe uruchamianie testów w xUnit, NUnit i MSTest?",
+      "a": "xUnit równolegli domyślnie: jednostką jest kolekcja testów, a każda klasa to osobna kolekcja, więc klasy biegną równolegle, a testy w klasie sekwencyjnie; klasy w tej samej `[Collection]` idą po kolei. NUnit domyślnie nie równolegli – trzeba dodać `[Parallelizable(ParallelScope...)]` (np. na assembly) i ewentualnie `[LevelOfParallelism(n)]`. MSTest też domyślnie nie równolegli; włącza się to przez `[assembly: Parallelize(Workers = 0, Scope = ExecutionScope.MethodLevel)]` (0 = liczba rdzeni), a wyjątki oznacza `[DoNotParallelize]`. Niezależnie od frameworka `dotnet test` może dodatkowo uruchamiać kilka projektów testowych równolegle.",
+      "code": "// MSTest – np. w AssemblyInfo.cs / dowolnym pliku projektu testowego\n[assembly: Parallelize(Workers = 0, Scope = ExecutionScope.MethodLevel)]\n\n// NUnit\n[assembly: Parallelizable(ParallelScope.Fixtures)]\n[assembly: LevelOfParallelism(4)]\n\n// xUnit – sekwencyjnie w obrębie kolekcji\n[Collection(\"Database\")]\npublic class OrdersApiTests { }",
+      "lang": "csharp",
+      "tip": "Gdy testy losowo padają tylko w pełnym przebiegu, pierwsze podejrzenie to współdzielony stan (statyczne pola, ta sama baza) w testach działających równolegle."
+    },
+    {
+      "id": "testing-t008",
+      "topic": "Frameworki testowe: xUnit, NUnit, MSTest",
+      "level": 3,
+      "q": "Co nowego wnosi xUnit v3 i jak w skrócie zmieniał się MSTest w ostatnich wersjach?",
+      "a": "xUnit v3 (pakiet `xunit.v3`) zmienia model uruchamiania: projekt testowy jest aplikacją wykonywalną (`OutputType` Exe), więc testy można odpalić przez `dotnet run` albo bezpośrednio plik exe, obok klasycznego `dotnet test`; wspiera też Microsoft.Testing.Platform. Dochodzi `TestContext.Current` – m.in. z `CancellationToken` przerywanym przy anulowaniu przebiegu – oraz assembly fixtures (`[assembly: AssemblyFixture(typeof(...))]`) dzielone przez wszystkie testy w assembly. Testy można też pominąć dynamicznie w trakcie wykonania (`Assert.Skip`), a `IAsyncLifetime` opiera się na `ValueTask` i `IAsyncDisposable`. MSTest (v3 i nowsze) przeszedł modernizację: `MSTest.Sdk` jako SDK projektu, własny runner na Microsoft.Testing.Platform zamiast VSTest, wbudowane analizatory i wsparcie równoległości.",
+      "code": "// xUnit v3: fixture na całe assembly + token anulowania\n[assembly: AssemblyFixture(typeof(PostgresFixture))]\n\npublic class OrdersTests(PostgresFixture db)\n{\n    [Fact]\n    public async Task Saves_order()\n    {\n        var ct = TestContext.Current.CancellationToken;\n        await using var conn = await db.OpenAsync(ct);\n        // ...\n    }\n}",
+      "lang": "csharp",
+      "tip": "Na rozmowie lepiej powiedzieć mniej, a pewnie: „v3 to testy jako exe, TestContext i assembly fixtures; migracja wymaga zmiany pakietów i drobnych zmian API”.",
+      "deep": "Uruchamianie testów jako exe oznacza, że projekt testowy sam zawiera runner – znika warstwa adapterów VSTest, start jest szybszy, a testy można uruchomić w środowisku bez SDK (np. w kontenerze z samym runtime). Migracja z v2 to zamiana pakietów `xunit`/`xunit.runner.visualstudio` na `xunit.v3` (z odpowiednim runnerem), ustawienie projektu jako Exe i poprawki w kodzie: zmienione przestrzenie nazw rozszerzeń, `IAsyncLifetime` z `ValueTask`, a analizator zachęca do przekazywania `TestContext.Current.CancellationToken` do metod async. Assembly fixture zastępuje typowy hack ze statycznym singletonem kontenera Testcontainers dla całego projektu. Microsoft.Testing.Platform to wspólny kierunek dla MSTest, xUnit v3, NUnit i TUnit – w .NET 10 `dotnet test` potrafi pracować w trybie MTP, ale trzeba to jawnie skonfigurować i część przełączników (np. `--collect`) działa inaczej niż w VSTest."
+    },
+    {
+      "id": "testing-t009",
+      "topic": "Dane testowe: AutoFixture, Bogus, buildery",
+      "level": 1,
+      "q": "Do czego służy AutoFixture i jak używasz `Create<T>`, `Build<T>().With()` i `CreateMany<T>`?",
+      "a": "AutoFixture generuje anonimowe dane testowe: `fixture.Create<T>()` tworzy obiekt i wypełnia jego konstruktor oraz właściwości losowymi wartościami (stringi to nazwa właściwości + GUID, liczby są unikalne). Dzięki temu test ustawia tylko wartości istotne dla scenariusza, a reszta „po prostu jest” i nie zaśmieca kodu. `fixture.Build<T>().With(x => x.Prop, wartość).Without(x => x.Inna).Create()` pozwala nadpisać lub pominąć konkretne właściwości dla jednego obiektu, a `CreateMany<T>(n)` tworzy kolekcję. Gdy dodam do klasy nowe wymagane pole, testy dalej się kompilują i działają.",
+      "code": "var fixture = new Fixture();\n\nvar customer = fixture.Create<Customer>();\nvar paid = fixture.Build<Order>()\n    .With(o => o.Status, OrderStatus.Paid)\n    .Without(o => o.Notes)\n    .Create();\nvar lines = fixture.CreateMany<OrderLine>(3).ToList();\n\nfixture.Customize<Money>(c => c.FromFactory(() => new Money(10m, \"PLN\")));",
+      "lang": "csharp",
+      "tip": "Anonimowe dane mają sygnalizować „ta wartość nie ma znaczenia”. Jeśli wartość wpływa na wynik, ustaw ją jawnie – inaczej test staje się nieczytelny."
+    },
+    {
+      "id": "testing-t010",
+      "topic": "Dane testowe: AutoFixture, Bogus, buildery",
+      "level": 2,
+      "q": "Jak generujesz realistyczne dane testowe z Bogus i jak zapewniasz ich powtarzalność?",
+      "a": "Bogus to port faker.js: definiuję `Faker<T>` z regułami `RuleFor(x => x.Prop, f => f.Name.FullName())`, gdzie `f` daje generatory imion, adresów, e-maili, firm, dat czy cen, także z lokalizacją (np. `\"pl\"`). Reguła może korzystać z już wygenerowanych pól: `(f, c) => f.Internet.Email(c.FirstName, c.LastName)`. Dla klas bez setterów lub z konstruktorem używam `CustomInstantiator`. Powtarzalność zapewnia seed: `UseSeed(1234)` na konkretnym fakerze albo globalnie `Randomizer.Seed = new Random(1234)` – ten sam seed daje te same dane, więc błąd w teście da się odtworzyć. Bogus świetnie nadaje się do seedów baz, demo i testów wydajnościowych.",
+      "code": "var customers = new Faker<Customer>(\"pl\")\n    .UseSeed(1234)\n    .RuleFor(c => c.Id, f => f.IndexFaker + 1)\n    .RuleFor(c => c.FirstName, f => f.Name.FirstName())\n    .RuleFor(c => c.LastName, f => f.Name.LastName())\n    .RuleFor(c => c.Email, (f, c) => f.Internet.Email(c.FirstName, c.LastName))\n    .RuleFor(c => c.CreatedAt, f => f.Date.Past(2))\n    .Generate(100);",
+      "lang": "csharp",
+      "tip": "`StrictMode(true)` na fakerze rzuca wyjątek, jeśli któraś właściwość nie ma reguły – chroni przed cichym null po dodaniu pola do klasy.",
+      "deep": "Losowość bez seeda to przepis na flaky testy: raz wygenerowany e-mail przekroczy limit długości, raz data wypadnie w weekend i test padnie raz na kilkaset przebiegów, bez możliwości odtworzenia. Dlatego w testach jednostkowych albo używam stałego seeda, albo w ogóle nie polegam na wartościach z Bogusa w asercjach. Uwaga na `f.Date.Past()`/`Recent()` – zależą od aktualnego czasu, więc nawet z seedem wynik zmienia się w czasie; można podać datę referencyjną (`refDate`) albo ustawić ją w konfiguracji. Do testów wydajnościowych i seedów dev/stage Bogus jest bezkonkurencyjny, bo dane wyglądają realistycznie i mają realistyczny rozkład długości. Do testów reguł domenowych zwykle wolę jawny builder – Bogus nie zna niezmienników domeny."
+    },
+    {
+      "id": "testing-t011",
+      "topic": "Dane testowe: AutoFixture, Bogus, buildery",
+      "level": 2,
+      "q": "Jak łączysz AutoFixture z biblioteką do mockowania (AutoMoqCustomization) i atrybutem `[AutoData]`?",
+      "a": "`new Fixture().Customize(new AutoMoqCustomization())` (pakiet AutoFixture.AutoMoq) sprawia, że gdy AutoFixture trafi na interfejs lub klasę abstrakcyjną, tworzy mocka zamiast rzucać wyjątek – dzięki temu `fixture.Create<OrderService>()` zbuduje serwis ze wszystkimi zależnościami. Analogiczne pakiety są dla NSubstitute i FakeItEasy. `[Theory, AutoData]` (AutoFixture.Xunit2) wstrzykuje wygenerowane wartości jako parametry testu; zwykle robi się własny atrybut dziedziczący po `AutoDataAttribute`, który dodaje kustomizację mocków. `[Frozen]` „zamraża” instancję, żeby ta sama trafiła do SUT i do testu, co pozwala ją skonfigurować i zweryfikować.",
+      "code": "public class AutoMoqDataAttribute() : AutoDataAttribute(\n    () => new Fixture().Customize(new AutoMoqCustomization()));\n\n[Theory, AutoMoqData]\npublic async Task Confirm_saves_order(\n    [Frozen] Mock<IOrderRepository> repo, Order order, OrderService sut)\n{\n    repo.Setup(r => r.GetAsync(order.Id)).ReturnsAsync(order);\n\n    await sut.ConfirmAsync(order.Id);\n\n    repo.Verify(r => r.SaveAsync(order), Times.Once());\n}",
+      "lang": "csharp",
+      "tip": "Kolejność parametrów ma znaczenie: parametr `[Frozen]` musi stać przed SUT, inaczej serwis dostanie innego mocka.",
+      "deep": "Zaletą tego stylu jest odporność na zmiany konstruktora: dodanie nowej zależności do `OrderService` nie wymaga poprawiania setek testów, bo AutoFixture dostarczy mocka automatycznie. Wadą jest „magia” – nowa osoba w zespole nie widzi, skąd biorą się obiekty, a błędy kolejności `[Frozen]` dają zaskakujące wyniki. Dla AutoMoq przydaje się `ConfigureMembers = true`, żeby mocki zwracały wartości z fixture'a zamiast null. Przy encjach z cyklicznymi referencjami (np. EF navigation properties) domyślne zachowanie rzuca wyjątek rekurencji – trzeba zamienić `ThrowingRecursionBehavior` na `OmitOnRecursionBehavior`. Stosuję to w testach serwisów aplikacyjnych z wieloma zależnościami; w testach domeny wolę jawne buildery."
+    },
+    {
+      "id": "testing-t012",
+      "topic": "Dane testowe: AutoFixture, Bogus, buildery",
+      "level": 2,
+      "q": "Test Data Builder, Object Mother, AutoFixture czy Bogus – kiedy co wybierasz?",
+      "a": "Object Mother to statyczne fabryki gotowych obiektów (`Orders.Paid()`, `Customers.Vip()`) – szybkie i czytelne, dopóki wariantów jest mało; potem mnożą się metody typu `PaidWithTwoLinesForVip`. Test Data Builder ma sensowne wartości domyślne i fluent `With...`, więc test ustawia tylko to, co istotne – to mój wybór dla obiektów domenowych z niezmiennikami. AutoFixture wybieram, gdy wartości nie mają znaczenia, a obiektów i zależności jest dużo (DTO, serwisy z wieloma zależnościami). Bogus – gdy dane mają wyglądać realistycznie: seedy baz, demo, testy wydajnościowe i UI. Często łączę: builder w środku używa AutoFixture lub Bogusa do pól, które są nieistotne.",
+      "code": "// Object Mother zwracający builder – czytelne i elastyczne\npublic static class Orders\n{\n    public static OrderBuilder Paid() => new OrderBuilder().Paid();\n}\n\nvar order = Orders.Paid().WithLine(\"SKU-1\", qty: 2, price: 50m).Build();",
+      "lang": "csharp",
+      "tip": "Dobra odpowiedź na rozmowie wskazuje kryterium: czy wartość ma znaczenie dla testu (builder, jawnie) czy nie (AutoFixture), i czy ma wyglądać realistycznie (Bogus)."
+    },
+    {
+      "id": "testing-t013",
+      "topic": "Pokrycie kodu: coverlet i raporty",
+      "level": 1,
+      "q": "Jak zbierasz pokrycie kodu w .NET za pomocą coverlet?",
+      "a": "Najprostsza droga to pakiet `coverlet.collector` w projekcie testowym (domyślnie jest w szablonach xUnit/NUnit/MSTest) i `dotnet test --collect:\"XPlat Code Coverage\"`. Wynik ląduje w `TestResults/<guid>/coverage.cobertura.xml` – osobno dla każdego projektu testowego. Wykluczenia (np. migracje, kod generowany) i format ustawia się w pliku `.runsettings` albo atrybutem `[ExcludeFromCodeCoverage]`. Alternatywy to `coverlet.msbuild` (`/p:CollectCoverage=true`, umie też progi `Threshold`) i `coverlet.console`; Microsoft ma własny kolektor `--collect:\"Code Coverage\"`, a przy Microsoft.Testing.Platform używa się rozszerzenia Microsoft.Testing.Extensions.CodeCoverage.",
+      "code": "dotnet add tests/Shop.Tests package coverlet.collector\n\ndotnet test --collect:\"XPlat Code Coverage\" --results-directory ./TestResults\n# -> ./TestResults/<guid>/coverage.cobertura.xml\n\n# z ustawieniami (Exclude, ExcludeByAttribute, Format)\ndotnet test --collect:\"XPlat Code Coverage\" --settings coverlet.runsettings",
+      "lang": "bash",
+      "tip": "Nie mieszaj `coverlet.collector` i `coverlet.msbuild` w jednym projekcie – to dwa różne sposoby uruchomienia tego samego narzędzia."
+    },
+    {
+      "id": "testing-t014",
+      "topic": "Pokrycie kodu: coverlet i raporty",
+      "level": 2,
+      "q": "Czym różni się line coverage od branch coverage i dlaczego branch mówi więcej?",
+      "a": "Line coverage to odsetek wykonanych linii, branch coverage – odsetek wykonanych gałęzi decyzji (`if`/`else`, `?:`, `switch`, `&&`/`||`, `??`). Jedna linia może zawierać kilka gałęzi: `return c.IsVip && c.Orders > 10 ? 0.1m : 0m;` jednym testem z klientem VIP pokryje 100% linii, ale tylko część gałęzi – nie wiemy, czy działa ścieżka bez rabatu. Dlatego przy logice warunkowej patrzę na branch coverage, a line traktuję jako zgrubny wskaźnik. Coverlet raportuje line, branch i method coverage. Żadne z nich nie mówi jednak, czy wynik został sprawdzony asercją – to mierzy dopiero mutation testing.",
+      "code": "public decimal Discount(Customer c) =>\n    c.IsVip && c.Orders > 10 ? 0.1m : 0m;\n\n[Fact]\npublic void Vip_with_many_orders_gets_10_percent() =>\n    Assert.Equal(0.1m, new Pricing().Discount(new(IsVip: true, Orders: 20)));\n// line: 100%, branch: < 100% (brak ścieżki false)",
+      "lang": "csharp",
+      "tip": "Kompilator generuje dodatkowe gałęzie (async state machine, `using`, `?.`), więc branch coverage w kodzie async bywa zaniżony bez realnej luki w testach."
+    },
+    {
+      "id": "testing-t015",
+      "topic": "Pokrycie kodu: coverlet i raporty",
+      "level": 2,
+      "q": "Jak generujesz czytelny raport pokrycia (ReportGenerator) i jak pokazujesz go w Azure DevOps i GitHub Actions?",
+      "a": "Pliki Cobertura z `dotnet test` są per projekt i nieczytelne dla ludzi, więc używam ReportGenerator (`dotnet-reportgenerator-globaltool`): scala wiele plików w jeden raport i generuje HTML, zbiorczy Cobertura czy podsumowanie Markdown. W Azure DevOps po testach dodaję zadanie `PublishCodeCoverageResults@2` wskazujące plik Cobertura – pokrycie pojawia się w zakładce Code Coverage przebiegu. GitHub Actions nie ma wbudowanego widoku pokrycia, więc generuję `MarkdownSummaryGithub` i dopisuję go do `$GITHUB_STEP_SUMMARY` albo komentarza w PR; alternatywnie zewnętrzna usługa typu Codecov. Raport HTML zapisuję jako artefakt przebiegu.",
+      "code": "dotnet tool install -g dotnet-reportgenerator-globaltool\ndotnet test --collect:\"XPlat Code Coverage\" --results-directory ./TestResults\n\nreportgenerator \\\n  -reports:\"./TestResults/**/coverage.cobertura.xml\" \\\n  -targetdir:./coverage \\\n  -reporttypes:\"Html;Cobertura;MarkdownSummaryGithub\"\n\n# GitHub Actions\ncat ./coverage/SummaryGithub.md >> \"$GITHUB_STEP_SUMMARY\"",
+      "lang": "bash",
+      "tip": "Glob `**/coverage.cobertura.xml` w `-reports` to najprostszy sposób na scalenie pokrycia z wielu projektów testowych."
+    },
+    {
+      "id": "testing-t016",
+      "topic": "Pokrycie kodu: coverlet i raporty",
+      "level": 3,
+      "q": "Manager proponuje próg 100% pokrycia blokujący merge w CI. Co odpowiadasz i jaką politykę proponujesz?",
+      "a": "100% to zły cel, bo pokrycie mierzy wykonanie, a nie weryfikację: zespół pod presją metryki dopisze testy bez sensownych asercji, będzie testował gettery, DTO i kod frameworka, a testy przywiążą się do implementacji (prawo Goodharta). Ostatnie procenty są najdroższe i najmniej wartościowe – to często obsługa błędów infrastruktury, kod startowy i generowany. Proponuję zamiast tego: wykluczyć kod generowany i migracje, nie dopuszczać do spadku pokrycia na nowym kodzie w PR (diff coverage), wysokie branch coverage dla krytycznej domeny (płatności, rabaty), a jakość testów oceniać mutation testingiem w tych modułach. Liczbę traktuję jako sygnał do rozmowy w code review, nie jako bramkę.",
+      "tip": "Warto mieć liczbę w zanadrzu: „u nas typowo 70–85% na całości, wyżej w domenie” – brzmi dojrzalej niż „coverage nie ma znaczenia”.",
+      "deep": "Próg globalny ma też efekt uboczny: blokuje PR-y, które nic nie psują, gdy ktoś wcześniej usunął test albo dodano duży moduł infrastrukturalny, więc zespół zaczyna obchodzić go wykluczeniami (`[ExcludeFromCodeCoverage]` na wszystkim). Diff coverage (pokrycie tylko zmienionych linii) jest bardziej sprawiedliwy i zachęca do testowania tego, co się właśnie pisze; wspierają go usługi typu Codecov/SonarQube. Metryka jest wartościowa jako narzędzie wyszukiwania luk: raport HTML pokazuje nieprzetestowane gałęzie w logice biznesowej, a to są realne ryzyka. Mutation testing (Stryker.NET) odpowiada na pytanie, którego coverage nie zadaje – czy testy wykryją zmianę zachowania – ale jest kosztowny, więc uruchamia się go na wybranych projektach lub nocnie. Warto też pamiętać, że pokrycie z testów integracyjnych i jednostkowych liczy się razem, więc wysoki procent może pochodzić z jednego szerokiego testu e2e bez szczegółowych asercji."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "testing-tq001",
+      "topic": "Biblioteki do mockowania: porównanie",
+      "level": 1,
+      "q": "Chcesz sprawdzić, że `SendAsync` zostało wywołane dokładnie raz, z dowolnym tematem. Który zestaw zapisów (Moq / NSubstitute / FakeItEasy) jest poprawny?",
+      "options": [
+        "`mock.Received(1).SendAsync(...)` / `sub.Verify(..., Times.Once())` / `A.CallTo(...).MustHaveHappened()`",
+        "`mock.Verify(..., Times.AtLeastOnce())` / `sub.Received().SendAsync(...)` / `A.CallTo(...).MustHaveHappened()`",
+        "`mock.Verify(e => e.SendAsync(to, It.IsAny<string>()), Times.Once())` / `sub.Received(1).SendAsync(to, Arg.Any<string>())` / `A.CallTo(() => fake.SendAsync(to, A<string>._)).MustHaveHappenedOnceExactly()`",
+        "`mock.Setup(e => e.SendAsync(to, It.IsAny<string>())).Verifiable()` / `sub.Returns(1)` / `A.CallTo(...).Returns(1)`"
+      ],
+      "correct": 2,
+      "why": "Odpowiedniki „dokładnie raz” to `Times.Once()` w Moq, `Received(1)` w NSubstitute i `MustHaveHappenedOnceExactly()` w FakeItEasy; dowolny argument to odpowiednio `It.IsAny<T>()`, `Arg.Any<T>()`, `A<T>._`. Pierwsza opcja zamienia API bibliotek miejscami. Druga sprawdza „co najmniej raz” (`AtLeastOnce`, `Received()` bez liczby, `MustHaveHappened()` bez liczby). Czwarta miesza konfigurację (`Returns`) z weryfikacją."
+    },
+    {
+      "id": "testing-tq002",
+      "topic": "Biblioteki do mockowania: porównanie",
+      "level": 2,
+      "q": "`GetAsync` zwraca `Task<Order?>`. W teście nie ma żadnego `Setup` dla repozytorium. `ConfirmAsync` rzuca `OrderNotFoundException`, gdy zamówienie jest null. Co się stanie?",
+      "code": "var repo = new Mock<IOrderRepository>();\nvar email = new Mock<IEmailSender>();\nvar sut = new OrderService(repo.Object, email.Object);\n\nawait sut.ConfirmAsync(7);",
+      "lang": "csharp",
+      "options": [
+        "Nieskonfigurowane `GetAsync` zwróci zakończony `Task` z wynikiem null, więc serwis rzuci `OrderNotFoundException`",
+        "Moq rzuci `MockException`, bo metoda nie ma `Setup`",
+        "`GetAsync` zwróci null zamiast `Task`, więc `await` rzuci `NullReferenceException`",
+        "Moq automatycznie utworzy mocka `Order`, więc zamówienie zostanie zatwierdzone"
+      ],
+      "correct": 0,
+      "why": "Domyślny mock w Moq jest loose z `DefaultValue.Empty`: dla `Task<T>` zwraca zakończony task z domyślną wartością `T`, czyli null dla klasy. Serwis dostaje null i rzuca swój wyjątek. `MockException` pojawiłby się tylko przy `MockBehavior.Strict`. Zwracanie null zamiast `Task` było problemem bardzo starych wersji. Automatyczne mocki zwracanych obiektów daje dopiero `DefaultValue.Mock` (i dotyczy typów mockowalnych), a nie ustawienie domyślne."
+    },
+    {
+      "id": "testing-tq003",
+      "topic": "Biblioteki do mockowania: porównanie",
+      "level": 3,
+      "q": "Zespół używa `MockBehavior.Strict` we wszystkich testach. Po dodaniu w `ConfirmAsync` wywołania `await _audit.LogAsync(...)` (nie zmienia wyniku) pada 60 testów z `MockException`. Jaki wniosek i działanie są najlepsze?",
+      "options": [
+        "Dopisać `Setup` dla `LogAsync` w każdym z 60 testów – po to jest strict",
+        "Przejść na NSubstitute, bo jego tryb strict jest mniej restrykcyjny",
+        "Wyłączyć te testy, bo zmiana nie wpływa na wynik",
+        "Strict wiąże testy z implementacją; przejść na loose mocki, asertywnie sprawdzać wynik i weryfikować tylko istotne efekty (zapis, e-mail), a strict zostawić punktowo"
+      ],
+      "correct": 3,
+      "why": "Masowe pękanie testów przy zmianie, która nie zmienia zachowania, to sygnał, że testy sprawdzają implementację. Loose mocki + asercje wyniku + `Verify` tylko dla efektów biznesowych dają testy odporne na refaktoryzację. Dopisywanie `Setup` w 60 miejscach utrwala problem. NSubstitute w ogóle nie ma trybu strict. Wyłączenie testów usuwa ochronę."
+    },
+    {
+      "id": "testing-tq004",
+      "topic": "Frameworki testowe: xUnit, NUnit, MSTest",
+      "level": 1,
+      "q": "Jakie są odpowiedniki xUnit `[Theory]` + `[InlineData(...)]` w NUnit i MSTest?",
+      "options": [
+        "NUnit: `[Theory]` + `[Values]`; MSTest: `[DataTestMethod]` + `[InlineData]`",
+        "NUnit: `[TestCase(...)]`; MSTest: `[TestMethod]` + `[DataRow(...)]`",
+        "NUnit: `[Test]` + `[TestCaseSource]` tylko z metodą; MSTest: `[TestCategory]`",
+        "NUnit: `[Fact]` + `[Data]`; MSTest: `[TestMethod]` + `[InlineData]`"
+      ],
+      "correct": 1,
+      "why": "W NUnit przypadki z danymi wpisanymi w atrybut to `[TestCase(...)]`, a w MSTest `[DataRow(...)]` przy metodzie `[TestMethod]` (dawniej `[DataTestMethod]`). `[InlineData]` i `[Fact]` są wyłącznie z xUnit. `[TestCaseSource]` w NUnit odpowiada raczej `[MemberData]`, a `[TestCategory]` w MSTest służy do kategoryzacji, nie do danych."
+    },
+    {
+      "id": "testing-tq005",
+      "topic": "Frameworki testowe: xUnit, NUnit, MSTest",
+      "level": 2,
+      "q": "Klasa testowa w NUnit (bez `[SetUp]` i bez `[FixtureLifeCycle]`) ma pole `private readonly List<int> _items = new();` i dwa testy: każdy dodaje element i sprawdza `_items.Count == 1`. Co się stanie?",
+      "options": [
+        "Oba przejdą, bo NUnit tworzy nową instancję klasy dla każdego testu",
+        "Oba padną, bo NUnit wymaga inicjalizacji pól w `[OneTimeSetUp]`",
+        "Kompilator zgłosi błąd, bo pola `readonly` nie są dozwolone w klasach testowych",
+        "Drugi wykonany test padnie, bo NUnit domyślnie używa jednej instancji klasy dla wszystkich testów i lista nie jest resetowana"
+      ],
+      "correct": 3,
+      "why": "NUnit domyślnie tworzy jedną instancję fixture'a, więc inicjalizator pola wykona się raz, a drugi test zobaczy listę z dwoma elementami. Pierwsza odpowiedź opisuje zachowanie xUnit i MSTest. Rozwiązanie: tworzyć listę w `[SetUp]` albo użyć `[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]`. Pola `readonly` są w porządku, a `[OneTimeSetUp]` nie jest wymagany."
+    },
+    {
+      "id": "testing-tq006",
+      "topic": "Frameworki testowe: xUnit, NUnit, MSTest",
+      "level": 2,
+      "q": "W projekcie MSTest dodano `[assembly: Parallelize(Workers = 0, Scope = ExecutionScope.MethodLevel)]`. Jedna klasa testowa korzysta ze wspólnego pliku tymczasowego i zaczęła losowo padać. Co oznacza konfiguracja i jak to naprawić najmniejszym kosztem?",
+      "options": [
+        "Metody testowe biegną równolegle na tylu wątkach, ile jest rdzeni; problematyczną klasę oznaczyć `[DoNotParallelize]` (albo dać każdemu testowi własny plik)",
+        "`Workers = 0` wyłącza równoległość, więc przyczyna musi być inna",
+        "Równolegle biegną tylko klasy, więc problem jest w `[ClassInitialize]`; trzeba go usunąć",
+        "MSTest nie wspiera równoległości – atrybut jest ignorowany"
+      ],
+      "correct": 0,
+      "why": "W MSTest `Workers = 0` oznacza liczbę workerów równą liczbie procesorów, a `ExecutionScope.MethodLevel` – że równolegle mogą biec pojedyncze metody, także z tej samej klasy. Współdzielony plik to wyścig. `[DoNotParallelize]` wyłącza równoległość dla klasy lub metody; lepszym rozwiązaniem długoterminowym jest izolacja (unikalny plik per test). `ClassLevel` dawałby równoległość klas, a nie metod."
+    },
+    {
+      "id": "testing-tq007",
+      "topic": "Dane testowe: AutoFixture, Bogus, buildery",
+      "level": 1,
+      "q": "Testy korzystające z danych z Bogusa padają raz na kilkaset przebiegów w CI i nie da się tego odtworzyć lokalnie. Co najpierw zrobić?",
+      "options": [
+        "Zwiększyć liczbę generowanych obiektów, żeby błąd pojawiał się częściej",
+        "Zastąpić Bogusa AutoFixture, bo AutoFixture nie jest losowy",
+        "Ustawić stały seed (`UseSeed(...)` lub `Randomizer.Seed`), żeby dane były powtarzalne, i sprawdzić, jaka wartość psuje test",
+        "Dodać `[Retry]` do testów, bo to typowe flaky testy"
+      ],
+      "correct": 2,
+      "why": "Bez seeda każdy przebieg generuje inne dane, więc rzadki przypadek (np. za długi e-mail, data w weekend) pojawia się losowo. Stały seed daje deterministyczne dane i pozwala odtworzyć i zrozumieć błąd. AutoFixture też generuje wartości zmienne (GUID-y), więc zamiana bibliotek nie rozwiązuje problemu. Retry ukrywa objaw, a zwiększenie liczby obiektów nie daje powtarzalności."
+    },
+    {
+      "id": "testing-tq008",
+      "topic": "Dane testowe: AutoFixture, Bogus, buildery",
+      "level": 2,
+      "q": "Test używa własnego atrybutu `AutoMoqData` (AutoFixture + AutoMoqCustomization). `Setup` nie działa – serwis dostaje null z `GetAsync`, a `Verify` zgłasza 0 wywołań. Dlaczego?",
+      "code": "[Theory, AutoMoqData]\npublic async Task Confirm_saves_order(\n    OrderService sut, [Frozen] Mock<IOrderRepository> repo, Order order)\n{\n    repo.Setup(r => r.GetAsync(order.Id)).ReturnsAsync(order);\n    await sut.ConfirmAsync(order.Id);\n    repo.Verify(r => r.SaveAsync(order), Times.Once());\n}",
+      "lang": "csharp",
+      "options": [
+        "`AutoMoqCustomization` nie obsługuje metod async",
+        "`[Frozen]` działa tylko na parametry, które pojawiają się PO nim – SUT został utworzony wcześniej z innym mockiem",
+        "`[Frozen]` wymaga typu interfejsu, a nie `Mock<T>`",
+        "AutoFixture tworzy SUT dopiero po zakończeniu testu"
+      ],
+      "correct": 1,
+      "why": "AutoFixture rozwiązuje parametry od lewej do prawej. `sut` powstał, zanim `repo` zostało zamrożone, więc dostał innego mocka niż ten, który test konfiguruje. Wystarczy przenieść `[Frozen] Mock<IOrderRepository> repo` przed `sut`. Async jest obsługiwany, a `[Frozen] Mock<T>` to właśnie typowy zapis z AutoMoq."
+    },
+    {
+      "id": "testing-tq009",
+      "topic": "Dane testowe: AutoFixture, Bogus, buildery",
+      "level": 2,
+      "q": "`fixture.Create<Order>()` rzuca `ObjectCreationException` z komunikatem o rekurencji. `Order` ma `Customer`, a `Customer` ma `List<Order> Orders` (navigation properties EF Core). Jak to najprościej obejść?",
+      "code": "var fixture = new Fixture();\nfixture.Behaviors.OfType<ThrowingRecursionBehavior>().ToList()\n    .ForEach(b => fixture.Behaviors.Remove(b));\nfixture.Behaviors.Add(new OmitOnRecursionBehavior());",
+      "lang": "csharp",
+      "options": [
+        "Dodać `[AutoData]` do testu",
+        "Użyć `CreateMany<Order>()` zamiast `Create<Order>()`",
+        "Zamienić klasę na record",
+        "Usunąć `ThrowingRecursionBehavior` z `fixture.Behaviors` i dodać `OmitOnRecursionBehavior`"
+      ],
+      "correct": 3,
+      "why": "Domyślnie AutoFixture wykrywa cykl w grafie obiektów i rzuca wyjątek. `OmitOnRecursionBehavior` przerywa rekurencję, zostawiając głębszą referencję pustą. Alternatywą jest `Build<Order>().Without(o => o.Customer)` dla konkretnego obiektu. `[AutoData]` i `CreateMany` korzystają z tego samego mechanizmu, a zmiana na record nie usuwa cyklu."
+    },
+    {
+      "id": "testing-tq010",
+      "topic": "Pokrycie kodu: coverlet i raporty",
+      "level": 1,
+      "q": "Co da uruchomienie `dotnet test --collect:\"XPlat Code Coverage\"` w rozwiązaniu z dwoma projektami testowymi, które mają pakiet `coverlet.collector`?",
+      "options": [
+        "Dwa pliki `coverage.cobertura.xml`, po jednym na projekt testowy, w podkatalogach `TestResults/<guid>/`",
+        "Jeden scalony raport HTML w katalogu `coverage/`",
+        "Wynik procentowy w konsoli i błąd, jeśli pokrycie spadnie poniżej 80%",
+        "Nic – opcja `--collect` wymaga Visual Studio Enterprise"
+      ],
+      "correct": 0,
+      "why": "Kolektor coverlet tworzy osobny plik Cobertura dla każdego projektu testowego w katalogu wyników. Scalenie i HTML to zadanie ReportGeneratora. Progi (`Threshold`) obsługuje `coverlet.msbuild`, a nie samo `--collect`. „XPlat Code Coverage” to właśnie wieloplatformowy kolektor coverlet, niezależny od Visual Studio."
+    },
+    {
+      "id": "testing-tq011",
+      "topic": "Pokrycie kodu: coverlet i raporty",
+      "level": 2,
+      "q": "Dla tej metody jest tylko jeden test – z klientem VIP i 20 zamówieniami. Co pokaże raport coverlet dla metody `Discount`?",
+      "code": "public decimal Discount(Customer c) =>\n    c.IsVip && c.Orders > 10 ? 0.1m : 0m;",
+      "lang": "csharp",
+      "options": [
+        "Line 100% i branch 100%, bo wyrażenie mieści się w jednej linii",
+        "Line 50% i branch 50%, bo wykonano połowę wyrażenia",
+        "Line 100%, ale branch poniżej 100%, bo nie przetestowano ścieżek, w których warunek jest fałszywy",
+        "Line 0%, bo coverlet nie liczy metod z wyrażeniem `=>`"
+      ],
+      "correct": 2,
+      "why": "Jedna linia została wykonana, więc line coverage jest pełne. Branch coverage liczy każdą gałąź `&&` i operatora `?:` osobno – ścieżki „nie VIP” i „VIP z małą liczbą zamówień” oraz wynik `0m` nie zostały wykonane. To klasyczny przykład, dlaczego line coverage zawyża obraz przy logice warunkowej. Coverlet normalnie mierzy metody z expression body."
+    },
+    {
+      "id": "testing-tq012",
+      "topic": "Pokrycie kodu: coverlet i raporty",
+      "level": 3,
+      "q": "Pokrycie całego repo spadło z 82% do 74% po dodaniu nowego modułu integracyjnego (głównie klienci HTTP i mapowania). Globalny próg 80% blokuje wszystkie PR-y. Co jest najlepszym rozwiązaniem?",
+      "options": [
+        "Dodać `[ExcludeFromCodeCoverage]` na cały nowy moduł, żeby wrócić do 82%",
+        "Zastąpić globalny próg kontrolą pokrycia zmienionego kodu w PR (diff coverage), wykluczyć tylko kod generowany, a nowy moduł pokryć sensownymi testami integracyjnymi (np. z fake'owym serwerem HTTP)",
+        "Obniżyć próg do 70%, żeby odblokować zespół",
+        "Dopisać testy jednostkowe mapowań i getterów aż próg zostanie osiągnięty"
+      ],
+      "correct": 1,
+      "why": "Globalny próg karze niezwiązane PR-y i zachęca do obchodzenia metryki. Diff coverage pilnuje, żeby nowy kod był testowany, bez blokowania pracy z powodu historii repo. Masowe `[ExcludeFromCodeCoverage]` ukrywa realne ryzyko (to kod integracji, który często się psuje), obniżanie progu to tylko przesunięcie problemu, a testy getterów podnoszą liczbę bez wartości."
+    }
+  ]
+}

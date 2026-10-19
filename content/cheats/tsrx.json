@@ -1,0 +1,629 @@
+{
+  "cat": "tsrx",
+  "sheets": [
+    {
+      "topic": "type vs interface",
+      "points": [
+        "Oba opisują kształt obiektu i w większości przypadków są **wymienne**.",
+        "`interface`: `extends`, `implements` w klasach i **declaration merging** (dwie deklaracje o tej samej nazwie się łączą).",
+        "`type`: union, intersection, tuple, mapped/conditional types, aliasy prymitywów i template literal types – tego `interface` nie wyrazi.",
+        "Declaration merging służy do augmentacji: rozszerzanie `Window`, modułów bibliotek (`declare module '...'`).",
+        "Druga deklaracja `type` o tej samej nazwie to błąd kompilacji – alias się nie scala.",
+        "Praktyka: `interface` dla kontraktów obiektowych / publicznych API, `type` dla unii i typów wyliczanych; liczy się spójność w projekcie."
+      ],
+      "pitfalls": [
+        "Przypadkowe declaration merging – dwa `interface User` w różnych plikach globalnych cicho się łączą.",
+        "`extends` przy konflikcie pól daje błąd, a `&` w type tworzy pole typu `never` bez wyraźnego komunikatu."
+      ],
+      "code": "interface User { id: number; name: string }\ninterface Admin extends User { roles: string[] }\n\ntype Status = 'active' | 'blocked';         // tylko type\ntype WithStatus = User & { status: Status }; // intersection",
+      "lang": "typescript",
+      "say": "W większości przypadków są wymienne; interface wybieram dla kształtów obiektów i API, bo ma extends i declaration merging, a type dla unii, krotek i typów mapowanych/warunkowych. Ważniejsza jest spójność w zespole niż sam wybór."
+    },
+    {
+      "topic": "Union i intersection",
+      "points": [
+        "**Union** `A | B` – wartość jest jednym z typów; bezpiecznie dostępne są tylko wspólne członki, resztę trzeba zawęzić (narrowing).",
+        "**Intersection** `A & B` – wartość spełnia oba typy naraz, ma wszystkie pola A i B; do składania typów i dokładania pól.",
+        "Intersection sprzecznych prymitywów (`string & number`) daje `never`; konflikt pól obiektów daje pole typu `never`.",
+        "Unie literałów (`'sm' | 'md' | 'lg'`) zastępują enumy i dobrze współpracują z narrowingiem.",
+        "Union obiektów ze wspólnym polem-literałem = discriminated union – podstawa modelowania stanów.",
+        "`T | null` / `T | undefined` to też unia – stąd sens `strictNullChecks`."
+      ],
+      "pitfalls": [
+        "Myślenie, że `A | B` daje dostęp do pól obu typów – działa odwrotnie (tylko części wspólnej) niż intuicja zbiorów pól.",
+        "Nadużywanie `&` do „nadpisania” pola – zamiast tego `Omit<A, 'x'> & { x: Nowy }`."
+      ],
+      "code": "type Id = string | number;\nfunction show(id: Id) {\n  if (typeof id === 'string') return id.toUpperCase();\n  return id.toFixed(0);\n}\ntype Timestamped<T> = T & { createdAt: Date };",
+      "lang": "typescript",
+      "say": "Union to „jedno z”, więc przed użyciem specyficznego pola muszę zawęzić typ; intersection to „wszystko naraz”, czyli składanie typów. Sprzeczna intersection daje never."
+    },
+    {
+      "topic": "Narrowing i type guards",
+      "points": [
+        "Kompilator zawęża typ przez **control flow analysis**: `typeof`, `instanceof`, `in`, porównanie z literałem, `=== null`, truthiness.",
+        "Własny guard: funkcja z predykatem `x is T` – gdy zwraca `true`, w tej gałęzi zmienna ma typ `T`.",
+        "**Assertion function**: `asserts x is T` – rzuca wyjątek zamiast zwracać boolean; po wywołaniu typ jest zawężony.",
+        "Od TS 5.5 kompilator sam **inferuje predykat** z prostych funkcji, np. `arr.filter(x => x !== undefined)` daje `T[]`.",
+        "Guardy to granica dla danych z zewnątrz (`unknown` z JSON/API) – w praktyce często generowane przez biblioteki walidacji (Zod, Valibot).",
+        "Narrowing przepada po przypisaniu nowej wartości lub w callbacku dla zmiennych `let` modyfikowanych później."
+      ],
+      "pitfalls": [
+        "Kompilator **wierzy predykatowi na słowo** – błędna implementacja `isUser` kłamie typom.",
+        "`typeof null === 'object'` – sprawdzenie `typeof x === 'object'` nie wyklucza `null`.",
+        "Truthiness odrzuca też `0` i `''` – nie używaj go do sprawdzania liczb/stringów."
+      ],
+      "code": "interface User { id: number; name: string }\nfunction isUser(x: unknown): x is User {\n  return typeof x === 'object' && x !== null\n    && 'id' in x && typeof x.id === 'number';\n}\nfunction assertDefined<T>(v: T): asserts v is NonNullable<T> {\n  if (v == null) throw new Error('undefined');\n}",
+      "lang": "typescript",
+      "say": "TypeScript zawęża typy na podstawie przepływu sterowania – typeof, instanceof, in, porównań. Gdy to nie wystarcza, piszę type guard z predykatem `x is T` albo assertion function, pamiętając, że kompilator ufa ich implementacji."
+    },
+    {
+      "topic": "Discriminated unions",
+      "points": [
+        "Unia typów obiektowych ze wspólnym polem-**dyskryminatorem** o typie literałowym (`kind`, `type`, `status`).",
+        "Sprawdzenie dyskryminatora w `switch`/`if` zawęża cały obiekt do wariantu – dostępne są tylko jego pola.",
+        "**Exhaustiveness check**: w `default` przypisanie do `never` – nowy, nieobsłużony wariant = błąd kompilacji.",
+        "Modeluje stany UI (`loading | success | error`) i wyniki operacji zamiast wielu opcjonalnych pól i niemożliwych kombinacji.",
+        "„Make illegal states unrepresentable” – `data` istnieje tylko w wariancie `success`.",
+        "Działa w szablonach Angulara z `@switch` / `@if` przy `strictTemplates`."
+      ],
+      "pitfalls": [
+        "Destrukturyzacja przed sprawdzeniem dyskryminatora może zgubić narrowing.",
+        "Brak gałęzi `default` z `never` – dodanie wariantu przejdzie cicho, a funkcja zwróci `undefined`."
+      ],
+      "code": "type State =\n  | { kind: 'loading' }\n  | { kind: 'success'; data: User[] }\n  | { kind: 'error'; message: string };\n\nfunction render(s: State) {\n  switch (s.kind) {\n    case 'loading': return 'Ładowanie…';\n    case 'success': return `${s.data.length} rekordów`;\n    case 'error':   return s.message;\n    default: { const _x: never = s; return _x; }\n  }\n}",
+      "lang": "typescript",
+      "say": "To unia obiektów ze wspólnym polem-literałem; sprawdzenie tego pola zawęża typ do konkretnego wariantu. Przypisanie do never w default daje exhaustiveness check, więc nowy wariant wymusza aktualizację wszystkich switchy."
+    },
+    {
+      "topic": "Generics",
+      "points": [
+        "Generics zachowują informację o typie wejścia zamiast spłaszczać do `any`: `identity<T>(x: T): T`.",
+        "**Constraint** `T extends X` ogranicza dozwolone typy i pozwala bezpiecznie używać członków `X` w środku.",
+        "Wzorzec `K extends keyof T` gwarantuje istnienie klucza; typ zwracany to `T[K]`.",
+        "Typy generyczne zwykle są **inferowane** z argumentów – jawne `<T>` tylko gdy inferencja nie ma skąd wziąć typu (np. `http.get<User>()`).",
+        "Domyślny typ generyczny: `<T = unknown>`; modyfikator `const T` (TS 5.0) inferuje literały jak `as const`.",
+        "Generyczne mogą być funkcje, klasy, interfejsy i aliasy typów (np. `ApiResponse<T>`, `Repository<T>`)."
+      ],
+      "pitfalls": [
+        "Generic użyty tylko raz (np. tylko w parametrze) nic nie daje – code smell, wystarczy zwykły typ.",
+        "`http.get<User>()` to tylko obietnica typu – nie waliduje odpowiedzi w runtime."
+      ],
+      "code": "function getProp<T, K extends keyof T>(obj: T, key: K): T[K] {\n  return obj[key];\n}\nconst name = getProp({ id: 1, name: 'Ola' }, 'name'); // string\n// getProp(user, 'foo'); // błąd: 'foo' nie jest keyof",
+      "lang": "typescript",
+      "say": "Generics pozwalają pisać kod wielokrotnego użytku, który nie gubi typów. Constraintem `extends` ograniczam, co można podstawić – klasyczny przykład to `K extends keyof T` i zwracany typ `T[K]`."
+    },
+    {
+      "topic": "Utility types",
+      "points": [
+        "`Partial<T>` – wszystkie pola opcjonalne (DTO do PATCH); `Required<T>` – odwrotnie.",
+        "`Pick<T, K>` wybiera pola, `Omit<T, K>` usuwa (np. `Omit<User, 'password'>`).",
+        "`Record<K, V>` – słownik o kluczach `K`; `Readonly<T>` – blokuje przypisania (płytko).",
+        "Funkcje: `ReturnType<F>`, `Parameters<F>`, `ConstructorParameters`, `InstanceType`; `Awaited<T>` rozpakowuje Promise (rekurencyjnie).",
+        "Unie: `Exclude<U, X>`, `Extract<U, X>`, `NonNullable<T>`.",
+        "`NoInfer<T>` (TS 5.4) blokuje inferencję z danego parametru.",
+        "Cel: wyprowadzać typy z **jednego źródła prawdy** zamiast duplikować interfejsy."
+      ],
+      "pitfalls": [
+        "`Omit` nie sprawdza, czy klucz istnieje (`K extends keyof any`) – literówka przejdzie cicho.",
+        "`Partial`/`Readonly` są płytkie – zagnieżdżone obiekty pozostają wymagane/mutowalne."
+      ],
+      "code": "interface User { id: number; email: string; password: string }\ntype PublicUser = Omit<User, 'password'>;   // { id; email }\ntype UserPatch = Partial<Omit<User, 'id'>>;\ntype ById = Record<number, PublicUser>;\ntype Data = Awaited<ReturnType<typeof fetchUsers>>;",
+      "lang": "typescript",
+      "say": "Najczęściej używam Partial, Pick, Omit, Record i Readonly, a dla funkcji ReturnType, Parameters i Awaited. Dzięki nim typy pochodne wyprowadzam z jednego modelu, więc nie rozjeżdżają się przy zmianach."
+    },
+    {
+      "topic": "keyof, typeof, indexed access",
+      "points": [
+        "`typeof x` w pozycji typu pobiera typ istniejącej **wartości** (obiektu konfiguracyjnego, funkcji).",
+        "`keyof T` – unia kluczy `T` jako literały (`'id' | 'name'`).",
+        "Indexed access `T['pole']` / `T[K]` – typ właściwości; `T[number]` – typ elementu tablicy/krotki.",
+        "`(typeof ARR)[number]` przy tablicy `as const` daje unię literałów – dane i typ z jednego źródła.",
+        "`T[keyof T]` – unia typów wszystkich wartości obiektu (np. wartości „enuma” z obiektu `as const`).",
+        "Łączone z generics: `K extends keyof T` i zwrot `T[K]`."
+      ],
+      "pitfalls": [
+        "Bez `as const` elementy są poszerzane do `string` i `(typeof ARR)[number]` daje po prostu `string`.",
+        "`keyof` obiektu z index signature `[k: string]` daje `string | number`, nie konkretne klucze."
+      ],
+      "code": "const PERMS = ['read', 'write', 'delete'] as const;\ntype Perm = (typeof PERMS)[number]; // 'read' | 'write' | 'delete'\n\nconst COLORS = { primary: '#06f', danger: '#e33' } as const;\ntype ColorKey = keyof typeof COLORS;          // 'primary' | 'danger'\ntype ColorVal = (typeof COLORS)[ColorKey];",
+      "lang": "typescript",
+      "say": "typeof wyciąga typ z wartości, keyof daje unię kluczy, a indexed access typ konkretnego pola lub elementu. Razem z as const pozwalają z jednej stałej wyprowadzić unię dozwolonych wartości."
+    },
+    {
+      "topic": "Mapped types",
+      "points": [
+        "Mapped type iteruje po kluczach: `{ [K in keyof T]: ... }` – na tym zbudowane są `Partial`, `Readonly`, `Record`.",
+        "Modyfikatory `?` i `readonly` dodaje/usuwa się prefiksem `+` / `-`: `-?` zdejmuje opcjonalność (tak działa `Required`).",
+        "**Key remapping** `as` (TS 4.1): zmiana nazw kluczy z template literal types, np. `` `get${Capitalize<K>}` ``.",
+        "Zwrócenie `never` w `as` **filtruje** klucz (np. tylko pola funkcyjne).",
+        "Mapped type na typie generycznym jest homomorficzny – zachowuje modyfikatory `?`/`readonly` oryginału.",
+        "Iterować można też po unii literałów: `{ [K in 'a' | 'b']: number }`."
+      ],
+      "pitfalls": [
+        "Mapped types są płytkie – deep wersje wymagają rekurencji i ostrożności z tablicami/funkcjami.",
+        "Zbyt sprytne typy mapowane szkodzą czytelności i czasowi kompilacji."
+      ],
+      "code": "type MyPartial<T>  = { [K in keyof T]?: T[K] };\ntype Mutable<T>    = { -readonly [K in keyof T]: T[K] };\ntype Getters<T> = {\n  [K in keyof T as `get${Capitalize<string & K>}`]: () => T[K];\n};\ntype OnlyStrings<T> = {\n  [K in keyof T as T[K] extends string ? K : never]: T[K];\n};",
+      "lang": "typescript",
+      "say": "Mapped type przechodzi po kluczach innego typu i przekształca je – tak działa Partial czy Readonly. Modyfikatory dodaję lub zdejmuję przez + i -, a przez `as` mogę zmieniać nazwy kluczy albo je filtrować, zwracając never."
+    },
+    {
+      "topic": "Conditional types i infer",
+      "points": [
+        "`T extends U ? X : Y` – if na poziomie typów.",
+        "`infer R` wyciąga fragment typu w gałęzi true, np. `T extends Promise<infer R> ? R : T`.",
+        "Tak zaimplementowane są `ReturnType`, `Parameters`, `Awaited`, `Exclude`, `Extract`, `NonNullable`.",
+        "**Distributive**: przy gołym parametrze `T` warunek liczony osobno dla każdego członu unii, wyniki łączone w unię.",
+        "Wyłączenie dystrybucji: `[T] extends [U]`.",
+        "`never` przekazany do dystrybutywnego warunku daje `never` (pusta unia)."
+      ],
+      "pitfalls": [
+        "Zaskoczenie dystrybucją: `Kind<string | number>` daje `'s' | 'o'`, a nie jedną gałąź.",
+        "`infer` działa tylko w klauzuli `extends` conditional type."
+      ],
+      "code": "type Unwrap<T> = T extends Promise<infer R> ? R : T;\ntype X = Unwrap<Promise<number[]>>;   // number[]\n\ntype Kind<T> = T extends string ? 's' : 'o';\ntype R1 = Kind<string | number>;       // 's' | 'o'\ntype NoDist<T> = [T] extends [string] ? 's' : 'o';\ntype R2 = NoDist<string | number>;     // 'o'",
+      "lang": "typescript",
+      "say": "Conditional type to if na typach, a infer pozwala wyciągnąć fragment dopasowanego typu – tak działają ReturnType czy Awaited. Trzeba pamiętać, że przy gołym parametrze typ jest distributive po unii; wyłączam to krotką `[T] extends [U]`."
+    },
+    {
+      "topic": "any vs unknown vs never",
+      "points": [
+        "`any` **wyłącza** sprawdzanie typów i „zaraża” kod – wszystko się kompiluje.",
+        "`unknown` – przyjmuje dowolną wartość, ale przed użyciem trzeba **zawęzić** typ; bezpieczny typ dla danych z zewnątrz (JSON, API, `catch`).",
+        "`never` – typ bez wartości: funkcja zawsze rzuca / nigdy się nie kończy, gałąź niemożliwa, pusty człon unii.",
+        "`never` jest przypisywalny do wszystkiego, do `never` nic (to podstawa exhaustiveness check).",
+        "W strict (`useUnknownInCatchVariables`) zmienna w `catch` ma typ `unknown`.",
+        "TypeScript nie generuje sprawdzeń w runtime – `unknown` wymusza, żebyś napisał je sam."
+      ],
+      "pitfalls": [
+        "`JSON.parse` i `res.json()` zwracają `any` – bez adnotacji `unknown` błędy przechodzą niezauważone.",
+        "`as any` / `as unknown as T` jako „naprawa” błędów kompilacji ukrywa realne problemy."
+      ],
+      "code": "const value: unknown = JSON.parse(input);\n// value.toUpperCase();          // błąd kompilacji\nif (typeof value === 'string') value.toUpperCase(); // OK\n\nfunction fail(msg: string): never { throw new Error(msg); }",
+      "lang": "typescript",
+      "say": "any wyłącza typowanie, unknown przyjmuje wszystko, ale wymaga zawężenia przed użyciem, a never to typ bez wartości – dla niemożliwych gałęzi i funkcji, które nie wracają. Zamiast any używam unknown i waliduję."
+    },
+    {
+      "topic": "Strict mode",
+      "points": [
+        "`strict: true` to parasol: `strictNullChecks`, `noImplicitAny`, `strictFunctionTypes`, `strictPropertyInitialization`, `strictBindCallApply`, `useUnknownInCatchVariables`, `alwaysStrict`, `noImplicitThis`.",
+        "Najważniejsza: **`strictNullChecks`** – `null`/`undefined` nie są przypisywalne do innych typów; znika klasa błędów „cannot read property of undefined”.",
+        "Nowe projekty Angulara mają strict domyślnie, także dla szablonów (`strictTemplates`).",
+        "Poza parasolem, warto dołożyć: `noUncheckedIndexedAccess` (`arr[i]` ma typ `T | undefined`) i `exactOptionalPropertyTypes`.",
+        "Nowe flagi dodawane do rodziny strict włączają się automatycznie po aktualizacji TS – przy upgrade mogą pojawić się nowe błędy.",
+        "Migracja starego kodu: włączaj flagi stopniowo, zaczynając od `noImplicitAny` i `strictNullChecks`."
+      ],
+      "pitfalls": [
+        "Masowe gaszenie błędów operatorem `!` (non-null assertion) – to tylko przeniesienie problemu do runtime.",
+        "`strictPropertyInitialization` „naprawiane” przez `!:` na polach zamiast inicjalizacji lub typu opcjonalnego."
+      ],
+      "say": "strict to zestaw flag, z których najważniejsza jest strictNullChecks – wymusza obsługę null i undefined. W nowych projektach zawsze włączone, łącznie ze strictTemplates w Angularze; przy legacy włączam flagi stopniowo."
+    },
+    {
+      "topic": "enum vs union literal / as const",
+      "points": [
+        "`enum` generuje **kod w runtime** (obiekt; numeryczne mają też reverse mapping).",
+        "Enum nie przechodzi `erasableSyntaxOnly` (TS 5.8) – ważne przy uruchamianiu TS przez type stripping (Node).",
+        "Union literałów `'a' | 'b'` znika po kompilacji i naturalnie działa z narrowingiem.",
+        "Gdy potrzebne wartości w runtime (dropdown, walidacja) – obiekt/tablica **`as const`** i typ wyprowadzony przez `typeof`/`keyof`/`[number]`.",
+        "Jeśli enum – to raczej **string enum** (czytelne wartości, brak przypisywania dowolnych liczb).",
+        "`const enum` jest inline'owany, ale problematyczny z `isolatedModules` i w bibliotekach."
+      ],
+      "pitfalls": [
+        "Numeryczny enum: wartości zależą od kolejności – przestawienie członków zmienia dane w bazie/API.",
+        "Enumy są nominalne – string `'ACTIVE'` z API nie jest przypisywalny do `Status.Active` bez rzutowania."
+      ],
+      "code": "export const STATUSES = ['active', 'blocked', 'pending'] as const;\nexport type Status = (typeof STATUSES)[number];\n\nconst ROLE = { Admin: 'admin', User: 'user' } as const;\ntype Role = (typeof ROLE)[keyof typeof ROLE]; // 'admin' | 'user'",
+      "lang": "typescript",
+      "say": "Domyślnie wybieram unię literałów, a gdy potrzebuję wartości w runtime – obiekt lub tablicę as const i wyprowadzam z niej typ. Enum generuje kod i nie jest erasable; zostawiam go w istniejących code base'ach, wtedy w wersji string."
+    },
+    {
+      "topic": "satisfies",
+      "points": [
+        "`satisfies` (TS 4.9) **sprawdza** zgodność wyrażenia z typem, ale **nie zmienia** wywnioskowanego typu.",
+        "Adnotacja `const x: Record<string, string>` poszerza typ – tracisz konkretne klucze i literały.",
+        "Z `satisfies` masz walidację + dokładny typ: autouzupełnianie kluczy i błąd przy `routes.contact`.",
+        "Często razem: `as const satisfies T` – literały readonly + kontrola kształtu.",
+        "Inaczej niż `as`: asercja `as` niczego nie weryfikuje w ten sposób, tylko wymusza typ.",
+        "Zastosowania: konfiguracje tras, mapy kolorów/ikon, tabele tłumaczeń, obiekty `Record<Union, ...>` z kontrolą kompletności."
+      ],
+      "pitfalls": [
+        "Mylenie `satisfies` z `as` – `as` może przepuścić niezgodny obiekt.",
+        "Oczekiwanie, że `satisfies` zmieni typ zmiennej na podany – zostaje typ wywnioskowany."
+      ],
+      "code": "type Theme = Record<'primary' | 'danger', string>;\nconst theme = {\n  primary: '#06f',\n  danger: '#e33',\n} as const satisfies Theme;  // brak klucza = błąd\ntheme.primary;               // typ '#06f'",
+      "lang": "typescript",
+      "say": "satisfies sprawdza, że wartość pasuje do typu, ale zostawia typ wywnioskowany, więc nie tracę informacji o literałach i kluczach. Typowo łączę go z as const w konfiguracjach."
+    },
+    {
+      "topic": "readonly",
+      "points": [
+        "Modyfikator `readonly` na polu klasy/interfejsu; `Readonly<T>` dla całego obiektu.",
+        "Tablice: `readonly T[]` / `ReadonlyArray<T>` – brak `push`, `splice`, `sort` (w miejscu).",
+        "`as const` robi wszystko (głęboko) readonly i zawęża do literałów.",
+        "To **tylko compile-time** – w runtime nic nie blokuje; do tego `Object.freeze` (też płytki).",
+        "`Readonly<T>` jest **płytkie** – zagnieżdżone obiekty nadal mutowalne.",
+        "W Angularze: `readonly` na polach z `input()`, `signal()`, `inject()` – chroni referencję przed nadpisaniem.",
+        "Do niemutowalnych aktualizacji: spread, `toSorted()`, `toSpliced()`, `with()` (ES2023)."
+      ],
+      "pitfalls": [
+        "Mylenie z `const`: `const` blokuje ponowne przypisanie zmiennej, `readonly` – pola/typu.",
+        "`readonly T[]` jest przypisywalne z `T[]`, ale nie odwrotnie – funkcje przyjmujące tablice powinny brać `readonly T[]`."
+      ],
+      "code": "export class UserCard {\n  readonly user = input.required<User>();\n  readonly expanded = signal(false);\n}\nfunction sum(xs: readonly number[]) {\n  return xs.reduce((a, b) => a + b, 0);\n}",
+      "lang": "typescript",
+      "say": "readonly to kontrola w czasie kompilacji, płytka i bez efektu w runtime – do tego służy Object.freeze. Używam go dla pól, które nie powinny być nadpisane, np. sygnałów i inputów, oraz readonly tablic w parametrach."
+    },
+    {
+      "topic": "Structural typing",
+      "points": [
+        "Zgodność typów zależy od **kształtu**, nie nazwy ani deklaracji („duck typing” w czasie kompilacji).",
+        "Obiekt pasuje do interfejsu, jeśli ma wymagane pola zgodnych typów – nawet bez `implements`.",
+        "Zaleta: łatwe mocki w testach, brak sztywnej hierarchii.",
+        "Wada: `UserId` i `OrderId` jako `number` są wymienne – rozwiązanie: **branded types** (`number & { __brand: 'UserId' }`).",
+        "**Excess property check**: świeży literał z nadmiarowym polem przypisany bezpośrednio = błąd; przez zmienną pośrednią – przechodzi.",
+        "Klasy też są strukturalne – wyjątek: pola `private`/`#private` czynią je nominalnymi."
+      ],
+      "pitfalls": [
+        "Zakładanie, że excess property check działa zawsze – przez zmienną pośrednią literówka w polu opcjonalnym przejdzie.",
+        "Mylenie ID różnych encji, bo oba są `string`."
+      ],
+      "code": "type UserId = number & { readonly __brand: 'UserId' };\nconst asUserId = (n: number) => n as UserId;\n\ninterface Person { name: string }\nconst p1: Person = { name: 'Ola', age: 30 }; // błąd (excess)\nconst tmp = { name: 'Ola', age: 30 };\nconst p2: Person = tmp;                      // OK",
+      "lang": "typescript",
+      "say": "TypeScript jest strukturalny – liczy się kształt, nie nazwa typu. To ułatwia mocki, ale typy o tym samym kształcie są wymienne, więc gdy trzeba je rozróżnić, stosuję branded types. Excess property check działa tylko dla świeżych literałów."
+    },
+    {
+      "topic": "Event loop",
+      "points": [
+        "JS wykonuje kod na **jednym wątku** ze stosem wywołań (call stack).",
+        "Po opróżnieniu stosu event loop opróżnia **całą kolejkę microtasków**, potem bierze **jeden macrotask**, potem znowu microtaski; między nimi może być render.",
+        "Microtaski: `.then/.catch/.finally`, kontynuacja po `await`, `queueMicrotask`, `MutationObserver`.",
+        "Macrotaski: `setTimeout`, `setInterval`, zdarzenia I/O i UI, `MessageChannel`.",
+        "Dlatego `Promise.resolve().then(...)` wykona się przed `setTimeout(..., 0)`; `setTimeout(0)` = „w kolejnym macrotasku”, nie natychmiast.",
+        "`requestAnimationFrame` uruchamia się przed renderem klatki.",
+        "Angular: zone.js patchował te API, by wiedzieć kiedy uruchomić change detection; w **zoneless** (domyślne w nowych projektach od Angular 21) rolę przejmują sygnały i jawne powiadomienia."
+      ],
+      "pitfalls": [
+        "Mikrotask dodający w pętli kolejne mikrotaski **zagłodzi rendering** i zdarzenia.",
+        "Długie synchroniczne obliczenia blokują UI – dziel je lub przenieś do Web Workera."
+      ],
+      "code": "console.log('A');\nsetTimeout(() => console.log('B'), 0);\nPromise.resolve().then(() => console.log('C'));\nconsole.log('D');\n// A, D, C, B",
+      "lang": "typescript",
+      "say": "Najpierw wykonuje się kod synchroniczny, potem wszystkie microtaski, czyli callbacki Promise, a dopiero potem jeden macrotask jak setTimeout. Dlatego then wyprzedza setTimeout z zerem."
+    },
+    {
+      "topic": "Closures",
+      "points": [
+        "Closure = funkcja + referencja do **zakresu leksykalnego**, w którym powstała; ma dostęp do zmiennych zewnętrznej funkcji po jej zakończeniu.",
+        "Zastosowania: enkapsulacja stanu (prywatne zmienne, fabryki funkcji), callbacki, `debounce`, memoizacja, currying.",
+        "Closure trzyma **referencję**, nie kopię – widzi aktualną wartość zmiennej w chwili wywołania.",
+        "Pętla z `var`: jedna wspólna zmienna dla wszystkich callbacków; `let` tworzy nowe wiązanie w każdej iteracji.",
+        "Closure może nieświadomie utrzymywać w pamięci duże obiekty (wyciek) – np. listener trzymający komponent."
+      ],
+      "pitfalls": [
+        "`for (var i...) setTimeout(() => log(i))` wypisze 3, 3, 3 zamiast 0, 1, 2.",
+        "Nieusunięte listenery/subskrypcje z closure nad komponentem = wyciek pamięci."
+      ],
+      "code": "function counter() {\n  let count = 0;               // prywatny stan\n  return () => ++count;\n}\nconst next = counter();\nnext(); next();                // 2\n\nfor (let i = 0; i < 3; i++) setTimeout(() => console.log(i)); // 0 1 2",
+      "lang": "typescript",
+      "say": "Closure to funkcja, która pamięta zakres, w którym została utworzona, więc ma dostęp do jego zmiennych także później. Używa się tego do enkapsulacji stanu, a klasyczna pułapka to var w pętli z callbackami."
+    },
+    {
+      "topic": "this",
+      "points": [
+        "Dla zwykłych funkcji `this` zależy od **sposobu wywołania**, nie od miejsca definicji.",
+        "`obj.metoda()` → `obj`; samodzielne wywołanie → `undefined` w strict mode (moduły i klasy są zawsze strict).",
+        "`new` → nowy obiekt; `call`/`apply`/`bind` ustawiają `this` jawnie.",
+        "**Arrow function** nie ma własnego `this` – bierze je leksykalnie z otoczenia (nie da się go zmienić `bind`em).",
+        "DOM `addEventListener` z funkcją zwykłą: `this` = element (`event.currentTarget`).",
+        "Rozwiązania utraty kontekstu: `() => this.save()`, pole klasy jako arrow function, `bind`."
+      ],
+      "pitfalls": [
+        "`setTimeout(this.save)` / `btn.addEventListener('click', this.increment)` gubi instancję – `this.count` to `undefined`, `undefined++` daje `NaN`.",
+        "Arrow function jako metoda obiektu literału – `this` nie wskazuje obiektu."
+      ],
+      "code": "class Counter {\n  count = 0;\n  increment = () => { this.count++; }; // arrow jako pole\n  attach(btn: HTMLButtonElement) {\n    btn.addEventListener('click', this.increment);\n    // lub: btn.addEventListener('click', () => this.inc());\n  }\n}",
+      "lang": "typescript",
+      "say": "W zwykłej funkcji this zależy od sposobu wywołania, a arrow function bierze je leksykalnie z otoczenia. Typowy błąd to przekazanie metody jako callbacku – naprawiam to arrow function albo bind."
+    },
+    {
+      "topic": "== vs ===",
+      "points": [
+        "`===` – bez konwersji typów; typ i wartość muszą się zgadzać (obiekty: ta sama **referencja**).",
+        "`==` – stosuje **koercję** według zawiłych reguł: `0 == ''`, `'1' == 1`, `null == undefined` → `true`.",
+        "Jedyny akceptowany idiom `==`: `x == null` łapie jednocześnie `null` i `undefined`.",
+        "`NaN` nie jest równe niczemu, nawet sobie – `Number.isNaN(x)` lub `Object.is(x, NaN)`.",
+        "`Object.is` różni się od `===` tylko dla `NaN` i `+0`/`-0` (tego używają sygnały Angulara jako domyślny `equal`).",
+        "ESLint `eqeqeq` wymusza `===` (opcjonalnie z wyjątkiem `null`)."
+      ],
+      "pitfalls": [
+        "`null === undefined` to `false`, a `null == undefined` to `true`.",
+        "Porównywanie obiektów/tablic przez `===` sprawdza referencję, nie zawartość."
+      ],
+      "say": "=== porównuje bez koercji typów, == konwertuje według zawiłych reguł. Zawsze używam ===, wyjątkiem bywa tylko `x == null`, które łapie null i undefined; NaN sprawdzam przez Number.isNaN."
+    },
+    {
+      "topic": "Promise vs async/await",
+      "points": [
+        "Promise: stany **pending → fulfilled | rejected**, rozstrzyga się dokładnie raz, jest eager i nieanulowalny.",
+        "`async/await` to składnia nad Promise: funkcja `async` **zawsze zwraca Promise**, `await` zawiesza ją do rozstrzygnięcia.",
+        "Błędy w `async` łapię zwykłym `try/catch`; zwrócony Promise nie jest zagnieżdżany (`Promise<T>`, nie `Promise<Promise<T>>`).",
+        "`Promise.all` – równolegle, **fail-fast** przy pierwszym odrzuceniu (pozostałe operacje dalej działają).",
+        "`Promise.allSettled` – czeka na wszystkie, zwraca statusy; `race` – pierwszy rozstrzygnięty; `any` – pierwszy fulfilled.",
+        "Anulowanie: przez `AbortController`/`AbortSignal` (np. `fetch`), nie przez sam Promise.",
+        "Nieobsłużone odrzucenie → zdarzenie `unhandledrejection`."
+      ],
+      "pitfalls": [
+        "`await` w pętli dla niezależnych operacji = wykonanie sekwencyjne; użyj `Promise.all`.",
+        "Brak `await`/`return` przy Promise w `try` – błąd ucieknie poza `catch`.",
+        "`forEach(async ...)` nie czeka na nic."
+      ],
+      "code": "async function loadAll(ids: number[]) {\n  try {\n    const users = await Promise.all(ids.map(id => api.getUser(id)));\n    return users;\n  } catch (e: unknown) {\n    console.error(e);\n    return [];\n  }\n}",
+      "lang": "typescript",
+      "say": "async/await to cukier składniowy nad Promise – funkcja async zawsze zwraca Promise, a błędy łapię try/catch. Niezależne operacje odpalam równolegle przez Promise.all albo allSettled, a nie await w pętli."
+    },
+    {
+      "topic": "var, let, const",
+      "points": [
+        "`var` – zasięg **funkcji**, hoisting z wartością `undefined`, można redeklarować, przy top-level tworzy właściwość `window`.",
+        "`let`/`const` – zasięg **blokowy**; hoistowane, ale do deklaracji w **temporal dead zone** (dostęp → `ReferenceError`).",
+        "`const` blokuje **ponowne przypisanie**, nie mutację – pola obiektu i elementy tablicy można zmieniać.",
+        "Niemutowalność: `as const`/`Readonly` (compile-time) lub `Object.freeze` (runtime, płytko).",
+        "`let` w pętli `for` tworzy nowe wiązanie w każdej iteracji – poprawne closures w callbackach.",
+        "Zasada: domyślnie `const`, `let` gdy wartość się zmienia, `var` wcale."
+      ],
+      "pitfalls": [
+        "`const user = {...}; user.role = 'admin'` działa – const nie zamraża obiektu.",
+        "`var` w pętli z asynchronicznymi callbackami – wszystkie widzą ostatnią wartość."
+      ],
+      "say": "var ma zasięg funkcji i hoisting z undefined, let i const mają zasięg blokowy i temporal dead zone. const zabrania ponownego przypisania, ale nie mutacji obiektu. Domyślnie const, let gdy trzeba, var nigdy."
+    },
+    {
+      "topic": "Observable vs Promise",
+      "points": [
+        "Promise: **eager** (startuje przy utworzeniu), jedna wartość, nieanulowalny.",
+        "Observable: **lazy** – nic się nie dzieje do `subscribe`; 0, 1 lub wiele wartości w czasie.",
+        "Observable kończy się `complete` albo `error`; anulowanie przez `unsubscribe` (HttpClient przerywa request).",
+        "Observable jest zwykle cold i unicast – każda subskrypcja to osobne wykonanie; Promise współdzieli jeden wynik.",
+        "Bogaty zestaw operatorów: debounce, retry, switchMap, combineLatest…",
+        "Konwersje: `from(promise)`; w drugą stronę `firstValueFrom` / `lastValueFrom` (`toPromise` jest deprecated)."
+      ],
+      "pitfalls": [
+        "Stworzenie Observable bez subskrypcji – request HTTP nigdy nie wyjdzie.",
+        "`lastValueFrom` na nieskończonym strumieniu nigdy się nie rozstrzygnie (lub rzuci `EmptyError` dla pustego)."
+      ],
+      "code": "const user = await firstValueFrom(this.http.get<User>('/api/me'));\nconst user$ = from(fetch('/api/me').then(r => r.json()));",
+      "lang": "typescript",
+      "say": "Promise jest eager, daje jedną wartość i nie da się go anulować. Observable jest lazy, może emitować wiele wartości w czasie, da się go anulować przez unsubscribe i ma operatory do komponowania strumieni."
+    },
+    {
+      "topic": "Cold vs hot",
+      "points": [
+        "**Cold**: producent tworzony przy każdej subskrypcji – każdy subskrybent dostaje własne wykonanie od początku (np. `HttpClient.get`, `of`, `interval`).",
+        "**Hot**: współdzielony producent działa niezależnie od subskrybentów; późny subskrybent widzi tylko kolejne wartości (`fromEvent`, `Subject`, WebSocket).",
+        "Cold → hot (multicasting): `share()`, `shareReplay()`, Subject.",
+        "Każdy `| async` w szablonie to osobna subskrypcja – na cold HTTP = osobny request.",
+        "Rozwiązania duplikatów: jeden `@if (x$ | async; as x)` wyżej, `shareReplay`, albo `toSignal` i odczyt sygnału wielokrotnie."
+      ],
+      "pitfalls": [
+        "Kilka `async` pipe na tym samym `http.get` → kilka requestów.",
+        "Hot strumień zasubskrybowany za późno – zgubione wcześniejsze emisje (wtedy BehaviorSubject/ReplaySubject)."
+      ],
+      "say": "Cold Observable uruchamia producenta osobno dla każdego subskrybenta, jak HttpClient – dwie subskrypcje to dwa requesty. Hot ma jednego współdzielonego producenta, jak zdarzenia DOM czy Subject. Cold zamieniam w hot przez share lub shareReplay."
+    },
+    {
+      "topic": "Subject, BehaviorSubject, ReplaySubject",
+      "points": [
+        "`Subject` – Observable + Observer; multicast do **aktualnych** subskrybentów, późny nie dostaje przeszłości.",
+        "`BehaviorSubject` – wymaga **wartości początkowej**, trzyma ostatnią, oddaje ją od razu nowemu subskrybentowi; synchroniczne `getValue()`/`.value`.",
+        "`ReplaySubject(n, windowMs?)` – odtwarza `n` ostatnich wartości, bez wartości startowej.",
+        "`AsyncSubject` – emituje tylko ostatnią wartość przy `complete`.",
+        "Na zewnątrz serwisu wystawiaj `asObservable()`, a Subject trzymaj `private` – nikt obcy nie zawoła `next`.",
+        "W nowym Angularze prosty stan częściej w `signal()`; BehaviorSubject tam, gdzie stan jest częścią potoku RxJS."
+      ],
+      "pitfalls": [
+        "Zwykły `Subject` jako store – komponent subskrybujący po `next` nic nie dostanie.",
+        "Wystawienie Subjecta publicznie – dowolny kod może emitować lub wywołać `complete`."
+      ],
+      "code": "@Injectable({ providedIn: 'root' })\nexport class AuthStore {\n  private readonly user$$ = new BehaviorSubject<User | null>(null);\n  readonly user$ = this.user$$.asObservable();\n  setUser(u: User | null) { this.user$$.next(u); }\n}\n// ReplaySubject(2) po next(1..4) -> nowy subskrybent: 3, 4",
+      "lang": "typescript",
+      "say": "Subject rozsyła wartości tylko obecnym subskrybentom, BehaviorSubject trzyma bieżącą wartość i wymaga początkowej, a ReplaySubject odtwarza n ostatnich. Na zewnątrz wystawiam asObservable, a do prostego stanu dziś raczej signal."
+    },
+    {
+      "topic": "Operatory spłaszczające",
+      "points": [
+        "Wszystkie mapują wartość na wewnętrzny Observable i spłaszczają wynik; różnią się zachowaniem, gdy poprzedni wewnętrzny jeszcze trwa.",
+        "**switchMap** – anuluje poprzedni; typeahead, nawigacja, „liczy się najnowsze”.",
+        "**mergeMap** – wszystkie równolegle (opcjonalny limit `concurrent`); niezależne operacje, kolejność nieistotna.",
+        "**concatMap** – kolejka, jeden po drugim; zapisy wymagające zachowania kolejności (PATCH-e edytora).",
+        "**exhaustMap** – ignoruje nowe wartości, dopóki trwa bieżący; „Zapisz”, login, „Złóż zamówienie”.",
+        "Ściąga: switch = najnowsze, merge = wszystkie naraz, concat = po kolei, exhaust = pierwsze wygrywa."
+      ],
+      "pitfalls": [
+        "`switchMap` dla zapisu (POST) – anulowany po stronie klienta request mógł już wykonać się na serwerze.",
+        "`mergeMap` dla wyszukiwania – race condition, stara odpowiedź nadpisuje nowszą."
+      ],
+      "code": "search$.pipe(switchMap(q => this.api.search(q)));\nsaveClick$.pipe(exhaustMap(() => this.api.placeOrder()));\nchanges$.pipe(concatMap(p => this.api.patch(p)));\nfiles$.pipe(mergeMap(f => this.api.upload(f), 3));",
+      "lang": "typescript",
+      "say": "switchMap anuluje poprzednie i bierze najnowsze – do wyszukiwania; mergeMap działa równolegle; concatMap kolejkuje, gdy liczy się kolejność; exhaustMap ignoruje nowe w trakcie – na podwójne kliknięcia przy zapisie."
+    },
+    {
+      "topic": "map, filter, tap",
+      "points": [
+        "`map` – transformuje każdą wartość (np. DTO z API → model widoku).",
+        "`filter` – przepuszcza tylko wartości spełniające predykat (z type guardem zawęża typ).",
+        "`tap` – efekt uboczny bez zmiany wartości: logowanie, flaga loading, debug.",
+        "To **pipeable operators** używane w `pipe()`; `pipe` niczego nie uruchamia – dopiero `subscribe`.",
+        "Każdy operator zwraca nowy Observable – źródło pozostaje niezmienione.",
+        "`tap` przyjmuje też obiekt `{ next, error, complete, subscribe, unsubscribe, finalize }`."
+      ],
+      "pitfalls": [
+        "Logika biznesowa lub `subscribe` innych strumieni w `tap` – ukryte efekty, trudne testy.",
+        "Mutowanie obiektu w `map` zamiast zwracania nowego – psuje porównania referencji (OnPush, sygnały)."
+      ],
+      "code": "users$ = this.http.get<UserDto[]>('/api/users').pipe(\n  tap(() => this.loading.set(false)),\n  map(dtos => dtos.map(toUserVm)),\n  map(users => users.filter(u => u.active)),\n);",
+      "lang": "typescript",
+      "say": "map przekształca wartości, filter je odsiewa, a tap służy do efektów ubocznych bez zmiany wartości, np. logowania. Sam pipe nic nie uruchamia – dopiero subskrypcja."
+    },
+    {
+      "topic": "Typeahead",
+      "points": [
+        "`debounceTime(300)` – nie strzelaj przy każdym znaku.",
+        "`distinctUntilChanged()` – pomiń zapytanie dla tej samej frazy (porównuje z **poprzednią** wartością).",
+        "`filter(q => q.length >= 2)` – minimalna długość frazy.",
+        "`switchMap` do API – anuluje poprzedni request, więc stara wolna odpowiedź nie nadpisze nowszej.",
+        "`catchError` **wewnątrz** `switchMap` – jeden nieudany request nie zabija całego strumienia.",
+        "Wynik do szablonu przez `async` pipe lub `toSignal`."
+      ],
+      "pitfalls": [
+        "`distinctUntilChanged()` na obiektach `{ q }` tworzonych na nowo – porównuje referencje; użyj `distinctUntilKeyChanged('q')` lub komparatora.",
+        "`mergeMap` zamiast `switchMap` – race condition wyników."
+      ],
+      "code": "results = toSignal(\n  this.query.valueChanges.pipe(\n    debounceTime(300),\n    map(q => q.trim()),\n    distinctUntilChanged(),\n    filter(q => q.length >= 2),\n    switchMap(q => this.api.search(q).pipe(catchError(() => of([])))),\n  ),\n  { initialValue: [] },\n);",
+      "lang": "typescript",
+      "say": "Zmiany inputa przepuszczam przez debounceTime, distinctUntilChanged i filtr na długość, a potem switchMap do API, który anuluje poprzednie zapytanie. catchError daję wewnątrz switchMap, żeby błąd nie zakończył strumienia."
+    },
+    {
+      "topic": "Łączenie strumieni",
+      "points": [
+        "**combineLatest** – tablica ostatnich wartości przy każdej emisji dowolnego źródła, ale dopiero gdy **każde** wyemitowało min. raz; filtry + stan.",
+        "**forkJoin** – czeka na `complete` wszystkich, emituje **raz** ostatnie wartości; odpowiednik `Promise.all` dla HTTP.",
+        "**withLatestFrom** – operator: główny strumień wyzwala, z drugiego dołącza ostatnią wartość (klik + stan formularza).",
+        "**zip** – paruje wartości po indeksach (1. z 1.); rzadko.",
+        "**merge** – przeplata emisje wielu źródeł w jeden strumień (bez łączenia w tablice).",
+        "Wszystkie przyjmują też obiekt: `combineLatest({ a: a$, b: b$ })` → `{ a, b }`."
+      ],
+      "pitfalls": [
+        "`forkJoin` z nieskończonym źródłem (`interval`, Subject, `valueChanges`) nigdy nie wyemituje.",
+        "`combineLatest` z źródłem, które jeszcze nic nie wyemitowało – cisza; użyj `startWith`."
+      ],
+      "code": "forkJoin({ user: this.api.user(), settings: this.api.settings() })\n  .subscribe(({ user, settings }) => ...);\n\nvm$ = combineLatest([this.filters$, this.items$]).pipe(\n  map(([f, items]) => items.filter(i => matches(i, f))),\n);",
+      "lang": "typescript",
+      "say": "combineLatest emituje najnowsze wartości przy każdej zmianie, gdy wszystkie źródła już coś dały; forkJoin czeka na zakończenie wszystkich i emituje raz, jak Promise.all; withLatestFrom dokleja ostatnią wartość innego strumienia do zdarzenia."
+    },
+    {
+      "topic": "catchError i retry",
+      "points": [
+        "`catchError` przechwytuje błąd i **musi zwrócić Observable**: zastępczy (`of([])`), `EMPTY` lub `throwError(() => err)` po np. zalogowaniu.",
+        "`retry` ponownie **subskrybuje** źródło po błędzie (dla HTTP = nowy request).",
+        "RxJS 7: `retry({ count, delay })`; `delay` jako funkcja `(err, retryCount) => timer(...)` → exponential backoff i warunkowe ponawianie (np. tylko 5xx).",
+        "Kolejność: `retry` **przed** `catchError` – inaczej błąd zostanie przechwycony, zanim retry go zobaczy.",
+        "`retryWhen` jest deprecated – zastępuje go konfiguracja `retry`.",
+        "Globalną obsługę (401, toast) robi się w `HttpInterceptorFn`, lokalną – w potoku."
+      ],
+      "pitfalls": [
+        "Ponawianie operacji **nieidempotentnych** (POST) – możliwe zduplikowane zamówienia.",
+        "`catchError` na zewnętrznym strumieniu po `switchMap` kończy cały potok."
+      ],
+      "code": "this.http.get<Item[]>('/api/items').pipe(\n  retry({\n    count: 3,\n    delay: (err, i) => err.status >= 500 ? timer(2 ** i * 500) : throwError(() => err),\n  }),\n  catchError(err => { this.toast.error(err); return of([]); }),\n);",
+      "lang": "typescript",
+      "say": "catchError zamienia błąd na inny Observable – wartość zastępczą, EMPTY albo ponownie rzucony błąd. retry ponawia subskrypcję, w RxJS 7 z konfiguracją count i delay, co daje backoff; stawiam go przed catchError i nie ponawiam POST-ów."
+    },
+    {
+      "topic": "shareReplay",
+      "points": [
+        "Multicastuje źródło przez `ReplaySubject`: pierwszy subskrybent uruchamia źródło, kolejni współdzielą wykonanie i dostają `n` ostatnich wartości.",
+        "Typowo: cache odpowiedzi HTTP, konfiguracji, danych referencyjnych.",
+        "`shareReplay(1)` = `{ bufferSize: 1, refCount: false }` – subskrypcja źródła **zostaje** po odejściu wszystkich subskrybentów.",
+        "Dla HTTP to OK (źródło się kończy); dla nieskończonych (`interval`, WebSocket) – **wyciek**; użyj `{ bufferSize: 1, refCount: true }`.",
+        "**Błąd nie jest cache'owany** – kolejna subskrypcja po błędzie ponowi źródło.",
+        "Pełna kontrola: `share({ connector: () => new ReplaySubject(1), resetOnRefCountZero, resetOnComplete, resetOnError })`."
+      ],
+      "pitfalls": [
+        "`shareReplay(1)` na WebSocket/interval – połączenie żyje po zniszczeniu wszystkich komponentów.",
+        "Cache bez strategii unieważniania – dane nieaktualne do końca życia aplikacji."
+      ],
+      "code": "readonly config$ = this.http.get<Config>('/api/config').pipe(shareReplay(1));\n\nreadonly price$ = webSocket<Price>(url).pipe(\n  shareReplay({ bufferSize: 1, refCount: true }),\n);",
+      "lang": "typescript",
+      "say": "shareReplay współdzieli jedno wykonanie źródła i odtwarza ostatnie wartości nowym subskrybentom – typowo do cache'owania HTTP. Dla nieskończonych źródeł ustawiam refCount: true, bo domyślnie subskrypcja źródła zostaje i mamy wyciek."
+    },
+    {
+      "topic": "Unsubscribe i wycieki",
+      "points": [
+        "Trzeba, gdy strumień **nie kończy się sam**: `interval`, `valueChanges`, router events, Subjecty w serwisach, WebSocket, `fromEvent`.",
+        "HttpClient kończy się po odpowiedzi, ale anulowanie przy zniszczeniu komponentu bywa pożądane.",
+        "Najlepiej nie subskrybować ręcznie: `async` pipe lub `toSignal` sprzątają same.",
+        "W kodzie: `takeUntilDestroyed()` z `@angular/core/rxjs-interop` – bez argumentu tylko w **injection context** (konstruktor, inicjalizatory pól).",
+        "Poza injection context (np. `ngOnInit`): `takeUntilDestroyed(this.destroyRef)` z `inject(DestroyRef)`.",
+        "`takeUntilDestroyed` / `takeUntil` jako **ostatni** operator w `pipe`."
+      ],
+      "pitfalls": [
+        "`takeUntilDestroyed()` bez argumentu w `ngOnInit` – błąd NG0203 (brak injection context).",
+        "`takeUntil` przed `switchMap` – wewnętrzna subskrypcja żyje dalej."
+      ],
+      "code": "export class ClockComponent {\n  private destroyRef = inject(DestroyRef);\n  now = signal(new Date());\n  ngOnInit() {\n    interval(1000)\n      .pipe(takeUntilDestroyed(this.destroyRef))\n      .subscribe(() => this.now.set(new Date()));\n  }\n}",
+      "lang": "typescript",
+      "say": "Odsubskrybować trzeba strumienie, które same się nie kończą. Preferuję async pipe i toSignal, a przy ręcznej subskrypcji takeUntilDestroyed jako ostatni operator – poza injection context z przekazanym DestroyRef."
+    },
+    {
+      "topic": "Błędy w strumieniu",
+      "points": [
+        "Kontrakt Observable: `error` jest **terminalny** – po nim brak emisji, subskrypcja się kończy.",
+        "Błąd z wewnętrznego Observable propaguje się przez `switchMap` do zewnętrznego i go kończy.",
+        "`catchError` na zewnątrz zastąpi błąd wartością, ale potok i tak się zakończy – kolejne kliknięcia nie zadziałają.",
+        "Rozwiązanie: `catchError` **wewnątrz** projekcji `switchMap`/`concatMap`, na wewnętrznym Observable – błąd kończy tylko jeden request.",
+        "Alternatywa: mapuj wynik na obiekt stanu `{ data } | { error }` i nigdy nie wypuszczaj błędu na zewnątrz.",
+        "Nieobsłużony błąd w `subscribe` bez handlera `error` trafia do globalnego reportera (konsola / `ErrorHandler`)."
+      ],
+      "pitfalls": [
+        "Efekt „działa tylko raz”: pierwsze kliknięcie z 500 pokazuje `[]`, kolejne nic nie robią.",
+        "`retry` na zewnętrznym strumieniu zdarzeń resubskrybuje całe źródło zamiast jednego requestu."
+      ],
+      "code": "this.reload$.pipe(\n  switchMap(() => this.api.load().pipe(\n    catchError(() => of([] as Item[])),   // wewnątrz!\n  )),\n  takeUntilDestroyed(),\n).subscribe(items => this.items.set(items));",
+      "lang": "typescript",
+      "say": "Błąd w Observable jest terminalny, więc catchError na zewnątrz kończy cały potok. Żeby strumień zdarzeń przeżył, łapię błąd wewnątrz switchMap, na pojedynczym requeście, albo mapuję wynik na obiekt stanu."
+    },
+    {
+      "topic": "Interop z sygnałami",
+      "points": [
+        "`toSignal(obs$)` (`@angular/core/rxjs-interop`) subskrybuje **od razu**, wystawia ostatnią wartość jako **read-only** sygnał, odsubskrybuje przy zniszczeniu kontekstu.",
+        "Wymaga **injection context** (albo opcji `injector`).",
+        "Bez `initialValue` typ to `Signal<T | undefined>`; `requireSync: true` dla źródeł emitujących synchronicznie (BehaviorSubject).",
+        "Błąd ze strumienia jest **rzucany przy odczycie** sygnału.",
+        "`toObservable(sig)` – oparty na `effect`, emisje **asynchroniczne**; zmiany w tym samym cyklu się zlewają (emituje tylko ostatnią).",
+        "Do pobierania danych sterowanego sygnałami: `rxResource` / `resource` / `httpResource` – sprawdź status API w używanej wersji Angulara."
+      ],
+      "pitfalls": [
+        "`toSignal(http.get(...))` bez `initialValue` – w szablonie trzeba obsłużyć `undefined`.",
+        "Wywołanie `toSignal` w metodzie / `ngOnInit` – brak injection context i nowa subskrypcja przy każdym wywołaniu."
+      ],
+      "code": "export class ProfileComponent {\n  private http = inject(HttpClient);\n  user = toSignal(this.http.get<User>('/api/me'));      // Signal<User | undefined>\n  query = signal('');\n  results = toSignal(\n    toObservable(this.query).pipe(debounceTime(300), switchMap(q => this.api.search(q))),\n    { initialValue: [] },\n  );\n}",
+      "lang": "typescript",
+      "say": "toSignal subskrybuje Observable i wystawia ostatnią wartość jako sygnał, sprzątając przy zniszczeniu – bez initialValue typ zawiera undefined. toObservable działa w drugą stronę przez effect, więc emituje asynchronicznie. Typowo: RxJS na brzegu, sygnał do szablonu."
+    },
+    {
+      "topic": "Zagnieżdżone subskrypcje",
+      "points": [
+        "`subscribe` w `subscribe` tworzy niezależne subskrypcje, których nikt nie anuluje.",
+        "Ponowna emisja zewnętrznego strumienia → stare wewnętrzne requesty dalej działają, mogą przyjść w złej kolejności i nadpisać nowsze dane.",
+        "Błędy trzeba obsługiwać w kilku miejscach; kod trudny do czytania i testowania („callback hell”).",
+        "Zamiast tego: operator spłaszczający (`switchMap`, `concatMap`, `mergeMap`, `exhaustMap`) i **jedna** subskrypcja.",
+        "Zależne requesty: `switchMap`; niezależne równoległe: `forkJoin`/`combineLatest`.",
+        "Najlepiej subskrypcja przez `async` pipe lub `toSignal`."
+      ],
+      "pitfalls": [
+        "Wyciek: wewnętrzna subskrypcja nie jest objęta `takeUntilDestroyed` zewnętrznej.",
+        "Race condition przy szybkiej zmianie parametru trasy (`route.params`)."
+      ],
+      "code": "// źle: this.route.params.subscribe(p => this.api.get(p.id).subscribe(...))\nproduct = toSignal(\n  this.route.paramMap.pipe(\n    map(p => p.get('id')!),\n    switchMap(id => this.api.getProduct(id)),\n  ),\n);",
+      "lang": "typescript",
+      "say": "Zagnieżdżone subscribe to antywzorzec, bo wewnętrznych subskrypcji nikt nie anuluje, co daje wyścigi i wycieki, a błędy trzeba łapać w wielu miejscach. Zastępuję je operatorem spłaszczającym i jedną subskrypcją, najlepiej async pipe lub toSignal."
+    },
+    {
+      "topic": "Sygnały czy RxJS",
+      "points": [
+        "**Sygnały** – stan synchroniczny: wartości w szablonie, `computed`, reakcje na zmianę stanu; proste, glitch-free, napędzają change detection (także **zoneless**).",
+        "**RxJS** – zdarzenia i asynchroniczność w czasie: debounce, anulowanie requestów, łączenie źródeł, retry, WebSockety.",
+        "Typowy podział: RxJS na brzegu (zdarzenia, HTTP) → `toSignal` → szablon/`computed`.",
+        "`HttpClient` nadal zwraca Observable; `resource`/`rxResource`/`httpResource` to sygnałowa alternatywa do pobierania danych.",
+        "`effect` służy do efektów ubocznych (localStorage, logowanie, integracja z DOM/bibliotekami), **nie** do propagowania stanu – do tego `computed`/`linkedSignal`.",
+        "Nie przepisuję na siłę działających potoków RxJS na sygnały."
+      ],
+      "pitfalls": [
+        "`effect`, który ustawia inne sygnały, zamiast `computed` – pętle i trudny do śledzenia przepływ.",
+        "Implementacja debounce/anulowania „ręcznie” na sygnałach zamiast RxJS."
+      ],
+      "say": "Sygnały do stanu i wartości wyliczanych w widoku, RxJS do zdarzeń i asynchroniczności w czasie – debounce, anulowanie, łączenie strumieni. Na brzegu RxJS, a wynik przez toSignal trafia do szablonu; effect nie służy do propagowania stanu."
+    }
+  ]
+}

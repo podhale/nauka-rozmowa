@@ -1,0 +1,125 @@
+{
+  "cat": "arch",
+  "name": "Architektura i wzorce",
+  "cards": [
+    {
+      "id": "arch-m001",
+      "topic": "Modelowanie (C4, UML)",
+      "level": 2,
+      "q": "Czym jest model C4 i jakie ma poziomy?",
+      "a": "C4 (Simon Brown) to sposób rysowania architektury na kilku poziomach szczegółowości, jak zoom na mapie. 1) System Context: Twój system jako jedno pudełko, użytkownicy i systemy zewnętrzne. Ten poziom zrozumie też biznes. 2) Container: aplikacje i magazyny danych, które się osobno uruchamia lub wdraża, np. Angular SPA, ASP.NET Core API, SQL Server, kolejka – z technologiami i protokołami na strzałkach. 3) Component: wnętrze jednego kontenera, czyli moduły, serwisy i ich odpowiedzialności. 4) Code: klasy, zwykle pomijane albo generowane z IDE. W praktyce najczęściej rysuje się poziomy 1 i 2. Dochodzą do tego diagramy uzupełniające: deployment (gdzie co działa) i dynamic (przepływ dla jednego scenariusza).",
+      "code": "Poziom 1 – Context:   [Klient] -> [System Zamówień] -> [Bramka płatności]\nPoziom 2 – Container: [Angular SPA] -HTTPS/JSON-> [Orders API (.NET 10)]\n                      [Orders API] -EF Core/TDS-> [SQL Server]\n                      [Orders API] -AMQP-> [Azure Service Bus] -> [Worker]\nPoziom 3 – Component: wnętrze Orders API (Ordering, Billing, Notifications)",
+      "lang": "text",
+      "deep": "Siła C4 to prosta notacja: każde pudełko ma nazwę, typ, technologię i jedno zdanie opisu, a każda strzałka ma opis i protokół („Wysyła zamówienia [AMQP]”). Do tego legenda – diagram bez legendy i opisanych strzałek jest tylko obrazkiem. Typowa pułapka to słowo „container”: w C4 oznacza osobno uruchamianą jednostkę (aplikację, bazę), a nie kontener Dockera – choć często jedno pokrywa się z drugim. Narzędzia „diagrams as code” to m.in. Structurizr DSL (jeden model, z którego generuje się wiele widoków, więc nazwy się nie rozjeżdżają), C4-PlantUML oraz diagramy C4 w Mermaid (oznaczone jako eksperymentalne). Na rozmowie system design poziom Container to dokładnie to, co rysujesz na tablicy.",
+      "tip": "Rekruter często pyta „który poziom pokazałbyś zarządowi, a który nowemu developerowi?”. Odpowiedź: zarządowi Context, developerowi Container i Component."
+    },
+    {
+      "id": "arch-m002",
+      "topic": "Modelowanie (C4, UML)",
+      "level": 2,
+      "q": "Diagram sekwencji i diagram klas UML – kiedy naprawdę się przydają?",
+      "a": "Z kilkunastu typów diagramów UML w praktyce używa się dwóch, trzech. Diagram sekwencji pokazuje kolejne wywołania między uczestnikami w czasie. Nadaje się do flow uwierzytelniania (Authorization Code + PKCE), integracji z zewnętrznym API, płatności z webhookiem i sag. Ułatwia rozmowę o błędach: „co, jeśli tu będzie timeout?”. Diagram klas przydaje się do modelu domenowego (agregaty, relacje, krotności) i publicznych kontraktów, ale nie do całego systemu, bo szybko się dezaktualizuje. Warto też znać diagram stanów, np. dla cyklu życia zamówienia. Diagramy szkicuję jako kod (Mermaid lub PlantUML) w repo, obok opisu funkcji.",
+      "code": "sequenceDiagram\n  participant SPA as Angular SPA\n  participant API as Orders API\n  participant PAY as Payment Provider\n  SPA->>API: POST /orders\n  API->>PAY: create payment\n  PAY-->>API: 201 paymentUrl\n  API-->>SPA: 201 + paymentUrl\n  PAY-)API: webhook payment.succeeded\n  API->>API: mark order as Paid",
+      "lang": "text",
+      "tip": "Nie trzeba znać całej notacji UML – wystarczy pewnie narysować sekwencję z odpowiedziami, wywołaniami asynchronicznymi i alternatywą (alt/else dla błędu)."
+    },
+    {
+      "id": "arch-m003",
+      "topic": "Dokumentacja techniczna",
+      "level": 2,
+      "q": "Kiedy piszesz ADR, a kiedy design doc lub RFC? Jak wprowadzić ADR w zespole, żeby nie zostały martwym folderem?",
+      "a": "ADR opisuje jedną decyzję: krótko (ok. jedna strona), w chwili jej podjęcia, i potem się go nie zmienia. Design doc lub RFC to dłuższa propozycja większej zmiany przed implementacją, z opcjami do dyskusji, np. „przejście na event-driven w module zamówień”. Z jednego RFC często powstaje kilka ADR. Wprowadzenie: szablon (Nygard albo MADR) w repo, np. `docs/adr/`, numeracja i status, każdy ADR jako pull request z review, jasne kryterium („piszemy ADR dla decyzji kosztownych do odwrócenia”), linki z README i czytanie ADR podczas onboardingu.",
+      "code": "docs/adr/\n  0001-record-architecture-decisions.md\n  0007-modular-monolith-instead-of-microservices.md\n  0012-transactional-outbox.md   (Accepted)\n  0015-switch-to-postgresql.md   (Proposed)",
+      "lang": "text",
+      "tip": "Pierwszy ADR w repo zwykle brzmi „Record architecture decisions” – to decyzja o samym prowadzeniu ADR."
+    },
+    {
+      "id": "arch-m004",
+      "topic": "Dokumentacja techniczna",
+      "level": 1,
+      "q": "Co powinno być w dobrym README projektu, a co w runbooku?",
+      "a": "README jest dla developera, który pierwszy raz otwiera repo. Zawiera: co to za system i dla kogo, wymagania (.NET SDK, Node.js LTS, Docker), jak uruchomić lokalnie i jak uruchomić testy, skąd wziąć konfigurację i sekrety (np. user-secrets, nigdy w repo), strukturę katalogów, zasady wnoszenia zmian oraz linki do architektury i ADR. Dobry test: nowa osoba uruchamia projekt w mniej niż godzinę bez pytania kolegów. Runbook jest dla osoby na dyżurze lub od utrzymania. Zawiera: jak wdrożyć i jak zrobić rollback, gdzie są dashboardy i alerty, procedury dla znanych problemów („alert X → sprawdź Y → zrób Z”), ścieżkę eskalacji i potrzebne dostępy.",
+      "code": "# Orders Service\nAPI zamówień dla panelu klienta (Angular) i partnerów.\n## Wymagania\n.NET 10 SDK, Node.js LTS, Docker\n## Uruchomienie\ndocker compose up -d db\ndotnet user-secrets set \"Payments:ApiKey\" \"<klucz>\"\ndotnet run --project src/Orders.Api\n## Testy\ndotnet test\n## Dokumentacja\ndocs/architecture.md, docs/adr/, docs/runbook.md",
+      "lang": "text",
+      "tip": "Częsty problem: README opisuje stan sprzed dwóch lat. Pomaga trzymanie go w repo i aktualizowanie w tym samym pull requeście, który zmienia sposób uruchamiania."
+    },
+    {
+      "id": "arch-m005",
+      "topic": "Dokumentacja techniczna",
+      "level": 2,
+      "q": "Jak dokumentujesz REST API w .NET i jak z tej dokumentacji korzysta frontend Angular?",
+      "a": "Standardem jest OpenAPI (dawniej Swagger), czyli kontrakt czytelny dla ludzi i dla narzędzi. Od .NET 9 szablon Web API korzysta z wbudowanego pakietu Microsoft.AspNetCore.OpenApi (`AddOpenApi()` + `MapOpenApi()`). Swashbuckle usunięto z szablonu, a UI (np. Scalar albo Swagger UI) dodaje się osobno. Od .NET 10 domyślnie generowany jest OpenAPI 3.1. Dokumentację uzupełniasz o opisy (`WithSummary`, komentarze XML), typy odpowiedzi (`TypedResults` w Minimal API, `ProducesResponseType` w kontrolerach) i błędy w formacie ProblemDetails. Frontend generuje z kontraktu klienta TS i modele (np. NSwag albo openapi-generator), więc nie trzeba ręcznie przepisywać DTO.",
+      "code": "builder.Services.AddOpenApi();\nvar app = builder.Build();\nif (app.Environment.IsDevelopment())\n    app.MapOpenApi(); // /openapi/v1.json\n\napp.MapGet(\"/orders/{id:int}\",\n    async Task<Results<Ok<OrderDto>, NotFound>> (int id, IOrderService orders) =>\n        await orders.FindAsync(id) is { } o ? TypedResults.Ok(o) : TypedResults.NotFound())\n   .WithSummary(\"Pobiera zamówienie po id\");",
+      "lang": "csharp",
+      "deep": "Są dwa podejścia. Code-first: spec generuje się z kodu, jest szybciej i zawsze zgodnie z implementacją. Contract-first: najpierw spec, review z frontendem i partnerami, potem implementacja. Lepiej sprawdza się przy publicznych API i wielu zespołach. Niezależnie od podejścia warto traktować spec jako artefakt builda: generować go w CI, porównywać z poprzednią wersją narzędziem wykrywającym breaking changes (np. oasdiff) i regenerować klienta Angulara w tym samym pipeline. Wtedy zmiana nazwy pola wychodzi na etapie builda, a nie na produkcji. Publiczny endpoint dokumentacji na produkcji to decyzja do podjęcia świadomie: dla API partnerskiego tak, dla wewnętrznego zwykle nie. Wersjonowanie (np. Asp.Versioning) daje osobny dokument na każdą wersję API.",
+      "tip": "Pułapka: „Swagger” i „OpenAPI” to nie synonimy – Swagger to dawna nazwa specyfikacji i nazwa narzędzi (Swagger UI), a sama specyfikacja to OpenAPI."
+    },
+    {
+      "id": "arch-m006",
+      "topic": "Dokumentacja techniczna",
+      "level": 3,
+      "q": "Czym jest docs-as-code i jak wdrożyć je w projekcie .NET + Angular?",
+      "a": "Docs-as-code to traktowanie dokumentacji jak kodu: pliki tekstowe (Markdown) w tym samym repo, zmiany przez pull request z review, budowanie i publikacja w CI, wersjonowanie razem z kodem. Diagramy też są kodem (Mermaid, PlantUML, Structurizr), więc widać ich diff. Dzięki temu dokumentacja zmienia się w tym samym PR co kod i nie żyje w osobnej wiki, której nikt nie aktualizuje. Typowy zestaw: README, `docs/` z architekturą (C4), ADR, runbook, spec OpenAPI generowany w buildzie oraz generator strony (np. DocFX dla .NET, MkDocs, Compodoc dla Angulara).",
+      "deep": "Kluczowe jest, żeby utrzymanie dokumentacji było tanie i wymuszone procesem, a nie dobrą wolą. W szablonie PR dodaj punkt „czy zmiana wymaga aktualizacji docs/ADR?”, ustaw CODEOWNERS dla `docs/architecture`, a w CI uruchamiaj linter Markdowna, sprawdzanie linków i diff OpenAPI. Dokumentuj „dlaczego” i „jak uruchomić”, a nie to, co widać w kodzie – opis każdej klasy zdezaktualizuje się pierwszy. Docs-as-code ma też wady: osoby nietechniczne (PO, analitycy) rzadziej edytują Markdown w repo, więc część treści (wymagania, procesy biznesowe) zostaje w Confluence. Ważne, żeby było jasne, co jest źródłem prawdy, i żeby linki prowadziły w obie strony. Przy wielu repozytoriach (mikroserwisy) pomaga centralny portal, np. Backstage z TechDocs, który zbiera `docs/` z repozytoriów. Dobre metryki: czas onboardingu do pierwszego PR i liczba pytań „jak to uruchomić?” na kanale zespołu.",
+      "tip": "Na rozmowie dobrze brzmi konkret: „u nas ADR i runbook są w repo, PR bez aktualizacji runbooka przy nowym alercie nie przechodzi review”."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "arch-mq001",
+      "topic": "Modelowanie (C4, UML)",
+      "level": 2,
+      "q": "Rysujesz diagram, na którym są: Angular SPA, ASP.NET Core API, SQL Server i Azure Service Bus z workerem, ze strzałkami opisanymi protokołami (HTTPS/JSON, AMQP). Który to poziom C4?",
+      "options": [
+        "System Context",
+        "Container",
+        "Component",
+        "Code"
+      ],
+      "correct": 1,
+      "why": "Container to poziom osobno uruchamianych lub wdrażanych aplikacji i magazynów danych, z technologiami i protokołami. Context pokazuje cały system jako jedno pudełko z użytkownikami i systemami zewnętrznymi. Component to wnętrze jednego kontenera (moduły API). Code to klasy. „Container” w C4 nie oznacza kontenera Dockera."
+    },
+    {
+      "id": "arch-mq002",
+      "topic": "Modelowanie (C4, UML)",
+      "level": 1,
+      "q": "Do której sytuacji diagram sekwencji UML pasuje najlepiej?",
+      "options": [
+        "Pokazanie zarządowi, z jakimi systemami zewnętrznymi integruje się produkt.",
+        "Udokumentowanie wszystkich encji EF Core i ich relacji w bazie.",
+        "Pokazanie, na których węzłach Kubernetes i w których regionach Azure działają serwisy.",
+        "Omówienie z zespołem flow płatności: SPA → API → operator płatności → webhook, włącznie z tym, co się dzieje przy timeoucie."
+      ],
+      "correct": 3,
+      "why": "Diagram sekwencji pokazuje kolejność wywołań między uczestnikami w czasie i dobrze nadaje się do analizy błędów i timeoutów. A to diagram kontekstu (C4 Context), B to diagram klas lub ERD, C to diagram wdrożeniowy (deployment)."
+    },
+    {
+      "id": "arch-mq003",
+      "topic": "Dokumentacja techniczna",
+      "level": 2,
+      "q": "Która z poniższych zmian najbardziej uzasadnia napisanie ADR?",
+      "options": [
+        "Aktualizacja pakietu NuGet do nowej wersji minor.",
+        "Dodanie nowego endpointu zgodnie z istniejącymi konwencjami API.",
+        "Zastąpienie synchronicznych wywołań HTTP między modułami Orders i Billing komunikacją przez broker wiadomości.",
+        "Zmiana nazwy prywatnej metody w serwisie dla czytelności."
+      ],
+      "correct": 2,
+      "why": "ADR pisze się dla decyzji architektonicznych, które są kosztowne do odwrócenia i mają konsekwencje (tu: eventual consistency, idempotentni konsumenci, nowa infrastruktura). A, B i D to rutynowe zmiany, w pełni opisane przez commit lub PR – ADR dla nich zaśmieca rejestr i powoduje, że nikt go nie czyta."
+    },
+    {
+      "id": "arch-mq004",
+      "topic": "Dokumentacja techniczna",
+      "level": 3,
+      "q": "Backend zmienił nazwę pola w DTO z `customerName` na `clientName`. Klient Angulara jest generowany z OpenAPI, ale ręcznie i nieregularnie, więc błąd wyszedł dopiero na produkcji. Co najlepiej temu zapobiega?",
+      "options": [
+        "Generowanie specu OpenAPI w CI, porównywanie go z poprzednią wersją pod kątem breaking changes i regenerowanie klienta TS w tym samym pipeline.",
+        "Wyłączenie generowania klienta i ręczne pisanie interfejsów TS.",
+        "Dodanie do README informacji, żeby po zmianach w API powiadomić frontend.",
+        "Publikowanie Swagger UI na produkcji, żeby frontend mógł sprawdzać zmiany."
+      ],
+      "correct": 0,
+      "why": "A automatyzuje kontrakt: zmiana łamiąca kompatybilność zatrzymuje build albo wymusza świadomą decyzję (np. nową wersję API), a regenerowany klient powoduje błąd kompilacji TS zamiast błędu w runtime. B zwiększa ryzyko rozjazdu. C opiera się na pamięci ludzi. D nie wykrywa niczego automatycznie i niepotrzebnie wystawia dokumentację publicznie."
+    }
+  ]
+}

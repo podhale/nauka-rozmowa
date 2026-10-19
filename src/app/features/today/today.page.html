@@ -23,6 +23,14 @@
     </div>
   </div>
 
+  @if (nextLesson(); as l) {
+    <a class="card stack continue" [routerLink]="['/nauka', l.id]">
+      <span class="eyebrow">Nauka · {{ lessonsRead() }}/{{ content.lessons().length }} lekcji</span>
+      <b class="lesson-title">{{ l.title }}</b>
+      <span class="muted" style="font-size:.88rem">{{ l.minutes }} min czytania + egzamin</span>
+    </a>
+  }
+
   @if (weak().length) {
     <div class="card stack">
       <div class="row" style="justify-content:space-between">

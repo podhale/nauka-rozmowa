@@ -6,11 +6,12 @@ import { Grade } from '../../core/models';
 import { ProgressStore } from '../../core/progress.store';
 import { SessionService } from '../../core/session.service';
 import { AskClaude } from '../../shared/ai-answer';
+import { SpeakButton } from '../../shared/speak';
 import { CatTag, CodeBlock, LevelBadge, RichPipe } from '../../shared/ui';
 
 @Component({
   selector: 'app-study-page',
-  imports: [CatTag, CodeBlock, LevelBadge, RichPipe, RouterLink, AskClaude],
+  imports: [CatTag, CodeBlock, LevelBadge, RichPipe, RouterLink, AskClaude, SpeakButton],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './study.page.html',
 })

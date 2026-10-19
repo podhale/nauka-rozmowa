@@ -1,0 +1,244 @@
+{
+  "cat": "aspnet",
+  "name": "ASP.NET Core Web API",
+  "cards": [
+    {
+      "id": "aspnet-m001",
+      "topic": "Legacy ASP.NET MVC/Web API",
+      "level": 1,
+      "q": "Czym różni się ASP.NET MVC 5 (.NET Framework) od ASP.NET Core MVC?",
+      "a": "ASP.NET MVC 5 działa tylko na .NET Framework i Windows, opiera się na System.Web i IIS. Konfiguracja jest w Global.asax (Application_Start, RouteConfig, FilterConfig) i web.config, rozszerzenia pipeline'u to HttpModules i HttpHandlers, a DI trzeba było podpinać kontenerem (Autofac, Unity) przez DependencyResolver. ASP.NET Core jest cross-platform, ma własny serwer (Kestrel) i pipeline middleware konfigurowany w Program.cs. DI, konfiguracja (appsettings, zmienne środowiskowe), logowanie i Options są wbudowane. MVC i Web API zostały połączone w jeden framework z jednym typem kontrolera i jednym zestawem filtrów. Pojęcia kontrolerów, akcji, routingu, model bindingu i Razor są podobne, ale API nie jest kompatybilne 1:1.",
+      "code": "// MVC 5 – Global.asax.cs\nprotected void Application_Start()\n{\n    AreaRegistration.RegisterAllAreas();\n    FilterConfig.RegisterGlobalFilters(GlobalFilters.Filters);\n    RouteConfig.RegisterRoutes(RouteTable.Routes);\n}\n\n// ASP.NET Core – Program.cs\nvar builder = WebApplication.CreateBuilder(args);\nbuilder.Services.AddControllersWithViews();\nvar app = builder.Build();\napp.MapDefaultControllerRoute();\napp.Run();",
+      "lang": "csharp",
+      "tip": "W ofertach „ASP.NET MVC” często oznacza utrzymanie aplikacji na .NET Framework 4.x – warto powiedzieć, że znasz oba światy i wiesz, co się zmieniło."
+    },
+    {
+      "id": "aspnet-m002",
+      "topic": "Legacy ASP.NET MVC/Web API",
+      "level": 2,
+      "q": "Czym było ASP.NET Web API 2 i jak jego koncepcje przeniosły się do ASP.NET Core?",
+      "a": "Web API 2 to osobny framework do usług HTTP/REST na .NET Framework. Ma kontrolery dziedziczące po ApiController (System.Web.Http), zwraca IHttpActionResult albo HttpResponseMessage, używa content negotiation przez MediaTypeFormatters i attribute routingu włączanego przez config.MapHttpAttributeRoutes(). Mógł działać w IIS albo self-hosted przez OWIN/Katana. Miał własny pipeline i własne filtry (System.Web.Http.Filters), oddzielne od MVC 5 (System.Web.Mvc). To częste źródło pomyłek, bo filtr MVC nie działał na kontrolerze Web API i odwrotnie. W ASP.NET Core jest jeden ControllerBase z [ApiController], IActionResult/ActionResult<T>, wbudowany System.Text.Json i wspólne filtry. Rolę OWIN-owych middleware przejął pipeline middleware.",
+      "code": "// Web API 2\npublic class ProductsController : ApiController\n{\n    [Route(\"api/products/{id:int}\")]\n    public IHttpActionResult Get(int id)\n        => _repo.Find(id) is { } p ? Ok(p) : (IHttpActionResult)NotFound();\n}\n\n// ASP.NET Core\n[ApiController, Route(\"api/products\")]\npublic class ProductsController : ControllerBase\n{\n    [HttpGet(\"{id:int}\")]\n    public ActionResult<Product> Get(int id) => _repo.Find(id) is { } p ? p : NotFound();\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "aspnet-m003",
+      "topic": "Filtry MVC",
+      "level": 1,
+      "q": "Jakie są rodzaje filtrów w ASP.NET MVC / ASP.NET Core MVC i w jakiej kolejności się wykonują?",
+      "a": "W ASP.NET Core MVC kolejność jest taka: authorization filters (pierwsze, mogą przerwać żądanie, np. 401/403), potem resource filters (przed model bindingiem, np. cache), potem action filters (przed akcją i po niej, z dostępem do argumentów i wyniku), dalej exception filters (obsługują nieobsłużone wyjątki z akcji i action filterów) i na końcu result filters (wokół wykonania wyniku, np. modyfikacja nagłówków). W MVC 5 były authentication (od MVC 5), authorization, action, result i exception filters – bez resource filters. Filtr można przypiąć globalnie, do kontrolera albo do akcji. Część „przed” wykonuje się w kolejności global → kontroler → akcja, a część „po” w odwrotnej. Kolejność zmienia właściwość Order.",
+      "code": "public class TimingFilter(ILogger<TimingFilter> log) : IAsyncActionFilter\n{\n    public async Task OnActionExecutionAsync(ActionExecutingContext ctx, ActionExecutionDelegate next)\n    {\n        var sw = Stopwatch.StartNew();\n        var executed = await next();               // akcja (i kolejne filtry)\n        log.LogInformation(\"{Action} took {Ms} ms\",\n            ctx.ActionDescriptor.DisplayName, sw.ElapsedMilliseconds);\n    }\n}\n\nbuilder.Services.AddControllers(o => o.Filters.Add<TimingFilter>()); // globalnie",
+      "lang": "csharp",
+      "tip": "To pytanie pada w relacjach z EPAM i Capgemini. Wymień typy w kolejności i dodaj jedno zdanie, do czego każdy służy."
+    },
+    {
+      "id": "aspnet-m004",
+      "topic": "Filtry MVC",
+      "level": 2,
+      "q": "Filtr czy middleware – kiedy co wybierasz i jak wstrzyknąć zależności do filtra?",
+      "a": "Middleware działa dla każdego żądania na poziomie HTTP, nie zna akcji MVC ani model bindingu. Pasuje do zagadnień globalnych: obsługi wyjątków, logowania żądań, nagłówków bezpieczeństwa, CORS czy uwierzytelniania. Filtr działa wewnątrz MVC i ma dostęp do kontekstu akcji: argumentów po bindingu, ModelState, atrybutów i wyniku. Pasuje do logiki zależnej od akcji, np. walidacji, audytu konkretnych operacji czy transformacji wyniku. Filtr z zależnościami w konstruktorze nie może być zwykłym atrybutem z parametrami. Podpinam go globalnie przez Filters.Add<T>() (DI rozwiąże zależności), przez [ServiceFilter(typeof(T))] przy rejestracji T w DI albo przez [TypeFilter(typeof(T))] bez rejestracji. W Minimal APIs odpowiednikiem są endpoint filters.",
+      "code": "builder.Services.AddScoped<AuditFilter>();\n\n[ServiceFilter(typeof(AuditFilter))]          // filtr z DI\npublic IActionResult Delete(int id) { /* ... */ }\n\n[TypeFilter(typeof(RateCheckFilter), Arguments = [\"orders\"])] // bez rejestracji\npublic IActionResult Create(OrderDto dto) { /* ... */ }",
+      "lang": "csharp",
+      "tip": "Rekruter często pyta: „gdzie zrobisz globalną obsługę wyjątków – filtr czy middleware?”. Odpowiedź to middleware, bo widzi więcej (także błędy spoza MVC).",
+      "deep": "Filtry dodane przez instancję (Filters.Add(new X())) albo jako atrybuty są tworzone raz i współdzielone między żądaniami, więc nie mogą trzymać stanu per żądanie ani zależności scoped. ServiceFilter respektuje lifetime z rejestracji. TypeFilter tworzy instancję przez ActivatorUtilities, a IsReusable pozwala ją cache'ować. Exception filters łapią tylko wyjątki z tworzenia kontrolera, model bindingu, action filterów i akcji – nie łapią wyjątków z resource filterów, result filterów ani wykonania wyniku (np. serializacji). Dlatego globalną obsługę błędów robię w middleware (UseExceptionHandler + IExceptionHandler + ProblemDetails), a exception filter tylko do mapowania wyjątków specyficznych dla MVC. Krótkie spięcie (ustawienie context.Result w filtrze „przed”) pomija dalsze etapy, ale filtry „po” z wyższych poziomów nadal widzą wynik. IAlwaysRunResultFilter wykona się nawet wtedy, gdy authorization filter przerwał pipeline."
+    },
+    {
+      "id": "aspnet-m005",
+      "topic": "WCF i CoreWCF",
+      "level": 2,
+      "q": "Czym jest WCF, jak wygląda jego wsparcie w nowym .NET i jakie masz opcje migracji usług SOAP?",
+      "a": "WCF (Windows Communication Foundation) to framework .NET Framework do usług RPC/SOAP. Opiera się na „ABC”: Address, Binding (BasicHttpBinding – SOAP 1.1, WSHttpBinding z WS-*, NetTcpBinding – binarnie po TCP) i Contract ([ServiceContract], [OperationContract], [DataContract]). W nowym .NET serwera WCF nie ma. Klient jest dostępny przez pakiety System.ServiceModel.* (Http, NetTcp, Primitives), a proxy generuje się przez dotnet-svcutil albo Connected Services. Opcje migracji serwera: CoreWCF – projekt open source wspierany przez Microsoft, który pozwala zachować kontrakty i WSDL dla istniejących klientów – albo przepisanie na gRPC (naturalny następca NetTcp) lub REST, gdy można zmienić klientów.",
+      "code": "[ServiceContract]\npublic interface IOrderService\n{\n    [OperationContract]\n    OrderDto GetOrder(int id);\n}\n\n// CoreWCF w ASP.NET Core\nbuilder.Services.AddServiceModelServices();\napp.UseServiceModel(sb =>\n{\n    sb.AddService<OrderService>();\n    sb.AddServiceEndpoint<OrderService, IOrderService>(new BasicHttpBinding(), \"/OrderService.svc\");\n});",
+      "lang": "csharp",
+      "deep": "CoreWCF wspiera najczęściej używane elementy (BasicHttp, NetTcp, część WSHttp, bezpieczeństwo transportowe, metadane WSDL), ale nie całe WCF. Przed migracją robię inwentaryzację bindingów i funkcji: transakcje WS-AtomicTransaction, kolejki MSMQ, duplex, rzadkie behaviory i rozszerzenia mogą wymagać przeprojektowania. Kontrakt ma znaczenie dla partnerów zewnętrznych – testuję zgodność WSDL i komunikatów (np. kontraktowo, nagranymi żądaniami SOAP). Pragmatyczna ścieżka: najpierw przenieść logikę do bibliotek .NET Standard 2.0 lub multi-targetowanych, potem wystawić ten sam kontrakt w CoreWCF obok starego hosta i przełączać klientów stopniowo. Nowe integracje projektuję już jako REST albo gRPC. SOAP zostaje tam, gdzie wymaga tego partner lub branża (bankowość, administracja)."
+    },
+    {
+      "id": "aspnet-m006",
+      "topic": "IIS i hosting",
+      "level": 2,
+      "q": "Jak ASP.NET Core działa w IIS? Czym różni się hosting in-process od out-of-process?",
+      "a": "W IIS aplikację ASP.NET Core obsługuje ASP.NET Core Module (ANCM), instalowany razem z .NET Hosting Bundle i konfigurowany w web.config generowanym przy publikacji. In-process (domyślny od ASP.NET Core 3.0) oznacza, że aplikacja działa wewnątrz procesu puli aplikacji IIS (w3wp.exe), a żądania obsługuje IIS HTTP Server (IISHttpServer), a nie Kestrel. To daje najlepszą wydajność, bo nie ma dodatkowego skoku sieciowego. Out-of-process oznacza, że ANCM uruchamia osobny proces dotnet z Kestrelem i przekazuje do niego żądania jako reverse proxy. Wymaga to UseForwardedHeaders, ale izoluje proces od IIS. Pula aplikacji powinna mieć ustawione „No Managed Code”, bo CLR .NET Framework nie jest tu potrzebny.",
+      "code": "<!-- csproj -->\n<PropertyGroup>\n  <AspNetCoreHostingModel>InProcess</AspNetCoreHostingModel> <!-- albo OutOfProcess -->\n</PropertyGroup>\n\n<!-- web.config (generowany przy publish) -->\n<aspNetCore processPath=\"dotnet\" arguments=\".\\MyApi.dll\"\n            hostingModel=\"inprocess\" stdoutLogEnabled=\"false\" />",
+      "lang": "text",
+      "deep": "In-process ma ograniczenie: jedna aplikacja ASP.NET Core na pulę aplikacji, więc każda aplikacja dostaje własną pulę. Recykling puli przez IIS (domyślnie co 29 godzin, przy bezczynności idle timeout 20 minut) restartuje aplikację. Przy usługach z cache w pamięci albo BackgroundService warto wyłączyć idle timeout i ustawić Start Mode = AlwaysRunning oraz Preload, inaczej pierwsze żądanie płaci za cold start, a joby w tle przestają działać. Diagnostyka startu: stdoutLogEnabled w web.config, Event Viewer i błędy 500.30 (aplikacja nie wystartowała) lub 500.31/500.32 (brak runtime'u, zła bitowość). Gdy aplikację trzeba wdrożyć bez przestoju, app_offline.htm pozwala bezpiecznie podmienić pliki. Poza Windows rolę IIS pełni zwykle nginx, YARP albo ingress w Kubernetesie przed Kestrelem."
+    },
+    {
+      "id": "aspnet-m007",
+      "topic": "IIS i hosting",
+      "level": 1,
+      "q": "Czym różni się konfiguracja w web.config (.NET Framework) od appsettings.json w ASP.NET Core?",
+      "a": "W .NET Framework konfiguracja aplikacji siedzi w web.config (XML): appSettings i connectionStrings odczytywane przez ConfigurationManager, a także konfiguracja IIS, modułów i system.web. Różnice między środowiskami robiło się transformacjami XDT (Web.Release.config) w czasie publikacji. W ASP.NET Core konfiguracja to warstwowy system providerów: appsettings.json → appsettings.{Environment}.json → user secrets (Development) → zmienne środowiskowe → argumenty linii poleceń. Późniejsze źródło nadpisuje wcześniejsze, a czyta się przez IConfiguration i Options pattern. web.config w ASP.NET Core zostaje tylko jako konfiguracja IIS/ANCM, a nie aplikacji.",
+      "code": "// .NET Framework\nvar cs = ConfigurationManager.ConnectionStrings[\"Default\"].ConnectionString;\nvar size = int.Parse(ConfigurationManager.AppSettings[\"PageSize\"]);\n\n// ASP.NET Core\nvar cs2 = builder.Configuration.GetConnectionString(\"Default\");\nbuilder.Services.AddOptions<PagingOptions>()\n    .BindConfiguration(\"Paging\").ValidateOnStart();\n// env var: Paging__PageSize=50",
+      "lang": "csharp",
+      "tip": "Sekrety nie powinny trafiać do appsettings w repo – w środowiskach używa się zmiennych środowiskowych, Key Vault albo sekretów Kubernetesa."
+    },
+    {
+      "id": "aspnet-m008",
+      "topic": "Migracja z .NET Framework",
+      "level": 3,
+      "q": "Jak podchodzisz do migracji aplikacji z .NET Framework 4.8 do .NET 10? Jakie narzędzia i jaka kolejność?",
+      "a": "Najpierw inwentaryzacja: zależności NuGet (czy mają wersje dla .NET), API, których nie ma (System.Web, WCF server, AppDomains, Remoting, Web Forms), projekty i testy. Migruję od dołu grafu zależności: biblioteki domenowe przenoszę do SDK-style csproj i targetuję netstandard2.0 albo multi-targeting (net48;net10.0), żeby stara i nowa aplikacja mogły ich używać jednocześnie. Warstwę web przenoszę na końcu, bo System.Web nie ma odpowiednika 1:1. Narzędzia: analizatory kompatybilności i .NET Upgrade Assistant, który Microsoft wycofuje na rzecz GitHub Copilot app modernization (asystent oparty na AI). Do dużych aplikacji webowych wybieram migrację przyrostową zamiast big bang.",
+      "code": "<!-- biblioteka współdzielona w okresie przejściowym -->\n<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFrameworks>net48;net10.0</TargetFrameworks>\n  </PropertyGroup>\n  <ItemGroup Condition=\"'$(TargetFramework)' == 'net48'\">\n    <Reference Include=\"System.Web\" />\n  </ItemGroup>\n</Project>",
+      "lang": "text",
+      "deep": "Najwięcej pracy zwykle nie jest w kodzie C#, tylko w zależnościach od System.Web (HttpContext.Current, sesja, Forms Authentication, HttpModules), statycznym stanie, konfiguracji z web.config i bibliotekach bez wersji dla .NET. Plan migracji powinien mieć testy charakteryzacyjne na krytycznych ścieżkach przed zmianą, bo zachowanie różni się w szczegółach: serializacja JSON (Newtonsoft vs System.Text.Json – wielkość liter, daty, cykle), kultura i strefy czasowe, kodowanie, kolejność middleware vs HttpModules. Windows-only API (rejestr, EventLog, System.Drawing) działają w .NET tylko na Windows przez pakiety Windows Compatibility Pack – to blokuje przejście na kontenery Linux. Zysk warto policzyć z góry: wydajność, koszty hostingu (Linux), wsparcie (.NET Framework dostaje tylko poprawki bezpieczeństwa), dostęp do nowych bibliotek i rekrutacja. Typowy podział: biblioteki na netstandard2.0, nowa aplikacja ASP.NET Core jako fasada, przenoszenie endpointów porcjami i usunięcie starej aplikacji na końcu."
+    },
+    {
+      "id": "aspnet-m009",
+      "topic": "Migracja z .NET Framework",
+      "level": 3,
+      "q": "Na czym polega przyrostowa migracja ASP.NET MVC 5 → ASP.NET Core ze strangler fig, YARP i System.Web adapters?",
+      "a": "Obok starej aplikacji stawiam nową aplikację ASP.NET Core, która przyjmuje cały ruch. Endpointy już zmigrowane obsługuje sama, a resztę przekazuje przez YARP (MapForwarder z trasą catch-all o najniższym priorytecie) do aplikacji MVC 5. Dzięki temu migruję po jednym kontrolerze, każdy krok jest małym, odwracalnym wdrożeniem, a użytkownik widzi jedną aplikację. Pakiety Microsoft.AspNetCore.SystemWebAdapters pozwalają współdzielonym bibliotekom dalej używać API w stylu System.Web.HttpContext. Mechanizm remote app pozwala nowej aplikacji korzystać z sesji i uwierzytelniania starej, dopóki nie zostaną przeniesione. Gdy przez starą aplikację nie przechodzi już ruch, wyłączam ją i usuwam proxy.",
+      "code": "var builder = WebApplication.CreateBuilder(args);\nbuilder.Services.AddControllersWithViews();\nbuilder.Services.AddHttpForwarder();\n\nvar app = builder.Build();\napp.MapControllers();                         // zmigrowane endpointy\napp.MapForwarder(\"/{**catch-all}\",            // reszta -> MVC 5\n        app.Configuration[\"LegacyAppUrl\"]!)\n   .Add(b => ((RouteEndpointBuilder)b).Order = int.MaxValue);\napp.Run();",
+      "lang": "csharp",
+      "tip": "Ogólny wzorzec strangler fig zna wielu kandydatów. Wyróżnisz się, znając konkretne narzędzia Microsoftu: YARP/MapForwarder i System.Web adapters.",
+      "deep": "Kolejność przenoszenia: zaczynam od endpointów z małą liczbą zależności od sesji i System.Web oraz z dużą wartością (np. nowe API dla SPA), a strony mocno stanowe zostawiam na koniec. Najtrudniejsze jest uwierzytelnianie: albo nowa aplikacja deleguje je do starej przez remote app authentication, albo obie aplikacje współdzielą cookie (wspólny Data Protection key ring i ta sama nazwa ciasteczka – wymaga to konfiguracji po stronie Framework przez pakiety interop). Sesja zdalna oznacza dodatkowe wywołania HTTP między aplikacjami, więc to rozwiązanie przejściowe, a nie docelowe. Trzeba pilnować spójności URL-i, nagłówków (X-Forwarded-*), limitów rozmiaru żądań i timeoutów na proxy. Monitoring powinien pokazywać, ile ruchu idzie jeszcze do starej aplikacji – to metryka postępu migracji. Ryzykiem jest „wieczna migracja”, dlatego warto ustalić termin i kryterium wyłączenia legacy."
+    },
+    {
+      "id": "aspnet-m010",
+      "topic": "Migracja z .NET Framework",
+      "level": 2,
+      "q": "Czym jest .NET Standard i jaką rolę odgrywa dziś, głównie przy migracjach?",
+      "a": ".NET Standard to specyfikacja wspólnego zestawu API, którą implementują różne platformy .NET. Biblioteka targetująca netstandard2.0 działa zarówno na .NET Framework 4.6.1+ (w praktyce zalecane 4.7.2+), jak i na .NET Core 2.0+ oraz nowym .NET. .NET Standard 2.1 nie jest wspierany przez .NET Framework, a wersji 2.2 nie będzie – od .NET 5 nowe biblioteki targetują po prostu net8.0/net10.0. Dziś netstandard2.0 ma sens głównie w dwóch przypadkach: przy bibliotekach NuGet, które muszą obsłużyć też .NET Framework, oraz w okresie przejściowym migracji, gdy ten sam kod domenowy używa stara i nowa aplikacja. Alternatywą jest multi-targeting, który pozwala używać nowszych API w gałęzi .NET.",
+      "code": "<PropertyGroup>\n  <!-- działa w aplikacji net48 i net10.0 -->\n  <TargetFramework>netstandard2.0</TargetFramework>\n  <LangVersion>latest</LangVersion>\n</PropertyGroup>",
+      "lang": "text",
+      "tip": "Pułapka: wyższy LangVersion na netstandard2.0 nie daje funkcji wymagających wsparcia runtime'u (np. default interface methods) ani nowych typów BCL bez pakietów polyfill."
+    },
+    {
+      "id": "aspnet-m011",
+      "topic": "Blazor",
+      "level": 1,
+      "q": "Czym jest Blazor i czym różni się Blazor Server od Blazor WebAssembly?",
+      "a": "Blazor to framework Microsoftu do budowy interaktywnego UI w C# i Razorze, z komponentami .razor zamiast TypeScriptu. W Blazor Server komponenty wykonują się na serwerze, a przeglądarka utrzymuje połączenie SignalR (circuit), przez które wysyła zdarzenia i dostaje diffy DOM. Start jest szybki, kod nie trafia do klienta, a dostęp do bazy jest bezpośredni. Kosztem jest opóźnienie każdej interakcji, pamięć serwera na każdego użytkownika i brak działania offline. W Blazor WebAssembly runtime .NET i aplikacja są pobierane do przeglądarki i wykonują się w niej. Odciąża to serwer i pozwala działać offline (PWA), ale pierwsze ładowanie jest większe, a dane pobiera się przez API jak w Angularze – kodowi klienta nie można ufać.",
+      "code": "@page \"/counter\"\n@rendermode InteractiveServer\n\n<p>Kliknięcia: @count</p>\n<button @onclick=\"() => count++\">+1</button>\n\n@code {\n    private int count;\n}",
+      "lang": "html"
+    },
+    {
+      "id": "aspnet-m012",
+      "topic": "Blazor",
+      "level": 2,
+      "q": "Jak działają render modes w Blazor Web App (.NET 8+) i kiedy wybrałbyś Blazor zamiast Angulara?",
+      "a": "Od .NET 8 szablon Blazor Web App domyślnie renderuje komponenty statycznie na serwerze (static SSR): powstaje zwykły HTML bez interaktywności, z enhanced navigation i opcjonalnym streaming rendering. Interaktywność włącza się per komponent albo globalnie przez @rendermode: InteractiveServer (SignalR), InteractiveWebAssembly (w przeglądarce) albo InteractiveAuto, które najpierw działa przez serwer, a po pobraniu runtime'u w tle przy kolejnych wizytach przechodzi na WebAssembly. W static SSR handlery typu @onclick nie działają – formularze idą zwykłym POST-em. Blazor wybrałbym dla zespołu czysto .NET-owego i aplikacji wewnętrznych (panele, back-office), gdzie współdzielenie modeli C# i jeden język dają zysk. Angulara wybrałbym dla dużych publicznych SPA, zespołów frontendowych i gdy liczy się dojrzały ekosystem.",
+      "code": "<!-- App.razor: interaktywność globalnie -->\n<Routes @rendermode=\"InteractiveAuto\" />\n\n<!-- albo per komponent -->\n<OrderGrid @rendermode=\"InteractiveWebAssembly\" />\n\n<!-- bez @rendermode: static SSR – @onclick się nie wykona -->",
+      "lang": "html",
+      "deep": "Wybór render mode to kompromis między latencją, kosztem serwera i rozmiarem pobierania. InteractiveServer trzyma stan circuitu w pamięci serwera: przy tysiącach równoległych użytkowników trzeba to policzyć, potrzebne są sticky sessions (albo Azure SignalR Service), a zerwanie połączenia gubi stan UI. WebAssembly przenosi koszt na klienta: większy pierwszy download (AOT i trimming pomagają, kosztem rozmiaru lub czasu budowania), a w logice klienta nie można trzymać sekretów ani reguł autoryzacji. Komponenty z prerenderingiem renderują się dwa razy (serwer, potem interaktywnie), więc dane trzeba utrwalić (PersistentComponentState), żeby nie pobierać ich podwójnie. W Auto ten sam komponent musi działać w obu środowiskach, więc dostęp do danych idzie przez abstrakcję (na serwerze bezpośrednio, w WASM przez HTTP). Na rynku pracy Blazor pojawia się w około 11% ofert, głównie w firmach z silnym zespołem .NET – warto znać koncepcje, ale głębia jest potrzebna rzadko."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "aspnet-mq001",
+      "topic": "Filtry MVC",
+      "level": 1,
+      "q": "Akcja kontrolera ASP.NET Core ma [Authorize], globalny action filter i result filter. W jakiej kolejności wykonają się elementy przy poprawnie zautoryzowanym żądaniu?",
+      "options": [
+        "Action filter (przed) → authorization → akcja → result filter → action filter (po)",
+        "Authorization → action filter (przed) → akcja → action filter (po) → result filter (przed) → wykonanie wyniku → result filter (po)",
+        "Authorization → result filter (przed) → action filter (przed) → akcja → action filter (po) → result filter (po)",
+        "Authorization → akcja → action filter → result filter – filtry wykonują się dopiero po akcji"
+      ],
+      "correct": 1,
+      "why": "Pipeline filtrów MVC to: authorization → resource → (model binding) → action (przed i po akcji) → result (wokół wykonania wyniku). Exception filters włączają się tylko przy wyjątku. Authorization zawsze idzie pierwszy, bo może przerwać żądanie, zanim cokolwiek się wykona. Result filter otacza wykonanie wyniku, który powstaje dopiero po akcji i action filterach."
+    },
+    {
+      "id": "aspnet-mq002",
+      "topic": "Filtry MVC",
+      "level": 2,
+      "q": "Globalny exception filter zamienia wyjątki na ProblemDetails. Wyjątek rzucony podczas serializacji odpowiedzi (w trakcie wykonywania wyniku) go omija i klient dostaje surowe 500. Dlaczego?",
+      "options": [
+        "Exception filtry działają tylko dla wyjątków typu HttpRequestException",
+        "Filtr jest zarejestrowany jako globalny, a exception filtry działają tylko na poziomie akcji",
+        "ProblemDetails nie może być zwrócony z filtra, tylko z middleware",
+        "Exception filtry łapią wyjątki z tworzenia kontrolera, model bindingu, action filterów i akcji, ale nie z result filterów i wykonywania wyniku – globalną obsługę robi się w middleware (UseExceptionHandler/IExceptionHandler)"
+      ],
+      "correct": 3,
+      "why": "Zakres exception filtrów jest ograniczony: nie obejmuje resource filterów, result filterów ani wykonywania wyniku (serializacja, renderowanie widoku), a także niczego poza MVC (inne middleware, Minimal APIs). Dlatego globalną obsługę błędów umieszcza się w middleware na początku pipeline'u. Exception filter może być globalny i może ustawić dowolny IActionResult, w tym ProblemDetails."
+    },
+    {
+      "id": "aspnet-mq003",
+      "topic": "Filtry MVC",
+      "level": 2,
+      "q": "Masz filtr z zależnością w konstruktorze. Jak podpiąć go tylko do jednej akcji?",
+      "code": "public class AuditFilter(IAuditLog log) : IAsyncActionFilter\n{\n    public async Task OnActionExecutionAsync(ActionExecutingContext ctx, ActionExecutionDelegate next)\n    {\n        await next();\n        await log.WriteAsync(ctx.ActionDescriptor.DisplayName!);\n    }\n}",
+      "lang": "csharp",
+      "options": [
+        "[ServiceFilter(typeof(AuditFilter))] na akcji i rejestracja AuditFilter w DI (albo [TypeFilter(typeof(AuditFilter))] bez rejestracji)",
+        "[AuditFilter] na akcji – ASP.NET Core sam wstrzyknie IAuditLog do atrybutu",
+        "app.UseMiddleware<AuditFilter>() w Program.cs",
+        "GlobalFilters.Filters.Add(new AuditFilter()) w Global.asax"
+      ],
+      "correct": 0,
+      "why": "AuditFilter nie dziedziczy po Attribute, a atrybuty i tak nie mogą przyjmować zależności z DI w konstruktorze. ServiceFilter pobiera instancję z kontenera (wymaga rejestracji), a TypeFilter tworzy ją przez ActivatorUtilities. UseMiddleware oczekuje middleware, a nie filtra MVC. GlobalFilters/Global.asax to API ASP.NET MVC 5 i dodawałoby filtr globalnie, a nie do jednej akcji."
+    },
+    {
+      "id": "aspnet-mq004",
+      "topic": "IIS i hosting",
+      "level": 2,
+      "q": "API ASP.NET Core jest hostowane w IIS z hostingModel=\"inprocess\". Co przyjmuje żądania HTTP i w jakim procesie działa kod aplikacji?",
+      "options": [
+        "Kestrel w osobnym procesie dotnet.exe, do którego IIS przekazuje żądania jako reverse proxy",
+        "Kestrel uruchomiony wewnątrz procesu w3wp.exe",
+        "IIS HTTP Server (IISHttpServer) wewnątrz procesu puli aplikacji w3wp.exe – Kestrel nie jest używany",
+        "HTTP.sys jako samodzielny serwer, bez udziału IIS"
+      ],
+      "correct": 2,
+      "why": "W modelu in-process ASP.NET Core Module ładuje aplikację do procesu roboczego IIS (w3wp.exe), a serwerem jest IISHttpServer – bez Kestrela i bez dodatkowego skoku sieciowego. Opis z Kestrelem w osobnym procesie dotnet to model out-of-process. HTTP.sys to osobny serwer używany bez IIS (UseHttpSys)."
+    },
+    {
+      "id": "aspnet-mq005",
+      "topic": "Migracja z .NET Framework",
+      "level": 1,
+      "q": "Po przeniesieniu kodu z aplikacji MVC 5 do ASP.NET Core wywołanie ConfigurationManager.AppSettings[\"PageSize\"] zwraca null, choć web.config nadal zawiera ten klucz. Co zrobić?",
+      "options": [
+        "Dodać web.config do projektu jako Embedded Resource",
+        "Przenieść ustawienie do appsettings.json (lub zmiennych środowiskowych) i czytać je przez IConfiguration albo Options pattern",
+        "Zmienić hostingModel na outofprocess, wtedy web.config jest czytany przez aplikację",
+        "Użyć HttpContext.Current.Application[\"PageSize\"]"
+      ],
+      "correct": 1,
+      "why": "ASP.NET Core nie czyta sekcji appSettings ani connectionStrings z web.config. web.config służy tam tylko do konfiguracji IIS/ASP.NET Core Module. Konfigurację aplikacji przenosi się do providerów ASP.NET Core (appsettings.*.json, zmienne środowiskowe, Key Vault) i wstrzykuje przez IConfiguration/IOptions<T>. Model hostingu nic tu nie zmienia, a HttpContext.Current nie istnieje w ASP.NET Core."
+    },
+    {
+      "id": "aspnet-mq006",
+      "topic": "WCF i CoreWCF",
+      "level": 2,
+      "q": "Firma ma usługę WCF (BasicHttpBinding, SOAP), z której korzystają zewnętrzni partnerzy, a ich klientów nie da się zmienić. Usługa ma przejść na .NET 10. Najrozsądniejsza opcja?",
+      "options": [
+        "Przenieść usługę na CoreWCF z zachowaniem kontraktów i WSDL, a potem zweryfikować zgodność komunikatów z istniejącymi klientami",
+        "Przepisać usługę na gRPC – to oficjalny następca WCF, więc klienci SOAP zadziałają",
+        "Zmienić TargetFramework na net10.0 – serwer WCF jest wbudowany w nowy .NET",
+        "Wystawić REST API z tymi samymi nazwami metod – klienci SOAP automatycznie się przełączą"
+      ],
+      "correct": 0,
+      "why": "Nowy .NET ma tylko klienta WCF (pakiety System.ServiceModel.*), a nie serwer. CoreWCF pozwala hostować usługi z tymi samymi kontraktami i bindingami (m.in. BasicHttpBinding) na ASP.NET Core, więc istniejący klienci SOAP nie muszą się zmieniać. gRPC i REST to inne protokoły – wymagałyby zmiany po stronie partnerów."
+    },
+    {
+      "id": "aspnet-mq007",
+      "topic": "Migracja z .NET Framework",
+      "level": 3,
+      "q": "Duża aplikacja ASP.NET MVC 5 (setki kontrolerów, sesja, Forms Authentication) ma przejść na ASP.NET Core bez zamrażania rozwoju na rok. Które podejście jest zalecane?",
+      "options": [
+        "Big bang: zamrożenie funkcji, przepisanie całości i jedno przełączenie w weekend",
+        "Uruchomienie aplikacji MVC 5 bez zmian na .NET 10 przez Windows Compatibility Pack",
+        "Przeniesienie aplikacji do kontenera Linux z Mono, żeby ominąć System.Web",
+        "Nowa aplikacja ASP.NET Core przed starą: zmigrowane endpointy obsługuje sama, resztę przekazuje przez YARP (MapForwarder) do MVC 5, a System.Web adapters pomagają współdzielić sesję i uwierzytelnianie w okresie przejściowym"
+      ],
+      "correct": 3,
+      "why": "To przyrostowa migracja (strangler fig) zalecana przez Microsoft dla dużych aplikacji: ruch przechodzi przez nową aplikację, endpointy przenosi się porcjami, a każdy krok da się wdrożyć i wycofać. System.Web nie istnieje w .NET, więc MVC 5 nie uruchomi się na .NET 10 ani przez Compatibility Pack (on dodaje Windows-only API, a nie System.Web). Mono to nie jest droga dla ASP.NET MVC na produkcji. Big bang oznacza wysokie ryzyko i długi brak nowych funkcji."
+    },
+    {
+      "id": "aspnet-mq008",
+      "topic": "Blazor",
+      "level": 2,
+      "q": "W nowej aplikacji Blazor Web App (.NET 8+) komponent strony ma przycisk z @onclick, który nic nie robi – brak błędów w konsoli. Najbardziej prawdopodobna przyczyna?",
+      "code": "@page \"/orders\"\n\n<button @onclick=\"Refresh\">Odśwież</button>\n\n@code {\n    private Task Refresh() => LoadAsync();\n}",
+      "lang": "html",
+      "options": [
+        "Metoda Refresh musi być async void, żeby Blazor ją wywołał",
+        "Brakuje [Parameter] przy metodzie Refresh",
+        "Strona nie ma render mode, więc renderuje się w static SSR – zwykły HTML bez obsługi zdarzeń; trzeba dodać np. @rendermode InteractiveServer",
+        "Blazor obsługuje @onclick tylko w trybie WebAssembly"
+      ],
+      "correct": 2,
+      "why": "W Blazor Web App domyślnie działa static SSR: serwer wysyła HTML i nie utrzymuje połączenia ani runtime'u WASM, więc handlery @onclick nie są podpięte. Interaktywność włącza @rendermode (InteractiveServer, InteractiveWebAssembly, InteractiveAuto) na komponencie albo globalnie na Routes. Handlery mogą zwracać Task (async void to zła praktyka), [Parameter] dotyczy właściwości, a @onclick działa w każdym trybie interaktywnym."
+    }
+  ]
+}

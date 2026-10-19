@@ -12,6 +12,10 @@ export interface Card {
   code?: string;
   lang?: string;
   tip?: string;
+  /** English area: Polish translation of `a` */
+  tr?: string;
+  /** English area: pronunciation hints written "the Polish way" */
+  pron?: string;
 }
 
 export interface QuizQuestion {
@@ -42,9 +46,28 @@ export interface Category {
   quiz: QuizQuestion[];
 }
 
+export interface LessonSection { h: string; text: string; code?: string; lang?: string; }
+export interface ExamQuestion { id: string; q: string; code?: string; lang?: string; options: string[]; correct: number; why: string; }
+export interface Lesson {
+  id: string;
+  cat: string;
+  title: string;
+  level: Level;
+  minutes: number;
+  intro: string;
+  sections: LessonSection[];
+  takeaways: string[];
+  interview: string[];
+  exam: ExamQuestion[];
+  /** filled in by ContentService */
+  module?: string;
+}
+export interface LessonModule { module: string; title: string; order: number; lessons: Lesson[]; }
+
 export interface ContentBundle {
   version: string;
   cats: Category[];
+  lessons?: LessonModule[];
   /** cheats[cat][topic] */
   cheats: Record<string, Record<string, CheatSheet>>;
 }
@@ -89,10 +112,14 @@ export interface Settings {
   t: number;
 }
 
+/** Lesson or module-exam progress (key: lesson id, or "module:<id>"). */
+export interface LessonProgress { read?: number; best?: number; passed?: boolean; t: number; }
+
 export interface ProgressState {
   v: 1;
   cards: Record<string, CardProgress>;
   quiz: Record<string, QuizProgress>;
+  lessons: Record<string, LessonProgress>;
   hist: HistoryEntry[];
   /** activity per local day key YYYY-MM-DD */
   days: Record<string, number>;

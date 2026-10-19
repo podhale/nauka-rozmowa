@@ -31,6 +31,8 @@ export interface QuizSession {
   results: { id: string; ok: boolean; pick: number }[];
   /** shuffled option order per question */
   order: Record<string, number[]>;
+  /** set for lesson / module exams: progress key ("<lessonId>" or "module:<id>") */
+  examKey?: string;
 }
 
 /**
@@ -114,11 +116,11 @@ export class SessionService {
   }
 
   // ---------- quiz ----------
-  startQuiz(questions: QuizQuestion[], title: string): void {
+  startQuiz(questions: QuizQuestion[], title: string, examKey?: string): void {
     if (!questions.length) { this.ui.showToast('Brak pytań dla tych ustawień'); return; }
     const order: Record<string, number[]> = {};
     for (const q of questions) order[q.id] = shuffle(q.options.map((_, i) => i));
-    this.quiz.set({ title, ids: questions.map(q => q.id), index: 0, pick: null, results: [], order });
+    this.quiz.set({ title, ids: questions.map(q => q.id), index: 0, pick: null, results: [], order, examKey });
     this.quizResult.set(null);
     void this.router.navigate(['/test/sesja']);
   }
@@ -127,6 +129,19 @@ export class SessionService {
     const priority = shuffle(pool.filter(q => !this.store.quizSeen(q.id) || this.store.quizWrong(q.id)));
     const set = new Set(priority);
     this.startQuiz([...priority, ...shuffle(pool.filter(q => !set.has(q)))].slice(0, 10), 'Szybki test');
+  }
+  startLessonExam(lessonId: string): void {
+    const l = this.content.lesson(lessonId);
+    if (l) this.startQuiz(shuffle(this.content.lessonExam(lessonId)), `Egzamin: ${l.title}`, lessonId);
+  }
+  startModuleExam(moduleId: string, count = 20): void {
+    const m = this.content.modules().find(x => x.module === moduleId);
+    if (!m) return;
+    // spread questions evenly over the module's lessons
+    const per = m.lessons.map(l => shuffle(this.content.lessonExam(l.id)));
+    const out: QuizQuestion[] = [];
+    for (let i = 0; out.length < count && per.some(p => p.length); i++) { const q = per[i % per.length].shift(); if (q) out.push(q); }
+    this.startQuiz(shuffle(out), `Egzamin z modułu: ${m.title}`, `module:${moduleId}`);
   }
   startWrongQuiz(): void {
     this.startQuiz(shuffle(this.content.quiz().filter(q => this.store.quizWrong(q.id))), 'Poprawa błędów');
@@ -147,6 +162,8 @@ export class SessionService {
   finishQuiz(s = this.quiz()): void {
     if (!s) return;
     const n = s.results.length;
+    // An exam counts only when every question was answered.
+    if (s.examKey && n === s.ids.length) this.store.recordExam(s.examKey, Math.round((s.results.filter(r => r.ok).length / n) * 100));
     this.store.addHistory({ mode: 'quiz', n, ok: s.results.filter(r => r.ok).length, cats: [...new Set(s.results.map(r => this.content.question(r.id)?.cat ?? ''))] });
     this.quiz.set(null);
     if (n) { this.quizResult.set(s); void this.router.navigate(['/test/wynik']); }

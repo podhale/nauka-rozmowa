@@ -27,6 +27,7 @@ export class App {
 
   protected readonly tabs: Tab[] = [
     { path: '/', label: 'Dziś', exact: true, icon: 'M4 11.5 12 4l8 7.5M6 10v10h12V10' },
+    { path: '/nauka', label: 'Nauka', exact: false, icon: 'M4 5.5C6.5 4 9.5 4 12 5.5v14c-2.5-1.5-5.5-1.5-8 0zM20 5.5C17.5 4 14.5 4 12 5.5v14c2.5-1.5 5.5-1.5 8 0z' },
     { path: '/fiszki', label: 'Fiszki', exact: false, icon: 'M5 6h12a2 2 0 0 1 2 2v12H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM7 3h12a2 2 0 0 1 2 2v12' },
     { path: '/test', label: 'Test', exact: false, icon: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17.5h.01' },
     { path: '/sciagi', label: 'Ściągi', exact: false, icon: 'M5 4h11l3 3v13H5zM9 10h6M9 14h6M9 18h3' },

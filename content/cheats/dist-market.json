@@ -1,0 +1,87 @@
+{
+ "cat": "dist",
+ "sheets": [
+  {
+   "topic": "MassTransit",
+   "points": [
+    "Konsument = `IConsumer<T>` w DI; `ConfigureEndpoints` tworzy kolejki, exchange'e i bindingi automatycznie.",
+    "**Publish** = zdarzenie do wszystkich subskrybentów (exchange per typ wiadomości); **Send** = komenda do konkretnej kolejki (`queue:nazwa`).",
+    "Kontrakty (rekordy/interfejsy) to publiczne API – namespace + nazwa typu wyznaczają adres wiadomości.",
+    "`UseMessageRetry` = szybki retry w pamięci; `UseDelayedRedelivery` = opóźnione oddanie do brokera (minuty); redelivery na zewnątrz, retry w środku.",
+    "Po wyczerpaniu prób: kolejka `<endpoint>_error` + `Fault<T>`; brak konsumenta: `_skipped`.",
+    "**Transactional outbox** z EF Core: `AddEntityFrameworkOutbox<Db>` + `UseBusOutbox()` – wiadomość w tym samym SaveChanges co dane; inbox deduplikuje po MessageId.",
+    "**Saga state machine**: `MassTransitStateMachine<TState>`, korelacja po CorrelationId, `Initially/During/When/TransitionTo`, stan w repozytorium z optimistic concurrency.",
+    "Licencja: od v9 model komercyjny, v8 pozostaje open source – sprawdź warunki przy nowym projekcie (alternatywy: Wolverine, NServiceBus, Rebus)."
+   ],
+   "pitfalls": [
+    "Minutowe interwały w `UseMessageRetry` – blokują konsumenta i locki.",
+    "Publish po `SaveChanges` bez outboxa – zgubione zdarzenia przy awarii brokera.",
+    "Zmiana namespace'u kontraktu – subskrybenci przestają dostawać wiadomości."
+   ],
+   "code": "x.AddConfigureEndpointsCallback((ctx, name, cfg) =>\n{\n    cfg.UseDelayedRedelivery(r => r.Intervals(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5)));\n    cfg.UseMessageRetry(r => r.Immediate(3));\n});\nx.AddEntityFrameworkOutbox<ShopDb>(o => { o.UseSqlServer(); o.UseBusOutbox(); });",
+   "lang": "csharp",
+   "say": "MassTransit daje mi konsumentów jako zwykłe klasy z DI, automatyczną topologię, dwupoziomowe ponawianie z kolejką błędów, transactional outbox z EF Core i sagi jako maszyny stanów. Konsumentów i tak piszę idempotentnie, bo dostarczanie jest at-least-once."
+  },
+  {
+   "topic": "MongoDB",
+   "points": [
+    "Dokumenty **BSON** w kolekcjach, elastyczny schemat, klucz `_id`; limit dokumentu **16 MB**.",
+    "Modeluj pod odczyt: **embedding** dla danych czytanych razem (zamówienie + pozycje), **referencje** dla dużych/współdzielonych.",
+    "Bez indeksu **COLLSCAN**; `explain()` → IXSCAN; indeksy: pojedyncze, złożone, multikey, unique, **TTL**, tekstowe.",
+    "Indeks złożony wg reguły **ESR**: Equality → Sort → Range; działa dla prefiksu pól.",
+    "Aggregation pipeline: `$match` (jak najwcześniej) → `$group`/`$lookup`/`$project`.",
+    "Transakcje wielodokumentowe są (replica set), ale atomowość najlepiej zapewnić jednym dokumentem.",
+    ".NET: `MongoClient` jako **singleton**, `IMongoCollection<T>`, `Builders<T>`/LINQ.",
+    "Wybierz zamiast SQL: zmienny schemat, agregaty czytane w całości, skala zapisu (sharding); zostań przy SQL: relacje, joiny, raporty."
+   ],
+   "pitfalls": [
+    "Nieograniczenie rosnąca tablica w dokumencie.",
+    "Modelowanie 1:1 jak tabele SQL i `$lookup` wszędzie.",
+    "Brak indeksów pod główne zapytania – skany całych kolekcji."
+   ],
+   "say": "MongoDB wybieram, gdy dane naturalnie są dokumentami czytanymi w całości i schemat się zmienia; modeluję pod zapytania, z osadzaniem tam, gdzie dane czyta się razem, i indeksami złożonymi według reguły ESR."
+  },
+  {
+   "topic": "Cosmos DB",
+   "points": [
+    "Cosmos DB: globalnie rozproszony NoSQL; API NoSQL (główne) oraz m.in. MongoDB, Cassandra, Gremlin.",
+    "**Partition key** – kluczowa, niezmienna decyzja: wysoka kardynalność, równy rozkład, obecny w większości zapytań (`/customerId`, `/tenantId`).",
+    "Partycja logiczna: limit **20 GB**; niska kardynalność = hot partitions.",
+    "**RU** (Request Unit): point read 1 KB po `id` + PK ≈ **1 RU**; zapytania i zapisy drożej; `RequestCharge` w odpowiedzi.",
+    "Przepustowość: provisioned (manual/autoscale) lub **serverless**; przekroczenie = **429** + retry-after.",
+    "Zapytanie bez PK = **cross-partition fan-out** – drogie.",
+    "Spójność: Strong, Bounded Staleness, **Session (domyślna)**, Consistent Prefix, Eventual.",
+    "**Change feed** – reakcja na zmiany (projekcje, sync do wyszukiwarki); `CosmosClient` jako singleton."
+   ],
+   "pitfalls": [
+    "Partition key ze zmiennego pola (status) lub o niskiej kardynalności (kraj, data).",
+    "Ignorowanie stałych 429 – za mało RU albo zły klucz.",
+    "Domyślne indeksowanie wszystkich pól przy ciężkich zapisach."
+   ],
+   "code": "var item = await container.ReadItemAsync<Order>(\"ord-1042\", new PartitionKey(\"c-17\"));\nConsole.WriteLine(item.RequestCharge);   // ~1 RU",
+   "lang": "csharp",
+   "say": "W Cosmos DB najważniejszy jest partition key – wybieram pole o wysokiej kardynalności, używane w zapytaniach, żeby uniknąć hot partitions i zapytań cross-partition. Koszt liczę w RU i staram się, żeby gorące ścieżki były odczytami punktowymi."
+  },
+  {
+   "topic": "Elasticsearch",
+   "points": [
+    "Elasticsearch = rozproszona wyszukiwarka na Lucene z **indeksem odwróconym** (term → lista dokumentów).",
+    "**Analizatory**: tokenizacja, lowercase, stemming, synonimy; trafność **BM25**, fuzzy, autocomplete, agregacje (facety).",
+    "Mapping: `text` (analizowany, full-text) vs `keyword` (dokładny – filtry, sortowanie, agregacje).",
+    "**Near-real-time**: dokument widoczny po refreshu (~1 s).",
+    "Rola obok SQL: SQL = źródło prawdy, ES = projekcja do wyszukiwania; sync zdarzeniami/outboxem/CDC + możliwość pełnej reindeksacji.",
+    "Zmiana mappingu = reindeksacja do nowego indeksu + przełączenie **aliasu**.",
+    "Głęboka paginacja przez `search_after`, nie duże `from`.",
+    "Klient .NET: `Elastic.Clients.Elasticsearch` (NEST przestarzały); AWS: fork **OpenSearch**; ELK do logów."
+   ],
+   "pitfalls": [
+    "ES jako jedyna, transakcyjna baza danych.",
+    "Złe mapowanie (`text` zamiast `keyword` przy filtrach i agregacjach).",
+    "Brak mechanizmu odbudowy indeksu z SQL – rozjazd danych po zgubionych zdarzeniach."
+   ],
+   "code": "{ \"query\": { \"bool\": {\n    \"must\":   { \"match\": { \"name\": { \"query\": \"czerwone buty\", \"fuzziness\": \"AUTO\" } } },\n    \"filter\": [ { \"term\": { \"category\": \"obuwie\" } } ] } } }",
+   "lang": "json",
+   "say": "Elasticsearch dokładam, gdy potrzebne jest prawdziwe wyszukiwanie pełnotekstowe: trafność, literówki, facety. Traktuję go jako projekcję danych z SQL, synchronizowaną zdarzeniami, z możliwością pełnej reindeksacji."
+  }
+ ]
+}

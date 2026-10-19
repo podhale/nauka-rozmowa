@@ -1,0 +1,162 @@
+{
+  "cat": "angular",
+  "sheets": [
+    {
+      "topic": "NgRx Store",
+      "points": [
+        "Jednokierunkowy przepływ: komponent → `dispatch(akcja)` → reducer → nowy stan → selektor → widok; efekty uboczne w **effects**.",
+        "Akcje twórz przez `createActionGroup({ source, events })` z `props<T>()`/`emptyProps()`; nazwy jak zdarzenia: `[Users Page] Opened`.",
+        "Reducer: `createReducer(initialState, on(akcja, (state, props) => ({ ...state, ... })))` – czysty, **bez mutacji**, bez HTTP i `Date.now()`.",
+        "`createFeature({ name, reducer, extraSelectors })` generuje `selectXState` i `selectPole` dla pól najwyższego poziomu.",
+        "Standalone: `provideStore()` w app.config, `provideState(feature)` i `provideEffects(...)` w `providers` lazy trasy; legacy: `StoreModule.forRoot/forFeature`.",
+        "Runtime checks w dev: `strictStateImmutability` i `strictActionImmutability` domyślnie włączone; serializability – do włączenia ręcznie.",
+        "Komponent czyta stan przez `store.selectSignal(selector)` (Signal) lub `store.select` + async pipe.",
+        "Testy reducera: zwykłe wywołanie funkcji z stanem i akcją; komponentów – `provideMockStore` + `overrideSelector`."
+      ],
+      "pitfalls": [
+        "Mutowanie stanu w reducerze – OnPush/selektory nie widzą zmiany, a w dev leci TypeError z zamrożonego obiektu.",
+        "Akcje-komendy (`setLoading`) używane z wielu miejsc zamiast unikalnych zdarzeń ze źródłem."
+      ],
+      "code": "export const usersFeature = createFeature({\n  name: 'users',\n  reducer: createReducer(initialState,\n    on(UsersPageActions.searchChanged, (s, { query }) => ({ ...s, query })),\n  ),\n});\n// routes: providers: [provideState(usersFeature), provideEffects(usersEffects)]",
+      "lang": "typescript",
+      "say": "NgRx to Redux dla Angulara: stan zmienia się tylko przez akcje obsługiwane przez czyste reducery, a selektory i effects oddzielają widok od logiki i efektów ubocznych – każda zmiana jest jawna i widoczna w DevTools."
+    },
+    {
+      "topic": "NgRx Selectors",
+      "points": [
+        "`createSelector(selA, selB, projector)` memoizuje ostatnie argumenty (bufor 1) i porównuje je **referencyjnie**.",
+        "Te same referencje wejść → projector się nie wykonuje, zwracany jest ten sam obiekt – OnPush i sygnały nie dostają „nowej” tablicy.",
+        "Komponuj: małe selektory bazowe (`createFeatureSelector`, pola) → selektory pochodne (filtrowanie, łączenie, view model).",
+        "Selektory z props są zdeprecjonowane – używaj fabryk: `selectById = (id) => createSelector(selectEntities, e => e[id])`.",
+        "Fabrykę wywołuj raz (pole klasy), nie w szablonie – każde wywołanie tworzy nowy selektor z pustą pamięcią.",
+        "Do testów: `selector.projector(...)` testuje logikę bez budowania całego stanu; `release()` czyści pamięć."
+      ],
+      "pitfalls": [
+        "Filtrowanie/mapowanie bez createSelector (np. w `select(s => s.users.filter(...))`) – nowa tablica przy każdej akcji.",
+        "Selektor zwracający nowy obiekt z tych samych danych w selektorze bazowym psuje memoizację całego łańcucha."
+      ],
+      "say": "Selektory to memoizowane funkcje czyste: przeliczają się tylko, gdy zmienią się referencje wejść, więc drogie wyliczenia i odświeżanie widoku dzieją się tylko przy realnej zmianie."
+    },
+    {
+      "topic": "NgRx Effects",
+      "points": [
+        "Effect: `Actions` + `ofType(akcja)` → efekt uboczny → nowa akcja (success/failure); komponent i reducer nie znają HTTP.",
+        "Functional effect: `createEffect((actions$ = inject(Actions)) => ..., { functional: true })`, rejestracja `provideEffects(...)`.",
+        "Operator = współbieżność: `switchMap` odczyty/szukanie, `concatMap` zapisy po kolei, `mergeMap` niezależne równoległe, `exhaustMap` ignoruj kolejne (login, submit).",
+        "`catchError` **wewnątrz** inner observable → akcja failure; w głównym pipe kończy strumień effectu.",
+        "Effect bez akcji wynikowej (nawigacja, toast, localStorage) → `{ dispatch: false }`, inaczej pętla.",
+        "Dane ze stanu w effectcie: `concatLatestFrom(() => store.select(sel))` (z `@ngrx/operators` w nowszych wersjach).",
+        "Retry tylko dla operacji idempotentnych; w akcji failure serializowalny opis błędu, nie `HttpErrorResponse`.",
+        "Testy: `provideMockActions(() => actions$)` i sprawdzanie emitowanych akcji, także ścieżki błędu."
+      ],
+      "pitfalls": [
+        "catchError na końcu głównego pipe – brak akcji failure, `loading` zostaje true, effect może przestać reagować.",
+        "mergeMap w wyszukiwaniu – starsza odpowiedź nadpisuje nowszą (race condition)."
+      ],
+      "code": "export const save = createEffect(\n  (actions$ = inject(Actions), api = inject(ItemsApi)) => actions$.pipe(\n    ofType(ItemActions.save),\n    concatMap(({ item }) => api.save(item).pipe(\n      map(() => ItemApiActions.saveSuccess()),\n      catchError(e => of(ItemApiActions.saveFailure({ error: e.message }))),\n    )),\n  ),\n  { functional: true },\n);",
+      "lang": "typescript",
+      "say": "Effects izolują efekty uboczne: nasłuchują akcji, robią HTTP i odpowiadają akcją success lub failure; operator spłaszczający dobieram do semantyki operacji, a błędy łapię w wewnętrznym strumieniu."
+    },
+    {
+      "topic": "NgRx Entity",
+      "points": [
+        "Stan znormalizowany: `ids` (kolejność) + `entities` (słownik id → obiekt) – lookup po id O(1).",
+        "`createEntityAdapter<T>({ selectId?, sortComparer? })`; stan startowy: `adapter.getInitialState({ loading: false })`.",
+        "Operacje niemutujące: `addOne/addMany`, `setAll`, `setOne`, `upsertOne/upsertMany`, `updateOne({ id, changes })`, `removeOne/removeMany`.",
+        "`updateOne` dla brakującego id nic nie zmienia; `upsertOne` doda lub zaktualizuje.",
+        "Selektory: `adapter.getSelectors()` → `selectAll`, `selectEntities`, `selectIds`, `selectTotal`; z feature selectorem: `getSelectors(selectUsersState)`.",
+        "SignalStore ma odpowiednik w `@ngrx/signals/entities` (`withEntities`)."
+      ],
+      "pitfalls": [
+        "Trzymanie tej samej encji w kilku tablicach w stanie – rozjazd danych po aktualizacji; normalizuj przez adapter.",
+        "Brak `selectId`, gdy klucz nie nazywa się `id` – encje nadpisują się pod `undefined`."
+      ],
+      "say": "Entity adapter normalizuje kolekcję do ids + słownika i daje gotowe niemutujące operacje CRUD oraz selektory, więc reducery są krótkie, a dostęp po id stały."
+    },
+    {
+      "topic": "NgRx w praktyce",
+      "points": [
+        "Facade: serwis wystawiający sygnały/Observable i metody wywołujące `dispatch`; komponent nie zna akcji ani selektorów.",
+        "Metody fasady nazywaj zdarzeniami (`opened`, `searchChanged`), nie setterami – inaczej tracisz sens akcji.",
+        "Redux DevTools: `provideStoreDevtools({ maxAge: 25, logOnly: !isDevMode() })` – lista akcji, diff stanu, time-travel, eksport sesji.",
+        "Wybór: serwis z sygnałami (lokalny/mały stan) → SignalStore (struktura bez akcji) → klasyczny Store (globalny stan, wiele reakcji na zdarzenia, audyt).",
+        "Migracja Store → SignalStore: najpierw fasady, potem wymiana implementacji feature po feature'ze; oba mogą współistnieć.",
+        "Typowe błędy: wszystko w Store (też formularze), logika w komponentach, `catchError` w złym miejscu, nieserializowalny stan, subskrypcje zamiast `selectSignal`.",
+        "Alternatywy: NGXS (rozwijany), Akita (praktycznie porzucona) – w nowym projekcie bez Akity."
+      ],
+      "pitfalls": [
+        "„NgRx do wszystkiego” – boilerplate dla stanu jednego komponentu.",
+        "Twierdzenie na rozmowie, że klasyczny NgRx jest martwy – wiele projektów enterprise go używa."
+      ],
+      "say": "Klasyczny NgRx wybieram dla dużego, współdzielonego stanu, gdzie wiele miejsc reaguje na te same zdarzenia i liczy się audyt w DevTools; mniejszy stan trzymam w SignalStore albo w serwisie z sygnałami, a fasada ułatwia przejście między nimi."
+    },
+    {
+      "topic": "NgModules",
+      "points": [
+        "`declarations` – komponenty/dyrektywy/pipe'y modułu (każdy w **jednym** module); `imports` – moduły z potrzebnymi eksportami; `exports` – co udostępniamy dalej.",
+        "`providers` w module eager → root injector; w module lazy-loaded → osobny child injector (inna instancja serwisu!).",
+        "`forRoot()`/`forChild()` zwracają `ModuleWithProviders` – singletonowe providery tylko raz w root (np. `RouterModule.forRoot`).",
+        "Legacy konwencje: SharedModule (re-eksporty), CoreModule z guardem przed ponownym importem, feature modules przez `loadChildren`.",
+        "Od v19 standalone jest domyślne – komponent w NgModule potrzebuje `standalone: false`.",
+        "NgModule nie są zdeprecjonowane; standalone komponent może importować NgModule, więc migracja jest stopniowa (`ng generate @angular/core:standalone`)."
+      ],
+      "pitfalls": [
+        "Serwis w `providers` lazy modułu → druga instancja zamiast singletonu.",
+        "Wielki SharedModule importowany wszędzie – gorszy tree-shaking i wolniejsza kompilacja."
+      ],
+      "say": "NgModule grupował deklaracje i providery i był kontekstem kompilacji; dziś domyślne są standalone komponenty, ale w legacy trzeba rozumieć declarations/imports/exports, forRoot/forChild i to, że lazy moduł ma własny injector."
+    },
+    {
+      "topic": "@Input/@Output (dekoratory)",
+      "points": [
+        "`@Input()` – dane od rodzica; `@Input({ required: true })`, `@Input({ transform: booleanAttribute })` w nowszych wersjach.",
+        "`@Output() changed = new EventEmitter<T>()` + `this.changed.emit(v)`; rodzic: `(changed)=\"onChange($event)\"`.",
+        "`ngOnChanges(changes: SimpleChanges)` – przed `ngOnInit` i przy każdej zmianie **referencji** inputu z szablonu; `previousValue`, `currentValue`, `firstChange`.",
+        "Mutacja obiektu w inpucie nie wywołuje ngOnChanges ani odświeżenia OnPush.",
+        "Nowe API: `input()` (read-only Signal) + `computed()` zamiast ngOnChanges; `output()` zamiast EventEmitter; `model()` dla two-way binding.",
+        "Migracja: `ng generate @angular/core:signal-input-migration` i `@angular/core:output-migration`."
+      ],
+      "pitfalls": [
+        "Logika pochodna w ngOnChanges bez sprawdzenia, który input się zmienił.",
+        "Mutowanie obiektu przekazanego przez input i zdziwienie, że dziecko z OnPush się nie odświeża."
+      ],
+      "code": "@Input({ required: true }) amount!: number;\n@Output() selected = new EventEmitter<number>();\nngOnChanges(ch: SimpleChanges) {\n  if (ch['amount']) this.formatted = format(this.amount);\n}\n// nowocześnie\namount = input.required<number>();\nformatted = computed(() => format(this.amount()));",
+      "lang": "typescript",
+      "say": "W legacy inputy to dekoratory, a reakcję na zmianę robi się w ngOnChanges, który widzi tylko zmianę referencji; w nowym kodzie input() jest sygnałem i pochodne liczę przez computed."
+    },
+    {
+      "topic": "Migracja legacy Angulara",
+      "points": [
+        "`ng update @angular/core@N @angular/cli@N` – **po jednej wersji głównej**, wg update.angular.dev; uruchamia automatyczne migracje.",
+        "Biblioteki (Material, NgRx, inne) aktualizuj `ng update` w zgodnych wersjach; sprawdź wymagania Node.js i TypeScript.",
+        "Inwentaryzacja bibliotek trzecich na start – porzucone pakiety blokują najczęściej.",
+        "Schematy modernizacji: `@angular/core:standalone`, `control-flow`, `inject`, `signal-input-migration`, `output-migration`, `signal-queries-migration`.",
+        "Kolejność: wersje → builder `application` (esbuild) → standalone → control flow → inject/sygnały → OnPush → ewentualnie zoneless.",
+        "Każdy etap osobnym PR; schematy przyjmują ścieżkę, więc można iść feature po feature'ze i przejrzeć raport pominiętych miejsc."
+      ],
+      "pitfalls": [
+        "Ręczny skok wersji w package.json bez ng update – pominięte migracje kodu.",
+        "Mieszanie aktualizacji wersji z refaktoryzacją w jednym PR – trudny review i rollback."
+      ],
+      "code": "ng update @angular/core@17 @angular/cli@17\nng generate @angular/core:standalone\nng generate @angular/core:control-flow\nng generate @angular/core:signal-input-migration",
+      "lang": "bash",
+      "say": "Aktualizuję wersja po wersji przez ng update z zielonymi testami na każdym kroku, a dopiero potem modernizuję kod oficjalnymi schematami: standalone, control flow, inject i sygnały, małymi PR-ami."
+    },
+    {
+      "topic": "Nx monorepo",
+      "points": [
+        "Graf projektów (`nx graph`) → `nx affected -t lint test build` uruchamia tylko zmienione projekty i ich zależnych.",
+        "Cache wyników zadań lokalnie i zdalnie (Nx Cloud) – powtórny build/test bez zmian bierze wynik z cache.",
+        "Generatory (`nx g @nx/angular:library ...`) i migracje narzędzia przez `nx migrate`.",
+        "Typy bibliotek: `feature`, `ui`, `data-access`, `util`; tagi `scope:*`/`type:*` + reguła `@nx/enforce-module-boundaries`.",
+        "Biblioteka domyślna jest kompilowana przez aplikację (aliasy w `tsconfig.base.json`); `--buildable` ma własny build; `--publishable` + `importPath` do npm.",
+        "Single version policy – jedna wersja zależności dla całego repo."
+      ],
+      "pitfalls": [
+        "Nx dla jednej małej aplikacji – koszt narzędzia bez zysku.",
+        "Wszystkie biblioteki buildable „na zapas” – złożona konfiguracja bez realnego przyspieszenia."
+      ],
+      "say": "Nx daje monorepo z grafem zależności: affected i cache skracają CI, a tagi z regułą module boundaries pilnują architektury; dla jednej małej aplikacji to zwykle przerost formy."
+    }
+  ]
+}

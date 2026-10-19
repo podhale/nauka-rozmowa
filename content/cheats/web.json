@@ -1,0 +1,262 @@
+{
+ "cat": "web",
+ "sheets": [
+  {
+   "topic": "Architektura",
+   "points": [
+    "**REST** – domyślny wybór dla publicznych API i SPA: prosty, cache'owalny przez HTTP, wszędzie wspierany.",
+    "**gRPC** – service-to-service: HTTP/2, kontrakt `.proto`, binarny Protobuf, generowane klienty, streaming w obie strony; w przeglądarce tylko gRPC-Web.",
+    "**GraphQL** – wielu klientów potrzebuje różnych kształtów danych (over/under-fetching); koszt: trudny cache HTTP, N+1 (DataLoader), limity złożoności zapytań; w .NET Hot Chocolate.",
+    "**SignalR** – real-time push z serwera (WebSockets → SSE → long polling); wiele instancji = backplane Redis lub Azure SignalR Service.",
+    "**Server-Sent Events** – prosty jednokierunkowy strumień serwer→klient po zwykłym HTTP (w .NET 10 `TypedResults.ServerSentEvents`).",
+    "Asynchronicznie między serwisami: kolejki/brokery (RabbitMQ, Azure Service Bus, Kafka) – luźne powiązanie, odporność na chwilową niedostępność.",
+    "Webhooki – powiadamianie systemów zewnętrznych; podpisuj payload (HMAC) i zakładaj powtórki."
+   ],
+   "pitfalls": [
+    "Agresywny polling zamiast push – marnowanie zasobów i opóźnienia.",
+    "gRPC jako API dla przeglądarki 'bo szybsze' – potrzebny gRPC-Web i proxy, słabsze narzędzia."
+   ],
+   "say": "Dla SPA i publicznych API wybieram REST, między mikroserwisami gRPC lub kolejki, GraphQL gdy wielu klientów potrzebuje różnych kształtów danych, a do pushu w czasie rzeczywistym SignalR albo SSE."
+  },
+  {
+   "topic": "Auth",
+   "points": [
+    "**Uwierzytelnianie** (authentication) – 'kim jesteś?': hasło, token, certyfikat, passkey.",
+    "**Autoryzacja** (authorization) – 'co możesz?': role, claimy, polityki, własność zasobu; zawsze po uwierzytelnieniu.",
+    "ASP.NET Core: `UseAuthentication` ustawia `HttpContext.User` wg schematu (JwtBearer, Cookie), `UseAuthorization` sprawdza `[Authorize]`/`RequireAuthorization`.",
+    "Brak/zły token → **401** (Challenge), zalogowany bez uprawnień → **403** (Forbid).",
+    "Schematy: cookie (aplikacje serwerowe, BFF), JWT Bearer (API), certyfikat (mTLS), klucz API (M2M, prosto).",
+    "Tożsamość najlepiej delegować do IdP (Entra ID, Keycloak, Auth0) przez OIDC; ASP.NET Core Identity gdy trzymasz użytkowników sam.",
+    "Passkeys (WebAuthn/FIDO2) – odporne na phishing; ASP.NET Core Identity w .NET 10 ma wbudowane wsparcie."
+   ],
+   "pitfalls": [
+    "Mylenie 401 z 403 – Angular odświeża token na 403 zamiast pokazać brak dostępu.",
+    "Własna implementacja logowania i haseł zamiast sprawdzonego IdP/Identity."
+   ],
+   "say": "Uwierzytelnianie ustala, kim jest użytkownik, a autoryzacja – co może zrobić; w ASP.NET Core najpierw UseAuthentication ustawia User, potem UseAuthorization sprawdza polityki, a błędy to odpowiednio 401 i 403."
+  },
+  {
+   "topic": "Autoryzacja",
+   "points": [
+    "**Policy-based**: polityka = nazwany zestaw requirements; `AddAuthorization(o => o.AddPolicy(...))` lub `AddAuthorizationBuilder()`.",
+    "Klocki: `RequireRole`, `RequireClaim`, `RequireAuthenticatedUser`, `RequireAssertion`.",
+    "Własna logika: `IAuthorizationRequirement` + `AuthorizationHandler<T>` wołający `context.Succeed(req)`.",
+    "Wymagania w polityce: **AND**; wiele handlerów dla jednego wymagania: **OR** (wystarczy jeden Succeed, o ile nikt nie wywoła Fail).",
+    "**Resource-based**: `IAuthorizationService.AuthorizeAsync(User, document, \"CanEdit\")` – decyzja zależy od konkretnego zasobu (właściciel).",
+    "Przypinanie: `[Authorize(Policy = \"...\")]`, `RequireAuthorization(\"...\")` na endpointcie lub grupie; `FallbackPolicy` = deny by default.",
+    "Reguły w jednym miejscu zamiast `if (User.IsInRole(...))` rozsianych po kodzie."
+   ],
+   "pitfalls": [
+    "`[Authorize]` traktowane jako kontrola dostępu do danych – sprawdza tylko zalogowanie (IDOR).",
+    "Wywołanie `Fail()` w handlerze, który 'nie ma zdania' – blokuje inne handlery OR."
+   ],
+   "code": "builder.Services.AddAuthorizationBuilder()\n    .AddPolicy(\"Admin\", p => p.RequireRole(\"admin\"))\n    .AddPolicy(\"CanEditDocument\", p => p.AddRequirements(new EditRequirement()));\nbuilder.Services.AddSingleton<IAuthorizationHandler, IsOwnerHandler>();\nbuilder.Services.AddSingleton<IAuthorizationHandler, IsEditorRoleHandler>();",
+   "lang": "csharp",
+   "say": "Autoryzację opieram na politykach – wymagania łączą się przez AND, handlery jednego wymagania przez OR – a dostęp do konkretnych zasobów sprawdzam resource-based przez IAuthorizationService."
+  },
+  {
+   "topic": "Bezpieczeństwo",
+   "points": [
+    "**Broken Access Control / IDOR** (OWASP Top 10 #1): `/api/orders/123` cudzego usera – filtruj po właścicielu/tenancie (query filter EF Core) lub resource-based auth; GUID nie zastępuje kontroli.",
+    "**SQL injection**: zawsze parametry; LINQ i `FromSql`/`ExecuteSql` (FormattableString) bezpieczne, `FromSqlRaw` ze sklejonym stringiem – nie; nazwy kolumn z whitelisty.",
+    "**XSS**: Angular escapuje interpolację i sanitizuje `[innerHTML]`; ryzyko przy `bypassSecurityTrust*`, `nativeElement.innerHTML`; dodatkowo **CSP**.",
+    "**CSRF**: dotyczy uwierzytelniania cookies (nie Bearer w nagłówku); obrona: SameSite, antiforgery token, sprawdzanie Origin, brak zmian stanu w GET.",
+    "Angular HttpClient: czyta cookie `XSRF-TOKEN`, wysyła `X-XSRF-TOKEN` – tylko przy żądaniach modyfikujących na ten sam origin; cookie nie może być HttpOnly.",
+    "**Mass assignment / overposting**: DTO per operacja z dozwolonymi polami; Id, OwnerId, TenantId nadaje serwer.",
+    "Nagłówki: CSP, HSTS, `X-Content-Type-Options: nosniff`, `frame-ancestors`/`X-Frame-Options`; dependency scanning."
+   ],
+   "pitfalls": [
+    "`RequireAuthorization()` bez sprawdzenia, czy zasób należy do użytkownika.",
+    "`bypassSecurityTrustHtml` na treści od użytkownika."
+   ],
+   "code": "// IDOR-safe: filtr po właścicielu\nvar invoice = await db.Invoices\n    .FirstOrDefaultAsync(i => i.Id == id && i.UserId == userId, ct);\nreturn invoice is null ? Results.NotFound() : TypedResults.Ok(invoice.ToDto());",
+   "lang": "csharp",
+   "say": "Najczęstsza dziura to broken access control, więc każde zapytanie filtruję po właścicielu lub tenancie; do tego parametryzowane zapytania przeciw SQL injection, DTO przeciw overpostingowi, a przeciw XSS i CSRF – ochrona Angulara, CSP i SameSite z antiforgery."
+  },
+  {
+   "topic": "CORS",
+   "points": [
+    "**Same-Origin Policy**: przeglądarka blokuje odczyt odpowiedzi z innego originu (schemat + host + port); `app.` i `api.` to różne originy.",
+    "CORS: serwer nagłówkami `Access-Control-Allow-*` zezwala wybranym originom.",
+    "**Preflight** `OPTIONS` (z `Origin`, `Access-Control-Request-Method/-Headers`) dla żądań nie-prostych: metody inne niż GET/HEAD/POST, własne nagłówki (Authorization), `Content-Type: application/json`.",
+    "Proste POST tylko z `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`.",
+    "`Access-Control-Max-Age` cache'uje wynik preflightu.",
+    "CORS egzekwuje **tylko przeglądarka** – curl/serwer go ignoruje; to nie jest zabezpieczenie API.",
+    "CORS nie blokuje wysłania żądania, tylko odczyt odpowiedzi przez skrypt."
+   ],
+   "pitfalls": [
+    "Odbijanie dowolnego `Origin` + `Allow-Credentials: true` – każda strona czyta dane zalogowanego usera.",
+    "Walidacja originu przez `EndsWith(\"example.com\")` (przepuszcza evil-example.com) lub akceptowanie `Origin: null`."
+   ],
+   "say": "CORS to mechanizm przeglądarki, który pozwala serwerowi poluzować Same-Origin Policy dla wybranych originów; żądania z JSON-em czy Authorization idą z preflightem OPTIONS, a przy credentials originy muszą być jawnie wymienione."
+  },
+  {
+   "topic": "Caching",
+   "points": [
+    "`Cache-Control`: `max-age` (świeżość), `s-maxage` (cache współdzielone/CDN), `public`/`private`, `no-cache` (przechowuj, ale rewaliduj), `no-store` (nie zapisuj), `immutable`, `must-revalidate`.",
+    "SPA: pliki z hashem → `public, max-age=31536000, immutable`; `index.html` → `no-cache`.",
+    "Dane per użytkownik: `private` lub `no-store` – nigdy `public` (CDN poda je innym).",
+    "**ETag** + `If-None-Match` → **304 Not Modified** bez body (porównanie słabe – weak `W/` wystarcza).",
+    "**Optimistic concurrency**: `If-Match` przy PUT/PATCH/DELETE; nieaktualny → **412**, brak nagłówka gdy wymagany → **428** (porównanie silne – weak ETag nie spełni If-Match).",
+    "ETag z wersji wiersza (`rowversion`, `xmin`), nie z hasha całej odpowiedzi.",
+    "`stale-while-revalidate`, `Vary` – klucz cache musi obejmować wszystko, od czego zależy odpowiedź."
+   ],
+   "pitfalls": [
+    "`Cache-Control: public` na `/api/me/...` za CDN – użytkownicy widzą cudze dane.",
+    "Mylenie `no-cache` (rewalidacja) z `no-store` (zakaz zapisu)."
+   ],
+   "code": "GET /api/products/7            -> 200, ETag: \"v3\", Cache-Control: private, max-age=0\nGET /api/products/7 If-None-Match: \"v3\" -> 304 Not Modified\nPUT /api/products/7 If-Match: \"v3\"      -> 200, ETag: \"v4\"\nPUT /api/products/7 If-Match: \"v3\"      -> 412 Precondition Failed",
+   "lang": "http",
+   "say": "Statyczne pliki z hashem cache'uję na rok jako immutable, index.html z no-cache, dane użytkownika jako private lub no-store, a ETag wykorzystuję do 304 przy odczytach i do optimistic concurrency przez If-Match przy zapisach."
+  },
+  {
+   "topic": "Cookies",
+   "points": [
+    "**HttpOnly** – niedostępne dla JS (`document.cookie`), chroni sesję przed kradzieżą przez XSS.",
+    "**Secure** – wysyłane tylko po HTTPS.",
+    "**SameSite=Strict** – nigdy cross-site; **Lax** – tylko top-level nawigacje GET (domyślne w Chrome/Edge dla cookies bez atrybutu, nie w Firefox/Safari – ustawiaj jawnie); **None** – zawsze, **wymaga Secure**.",
+    "Prefiks **`__Host-`** wymusza Secure, `Path=/` i brak `Domain` – cookie przypięte do jednego hosta.",
+    "Ogranicz `Domain`/`Path`, krótki czas życia, rotacja identyfikatora sesji po zalogowaniu.",
+    "Cookie z sesją = automatycznie dołączane przez przeglądarkę → potrzebna ochrona **CSRF**.",
+    "Cookie XSRF-TOKEN dla Angulara musi być czytelne dla JS (bez HttpOnly) – to celowe."
+   ],
+   "pitfalls": [
+    "`SameSite=None` bez `Secure` – przeglądarki odrzucają cookie ('znikająca sesja').",
+    "Token sesji w cookie bez HttpOnly – XSS go wykradnie."
+   ],
+   "code": "Set-Cookie: __Host-session=abc123; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=3600",
+   "lang": "http",
+   "say": "Ciasteczka sesyjne ustawiam jako HttpOnly, Secure i z jawnym SameSite, najlepiej z prefiksem __Host-, a skoro przeglądarka dołącza je automatycznie, dokładam ochronę CSRF."
+  },
+  {
+   "topic": "HTTPS",
+   "points": [
+    "HTTPS (TLS) daje poufność, integralność i uwierzytelnienie serwera; dziś minimum TLS 1.2, preferowany TLS 1.3.",
+    "`UseHttpsRedirection` przekierowuje HTTP→HTTPS, ale pierwsze żądanie po HTTP można przechwycić (**SSL stripping**).",
+    "**HSTS** (`Strict-Transport-Security: max-age=...; includeSubDomains; preload`) – przeglądarka przez max-age łączy się tylko po HTTPS.",
+    "`UseHsts()` tylko poza Development; domyślny max-age w ASP.NET Core = **30 dni** (produkcyjnie zwykle rok).",
+    "Luka HSTS: pierwsza wizyta (lub po wygaśnięciu) – zamyka ją **lista preload** wbudowana w przeglądarki.",
+    "Za reverse proxy TLS terminuje proxy – aplikacja potrzebuje forwarded headers, żeby wiedzieć, że ruch był HTTPS.",
+    "Certyfikaty: automatyczne odnawianie (Let's Encrypt/ACME, managed certs w chmurze); lokalnie `dotnet dev-certs https --trust`."
+   ],
+   "pitfalls": [
+    "`includeSubDomains`/preload włączone, zanim wszystkie subdomeny mają HTTPS – odcięcie usług.",
+    "Poleganie wyłącznie na przekierowaniu 301 bez HSTS."
+   ],
+   "code": "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload",
+   "lang": "http",
+   "say": "Wymuszam HTTPS przekierowaniem i HSTS, bo samo przekierowanie zostawia pierwsze żądanie podatne na SSL stripping, a pierwszą wizytę zamyka dopiero lista preload."
+  },
+  {
+   "topic": "Hasła",
+   "points": [
+    "Nigdy plaintext ani szyfrowanie odwracalne; nie szybkie hashe (MD5, SHA-1, SHA-256) – GPU liczy miliardy na sekundę.",
+    "Celowo wolne KDF z **unikalną solą per użytkownik**: **Argon2id** (rekomendacja OWASP), scrypt, bcrypt, PBKDF2 z dużą liczbą iteracji.",
+    "ASP.NET Core Identity `PasswordHasher`: **PBKDF2 HMAC-SHA512, 100 000 iteracji** (od .NET 7), zapisuje wersję formatu i rehashuje przy logowaniu.",
+    "Porównanie w stałym czasie (`CryptographicOperations.FixedTimeEquals`) – brak timing attack.",
+    "Polityka: długość ponad złożoność, sprawdzanie haseł z wycieków (Have I Been Pwned), MFA, rate limiting i lockout logowania.",
+    "Najlepiej nie trzymać haseł wcale – deleguj do IdP; passkeys eliminują hasło."
+   ],
+   "pitfalls": [
+    "Jedna globalna sól (pepper zamiast soli) – atak na całą bazę naraz.",
+    "Własna 'kryptografia' zamiast PasswordHasher lub sprawdzonej biblioteki."
+   ],
+   "code": "var hasher = new PasswordHasher<User>();\nuser.PasswordHash = hasher.HashPassword(user, password);\nvar r = hasher.VerifyHashedPassword(user, user.PasswordHash, attempt);\n// r: Failed | Success | SuccessRehashNeeded",
+   "lang": "csharp",
+   "say": "Hasła przechowuję wyłącznie jako hash z wolnej funkcji z solą per użytkownik – Argon2id albo PBKDF2 jak w PasswordHasher z Identity – a najchętniej deleguję logowanie do identity providera."
+  },
+  {
+   "topic": "JWT",
+   "points": [
+    "JWT = `header.payload.signature` (base64url); header: `alg`, `typ`, `kid`; claimy: `iss`, `sub`, `aud`, `exp`, `iat`, `nbf` + własne.",
+    "Typowy JWT jest **podpisany (JWS), nie szyfrowany** – payload każdy odczyta; bez danych wrażliwych.",
+    "Walidacja w API: podpis, `iss`, `aud`, `exp/nbf`, **lista dozwolonych algorytmów** – nigdy `alg: none` ani algorytm z tokenu.",
+    "**HS256** – wspólny sekret (kto weryfikuje, może podpisać); **RS256/ES256** – IdP podpisuje prywatnym, API weryfikuje publicznym z **JWKS** (discovery).",
+    "Access token krótki (5–15 min) + **refresh token** (odwoływalny) z **rotacją** i reuse detection.",
+    "Odwołanie przed `exp`: krótki exp, denylista `jti`/`sid` w Redis, security stamp, reference tokens + introspekcja (RFC 7662).",
+    "SPA: nie localStorage (XSS kradnie token); token w pamięci + refresh w HttpOnly cookie albo **BFF** (tokeny nie trafiają do JS).",
+    "Angular: interceptor na 401 odświeża token **raz** (współdzielone odświeżanie) i ponawia żądanie."
+   ],
+   "pitfalls": [
+    "Wiara, że zablokowanie konta lub odwołanie refresh tokenu natychmiast unieważnia access token.",
+    "Akceptowanie algorytmu z nagłówka – ataki `alg: none` i algorithm confusion."
+   ],
+   "code": "builder.Services.AddAuthentication().AddJwtBearer(o =>\n{\n    o.Authority = \"https://login.example.com\";   // JWKS z discovery\n    o.Audience  = \"orders-api\";\n    o.TokenValidationParameters.ValidAlgorithms = [\"RS256\"];\n    o.TokenValidationParameters.ClockSkew = TimeSpan.FromMinutes(1);\n});",
+   "lang": "csharp",
+   "say": "JWT jest podpisany, nie szyfrowany, więc nie wkładam do niego wrażliwych danych; API waliduje podpis, issuer, audience, czas i dozwolony algorytm, access tokeny są krótkie, a w SPA preferuję BFF zamiast localStorage."
+  },
+  {
+   "topic": "Kody HTTP",
+   "points": [
+    "Klasy: 1xx info, 2xx sukces, 3xx przekierowania, 4xx błąd klienta, 5xx błąd serwera.",
+    "2xx: **200**, **201** (+ Location), **202** (przyjęte do późniejszego przetworzenia), **204** (sukces bez treści).",
+    "3xx: 301/308 na stałe, 302/307 tymczasowo; **307/308 zachowują metodę i body**; 303 → GET (Post/Redirect/Get); **304** to odpowiedź na warunkowy GET.",
+    "**401** – brak/zły uwierzytelnienie (+ `WWW-Authenticate`); **403** – znany użytkownik bez uprawnień.",
+    "**400** – źle sformułowane żądanie; **422** – poprawna składnia, błąd semantyczny; ASP.NET Core domyślnie 400 dla walidacji – liczy się spójność.",
+    "**404** brak zasobu; pusta kolekcja = 200 z `[]`; **409** konflikt stanu; **412** niespełniony `If-Match`; **428** wymagany nagłówek warunkowy; **429** rate limit.",
+    "5xx: **500** nieoczekiwany, **502** zła odpowiedź upstreamu, **503** przeciążenie/maintenance (+ `Retry-After`), **504** timeout upstreamu."
+   ],
+   "pitfalls": [
+    "204 dla 'nie znaleziono' albo 404 dla pustej listy wyników.",
+    "403 przy braku tokenu (powinno być 401) – klient nie wie, że ma się zalogować."
+   ],
+   "say": "Kody dobieram semantycznie: 201 z Location po utworzeniu, 204 bez treści, 401 gdy nie wiem kim jesteś, 403 gdy wiem, ale nie wolno, 409 przy konflikcie stanu, 412 przy nieaktualnym ETagu, a 5xx tylko dla problemów serwera."
+  },
+  {
+   "topic": "OAuth/OIDC",
+   "points": [
+    "**OAuth 2.0** – autoryzacja delegowana: access token do API; nie mówi, kim jest użytkownik.",
+    "**OpenID Connect** – warstwa tożsamości na OAuth: **ID token** (dla klienta), userinfo, scope `openid`, discovery `.well-known/openid-configuration`.",
+    "**Authorization Code + PKCE**: `code_verifier` → `code_challenge = BASE64URL(SHA256(verifier))`, metoda S256; przechwycony kod jest bezużyteczny bez verifiera.",
+    "**Implicit** przestarzały (token w URL → historia, Referer); OAuth 2.1 go usuwa i wymaga PKCE dla wszystkich klientów.",
+    "**Client Credentials** – M2M bez użytkownika; zamiast client secret: `private_key_jwt` (RFC 7523) lub managed/workload identity.",
+    "Tokeny M2M **cache'uj** do bliskiego wygaśnięcia – pobieranie per żądanie zabija IdP (429).",
+    "**Sender-constrained tokens**: DPoP (RFC 9449, podpis proof per żądanie) lub mTLS (RFC 8705) – skradziony bearer token nic nie daje.",
+    "Dostawcy: Entra ID, Auth0, Keycloak, Duende IdentityServer."
+   ],
+   "pitfalls": [
+    "Używanie ID tokenu do wywołań API – do API służy access token z właściwym `aud`.",
+    "PKCE traktowane jako ochrona przed XSS – chroni tylko kod autoryzacyjny."
+   ],
+   "say": "OAuth daje dostęp do API, a OIDC dodaje logowanie i ID token; dla użytkowników używam Authorization Code z PKCE, dla serwisów Client Credentials z cache'owaniem tokenu, najlepiej bez współdzielonych sekretów."
+  },
+  {
+   "topic": "REST",
+   "points": [
+    "Zasoby jako rzeczowniki w liczbie mnogiej (`/orders`, `/orders/42/items`), akcję określa **metoda**, nie URL (`/getOrders` – źle).",
+    "Bezstanowość: każde żądanie niesie wszystko, co potrzebne; filtrowanie, sortowanie, paginacja w query string.",
+    "**Safe**: GET, HEAD, OPTIONS; **idempotentne**: safe + **PUT, DELETE**; POST nie, PATCH bez gwarancji.",
+    "Idempotencja = ten sam **stan serwera**, nie ta sama odpowiedź (DELETE: 204, potem 404 – OK).",
+    "**PUT** zastępuje cały zasób; **PATCH** – zmiana częściowa: JSON Merge Patch (RFC 7396) lub JSON Patch (RFC 6902).",
+    "Model Richardsona: 0 RPC, 1 zasoby, 2 metody + kody (większość API), 3 HATEOAS (linki do akcji).",
+    "Zagnieżdżenie max 1–2 poziomy; akcje niepasujące do CRUD jako pod-zasób (`POST /orders/42/cancellation`)."
+   ],
+   "pitfalls": [
+    "GET zmieniający stan – cache, prefetch i crawlery wykonają operację.",
+    "PUT z częściowym body – pominięte pola zostają wyczyszczone."
+   ],
+   "code": "GET    /api/orders?status=paid&page=2   -> 200\nPOST   /api/orders                     -> 201 Location: /api/orders/42\nPUT    /api/orders/42                  -> 200 / 204\nPATCH  /api/orders/42  (merge-patch)   -> 200\nDELETE /api/orders/42                  -> 204",
+   "lang": "http",
+   "say": "Projektuję API wokół zasobów w liczbie mnogiej z akcją wyrażoną metodą HTTP i poprawnymi kodami – to poziom 2 Richardsona – pamiętając, że GET, PUT i DELETE są idempotentne, a POST nie."
+  },
+  {
+   "topic": "Sekrety",
+   "points": [
+    "Sekrety nigdy w repo ani `appsettings.json`.",
+    "Lokalnie **User Secrets** (`dotnet user-secrets`): `secrets.json` w profilu, tylko Development, **nieszyfrowany** – narzędzie dev.",
+    "Produkcja: **Azure Key Vault** / AWS Secrets Manager / HashiCorp Vault przez **managed identity**, lub sekrety orkiestratora (K8s Secrets, env).",
+    "Najlepiej eliminować sekrety: managed identity / workload identity federation zamiast haseł i client secretów.",
+    "**Rotacja bez przestoju**: stary i nowy sekret działają równolegle – dodaj nowy, przełącz aplikacje, zweryfikuj, dopiero potem unieważnij stary.",
+    "Klucze podpisujące JWT: nowy klucz (nowy `kid`) w JWKS z wyprzedzeniem → przełącz podpisywanie → stary usuń po max czasie życia tokenów.",
+    "Skanowanie sekretów w CI (GitHub secret scanning, gitleaks)."
+   ],
+   "pitfalls": [
+    "Po wycieku tylko usunięcie z repo/historii – sekret trzeba natychmiast **zrotować**, bo jest skompromitowany.",
+    "Usunięcie starego klucza z JWKS w chwili przełączenia – ważne tokeny przestają przechodzić walidację."
+   ],
+   "code": "builder.Configuration.AddAzureKeyVault(\n    new Uri(\"https://my-vault.vault.azure.net/\"),\n    new DefaultAzureCredential());   // managed identity, bez hasła w konfiguracji",
+   "lang": "csharp",
+   "say": "Sekrety trzymam lokalnie w User Secrets, a na produkcji w Key Vault z dostępem przez managed identity; rotuję je tak, żeby stary i nowy działały równolegle, a wyciekły sekret od razu unieważniam."
+  }
+ ]
+}

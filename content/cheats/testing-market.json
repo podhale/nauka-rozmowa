@@ -1,0 +1,142 @@
+{
+  "cat": "testing",
+  "sheets": [
+    {
+      "topic": "Moq w praktyce",
+      "points": [
+        "`var m = new Mock<IRepo>();` → do SUT przekazujesz `m.Object`.",
+        "`Setup(x => x.Get(It.IsAny<int>())).Returns(v)`; dopasowania: wartość, `It.IsAny<T>()`, `It.Is<T>(pred)`.",
+        "`Verify(x => x.Save(It.IsAny<Order>()), Times.Once())` – Once = **dokładnie** raz; są `Never`, `AtLeastOnce`, `Exactly(n)`.",
+        "`VerifyNoOtherCalls()` – brak niezweryfikowanych wywołań; używaj oszczędnie (kruche testy).",
+        "Loose (domyślny) zwraca wartości domyślne; `MockBehavior.Strict` rzuca przy nieskonfigurowanym wywołaniu.",
+        "`Callback<T>(x => captured = x)` przechwytuje argument; `SetupSequence` – kolejne wartości.",
+        "Przechwytuje tylko interfejsy i członki `virtual`/`abstract`."
+      ],
+      "pitfalls": [
+        "Setup ze stałą wartością argumentu, a SUT woła z inną → po cichu null/default.",
+        "Verify wszystkiego zamiast asercji wyniku – testy pękają przy refaktoryzacji."
+      ],
+      "say": "W Moq konfiguruję Setup/Returns z It.IsAny lub It.Is, przekazuję mock.Object, a Verify z Times stosuję tylko dla efektów, których nie da się sprawdzić po wyniku."
+    },
+    {
+      "topic": "NSubstitute w praktyce",
+      "points": [
+        "`var s = Substitute.For<IMailer>();` – to od razu instancja, bez `.Object`.",
+        "Konfiguracja: `s.Get(1).Returns(x)`; kolejne wartości `Returns(a, b)`; lambda `Returns(ci => ...)`.",
+        "Argumenty: `Arg.Any<T>()`, `Arg.Is<T>(pred)`; przechwycenie: `Arg.Do<T>(x => ...)`.",
+        "Weryfikacja: `s.Received(1).Send(...)`, `DidNotReceive()`, `Received.InOrder(() => {...})`.",
+        "Wyjątki: `Throws`/`ThrowsAsync` z `NSubstitute.ExceptionExtensions`; dla void `When(...).Do(...)`.",
+        "NSubstitute.Analyzers wykrywa konfigurację niewirtualnych członków i błędne użycie Arg."
+      ],
+      "pitfalls": [
+        "Substytut klasy z niewirtualną metodą – wykonuje się prawdziwy kod, Returns nie działa.",
+        "Arg.Any poza wywołaniem w Returns/Received (np. w zmiennej) – nieprzewidywalne dopasowania."
+      ],
+      "say": "NSubstitute ma zwięźlejszą składnię niż Moq: Substitute.For, Returns na wywołaniu i Received do weryfikacji; funkcjonalnie oba są równoważne, a wybór to konwencja zespołu."
+    },
+    {
+      "topic": "Mockowanie async",
+      "points": [
+        "Moq: `ReturnsAsync(v)`, `ThrowsAsync(ex)`; NSubstitute: `Returns(v)` dla `Task<T>`, `ThrowsAsync` z ExceptionExtensions.",
+        "Zawsze `await` testowanej metody przed asercjami i Verify/Received.",
+        "Dopasowuj `CancellationToken` przez `It.IsAny<CancellationToken>()`/`Arg.Any<CancellationToken>()`.",
+        "`HttpClient` – nie mockuj bezpośrednio: fake `HttpMessageHandler` albo typed client z interfejsem.",
+        "Dla API zewnętrznych w testach integracyjnych: WireMock.Net lub fake handler w `WebApplicationFactory`.",
+        "Czas: `TimeProvider` + `FakeTimeProvider` zamiast `Task.Delay` i `DateTime.Now` w kodzie."
+      ],
+      "pitfalls": [
+        "`async void` w SUT – test nie może poczekać, wyjątek ginie.",
+        "Brak `await` w teście (`sut.DoAsync();`) – asercje przed zakończeniem pracy, test przechodzi przypadkiem."
+      ],
+      "code": "repo.Setup(r => r.GetAsync(42, It.IsAny<CancellationToken>()))\n    .ReturnsAsync(new User(42, \"Ala\"));\nvar result = await sut.GetNameAsync(42, CancellationToken.None);\nAssert.Equal(\"Ala\", result);",
+      "lang": "csharp",
+      "say": "Metody async mockuję przez ReturnsAsync/ThrowsAsync, w teście zawsze czekam na SUT, a HttpClient podmieniam przez własny HttpMessageHandler zamiast mockować sam klient."
+    },
+    {
+      "topic": "Czego nie mockować",
+      "points": [
+        "Nie mockuj value objects, DTO, rekordów ani własnej logiki domenowej – twórz prawdziwe obiekty (test data builders).",
+        "Nie mockuj typów, których nie jesteś właścicielem (HttpClient, SDK, DbContext) – opakuj je albo testuj integracyjnie.",
+        "`DbContext`/`DbSet` → Testcontainers z prawdziwą bazą; mock IQueryable nie sprawdza tłumaczenia na SQL.",
+        "Czas → `FakeTimeProvider`; logi → `FakeLogger` (Microsoft.Extensions.Diagnostics.Testing) zamiast Verify na ILogger.",
+        "Mockuj **granice**: e-mail, kolejka, płatności, zewnętrzne API – i tam weryfikuj interakcje.",
+        "Wiele mocków w jednym teście = sygnał, że klasa ma za dużo odpowiedzialności."
+      ],
+      "pitfalls": [
+        "Partial mock testowanego obiektu – test sprawdza mock, nie kod.",
+        "Mock DbSet z listy – zielone testy, a na produkcji wyjątek tłumaczenia LINQ."
+      ],
+      "say": "Mockuję granice systemu, a nie jego wnętrze: logikę i obiekty wartości testuję na prawdziwych instancjach, a bazę w testach integracyjnych na Testcontainers."
+    },
+    {
+      "topic": "Asercje w praktyce",
+      "points": [
+        "Wbudowane: xUnit `Assert.Equal/Equivalent/Throws(Async)`, NUnit `Assert.That(x, Is.EqualTo(y))`, MSTest `Assert.AreEqual`.",
+        "FluentAssertions: `Should().Be`, `BeEquivalentTo(exp, o => o.Excluding(...))`, `ThrowAsync<T>()`; najlepsze komunikaty błędów.",
+        "Licencja FluentAssertions: od v8 komercyjna przy użyciu komercyjnym; v7.x na Apache 2.0; fork społeczności: AwesomeAssertions.",
+        "Shouldly: open source, `ShouldBe`, `ShouldBeEquivalentTo`, `Should.Throw<T>()`.",
+        "`Be`/`Assert.Equal` dla klas bez Equals porównuje referencje; strukturalnie → `BeEquivalentTo`/`Assert.Equivalent`; recordy mają Equals po wartościach.",
+        "Jedna biblioteka asercji w repo – spójność ważniejsza niż wybór."
+      ],
+      "pitfalls": [
+        "Aktualizacja FluentAssertions do v8 bez sprawdzenia licencji.",
+        "`Assert.True(a == b)` – komunikat błędu bez informacji, co się różni."
+      ],
+      "say": "Biblioteka asercji to głównie czytelność i komunikaty błędów; wybieram jedną dla repo, a przy FluentAssertions uwzględniam, że od v8 ma licencję komercyjną, więc alternatywą jest v7, Shouldly albo wbudowane Assert."
+    },
+    {
+      "topic": "Jasmine i Karma",
+      "points": [
+        "`spyOn(obj, 'm')` domyślnie **nie** woła oryginału; `.and.returnValue`, `.and.callFake`, `.and.throwError`, `.and.callThrough`.",
+        "`jasmine.createSpyObj<T>('Name', ['a','b'])` lub z obiektem wartości `{ a: of(x) }`; w TestBed `useValue`.",
+        "Asercje: `toHaveBeenCalledWith`, `toHaveBeenCalledTimes`, `toHaveBeenCalledOnceWith`, `spy.calls.mostRecent().args`.",
+        "Matchery częściowe: `jasmine.objectContaining`, `jasmine.any(Type)`.",
+        "`fakeAsync` + `tick(ms)` / `flush()` / `flushMicrotasks()`; okresowe timery → `discardPeriodicTasks()`.",
+        "Karma uruchamia testy w prawdziwej przeglądarce i jest zdeprecjonowana; nowe projekty CLI 21 → Vitest."
+      ],
+      "pitfalls": [
+        "Spy bez wartości zwraca undefined → TypeError przy `.subscribe()`.",
+        "Pozostawione timery w fakeAsync → „periodic timer(s) still in the queue”."
+      ],
+      "code": "const api = jasmine.createSpyObj<Api>('Api', { load: of([]) });\nit('debounce', fakeAsync(() => {\n  input.setValue('a');\n  tick(300);\n  expect(api.load).toHaveBeenCalledOnceWith('a');\n}));",
+      "lang": "typescript",
+      "say": "W legacy specach mockuję serwisy przez jasmine.createSpyObj i useValue w TestBed, a kod czasowy testuję w fakeAsync z tick, pamiętając o sprzątaniu okresowych timerów."
+    },
+    {
+      "topic": "Migracja z Karmy",
+      "points": [
+        "Powód: Karma zdeprecjonowana, Angular 21 domyślnie Vitest; alternatywa: Jest (jest-preset-angular).",
+        "Mapowanie: `spyOn(...).and.returnValue(x)` → `vi.spyOn(...).mockReturnValue(x)`; `createSpyObj` → obiekt z `vi.fn()`.",
+        "`jasmine.objectContaining` → `expect.objectContaining`; `jasmine.any` → `expect.any`.",
+        "`vi.spyOn` domyślnie **woła oryginał** (odwrotnie niż Jasmine) – dodaj `mockReturnValue`/`mockImplementation`.",
+        "`fakeAsync`/`tick` zależą od zone.js; w zoneless → `vi.useFakeTimers()` + `vi.advanceTimersByTime()`.",
+        "jsdom nie liczy layoutu – testy wymiarów/IntersectionObserver wymagają mocków albo trybu przeglądarkowego Vitest.",
+        "Po migracji porównaj liczbę testów i coverage z ostatnim przebiegiem Karmy."
+      ],
+      "pitfalls": [
+        "Migracja runnera razem ze zmianą logiki testów – nie wiadomo, co jest regresją.",
+        "Zgubione pliki spec (inny glob w konfiguracji) – mniej testów, zielony CI."
+      ],
+      "say": "Migrację z Karmy robię mechanicznie i stopniowo: zmieniam runner, mapuję API spy na vi.fn/vi.spyOn, testy na fakeAsync przepisuję na fake timery, a na końcu porównuję liczbę testów i pokrycie."
+    },
+    {
+      "topic": "Cypress i Playwright w praktyce",
+      "points": [
+        "Cypress: działa w przeglądarce, interaktywny runner z time-travel, dojrzałe component testing, `cy.intercept`; komendy w kolejce, bez async/await.",
+        "Playwright: Chromium/Firefox/WebKit, wiele kart i domen, równoległość i sharding wbudowane, trace viewer, `page.route`.",
+        "Selektory: `getByRole` z nazwą → label/tekst → `data-testid` (`getByTestId`); nigdy łańcuchy CSS/nth-child.",
+        "Auto-waiting: `await expect(locator).toHaveText(...)` ponawia do timeoutu; `textContent()` czyta jednorazowo.",
+        "Zakaz `waitForTimeout`/`cy.wait(ms)` – czekaj na stan UI lub odpowiedź sieciową.",
+        "Retries w CI tylko jako siatka + raportowanie flaky; trace/screenshot przy porażce.",
+        "Migracja Cypress → Playwright: stopniowo, nowe testy w nowym narzędziu, najpierw najbardziej flaky ścieżki."
+      ],
+      "pitfalls": [
+        "Sztywne sleepy i odczyt tekstu bez auto-retry – źródło flaky testów.",
+        "Retries maskujące realne race conditions w aplikacji."
+      ],
+      "code": "await page.getByRole('button', { name: 'Dodaj do koszyka' }).click();\nawait expect(page.getByTestId('cart-count')).toHaveText('3');",
+      "lang": "typescript",
+      "say": "Cypress zostawiam tam, gdzie testy są stabilne i zespół go zna; Playwright wybieram dla wielu przeglądarek z WebKit, scenariuszy wielokartowych i szybkiego CI – a niezależnie od narzędzia stawiam na selektory po roli lub data-testid i asercje z auto-waitingiem."
+    }
+  ]
+}

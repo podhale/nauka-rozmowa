@@ -1,0 +1,1175 @@
+{
+ "cat": "english",
+ "name": "Angielski na rozmowę",
+ "cards": [
+  {
+   "id": "english-001",
+   "topic": "Przedstaw się",
+   "level": 1,
+   "q": "Pytanie rekrutera: Tell me about yourself. – wersja KRÓTKA (ok. 15 sekund)",
+   "a": "I'm a full-stack developer. I work with .NET and Angular. I have five years of experience.",
+   "tr": "Jestem programistą full-stack. Pracuję z .NET i Angularem. Mam pięć lat doświadczenia.",
+   "pron": "experience – ikspirijens; developer – diweloper",
+   "tip": "Trzy zdania, które musisz umieć powiedzieć nawet w największym stresie. Jeśli rekruter milczy i czeka – przejdź do wersji średniej."
+  },
+  {
+   "id": "english-002",
+   "topic": "Przedstaw się",
+   "level": 2,
+   "q": "Pytanie rekrutera: Tell me about yourself. – wersja ŚREDNIA (ok. 45 sekund)",
+   "a": "I'm a full-stack developer with five years of experience. I mostly work with C# and .NET on the back end. On the front end, I use Angular and TypeScript. Right now I work on a web platform for a logistics company. I build REST APIs and Angular screens. I like clean code and good teamwork.",
+   "tr": "Jestem programistą full-stack z pięcioletnim doświadczeniem. Na backendzie pracuję głównie z C# i .NET. Na frontendzie używam Angulara i TypeScriptu. Obecnie pracuję nad platformą webową dla firmy logistycznej. Tworzę REST API i ekrany w Angularze. Lubię czysty kod i dobrą współpracę w zespole.",
+   "pron": "C# – si szarp; logistics – lodżistiks; TypeScript – tajpskript",
+   "tip": "Podstaw swoją branżę zamiast „logistics company” (np. „an insurance company”, „a bank”, „an e-commerce company”). Nie ucz się na pamięć słowo w słowo – zapamiętaj kolejność: kim jestem → technologie → projekt → co robię."
+  },
+  {
+   "id": "english-003",
+   "topic": "Przedstaw się",
+   "level": 3,
+   "q": "Pytanie rekrutera: Tell me about yourself. – wersja DŁUGA (ok. 90 sekund)",
+   "a": "I'm a full-stack developer with five years of experience in .NET and Angular. I started as a junior in a small software house. For the last three years, I have worked on a platform for an insurance company. I build APIs in ASP.NET Core and screens in Angular. Last year, I helped migrate the app to newer .NET and Angular versions. Now I'm looking for a bigger product and an international team.",
+   "tr": "Jestem programistą full-stack z pięcioletnim doświadczeniem w .NET i Angularze. Zaczynałem jako junior w małym software housie. Od trzech lat pracuję nad platformą dla firmy ubezpieczeniowej. Tworzę API w ASP.NET Core i ekrany w Angularze. W zeszłym roku pomogłem zmigrować aplikację do nowszych wersji .NET i Angulara. Teraz szukam większego produktu i międzynarodowego zespołu.",
+   "pron": "insurance – inszurens; international – internaszonal; migrate – majgrejt",
+   "tip": "Schemat: kim jestem → skąd przyszedłem (1 zdanie) → obecny projekt → jedno osiągnięcie → czego szukam. Nie opowiadaj życiorysu od szkoły. Jeśli się zgubisz, wróć do wersji średniej – to też jest dobra odpowiedź."
+  },
+  {
+   "id": "english-004",
+   "topic": "Przedstaw się",
+   "level": 1,
+   "q": "Jak powiedzieć: Mam pięć lat doświadczenia jako programista .NET.",
+   "a": "I have five years of experience as a .NET developer.",
+   "tr": "Mam pięć lat doświadczenia jako programista .NET.",
+   "pron": ".NET – dot net",
+   "tip": "Pamiętaj o „of”: five years OF experience. „Experience” w tym znaczeniu jest niepoliczalne – bez „-s” na końcu."
+  },
+  {
+   "id": "english-005",
+   "topic": "Przedstaw się",
+   "level": 1,
+   "q": "Jak powiedzieć: Obecnie pracuję w firmie Softix jako programista full-stack.",
+   "a": "Currently, I work at Softix as a full-stack developer.",
+   "tr": "Obecnie pracuję w firmie Softix jako programista full-stack.",
+   "pron": "currently – karentli",
+   "tip": "„Obecnie / aktualnie” = currently albo right now. NIE „actually” – to znaczy „tak naprawdę”. Mówimy „work AT a company”, „work ON a project”."
+  },
+  {
+   "id": "english-006",
+   "topic": "Przedstaw się",
+   "level": 1,
+   "q": "Pytanie rekrutera: What technologies do you work with?",
+   "a": "On the back end, I use C#, ASP.NET Core and Entity Framework. On the front end, I use Angular and TypeScript. For databases, I mostly use SQL Server.",
+   "tr": "Na backendzie używam C#, ASP.NET Core i Entity Framework. Na frontendzie używam Angulara i TypeScriptu. Jeśli chodzi o bazy danych, najczęściej używam SQL Servera.",
+   "pron": "SQL – es-kju-el albo sikłel; Entity – entiti; databases – dejtabejsys",
+   "tip": "Dzielenie na „back end / front end / databases” porządkuje wypowiedź. Możesz dodać: „I also use Docker, Git and Azure DevOps.”"
+  },
+  {
+   "id": "english-007",
+   "topic": "Przedstaw się",
+   "level": 2,
+   "q": "Pytanie rekrutera: Why do you want to work for our company?",
+   "a": "I like your product, and you use .NET and Angular. These are my main technologies. I also want to work in an international team. I think I can learn a lot here and help the team quickly.",
+   "tr": "Podoba mi się wasz produkt i używacie .NET i Angulara. To moje główne technologie. Chcę też pracować w międzynarodowym zespole. Myślę, że dużo się tu nauczę i szybko pomogę zespołowi.",
+   "pron": "product – prodakt; quickly – kłikli",
+   "tip": "Przed rozmową dodaj jedno zdanie o tej konkretnej firmie, np. „I read that you are building a new mobile app.” To robi dużą różnicę."
+  },
+  {
+   "id": "english-008",
+   "topic": "Przedstaw się",
+   "level": 2,
+   "q": "Pytanie rekrutera: Why do you want to change your job?",
+   "a": "I like my current team, but the project is quite small now. I want to work on a bigger product. I also want to grow in cloud and architecture. Your offer matches these goals very well.",
+   "tr": "Lubię mój obecny zespół, ale projekt jest teraz dość mały. Chcę pracować nad większym produktem. Chcę też rozwijać się w chmurze i architekturze. Wasza oferta bardzo dobrze pasuje do tych celów.",
+   "pron": "architecture – arkitekczer; matches – meczys",
+   "tip": "Mów o tym, czego szukasz, a nie na co narzekasz. Nigdy nie krytykuj szefa ani firmy. Krótsza wersja: „I'm looking for new challenges and a bigger project.”"
+  },
+  {
+   "id": "english-009",
+   "topic": "Przedstaw się",
+   "level": 2,
+   "q": "Pytanie rekrutera: What are your strengths?",
+   "a": "I'm good at solving problems. I can work on both the back end and the front end. I learn new tools quickly. And I communicate openly with my team.",
+   "tr": "Dobrze rozwiązuję problemy. Potrafię pracować zarówno na backendzie, jak i na frontendzie. Szybko uczę się nowych narzędzi. I otwarcie komunikuję się z zespołem.",
+   "pron": "communicate – komjunikejt; openly – ołpenli",
+   "tip": "Dobrze dodać krótki przykład do jednej mocnej strony: „For example, last month I learned Docker in one week for a new project.”"
+  },
+  {
+   "id": "english-010",
+   "topic": "Przedstaw się",
+   "level": 2,
+   "q": "Pytanie rekrutera: What is your biggest weakness?",
+   "a": "My English is not perfect yet, but I practice every week. I take lessons and read documentation in English. It's getting better every month.",
+   "tr": "Mój angielski nie jest jeszcze idealny, ale ćwiczę co tydzień. Biorę lekcje i czytam dokumentację po angielsku. Z każdym miesiącem jest lepiej.",
+   "pron": "weakness – łiknes; documentation – dokjumentejszyn",
+   "tip": "Słabość + co z nią robisz. Ta wersja jest szczera i rekruter i tak słyszy Twój angielski. Alternatywa: „Sometimes I spend too much time on details. Now I set a time limit for each task.” Unikaj „I'm a perfectionist” i „I have no weaknesses”."
+  },
+  {
+   "id": "english-011",
+   "topic": "Przedstaw się",
+   "level": 2,
+   "q": "Pytanie rekrutera: Where do you see yourself in five years?",
+   "a": "I want to be a senior developer. I want to understand architecture better. Maybe I will help junior developers in the team. I'd like to grow with one company for a long time.",
+   "tr": "Chcę być starszym programistą (seniorem). Chcę lepiej rozumieć architekturę. Może będę pomagał juniorom w zespole. Chciałbym rozwijać się w jednej firmie przez długi czas.",
+   "pron": "senior – sinjor; junior – dżunjor",
+   "tip": "Ostatnie zdanie jest ważne dla rekrutera – pokazuje, że nie odejdziesz po roku. Nie mów, że chcesz mieć własną firmę albo zmienić branżę."
+  },
+  {
+   "id": "english-012",
+   "topic": "Opowiedz o projekcie",
+   "level": 1,
+   "q": "Jak w 2 zdaniach powiedzieć, czym jest Twój projekt?",
+   "a": "It's a web application for managing warehouse orders. About two thousand people use it every day.",
+   "tr": "To aplikacja webowa do zarządzania zamówieniami w magazynie. Codziennie korzysta z niej około dwóch tysięcy osób.",
+   "pron": "warehouse – łerhaus; application – aplikejszyn",
+   "tip": "Zawsze zaczynaj od tego, CO robi system i DLA KOGO, a dopiero potem technologie. Liczba użytkowników od razu pokazuje skalę."
+  },
+  {
+   "id": "english-013",
+   "topic": "Opowiedz o projekcie",
+   "level": 2,
+   "q": "Pytanie rekrutera: Tell me about your current project.",
+   "a": "I work on a system for an insurance company. Customers use it to report claims online. The back end is a .NET API, and the front end is Angular. We use SQL Server and Azure. I work on both parts, but mostly on the API.",
+   "tr": "Pracuję nad systemem dla firmy ubezpieczeniowej. Klienci zgłaszają w nim szkody online. Backend to API w .NET, a frontend to Angular. Używamy SQL Servera i Azure. Pracuję przy obu częściach, ale głównie przy API.",
+   "pron": "claims – klejmz; Azure – eżer; customers – kastomers",
+   "tip": "Kolejność: biznes → użytkownicy → technologie → Twoja rola. Nie podawaj nazwy klienta, jeśli obowiązuje NDA – wystarczy „a big insurance company”."
+  },
+  {
+   "id": "english-014",
+   "topic": "Opowiedz o projekcie",
+   "level": 3,
+   "q": "Pytanie rekrutera: Can you describe the architecture of the system?",
+   "a": "We have an Angular app in the browser. It calls a REST API written in ASP.NET Core. The API uses Entity Framework Core and a SQL Server database. Everything runs in Azure, in Docker containers. We also use a message queue for background jobs. Logs go to Application Insights.",
+   "tr": "Mamy aplikację Angular w przeglądarce. Wywołuje ona REST API napisane w ASP.NET Core. API używa Entity Framework Core i bazy SQL Server. Wszystko działa w Azure, w kontenerach Dockera. Używamy też kolejki wiadomości do zadań w tle. Logi trafiają do Application Insights.",
+   "pron": "architecture – arkitekczer; queue – kju; containers – kontejners; Insights – insajts",
+   "tip": "Opowiadaj „od przeglądarki do bazy”, jakbyś rysował diagram. Możesz powiedzieć „Let me draw it” i naszkicować na tablicy – to daje czas i porządkuje myśli. Spodziewaj się pytania „Why did you choose this?”."
+  },
+  {
+   "id": "english-015",
+   "topic": "Opowiedz o projekcie",
+   "level": 1,
+   "q": "Jak powiedzieć: Byłem odpowiedzialny za backend.",
+   "a": "I was responsible for the back end.",
+   "tr": "Byłem odpowiedzialny za backend.",
+   "pron": "responsible – risponsybl",
+   "tip": "Responsible FOR (nie „of”). Inne wersje: „I was in charge of the back end.”, „I owned the back end.”"
+  },
+  {
+   "id": "english-016",
+   "topic": "Opowiedz o projekcie",
+   "level": 2,
+   "q": "Pytanie rekrutera: What was your role in the project?",
+   "a": "I was a full-stack developer. I built new API endpoints and Angular screens. I also wrote unit tests and reviewed pull requests. Sometimes I helped new people in the team.",
+   "tr": "Byłem programistą full-stack. Tworzyłem nowe endpointy API i ekrany w Angularze. Pisałem też testy jednostkowe i robiłem code review pull requestów. Czasem pomagałem nowym osobom w zespole.",
+   "pron": "reviewed – riwjud; endpoints – endpojnts",
+   "tip": "Mów „I” o swojej pracy, a „we” o decyzjach zespołu. Rekruter zatrudnia Ciebie, nie zespół."
+  },
+  {
+   "id": "english-017",
+   "topic": "Opowiedz o projekcie",
+   "level": 2,
+   "q": "Pytanie rekrutera: Tell me about your team. How do you work?",
+   "a": "We are a team of seven people. There are four developers, one tester, a product owner and a Scrum Master. We work in Scrum with two-week sprints. We have a daily stand-up, planning, a review and a retrospective.",
+   "tr": "Jesteśmy zespołem siedmiu osób. Jest czterech programistów, jeden tester, product owner i Scrum Master. Pracujemy w Scrumie w dwutygodniowych sprintach. Mamy codzienny stand-up, planowanie, review i retrospektywę.",
+   "pron": "retrospective – retrospektiw; daily – dejli",
+   "tip": "„Two-week sprints” – bez „s” w „week”, bo to przymiotnik. Jeśli pracujecie w Kanbanie: „We use Kanban, so we don't have sprints.”"
+  },
+  {
+   "id": "english-018",
+   "topic": "Opowiedz o projekcie",
+   "level": 1,
+   "q": "Jak powiedzieć: Pracowaliśmy w Scrumie, w dwutygodniowych sprintach.",
+   "a": "We worked in Scrum, in two-week sprints.",
+   "tr": "Pracowaliśmy w Scrumie, w dwutygodniowych sprintach.",
+   "pron": "Scrum – skram",
+   "tip": "Gdy nadal tak pracujecie, użyj czasu teraźniejszego: „We work in Scrum.”"
+  },
+  {
+   "id": "english-019",
+   "topic": "Opowiedz o projekcie",
+   "level": 3,
+   "q": "Pytanie rekrutera: Tell me about a difficult problem you solved. (STAR prostym angielskim)",
+   "a": "Our order list page was very slow. It took about eight seconds to load. My task was to make it faster. I checked the SQL queries and found a missing index. I added the index and paging in the API. Now the page loads in under one second.",
+   "tr": "Nasza strona z listą zamówień była bardzo wolna. Ładowała się około ośmiu sekund. Moim zadaniem było ją przyspieszyć. Sprawdziłem zapytania SQL i znalazłem brakujący indeks. Dodałem indeks i stronicowanie w API. Teraz strona ładuje się w mniej niż sekundę.",
+   "pron": "queries – kłiriz; index – indeks; paging – pejdżing",
+   "tip": "STAR: Situation (zdania 1–2) → Task (3) → Action (4–5) → Result (6). Najważniejsze jest Action z „I” i Result z liczbą. Nie mów na głos słów „Situation”, „Task” – to tylko szkielet w głowie."
+  },
+  {
+   "id": "english-020",
+   "topic": "Opowiedz o projekcie",
+   "level": 3,
+   "q": "Pytanie rekrutera: Tell me about a time something went wrong in production.",
+   "a": "After one release, users could not log in. I checked the logs and found the problem quickly. A configuration value was missing in production. We fixed it and deployed again in thirty minutes. Then we added a check for this in our CI pipeline.",
+   "tr": "Po jednym wydaniu użytkownicy nie mogli się zalogować. Sprawdziłem logi i szybko znalazłem problem. W produkcji brakowało jednej wartości konfiguracyjnej. Naprawiliśmy to i wdrożyliśmy ponownie w trzydzieści minut. Potem dodaliśmy sprawdzanie tego w naszym pipeline CI.",
+   "pron": "configuration – konfigjurejszyn; pipeline – pajplajn; deployed – diplojd",
+   "tip": "Ostatnie zdanie (co zmieniliście, żeby się nie powtórzyło) jest najważniejsze – pokazuje, że uczysz się na błędach. Mów „in production”, nie „on the production”."
+  },
+  {
+   "id": "english-021",
+   "topic": "Opowiedz o projekcie",
+   "level": 2,
+   "q": "Jak mówić o liczbach i efektach swojej pracy?",
+   "a": "We reduced the load time from eight seconds to one second. The number of bugs went down by about forty percent. We now deploy twice a week instead of once a month.",
+   "tr": "Skróciliśmy czas ładowania z ośmiu sekund do jednej. Liczba błędów spadła o około czterdzieści procent. Teraz wdrażamy dwa razy w tygodniu zamiast raz w miesiącu.",
+   "pron": "reduced – ridjust; percent – persent",
+   "tip": "Schematy do zapamiętania: „from X to Y”, „by about X percent”, „X instead of Y”. Jeśli nie znasz dokładnej liczby, powiedz „about” – to w porządku."
+  },
+  {
+   "id": "english-022",
+   "topic": "Opowiedz o projekcie",
+   "level": 3,
+   "q": "Pytanie rekrutera: Why did you choose this architecture? What would you change?",
+   "a": "We chose a monolith because the team was small. It was simple to build and deploy. Now the system is bigger, and some parts change often. If I started again, I would split it into clear modules from day one.",
+   "tr": "Wybraliśmy monolit, bo zespół był mały. Łatwo było go budować i wdrażać. Teraz system jest większy, a niektóre części często się zmieniają. Gdybym zaczynał od nowa, od pierwszego dnia podzieliłbym go na wyraźne moduły.",
+   "pron": "monolith – monolit; modules – modjuls",
+   "tip": "Pytanie sprawdza, czy widzisz wady własnych decyzji. Zwroty: „The downside was…” (wadą było…), „In hindsight, I would…” (z perspektywy czasu…)."
+  },
+  {
+   "id": "english-023",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is a REST API?",
+   "a": "A REST API lets applications talk over HTTP. Each resource has its own URL, for example slash orders. We use HTTP methods: GET reads, POST creates, PUT updates and DELETE removes. The data is usually in JSON format.",
+   "tr": "REST API pozwala aplikacjom komunikować się przez HTTP. Każdy zasób ma swój URL, np. /orders. Używamy metod HTTP: GET odczytuje, POST tworzy, PUT aktualizuje, a DELETE usuwa. Dane są zwykle w formacie JSON.",
+   "pron": "resource – rizors; JSON – dżejson; methods – metods",
+   "tip": "Możesz dodać: „It's stateless – every request has all the information the server needs.” (bezstanowe)."
+  },
+  {
+   "id": "english-024",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is dependency injection?",
+   "a": "Dependency injection means a class doesn't create its own dependencies. It gets them from outside, usually in the constructor. In .NET, the built-in container does this for us. It makes the code easier to test and change.",
+   "tr": "Dependency injection oznacza, że klasa nie tworzy sama swoich zależności. Dostaje je z zewnątrz, zwykle w konstruktorze. W .NET robi to za nas wbudowany kontener. Dzięki temu kod łatwiej testować i zmieniać.",
+   "pron": "dependency – dipendensi; injection – indżekszyn; constructor – konstraktor",
+   "tip": "Follow-up: lifetimes – „Singleton is one instance for the whole app, Scoped is one per request, Transient is new every time.”"
+  },
+  {
+   "id": "english-025",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: How does async/await work?",
+   "a": "Async and await let us wait for slow operations without blocking a thread. For example, a database call or an HTTP request. While we wait, the thread can handle other requests. So the API can serve more users at the same time.",
+   "tr": "Async i await pozwalają czekać na wolne operacje bez blokowania wątku. Na przykład wywołanie bazy danych albo żądanie HTTP. Gdy czekamy, wątek może obsługiwać inne żądania. Dzięki temu API może obsłużyć więcej użytkowników jednocześnie.",
+   "pron": "async – ejsink; await – ełejt; thread – fred (th jak w „think”)",
+   "tip": "Ważne: async NIE oznacza, że kod działa szybciej ani na wielu rdzeniach. Chodzi o to, żeby nie blokować wątku podczas czekania na I/O. Pułapka do wspomnienia: „Never use .Result or .Wait() – it can cause deadlocks.”"
+  },
+  {
+   "id": "english-026",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is middleware in ASP.NET Core?",
+   "a": "Middleware is a piece of code in the request pipeline. Every request goes through the middleware one by one. For example, logging, authentication or error handling. The order of middleware is important.",
+   "tr": "Middleware to fragment kodu w potoku przetwarzania żądania. Każde żądanie przechodzi przez middleware po kolei. Na przykład logowanie, uwierzytelnianie albo obsługa błędów. Kolejność middleware ma znaczenie.",
+   "pron": "middleware – midlłer; pipeline – pajplajn",
+   "tip": "Przykład kolejności: „Authentication must come before authorization.” Każde middleware może też zatrzymać żądanie i nie przekazać go dalej."
+  },
+  {
+   "id": "english-027",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is Entity Framework Core?",
+   "a": "Entity Framework Core is an ORM for .NET. It maps C# classes to database tables. We write LINQ queries, and it creates SQL for us. It also handles migrations of the database schema.",
+   "tr": "Entity Framework Core to ORM dla .NET. Mapuje klasy C# na tabele w bazie danych. Piszemy zapytania LINQ, a on generuje za nas SQL. Obsługuje też migracje schematu bazy danych.",
+   "pron": "ORM – oł-ar-em; LINQ – link; schema – skima",
+   "tip": "Częsty follow-up to problem N+1: „Too many small queries in a loop. We fix it with Include or a projection with Select.”"
+  },
+  {
+   "id": "english-028",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is an index in SQL?",
+   "a": "An index helps the database find rows faster. It works like an index at the end of a book. Without it, the database must read the whole table. But indexes make inserts and updates a bit slower.",
+   "tr": "Indeks pomaga bazie danych szybciej znaleźć wiersze. Działa jak indeks na końcu książki. Bez niego baza musi przeczytać całą tabelę. Ale indeksy trochę spowalniają wstawianie i aktualizowanie danych.",
+   "pron": "index – indeks; inserts – insercz",
+   "tip": "Zawsze wspomnij o koszcie indeksu (wolniejsze INSERT/UPDATE, więcej miejsca) – to pokazuje dojrzałość. Słowo-klucz: „full table scan” (przeszukanie całej tabeli)."
+  },
+  {
+   "id": "english-029",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 1,
+   "q": "Wyjaśnij po angielsku: What is a JOIN?",
+   "a": "A JOIN combines rows from two tables. An inner join returns only the matching rows. A left join returns all rows from the left table, even without a match.",
+   "tr": "JOIN łączy wiersze z dwóch tabel. Inner join zwraca tylko pasujące wiersze. Left join zwraca wszystkie wiersze z lewej tabeli, nawet bez dopasowania.",
+   "pron": "combines – kombajnz; matching – meczing",
+   "tip": "Możesz dodać przykład: „For example, orders and customers joined by customer ID.”"
+  },
+  {
+   "id": "english-030",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is a database transaction?",
+   "a": "A transaction is a group of operations that work as one unit. Either all of them succeed, or none of them. For example, we take money from one account and add it to another. If one step fails, we roll back everything.",
+   "tr": "Transakcja to grupa operacji, które działają jako jedna całość. Albo wszystkie się udają, albo żadna. Na przykład zabieramy pieniądze z jednego konta i dodajemy na drugie. Jeśli jeden krok się nie uda, wycofujemy wszystko.",
+   "pron": "transaction – transakszyn; succeed – sksid; Atomicity – atomisiti",
+   "tip": "Słowo ACID możesz rozwinąć: „Atomicity, Consistency, Isolation, Durability.” Kluczowe czasowniki: commit (zatwierdzić), roll back (wycofać)."
+  },
+  {
+   "id": "english-031",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is the difference between a component and a service in Angular?",
+   "a": "A component controls a part of the screen. It has a template, styles and some logic. A service holds shared logic, like HTTP calls or state. We inject services into components with dependency injection.",
+   "tr": "Komponent kontroluje fragment ekranu. Ma szablon, style i trochę logiki. Serwis przechowuje wspólną logikę, np. wywołania HTTP albo stan. Wstrzykujemy serwisy do komponentów przez dependency injection.",
+   "pron": "component – kompołnent; template – templejt; inject – indżekt",
+   "tip": "Dobrze dodać: „Components should be thin. Business logic goes to services.” (komponenty mają być „chude”)."
+  },
+  {
+   "id": "english-032",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What are signals in Angular?",
+   "a": "A signal is a value that Angular can track. When the signal changes, Angular updates the view. We create values with signal and derived values with computed. It's simpler than RxJS for local state.",
+   "tr": "Signal to wartość, którą Angular potrafi śledzić. Gdy signal się zmienia, Angular aktualizuje widok. Wartości tworzymy przez signal, a wartości pochodne przez computed. To prostsze niż RxJS dla stanu lokalnego.",
+   "pron": "signal – sygnal; derived – diwrajwd; computed – kompjutyd",
+   "tip": "Możesz dodać: „We use effect for side effects, and input() and output() in components.” Signals są stabilne i w nowych projektach Angular 21 działa bez zone.js (zoneless)."
+  },
+  {
+   "id": "english-033",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is an Observable in RxJS?",
+   "a": "An observable is a stream of values over time. For example, HTTP responses, user input or timer events. We subscribe to it to get the values. We use operators like map, filter and switchMap.",
+   "tr": "Observable to strumień wartości w czasie. Na przykład odpowiedzi HTTP, dane wpisywane przez użytkownika albo zdarzenia timera. Subskrybujemy go, żeby dostać wartości. Używamy operatorów takich jak map, filter i switchMap.",
+   "pron": "RxJS – ar-iks-dżej-es; observable – obzerwebl; subscribe – sabskrajb",
+   "tip": "Pułapka do wspomnienia: „We must unsubscribe, for example with takeUntilDestroyed or the async pipe.” Inaczej powstaje wyciek pamięci."
+  },
+  {
+   "id": "english-034",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 1,
+   "q": "Wyjaśnij po angielsku: What is a unit test?",
+   "a": "A unit test checks one small piece of code, like one method. It runs fast and doesn't use a real database. We use xUnit in .NET and Vitest in Angular.",
+   "tr": "Test jednostkowy sprawdza jeden mały fragment kodu, np. jedną metodę. Działa szybko i nie używa prawdziwej bazy danych. Używamy xUnit w .NET i Vitest w Angularze.",
+   "pron": "xUnit – eks-junit; Vitest – wajtest; Assert – asert",
+   "tip": "Dodaj strukturę: „We follow Arrange, Act, Assert.” Zależności zastępujemy mockami: „We mock dependencies with Moq or NSubstitute.”"
+  },
+  {
+   "id": "english-035",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is CI/CD?",
+   "a": "CI means continuous integration. Every push builds the code and runs the tests automatically. CD means continuous delivery or deployment. The pipeline deploys the app to test or production. We use GitHub Actions for this.",
+   "tr": "CI to ciągła integracja. Każdy push automatycznie buduje kod i uruchamia testy. CD to ciągłe dostarczanie lub wdrażanie. Pipeline wdraża aplikację na środowisko testowe albo produkcję. Używamy do tego GitHub Actions.",
+   "pron": "continuous – kontynjułs; integration – integrejszyn; deployment – diplojment",
+   "tip": "Podmień narzędzie na swoje: Azure DevOps, GitLab CI, Jenkins. Różnica: delivery = gotowe do wdrożenia (wdrażamy kliknięciem), deployment = wdraża się automatycznie."
+  },
+  {
+   "id": "english-036",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is Docker?",
+   "a": "Docker packages an application with everything it needs to run. This package is called an image. A running image is called a container. It works the same way on my laptop and on the server.",
+   "tr": "Docker pakuje aplikację ze wszystkim, czego potrzebuje do działania. Taka paczka to obraz (image). Uruchomiony obraz to kontener. Działa tak samo na moim laptopie i na serwerze.",
+   "pron": "image – imidż; container – kontejner; kernel – kernel",
+   "tip": "Różnica z maszyną wirtualną: „Containers share the host kernel, so they are lighter than virtual machines.”"
+  },
+  {
+   "id": "english-037",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 3,
+   "q": "Wyjaśnij po angielsku: Microservices vs monolith – what's the difference?",
+   "a": "A monolith is one application, deployed as one unit. It's simple to build, test and deploy. Microservices are many small services, each with its own database. They can scale and deploy separately. But they add network problems and more complexity. For a small team, I usually prefer a modular monolith.",
+   "tr": "Monolit to jedna aplikacja wdrażana jako całość. Łatwo go budować, testować i wdrażać. Mikroserwisy to wiele małych serwisów, każdy z własną bazą danych. Można je skalować i wdrażać osobno. Ale dodają problemy sieciowe i większą złożoność. Dla małego zespołu zwykle wolę modularny monolit.",
+   "pron": "microservices – majkroserwisyz; complexity – kompleksyti; separately – sepretli",
+   "tip": "Rekruter lubi, gdy masz zdanie i znasz koszty. Kluczowe słowa: „trade-off” (kompromis), „independent deployment”, „distributed system”."
+  },
+  {
+   "id": "english-038",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 3,
+   "q": "Wyjaśnij po angielsku: SOLID – każda litera jednym zdaniem",
+   "a": "S is single responsibility: a class should have one reason to change. O is open-closed: open for extension, closed for modification. L is Liskov: a subclass should work wherever its base class works. I is interface segregation: small interfaces are better than one big interface. D is dependency inversion: depend on abstractions, not concrete classes.",
+   "tr": "S – pojedyncza odpowiedzialność: klasa powinna mieć jeden powód do zmiany. O – otwarte/zamknięte: otwarte na rozszerzanie, zamknięte na modyfikację. L – Liskov: podklasa powinna działać wszędzie tam, gdzie działa klasa bazowa. I – segregacja interfejsów: małe interfejsy są lepsze niż jeden duży. D – odwrócenie zależności: zależ od abstrakcji, nie od konkretnych klas.",
+   "pron": "responsibility – risponsybiliti; segregation – segregejszyn; Liskov – liskow; inversion – inwerżyn",
+   "tip": "Jeśli zapomnisz jednej litery, powiedz uczciwie „Let me think…” i przejdź do następnej. Dobrze dodać przykład do S albo D – rekruter często dopytuje „Can you give an example?”."
+  },
+  {
+   "id": "english-039",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is caching?",
+   "a": "Caching means we keep data in fast memory for some time. Next time, we don't need to ask the database. In .NET, we can use a memory cache or Redis. The hard part is knowing when to refresh the data.",
+   "tr": "Cache'owanie oznacza, że przechowujemy dane w szybkiej pamięci przez jakiś czas. Następnym razem nie musimy pytać bazy danych. W .NET możemy użyć cache w pamięci albo Redisa. Najtrudniejsze jest wiedzieć, kiedy odświeżyć dane.",
+   "pron": "cache – kesz; caching – keszing; Redis – redis; memory – memori",
+   "tip": "Słowo-klucz: „cache invalidation” (unieważnianie cache) i „expiration time” (czas wygaśnięcia). Wymowa „cache” = „kesz” – najczęstszy błąd wymowy na rozmowach."
+  },
+  {
+   "id": "english-040",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 1,
+   "q": "Wyjaśnij po angielsku: Authentication vs authorization",
+   "a": "Authentication checks who you are. For example, you log in with a password. Authorization checks what you are allowed to do. For example, only an admin can delete users.",
+   "tr": "Uwierzytelnianie sprawdza, kim jesteś. Na przykład logujesz się hasłem. Autoryzacja sprawdza, co wolno Ci robić. Na przykład tylko admin może usuwać użytkowników.",
+   "pron": "authentication – ołfentikejszyn; authorization – ołforajzejszyn; allowed – alałd",
+   "tip": "Najpierw zawsze authentication, potem authorization. Skróty: AuthN i AuthZ. Kody HTTP: 401 = not authenticated, 403 = no permission."
+  },
+  {
+   "id": "english-041",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Wyjaśnij po angielsku: What is a JWT?",
+   "a": "A JWT is a signed token with information about the user. The server creates it after login. The client sends it in the Authorization header with every request. The server checks the signature, so it doesn't need a session.",
+   "tr": "JWT to podpisany token z informacjami o użytkowniku. Serwer tworzy go po zalogowaniu. Klient wysyła go w nagłówku Authorization z każdym żądaniem. Serwer sprawdza podpis, więc nie potrzebuje sesji.",
+   "pron": "JWT – dżej-dablju-ti albo dżot; signature – sygnaczer; header – heder",
+   "tip": "Ważne: JWT jest podpisany, ale NIE zaszyfrowany – „Don't put passwords or secrets in it.” Tokeny powinny krótko żyć, a do odnowienia służy refresh token."
+  },
+  {
+   "id": "english-042",
+   "topic": "Zwroty ratunkowe",
+   "level": 1,
+   "q": "Jak powiedzieć: Przepraszam, nie zrozumiałem pytania.",
+   "a": "Sorry, I didn't understand the question. Could you say it in a different way?",
+   "tr": "Przepraszam, nie zrozumiałem pytania. Czy mógłby Pan / mogłaby Pani powiedzieć to inaczej?",
+   "pron": "understand – anderstend; different – difrent",
+   "tip": "Prośba o inne sformułowanie często pomaga bardziej niż powtórzenie tych samych słów. Krótko: „Sorry, I didn't catch that.”"
+  },
+  {
+   "id": "english-043",
+   "topic": "Zwroty ratunkowe",
+   "level": 1,
+   "q": "Jak powiedzieć: Czy może Pan powtórzyć wolniej?",
+   "a": "Could you repeat that more slowly, please?",
+   "tr": "Czy może Pan / Pani powtórzyć to wolniej?",
+   "pron": "slowly – slołli",
+   "tip": "To normalna prośba, nikt nie odbierze jej źle. Lepiej zapytać niż odpowiedzieć na inne pytanie. „Slowly” – nie „slower please” samo w sobie."
+  },
+  {
+   "id": "english-044",
+   "topic": "Zwroty ratunkowe",
+   "level": 1,
+   "q": "Jak powiedzieć: Czy dobrze rozumiem, że pyta Pan o…?",
+   "a": "Just to check, do you mean performance or security?",
+   "tr": "Upewnię się – chodzi Panu o wydajność czy o bezpieczeństwo?",
+   "pron": "performance – performens; security – sekjuriti",
+   "tip": "Inna wersja: „So, if I understand correctly, you're asking about the database part?” Dopytanie pokazuje, że myślisz, i daje Ci czas."
+  },
+  {
+   "id": "english-045",
+   "topic": "Zwroty ratunkowe",
+   "level": 1,
+   "q": "Jak powiedzieć: Daj mi chwilę do namysłu.",
+   "a": "Good question. Let me think for a moment.",
+   "tr": "Dobre pytanie. Pozwól mi chwilę pomyśleć.",
+   "pron": "moment – mołment",
+   "tip": "Kupuje 3–5 sekund bez niezręcznej ciszy i „eeee”. Inne: „Let me think about it.”, „Give me a second.”"
+  },
+  {
+   "id": "english-046",
+   "topic": "Zwroty ratunkowe",
+   "level": 2,
+   "q": "Jak powiedzieć: Nie wiem dokładnie, ale zrobiłbym tak…",
+   "a": "I'm not sure about the exact answer. But I would start like this. First, I would check the logs. Then I would try to reproduce the problem.",
+   "tr": "Nie jestem pewien dokładnej odpowiedzi. Ale zacząłbym tak. Najpierw sprawdziłbym logi. Potem spróbowałbym odtworzyć problem.",
+   "pron": "exact – egzakt; reproduce – riprodjus",
+   "tip": "Nigdy nie kończ na samym „I don't know”. Pokaż sposób myślenia: „First… Then… Finally…”. Rekruter często ocenia proces, a nie gotową odpowiedź."
+  },
+  {
+   "id": "english-047",
+   "topic": "Zwroty ratunkowe",
+   "level": 2,
+   "q": "Jak powiedzieć: Nie pracowałem z tym, ale znam coś podobnego.",
+   "a": "I haven't worked with Kafka. But I have used Azure Service Bus, which is similar. The main ideas are the same. I can learn the details quickly.",
+   "tr": "Nie pracowałem z Kafką. Ale używałem Azure Service Bus, który jest podobny. Główne idee są te same. Szybko nauczę się szczegółów.",
+   "pron": "similar – similer; Kafka – kafka; details – ditejls",
+   "tip": "Schemat: „I haven't worked with X, but I have used Y, which is similar.” Podstaw dowolne pary: NgRx / signals store, PostgreSQL / SQL Server, AWS / Azure."
+  },
+  {
+   "id": "english-048",
+   "topic": "Zwroty ratunkowe",
+   "level": 1,
+   "q": "Jak powiedzieć: Mój angielski nie jest idealny (bez przepraszania)",
+   "a": "My English is not perfect, but I'm happy to explain everything.",
+   "tr": "Mój angielski nie jest idealny, ale chętnie wszystko wyjaśnię.",
+   "pron": "perfect – perfekt; explain – iksplejn",
+   "tip": "Powiedz to najwyżej RAZ, na początku – albo wcale. Nie przepraszaj co chwilę („sorry, sorry, my English”), bo to brzmi niepewnie. Rekruter ocenia, czy się dogadacie, nie gramatykę. Mów wolno, krótkimi zdaniami, patrz w kamerę – spokój brzmi pewniej niż poprawność."
+  },
+  {
+   "id": "english-049",
+   "topic": "Zwroty ratunkowe",
+   "level": 1,
+   "q": "Jak powiedzieć: Przepraszam, powiem to jeszcze raz prościej.",
+   "a": "Sorry, let me say that again in a simpler way.",
+   "tr": "Przepraszam, powiem to jeszcze raz w prostszy sposób.",
+   "pron": "simpler – simpler",
+   "tip": "Gdy zgubisz się w długim zdaniu – zatrzymaj się i zacznij od nowa krótszym. To brzmi profesjonalnie, nie jak porażka."
+  },
+  {
+   "id": "english-050",
+   "topic": "Zwroty ratunkowe",
+   "level": 1,
+   "q": "Jak powiedzieć: Nie znam angielskiego słowa na to…",
+   "a": "I don't know the English word for it. It's a small tool that checks the data.",
+   "tr": "Nie znam angielskiego słowa na to. To małe narzędzie, które sprawdza dane.",
+   "pron": "tool – tul; word – łerd",
+   "tip": "Opisz rzecz prostymi słowami zamiast milczeć. Rekruter często sam poda słowo – wtedy powtórz je i idź dalej."
+  },
+  {
+   "id": "english-051",
+   "topic": "Pytania do rekrutera",
+   "level": 1,
+   "q": "Zapytaj o zespół.",
+   "a": "How big is the team, and who is in it?",
+   "tr": "Jak duży jest zespół i kto w nim jest?",
+   "tip": "Dopytanie: „Will I work with other teams or with the client directly?” (czy będę pracował z innymi zespołami albo bezpośrednio z klientem?)"
+  },
+  {
+   "id": "english-052",
+   "topic": "Pytania do rekrutera",
+   "level": 1,
+   "q": "Zapytaj o projekt.",
+   "a": "What is the project about, and who are the users?",
+   "tr": "O czym jest projekt i kim są użytkownicy?",
+   "tip": "Dopytanie: „Is it a new project or an existing one?” (nowy czy istniejący?)"
+  },
+  {
+   "id": "english-053",
+   "topic": "Pytania do rekrutera",
+   "level": 2,
+   "q": "Zapytaj o proces pracy w zespole.",
+   "a": "How do you work day to day? Do you use Scrum or Kanban? How do you do code reviews?",
+   "tr": "Jak pracujecie na co dzień? Używacie Scruma czy Kanbana? Jak robicie code review?",
+   "pron": "Kanban – kanban; reviews – riwjuz",
+   "tip": "Wybierz jedno–dwa pytania, nie wszystkie naraz. Słuchaj odpowiedzi – możesz nawiązać: „We do the same in my team.”"
+  },
+  {
+   "id": "english-054",
+   "topic": "Pytania do rekrutera",
+   "level": 2,
+   "q": "Zapytaj o technologie i stan kodu.",
+   "a": "Which versions of .NET and Angular do you use? Is there a lot of legacy code?",
+   "tr": "Jakich wersji .NET i Angulara używacie? Czy jest dużo starego kodu (legacy)?",
+   "pron": "legacy – legasi; versions – werżyns",
+   "tip": "„Legacy code” to neutralne określenie, nie obraźliwe. Odpowiedź dużo mówi o tym, jak wygląda codzienna praca."
+  },
+  {
+   "id": "english-055",
+   "topic": "Pytania do rekrutera",
+   "level": 2,
+   "q": "Zapytaj o onboarding (wdrożenie nowej osoby).",
+   "a": "What does onboarding look like for a new developer? What would my first month look like?",
+   "tr": "Jak wygląda wdrożenie nowego programisty? Jak wyglądałby mój pierwszy miesiąc?",
+   "pron": "onboarding – onbording",
+   "tip": "Pytanie pokazuje, że myślisz już o pracy w tej firmie. Dopytanie: „Will I have a mentor or a buddy?”"
+  },
+  {
+   "id": "english-056",
+   "topic": "Pytania do rekrutera",
+   "level": 2,
+   "q": "Zapytaj o największe wyzwanie zespołu.",
+   "a": "What is the biggest challenge for the team right now?",
+   "tr": "Jakie jest teraz największe wyzwanie dla zespołu?",
+   "pron": "challenge – czelendż",
+   "tip": "Bardzo dobre pytanie na koniec rozmowy technicznej – możesz potem powiedzieć, jak pomógłbyś z tym wyzwaniem."
+  },
+  {
+   "id": "english-057",
+   "topic": "Pytania do rekrutera",
+   "level": 1,
+   "q": "Zapytaj o następne kroki w procesie rekrutacji.",
+   "a": "What are the next steps in the process?",
+   "tr": "Jakie są kolejne kroki w procesie?",
+   "pron": "process – prołses",
+   "tip": "Dopytanie: „When can I expect to hear from you?” (kiedy mogę spodziewać się odpowiedzi?)"
+  },
+  {
+   "id": "english-058",
+   "topic": "Small talk i formalności",
+   "level": 1,
+   "q": "Początek rozmowy: przywitaj się i podziękuj za zaproszenie.",
+   "a": "Hi, nice to meet you. Thank you for inviting me.",
+   "tr": "Cześć, miło mi Cię poznać. Dziękuję za zaproszenie.",
+   "tip": "Uśmiech i spokojne tempo. Jeśli rekruter się przedstawi, możesz powtórzyć imię: „Nice to meet you, Anna.”"
+  },
+  {
+   "id": "english-059",
+   "topic": "Small talk i formalności",
+   "level": 1,
+   "q": "Rekruter: How are you today? – co odpowiedzieć?",
+   "a": "I'm good, thank you. A little excited, but happy to be here. How are you?",
+   "tr": "Dobrze, dziękuję. Trochę podekscytowany, ale cieszę się, że tu jestem. A jak Pan / Pani się ma?",
+   "pron": "excited – iksajtyd",
+   "tip": "To nie jest prawdziwe pytanie o samopoczucie – krótka, pozytywna odpowiedź i pytanie zwrotne wystarczą. Nie opowiadaj o problemach."
+  },
+  {
+   "id": "english-060",
+   "topic": "Small talk i formalności",
+   "level": 1,
+   "q": "Problemy z połączeniem: masz słaby internet.",
+   "a": "Sorry, I think my connection is bad. Can you hear me well?",
+   "tr": "Przepraszam, chyba mam słabe połączenie. Czy dobrze mnie słychać?",
+   "pron": "connection – konekszyn",
+   "tip": "Gdy obraz się tnie: „I'll turn off my camera for a moment.” (wyłączę na chwilę kamerę). Przed rozmową zapisz numer telefonu rekrutera."
+  },
+  {
+   "id": "english-061",
+   "topic": "Small talk i formalności",
+   "level": 1,
+   "q": "Problemy z połączeniem: rekruter się zacina.",
+   "a": "Sorry, you froze for a moment. Could you repeat the last part?",
+   "tr": "Przepraszam, zaciął się Pan / Pani na chwilę. Czy może Pan / Pani powtórzyć ostatnią część?",
+   "pron": "froze – frołz",
+   "tip": "Inna wersja: „You're breaking up.” (przerywa Ci). Nie zgaduj pytania, którego nie usłyszałeś."
+  },
+  {
+   "id": "english-062",
+   "topic": "Small talk i formalności",
+   "level": 1,
+   "q": "Jak zapytać o udostępnienie ekranu?",
+   "a": "Can I share my screen? Can you see it now?",
+   "tr": "Czy mogę udostępnić ekran? Czy teraz go widać?",
+   "pron": "screen – skrin",
+   "tip": "Przy live codingu: „I'll think out loud, if that's OK.” (będę myślał na głos, jeśli to w porządku)."
+  },
+  {
+   "id": "english-063",
+   "topic": "Small talk i formalności",
+   "level": 1,
+   "q": "Koniec rozmowy: podziękuj i pożegnaj się.",
+   "a": "Thank you for your time. It was a pleasure to talk to you. I'm looking forward to hearing from you.",
+   "tr": "Dziękuję za poświęcony czas. Miło było z Panem / Panią rozmawiać. Czekam na wiadomość od Państwa.",
+   "pron": "pleasure – pleżer; forward – forłerd",
+   "tip": "„Looking forward to hearing” – po „to” jest tu forma -ing (to nie jest bezokolicznik). Krócej: „Thank you, have a nice day!”"
+  },
+  {
+   "id": "english-064",
+   "topic": "Small talk i formalności",
+   "level": 2,
+   "q": "Krótki mail z podziękowaniem po rozmowie (follow-up).",
+   "a": "Subject: Thank you for the interview. Hi Anna, thank you for the interview today. I enjoyed learning about your project and team. I'm still very interested in this role. Please let me know if you need anything else from me. Best regards.",
+   "tr": "Temat: Dziękuję za rozmowę. Cześć Anno, dziękuję za dzisiejszą rozmowę. Z przyjemnością dowiedziałem się więcej o waszym projekcie i zespole. Nadal jestem bardzo zainteresowany tym stanowiskiem. Daj proszę znać, jeśli potrzebujesz ode mnie czegoś jeszcze. Pozdrawiam.",
+   "pron": "interview – interwju; regards – rigards",
+   "tip": "Wyślij w ciągu 24 godzin. Krótko – 3–4 zdania wystarczą. Pod „Best regards” podpisz się imieniem i nazwiskiem. Nie pytaj w tym mailu o wynik ani pieniądze."
+  },
+  {
+   "id": "english-065",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Jak powiedzieć: Aktualnie pracuję nad nowym modułem.",
+   "a": "Currently, I'm working on a new module.",
+   "tr": "Aktualnie pracuję nad nowym modułem.",
+   "pron": "currently – karentli; module – modjul",
+   "tip": "„Actually” = tak naprawdę / właściwie. „Aktualnie” = currently / right now / at the moment. „Actual” = rzeczywisty, faktyczny."
+  },
+  {
+   "id": "english-066",
+   "topic": "Typowe błędy Polaków",
+   "level": 2,
+   "q": "Jak powiedzieć: Pracuję tu od 2022 roku, czyli od czterech lat.",
+   "a": "I have been working here since 2022. So I have been here for four years.",
+   "tr": "Pracuję tu od 2022 roku. Czyli jestem tu od czterech lat.",
+   "pron": "since – sins",
+   "tip": "Gdy coś trwa do dziś: Present Perfect. SINCE + punkt w czasie (since 2022, since March), FOR + okres (for four years). Błąd: „I am working here since 2022”."
+  },
+  {
+   "id": "english-067",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Jak powiedzieć: To zależy od projektu.",
+   "a": "It depends on the project.",
+   "tr": "To zależy od projektu.",
+   "pron": "depends – dipendz",
+   "tip": "„It depends” – bez „is”. Błędy: „it's depend”, „it depends of”. Przyimek zawsze ON. Świetne zdanie na rozmowie technicznej, jeśli potem powiesz, OD CZEGO zależy."
+  },
+  {
+   "id": "english-068",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Jak powiedzieć: Popełniłem błąd, ale zrobiłem wszystko, żeby go naprawić.",
+   "a": "I made a mistake, but I did my best to fix it.",
+   "tr": "Popełniłem błąd, ale zrobiłem wszystko, co mogłem, żeby go naprawić.",
+   "pron": "mistake – mistejk",
+   "tip": "MAKE: a mistake, a decision, a plan, progress, a change. DO: a task, a code review, my job, research, my best. Uwaga: „write tests”, nie „make tests”."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "english-q001",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Chcesz powiedzieć: „Aktualnie pracuję nad modułem płatności”. Które zdanie jest poprawne?",
+   "options": [
+    "Actually, I'm working on the payments module.",
+    "Currently, I'm working on the payments module.",
+    "Actual, I work on the payments module.",
+    "In actual, I'm working on the payments module."
+   ],
+   "correct": 1,
+   "why": "„Aktualnie” to currently / right now. „Actually” znaczy „tak naprawdę / właściwie” – zdanie z „Actually” brzmi jak sprostowanie. „Actual” to przymiotnik („rzeczywisty”), a „in actual” nie istnieje."
+  },
+  {
+   "id": "english-q002",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Co znaczy zdanie: „Eventually, we moved to microservices”?",
+   "options": [
+    "W końcu przeszliśmy na mikroserwisy.",
+    "Ewentualnie przejdziemy na mikroserwisy.",
+    "Prawdopodobnie przeszliśmy na mikroserwisy.",
+    "Od razu przeszliśmy na mikroserwisy."
+   ],
+   "correct": 0,
+   "why": "„Eventually” = w końcu, ostatecznie (po jakimś czasie). Polskie „ewentualnie” to possibly / if needed / alternatively. Pomylenie ich zmienia sens: opcja brzmi jak pewna zapowiedź."
+  },
+  {
+   "id": "english-q003",
+   "topic": "Typowe błędy Polaków",
+   "level": 2,
+   "q": "Kandydat mówi: „My manager was very sympathetic when I was ill.” Co to znaczy?",
+   "options": [
+    "Mój szef był bardzo sympatyczny, gdy byłem chory.",
+    "Mój szef też był wtedy chory.",
+    "Mój szef był bardzo zaskoczony, że jestem chory.",
+    "Szef okazał mi dużo zrozumienia i współczucia, gdy byłem chory."
+   ],
+   "correct": 3,
+   "why": "„Sympathetic” = współczujący, wyrozumiały. Polskie „sympatyczny” to nice / friendly / likeable. Gdy chcesz pochwalić zespół, mów „My team is very friendly”, nie „sympathetic”."
+  },
+  {
+   "id": "english-q004",
+   "topic": "Typowe błędy Polaków",
+   "level": 2,
+   "q": "Uzupełnij: „Before merging, I always ___ my colleagues' code.” (sprawdzam / przeglądam)",
+   "options": [
+    "control",
+    "realize",
+    "review",
+    "revise"
+   ],
+   "correct": 2,
+   "why": "Kod się „reviews” (code review) albo „checks”. „Control” = sterować, kierować, mieć władzę – nie „skontrolować”. „Realize” = uświadomić sobie. „Revise” = poprawiać tekst / powtarzać do egzaminu."
+  },
+  {
+   "id": "english-q005",
+   "topic": "Typowe błędy Polaków",
+   "level": 2,
+   "q": "Na spotkaniu chcesz zaproponować: „Proponuję dodać cache”. Które zdanie jest poprawne i naturalne?",
+   "options": [
+    "I propose you to add a cache.",
+    "I suggest adding a cache.",
+    "I suggest you to add a cache.",
+    "I am proposing to you a cache."
+   ],
+   "correct": 1,
+   "why": "Najnaturalniej: suggest + -ing („I suggest adding”) albo „I suggest we add”. Nie ma konstrukcji „suggest/propose you to”. „Propose” brzmi formalnie (i kojarzy się z oświadczynami) – w rozmowie lepsze jest „suggest”."
+  },
+  {
+   "id": "english-q006",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Co znaczy angielskie słowo „fabric”?",
+   "options": [
+    "tkanina, materiał",
+    "fabryka",
+    "fabuła",
+    "produkcja seryjna"
+   ],
+   "correct": 0,
+   "why": "„Fabric” = tkanina. Fabryka to „factory” (stąd wzorzec Factory). Fabuła to „plot”. W IT słowo „fabric” pojawia się tylko w nazwach produktów (np. Microsoft Fabric)."
+  },
+  {
+   "id": "english-q007",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Co znaczy: „I went to a lecture about cloud security”?",
+   "options": [
+    "Przeczytałem lekturę o bezpieczeństwie chmury.",
+    "Napisałem artykuł o bezpieczeństwie chmury.",
+    "Zrobiłem kurs online o bezpieczeństwie chmury.",
+    "Byłem na wykładzie o bezpieczeństwie chmury."
+   ],
+   "correct": 3,
+   "why": "„Lecture” = wykład. Polska „lektura” to reading albo required reading. Przydatne: „I watched a talk at a conference” (obejrzałem prezentację na konferencji)."
+  },
+  {
+   "id": "english-q008",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Które zdanie jest poprawne?",
+   "options": [
+    "I have five years experience in .NET.",
+    "I have experience of five years in .NET.",
+    "I have five years of experience in .NET.",
+    "I am five years in .NET."
+   ],
+   "correct": 2,
+   "why": "Poprawnie: „five years OF experience”. Bez „of” to częsty błąd Polaków (dopuszczalne jest tylko „five years' experience” z apostrofem, ale w mowie bezpieczniej „of”). „I am five years in .NET” to kalka z polskiego."
+  },
+  {
+   "id": "english-q009",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Chcesz powiedzieć: „Pracuję tu od trzech lat” (i nadal pracujesz). Które zdanie jest poprawne?",
+   "options": [
+    "I am working here since three years.",
+    "I have been working here for three years.",
+    "I work here from three years.",
+    "I have been working here since three years."
+   ],
+   "correct": 1,
+   "why": "Czynność trwająca do teraz = Present Perfect (Continuous). FOR + okres (for three years), SINCE + punkt w czasie (since 2023). Dlatego D jest błędne mimo dobrego czasu, a A i B to kalki z polskiego."
+  },
+  {
+   "id": "english-q010",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Które zdanie jest poprawne?",
+   "options": [
+    "I made a decision and did the code review.",
+    "I did a decision and made the code review.",
+    "I made a decision and made the code review.",
+    "I did a decision and did the code review."
+   ],
+   "correct": 0,
+   "why": "MAKE: a decision, a mistake, a plan, progress. DO: a review, a task, my job, research. Te połączenia trzeba zapamiętać – nie wynikają z polskiego „robić”."
+  },
+  {
+   "id": "english-q011",
+   "topic": "Typowe błędy Polaków",
+   "level": 2,
+   "q": "Które zdanie ma poprawne przedimki (a / the)?",
+   "options": [
+    "I'm developer, and I work on big project. Project is for bank.",
+    "I'm the developer, and I work on the big project. A project is for the bank.",
+    "I'm a developer, and I work on the big project. A project is for a bank.",
+    "I'm a developer, and I work on a big project. The project is for a bank."
+   ],
+   "correct": 3,
+   "why": "Zawód zawsze z „a” („I'm a developer”). Coś wspominasz pierwszy raz → „a project”; ten sam, już znany → „the project”. Brak przedimków to najczęstszy błąd Polaków – nie zmienia sensu, ale warto pilnować chociaż „a developer”."
+  },
+  {
+   "id": "english-q012",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Które zdanie jest poprawne?",
+   "options": [
+    "Thank you for the informations.",
+    "Thank you for an information.",
+    "Thank you for the information.",
+    "Thank you for informations."
+   ],
+   "correct": 2,
+   "why": "„Information” jest niepoliczalne: bez „-s” i bez „an”. Jedna informacja to „a piece of information”. Tak samo działają: feedback, software, equipment, knowledge."
+  },
+  {
+   "id": "english-q013",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Chcesz poprosić o radę. Które zdanie jest poprawne?",
+   "options": [
+    "Could you give me an advice?",
+    "Could you give me some advice?",
+    "Could you give me some advices?",
+    "Could you advice me some advices?"
+   ],
+   "correct": 1,
+   "why": "„Advice” (rada, rzeczownik) jest niepoliczalne: some advice, a piece of advice. Czasownik to „advise” (z „s”, wymowa „adwajz”): „Could you advise me?”"
+  },
+  {
+   "id": "english-q014",
+   "topic": "Typowe błędy Polaków",
+   "level": 2,
+   "q": "Które zdanie jest poprawne?",
+   "options": [
+    "Traffic rose by 30 percent, so we raised the limits.",
+    "Traffic raised by 30 percent, so we rose the limits.",
+    "Traffic rised by 30 percent, so we raised the limits.",
+    "Traffic was risen by 30 percent, so we rised the limits."
+   ],
+   "correct": 0,
+   "why": "RISE (rose, risen) = rosnąć samo, bez dopełnienia. RAISE (raised, raised) = podnieść coś. Podwyżka: „a pay rise” (UK) albo „a raise” (US). „Rised” nie istnieje."
+  },
+  {
+   "id": "english-q015",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Rekruter pyta, czy użyłbyś mikroserwisów. Jak poprawnie zacząć odpowiedź?",
+   "options": [
+    "It's depend on the size of the team.",
+    "It depends of the size of the team.",
+    "It is depending from the size of the team.",
+    "It depends on the size of the team."
+   ],
+   "correct": 3,
+   "why": "„It depends” – bez „is”, a przyimek to zawsze ON. „Depend of / from” to kalki z polskiego „zależy od”."
+  },
+  {
+   "id": "english-q016",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Chcesz poprosić: „Czy może mi Pan wyjaśnić ten wymóg?”. Które zdanie jest poprawne?",
+   "options": [
+    "Could you explain me this requirement?",
+    "Could you me explain this requirement?",
+    "Could you explain this requirement to me?",
+    "Could you explain for me this requirement?"
+   ],
+   "correct": 2,
+   "why": "„Explain” wymaga „to” przed osobą: explain something TO somebody. „Explain me” to bardzo częsty błąd. Prościej: „Could you explain this requirement, please?”"
+  },
+  {
+   "id": "english-q017",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Które zdanie jest poprawne?",
+   "options": [
+    "We discussed about the architecture with the team.",
+    "We discussed the architecture with the team.",
+    "We discussed on the architecture with the team.",
+    "We made a discuss about the architecture with the team."
+   ],
+   "correct": 1,
+   "why": "„Discuss” łączy się bezpośrednio z dopełnieniem – bez „about”. Z „about” można użyć rzeczownika: „We had a discussion about the architecture”."
+  },
+  {
+   "id": "english-q018",
+   "topic": "Typowe błędy Polaków",
+   "level": 1,
+   "q": "Chcesz zgodzić się z rekruterem. Które zdanie jest poprawne?",
+   "options": [
+    "I agree with you.",
+    "I am agree with you.",
+    "I'm agree with you.",
+    "I agree to you."
+   ],
+   "correct": 0,
+   "why": "„Agree” to czasownik, więc bez „am”: „I agree”, „I don't agree”. Z osobą: agree WITH somebody. „Agree to” znaczy „zgodzić się na coś” (np. „I agree to the terms”)."
+  },
+  {
+   "id": "english-q019",
+   "topic": "Przedstaw się",
+   "level": 1,
+   "q": "Rekruter: „Tell me about yourself.” Który początek jest najlepszy?",
+   "options": [
+    "My name is Andrew, I was born in 1994, and I went to school in Kraków.",
+    "Everything is in my CV, so you can read it.",
+    "I am developer since five years in .NET and Angular.",
+    "I'm a full-stack developer with five years of experience in .NET and Angular."
+   ],
+   "correct": 3,
+   "why": "Zacznij od teraźniejszości: rola, staż, technologie. Życiorys od urodzenia nudzi, odsyłanie do CV brzmi niegrzecznie, a ostatnia opcja ma dwa typowe błędy (brak „a”, „since five years”)."
+  },
+  {
+   "id": "english-q020",
+   "topic": "Przedstaw się",
+   "level": 2,
+   "q": "Rekruter: „What is your biggest weakness?” Która odpowiedź jest najlepsza?",
+   "options": [
+    "I don't have any weaknesses.",
+    "I'm a perfectionist. I just work too hard.",
+    "Sometimes I spend too much time on details. Now I set a time limit for each task.",
+    "I'm often late with tasks, and I don't like writing tests."
+   ],
+   "correct": 2,
+   "why": "Dobra odpowiedź: prawdziwa, niekrytyczna słabość + co z nią robisz. „No weaknesses” brzmi arogancko, „perfectionist” to wyświechtany frazes, a ostatnia opcja dyskwalifikuje Cię do roli developera."
+  },
+  {
+   "id": "english-q021",
+   "topic": "Przedstaw się",
+   "level": 2,
+   "q": "Rekruter: „Why do you want to leave your current job?” Która odpowiedź jest najlepsza?",
+   "options": [
+    "My boss is terrible, and the project is a mess.",
+    "I've learned a lot there, but I want to work on a bigger product and grow in the cloud.",
+    "I just want more money.",
+    "I don't know, I'm a bit bored."
+   ],
+   "correct": 1,
+   "why": "Mów o tym, czego szukasz (rozwój, większy produkt), a nie od czego uciekasz. Krytyka szefa to czerwona flaga, a „tylko pieniądze” lub „nudzę się” brzmi niepoważnie."
+  },
+  {
+   "id": "english-q022",
+   "topic": "Opowiedz o projekcie",
+   "level": 1,
+   "q": "Jak powiedzieć: „Byłem odpowiedzialny za moduł zamówień”?",
+   "options": [
+    "I was responsible for the orders module.",
+    "I was responsible of the orders module.",
+    "I was responsibility for the orders module.",
+    "I responsible for the orders module."
+   ],
+   "correct": 0,
+   "why": "Responsible FOR – nie „of”. „Responsibility” to rzeczownik (odpowiedzialność), a zdanie bez „was” nie ma czasownika."
+  },
+  {
+   "id": "english-q023",
+   "topic": "Opowiedz o projekcie",
+   "level": 2,
+   "q": "W odpowiedzi metodą STAR, które zdanie to „Result” (efekt)?",
+   "options": [
+    "Our order page was very slow.",
+    "My task was to make the page faster.",
+    "I added an index and paging in the API.",
+    "Now the page loads in under one second."
+   ],
+   "correct": 3,
+   "why": "Result = mierzalny efekt. Pozostałe zdania to Situation (strona była wolna), Task (moje zadanie) i Action (co zrobiłem). Odpowiedź bez Result brzmi niedokończenie."
+  },
+  {
+   "id": "english-q024",
+   "topic": "Opowiedz o projekcie",
+   "level": 2,
+   "q": "Które zdanie najlepiej opisuje efekt Twojej pracy?",
+   "options": [
+    "We made the API much better.",
+    "The API was faster a lot after my changes.",
+    "We reduced the API response time from two seconds to 300 milliseconds.",
+    "We improved everything in the project."
+   ],
+   "correct": 2,
+   "why": "Rekruter zapamiętuje liczby: „from X to Y”. Pozostałe są ogólnikowe, a „faster a lot” to błąd szyku (poprawnie: „a lot faster”)."
+  },
+  {
+   "id": "english-q025",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 1,
+   "q": "Które zdanie opisuje AUTHORIZATION?",
+   "options": [
+    "It checks who the user is.",
+    "It checks what a user is allowed to do.",
+    "It encrypts the user's password.",
+    "It creates a new user account."
+   ],
+   "correct": 1,
+   "why": "Authorization = co wolno Ci robić (uprawnienia). „Who the user is” to authentication (kim jesteś). Szyfrowanie hasła i rejestracja to inne rzeczy."
+  },
+  {
+   "id": "english-q026",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Które zdanie opisuje literę D w SOLID?",
+   "options": [
+    "Depend on abstractions, not on concrete classes.",
+    "A class should have one reason to change.",
+    "Small interfaces are better than one big interface.",
+    "Open for extension, closed for modification."
+   ],
+   "correct": 0,
+   "why": "D = dependency inversion. Pozostałe to S (single responsibility), I (interface segregation) i O (open-closed)."
+  },
+  {
+   "id": "english-q027",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Rekruter: „What is the downside of an index?” Która odpowiedź jest poprawna?",
+   "options": [
+    "Select queries become slower.",
+    "The table can store fewer rows.",
+    "You can't use JOIN on indexed columns.",
+    "Inserts and updates become slower, and it uses more disk space."
+   ],
+   "correct": 3,
+   "why": "Indeks przyspiesza odczyt, ale każdy INSERT/UPDATE/DELETE musi go też zaktualizować, a indeks zajmuje miejsce. Nie spowalnia SELECT-ów, nie ogranicza liczby wierszy i nie blokuje JOIN-ów."
+  },
+  {
+   "id": "english-q028",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Które proste wyjaśnienie async/await jest poprawne?",
+   "options": [
+    "It runs the code on many CPU cores at the same time.",
+    "It makes every method faster.",
+    "It lets the thread do other work while we wait for I/O, like a database call.",
+    "It creates a new thread for every request."
+   ],
+   "correct": 2,
+   "why": "Async/await zwalnia wątek na czas czekania na I/O. Nie jest równoległością na wielu rdzeniach, nie przyspiesza samego kodu i nie tworzy nowego wątku na każde wywołanie."
+  },
+  {
+   "id": "english-q029",
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "level": 2,
+   "q": "Które zdanie poprawnie opisuje różnicę między image a container w Dockerze?",
+   "options": [
+    "A container is a template; an image is a running instance of a container.",
+    "An image is a template; a container is a running instance of an image.",
+    "An image and a container are the same thing.",
+    "A container is a virtual machine with its own operating system kernel."
+   ],
+   "correct": 1,
+   "why": "Image = szablon (gotowa paczka), container = uruchomiony obraz. Kontenery dzielą jądro systemu hosta – dlatego są lżejsze niż maszyny wirtualne."
+  },
+  {
+   "id": "english-q030",
+   "topic": "Zwroty ratunkowe",
+   "level": 1,
+   "q": "Nie zrozumiałeś pytania. Co powiesz?",
+   "options": [
+    "Sorry, could you repeat the question more slowly?",
+    "What?",
+    "Repeat, please, I no understand.",
+    "Sorry, I am not understand."
+   ],
+   "correct": 0,
+   "why": "Grzeczna prośba z „could you” jest naturalna. Samo „What?” brzmi niegrzecznie. „I no understand” i „I am not understand” to błędy – poprawnie: „I don't understand”."
+  },
+  {
+   "id": "english-q031",
+   "topic": "Zwroty ratunkowe",
+   "level": 1,
+   "q": "Potrzebujesz chwili na zastanowienie. Co powiesz?",
+   "options": [
+    "Wait.",
+    "I must to think.",
+    "Please wait me a moment.",
+    "Let me think about it for a moment."
+   ],
+   "correct": 3,
+   "why": "„Let me think…” brzmi spokojnie i naturalnie. „Wait.” jest za ostre. Po „must” nie ma „to” („I must think”), a „wait” wymaga „for” („wait for me”)."
+  },
+  {
+   "id": "english-q032",
+   "topic": "Pytania do rekrutera",
+   "level": 1,
+   "q": "Które pytanie o następne kroki jest poprawne?",
+   "options": [
+    "What is next steps?",
+    "What next steps are?",
+    "What are the next steps in the process?",
+    "Which are next steps of process?"
+   ],
+   "correct": 2,
+   "why": "Liczba mnoga: „What ARE the next steps”. W pytaniu czasownik idzie przed podmiot (nie „what next steps are”), a „the” jest potrzebne przed „next steps” i „process”."
+  },
+  {
+   "id": "english-q033",
+   "topic": "Pytania do rekrutera",
+   "level": 2,
+   "q": "Rekruter: „Do you have any questions for us?” Która odpowiedź jest najlepsza?",
+   "options": [
+    "No, everything is clear.",
+    "Yes. What does a typical day look like for the team?",
+    "What does your company do?",
+    "When can I get a raise?"
+   ],
+   "correct": 1,
+   "why": "Zawsze miej 1–2 pytania – to pokazuje zainteresowanie. „No” brzmi jak brak zaangażowania, pytanie „czym się zajmujecie” pokazuje brak przygotowania, a o podwyżkę nie pytaj przed ofertą."
+  },
+  {
+   "id": "english-q034",
+   "topic": "Small talk i formalności",
+   "level": 1,
+   "q": "Rekruterowi przerywa połączenie. Co powiesz?",
+   "options": [
+    "Sorry, you're breaking up. Could you repeat the last part?",
+    "Sorry, your internet is broken.",
+    "I hear you bad.",
+    "Your connection is not good, repeat."
+   ],
+   "correct": 0,
+   "why": "„You're breaking up” = przerywa Ci. „Your internet is broken” brzmi jak oskarżenie, „I hear you bad” to błąd (poprawnie: „I can't hear you well”), a ostatnia opcja jest niegrzeczna."
+  },
+  {
+   "id": "english-q035",
+   "topic": "Small talk i formalności",
+   "level": 2,
+   "q": "Które zdanie pasuje do krótkiego maila z podziękowaniem po rozmowie?",
+   "options": [
+    "Thanks for the talk. When will you send me the offer?",
+    "Hello, I am writing to remind you about me.",
+    "Dear Sir, I thank for the possibility of the interview.",
+    "Thank you for your time today. I enjoyed our conversation."
+   ],
+   "correct": 3,
+   "why": "Follow-up ma być krótki, uprzejmy i bez nacisków. Pytanie o ofertę brzmi nachalnie, „remind you about me” – desperacko, a ostatnie zdanie to kalka z polskiego (poprawnie: „Thank you for the opportunity”)."
+  }
+ ]
+}

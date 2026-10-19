@@ -1,0 +1,1393 @@
+{
+ "cat": "english",
+ "name": "Angielski na rozmowę",
+ "cards": [
+  {
+   "id": "english-v001",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 1,
+   "q": "Po angielsku: zależność",
+   "a": "dependency. Our service has a dependency on Redis.",
+   "tr": "zależność. Nasz serwis ma zależność od Redisa.",
+   "pron": "dependency – dipendensi (akcent na „pen”)",
+   "tip": "Liczba mnoga: dependencies. „Dependency injection” – wstrzykiwanie zależności."
+  },
+  {
+   "id": "english-v002",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 1,
+   "q": "Co znaczy: interface?",
+   "a": "interface. The class implements the IRepository interface.",
+   "tr": "interfejs. Ta klasa implementuje interfejs IRepository.",
+   "pron": "interface – interfejs (akcent na pierwszą sylabę: IN-ter-fejs)"
+  },
+  {
+   "id": "english-v003",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Po angielsku: dziedziczenie",
+   "a": "inheritance. I prefer composition over inheritance.",
+   "tr": "dziedziczenie. Wolę kompozycję od dziedziczenia.",
+   "pron": "inheritance – inheritens (akcent na „he”)",
+   "tip": "Czasownik: to inherit from – dziedziczyć po. „This class inherits from BaseController.”"
+  },
+  {
+   "id": "english-v004",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 1,
+   "q": "Po angielsku: warstwa",
+   "a": "layer. The business logic is in a separate layer.",
+   "tr": "warstwa. Logika biznesowa jest w osobnej warstwie.",
+   "pron": "layer – lejer"
+  },
+  {
+   "id": "english-v005",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 1,
+   "q": "Co znaczy: endpoint?",
+   "a": "endpoint. This endpoint returns a list of orders.",
+   "tr": "punkt końcowy API. Ten endpoint zwraca listę zamówień.",
+   "pron": "endpoint – endpojnt"
+  },
+  {
+   "id": "english-v006",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 1,
+   "q": "Po angielsku: żądanie / odpowiedź",
+   "a": "request, response. The client sends a request and the server sends a response.",
+   "tr": "żądanie / odpowiedź. Klient wysyła żądanie, a serwer wysyła odpowiedź.",
+   "pron": "request – rikłest; response – rispons",
+   "tip": "Mówimy „send a request”, nie „make a question”."
+  },
+  {
+   "id": "english-v007",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Co znaczy: payload?",
+   "a": "payload. The request payload is too large.",
+   "tr": "ładunek, dane przesyłane w żądaniu. Ładunek (dane) żądania jest za duży.",
+   "pron": "payload – pejloud"
+  },
+  {
+   "id": "english-v008",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 1,
+   "q": "Po angielsku: zapytanie (do bazy)",
+   "a": "query. This query takes five seconds.",
+   "tr": "zapytanie (do bazy). To zapytanie trwa pięć sekund.",
+   "pron": "query – kłiri (nie „kwery”)",
+   "tip": "Liczba mnoga: queries – kłiriz."
+  },
+  {
+   "id": "english-v009",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Po angielsku: schemat (bazy danych)",
+   "a": "schema. We changed the database schema last week.",
+   "tr": "schemat (bazy danych). W zeszłym tygodniu zmieniliśmy schemat bazy danych.",
+   "pron": "schema – skima (nie „szema”)"
+  },
+  {
+   "id": "english-v010",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Co znaczy: migration?",
+   "a": "migration. I added a new migration for the Orders table.",
+   "tr": "migracja. Dodałem nową migrację dla tabeli Orders.",
+   "pron": "migration – majgrejszyn"
+  },
+  {
+   "id": "english-v011",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Po angielsku: wątek",
+   "a": "thread. Each request runs on a thread from the pool.",
+   "tr": "wątek. Każde żądanie działa na wątku z puli.",
+   "pron": "thread – θred (język między zęby, nie „tred”)",
+   "tip": "Thread pool – pula wątków."
+  },
+  {
+   "id": "english-v012",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 3,
+   "q": "Po angielsku: współbieżność",
+   "a": "concurrency. Concurrency bugs are hard to reproduce.",
+   "tr": "współbieżność. Błędy współbieżności są trudne do odtworzenia.",
+   "pron": "concurrency – kenkarensi (akcent na „kar”)",
+   "tip": "Nie myl z parallelism (równoległość)."
+  },
+  {
+   "id": "english-v013",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 3,
+   "q": "Co znaczy: deadlock?",
+   "a": "deadlock. We had a deadlock between two transactions.",
+   "tr": "zakleszczenie. Mieliśmy zakleszczenie między dwiema transakcjami.",
+   "pron": "deadlock – dedlok"
+  },
+  {
+   "id": "english-v014",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 3,
+   "q": "Po angielsku: wyścig (błąd współbieżności)",
+   "a": "race condition. Two users updated the same row. It was a race condition.",
+   "tr": "wyścig (błąd współbieżności). Dwóch użytkowników zmieniło ten sam wiersz. To był wyścig.",
+   "pron": "race condition – rejs kendyszyn"
+  },
+  {
+   "id": "english-v015",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Po angielsku: wyciek pamięci",
+   "a": "memory leak. We found a memory leak in the background service.",
+   "tr": "wyciek pamięci. Znaleźliśmy wyciek pamięci w serwisie działającym w tle.",
+   "pron": "leak – lik"
+  },
+  {
+   "id": "english-v016",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Co znaczy: garbage collector?",
+   "a": "garbage collector. The garbage collector frees unused memory.",
+   "tr": "odśmiecacz pamięci. Odśmiecacz zwalnia nieużywaną pamięć.",
+   "pron": "garbage – garbydż; collector – kelekter",
+   "tip": "Skrót: GC – dżi-si."
+  },
+  {
+   "id": "english-v017",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Po angielsku: skalowalność",
+   "a": "scalability. We moved to Kubernetes for better scalability.",
+   "tr": "skalowalność. Przeszliśmy na Kubernetes dla lepszej skalowalności.",
+   "pron": "scalability – skejlebiliti",
+   "tip": "Przymiotnik: scalable – skejlebel."
+  },
+  {
+   "id": "english-v018",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Po angielsku: łatwość utrzymania / czytelność",
+   "a": "maintainability, readability. Good names improve readability and maintainability.",
+   "tr": "łatwość utrzymania / czytelność. Dobre nazwy poprawiają czytelność i łatwość utrzymania kodu.",
+   "pron": "maintainability – mejntejnebiliti; readability – ridebiliti"
+  },
+  {
+   "id": "english-v019",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 3,
+   "q": "Co znaczy: coupling, loosely coupled?",
+   "a": "coupling, loosely coupled. These modules are loosely coupled, so we can change them easily.",
+   "tr": "powiązanie / luźno powiązany. Te moduły są luźno powiązane, więc łatwo je zmieniać.",
+   "pron": "coupling – kapling; loosely – lusli",
+   "tip": "Przeciwieństwo: tightly coupled – mocno powiązane."
+  },
+  {
+   "id": "english-v020",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Po angielsku: abstrakcja",
+   "a": "abstraction. The repository is an abstraction over the database.",
+   "tr": "abstrakcja. Repozytorium to abstrakcja nad bazą danych.",
+   "pron": "abstraction – ebstrakszyn"
+  },
+  {
+   "id": "english-v021",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Po angielsku: opóźnienie (czas odpowiedzi)",
+   "a": "latency. The average latency is about fifty milliseconds.",
+   "tr": "opóźnienie (czas odpowiedzi). Średnie opóźnienie to około pięćdziesiąt milisekund.",
+   "pron": "latency – lejtensi"
+  },
+  {
+   "id": "english-v022",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Co znaczy: throughput?",
+   "a": "throughput. We doubled the throughput of the API.",
+   "tr": "przepustowość. Podwoiliśmy przepustowość API.",
+   "pron": "throughput – θruput (język między zęby)",
+   "tip": "Latency = jak szybko jedno żądanie; throughput = ile żądań na sekundę."
+  },
+  {
+   "id": "english-v023",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 1,
+   "q": "Po angielsku: wąskie gardło",
+   "a": "bottleneck. The database was the main bottleneck.",
+   "tr": "wąskie gardło. Baza danych była głównym wąskim gardłem.",
+   "pron": "bottleneck – botelnek"
+  },
+  {
+   "id": "english-v024",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 1,
+   "q": "Po angielsku: przekroczenie czasu",
+   "a": "timeout. The request failed with a timeout.",
+   "tr": "przekroczenie czasu. Żądanie zakończyło się przekroczeniem czasu.",
+   "pron": "timeout – tajmaut"
+  },
+  {
+   "id": "english-v025",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Co znaczy: retry?",
+   "a": "retry. We added a retry with a short delay.",
+   "tr": "ponowienie próby. Dodaliśmy ponowienie z krótkim opóźnieniem.",
+   "pron": "retry – ritraj"
+  },
+  {
+   "id": "english-v026",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Po angielsku: awaria (niedostępność usługi)",
+   "a": "outage. We had a two-hour outage last month.",
+   "tr": "awaria (niedostępność usługi). W zeszłym miesiącu mieliśmy dwugodzinną awarię.",
+   "pron": "outage – autydż"
+  },
+  {
+   "id": "english-v027",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Po angielsku: incydent",
+   "a": "incident. I was on call during the incident.",
+   "tr": "incydent. Miałem dyżur podczas incydentu.",
+   "pron": "incident – insydent",
+   "tip": "„On call” – dyżur."
+  },
+  {
+   "id": "english-v028",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Co znaczy: root cause?",
+   "a": "root cause. We found the root cause in the cache config.",
+   "tr": "przyczyna źródłowa. Znaleźliśmy przyczynę źródłową w konfiguracji cache.",
+   "pron": "root – rut; cause – koz"
+  },
+  {
+   "id": "english-v029",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Po angielsku: obejście (tymczasowe rozwiązanie)",
+   "a": "workaround. We used a workaround until the real fix.",
+   "tr": "obejście (tymczasowe rozwiązanie). Używaliśmy obejścia aż do właściwej poprawki.",
+   "pron": "workaround – łerkeraund"
+  },
+  {
+   "id": "english-v030",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 1,
+   "q": "Po angielsku: poprawka błędu / pilna poprawka na produkcję",
+   "a": "bug fix, hotfix. We released a hotfix the same day.",
+   "tr": "poprawka błędu / pilna poprawka na produkcję. Wydaliśmy pilną poprawkę tego samego dnia.",
+   "pron": "hotfix – hotfiks"
+  },
+  {
+   "id": "english-v031",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Co znaczy: regression?",
+   "a": "regression. The new version caused a regression in search.",
+   "tr": "regresja (stary błąd wrócił / coś przestało działać). Nowa wersja spowodowała regresję w wyszukiwaniu.",
+   "pron": "regression – rigreszyn"
+  },
+  {
+   "id": "english-v032",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Po angielsku: przypadek brzegowy",
+   "a": "edge case. We missed an edge case with empty lists.",
+   "tr": "przypadek brzegowy. Pominęliśmy przypadek brzegowy z pustymi listami.",
+   "pron": "edge – edż"
+  },
+  {
+   "id": "english-v033",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Po angielsku: diagnozować problem",
+   "a": "troubleshoot. I troubleshoot problems with logs and metrics.",
+   "tr": "diagnozować problem. Diagnozuję problemy za pomocą logów i metryk.",
+   "pron": "troubleshoot – trabelszut"
+  },
+  {
+   "id": "english-v034",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 1,
+   "q": "Co znaczy: reproduce?",
+   "a": "reproduce. First, I try to reproduce the bug locally.",
+   "tr": "odtworzyć (błąd). Najpierw próbuję odtworzyć błąd lokalnie.",
+   "pron": "reproduce – riprodjus"
+  },
+  {
+   "id": "english-v035",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 1,
+   "q": "Po angielsku: log / logować",
+   "a": "log. I checked the logs and found the error.",
+   "tr": "log / logować. Sprawdziłem logi i znalazłem błąd.",
+   "pron": "log – log (US: lag)"
+  },
+  {
+   "id": "english-v036",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Po angielsku: monitorowanie",
+   "a": "monitoring. We use Grafana for monitoring.",
+   "tr": "monitorowanie. Używamy Grafany do monitorowania.",
+   "pron": "monitoring – moniteryng"
+  },
+  {
+   "id": "english-v037",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Co znaczy: rollback?",
+   "a": "rollback. After the error, we did a rollback.",
+   "tr": "wycofanie wdrożenia. Po błędzie zrobiliśmy wycofanie wdrożenia.",
+   "pron": "rollback – roulbek",
+   "tip": "Czasownik: to roll back – „We rolled back the release.”"
+  },
+  {
+   "id": "english-v038",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Po angielsku: wymaganie",
+   "a": "requirement. The requirements changed during the sprint.",
+   "tr": "wymaganie. Wymagania zmieniły się w trakcie sprintu.",
+   "pron": "requirement – rikłajerment"
+  },
+  {
+   "id": "english-v039",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Po angielsku: termin (ostateczny)",
+   "a": "deadline. We finished the project before the deadline.",
+   "tr": "termin (ostateczny). Skończyliśmy projekt przed terminem.",
+   "pron": "deadline – dedlajn"
+  },
+  {
+   "id": "english-v040",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 2,
+   "q": "Co znaczy: estimate?",
+   "a": "estimate. My estimate was three days.",
+   "tr": "szacunek, oszacować. Mój szacunek to były trzy dni.",
+   "pron": "estimate – rzeczownik: estymet; czasownik: estymejt"
+  },
+  {
+   "id": "english-v041",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 2,
+   "q": "Po angielsku: interesariusz",
+   "a": "stakeholder. I presented the demo to the stakeholders.",
+   "tr": "interesariusz. Pokazałem demo interesariuszom.",
+   "pron": "stakeholder – stejkhouder"
+  },
+  {
+   "id": "english-v042",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Po angielsku: właściciel produktu",
+   "a": "product owner. The product owner sets the priorities.",
+   "tr": "właściciel produktu. Product owner ustala priorytety.",
+   "pron": "owner – ołner"
+  },
+  {
+   "id": "english-v043",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Co znaczy: backlog?",
+   "a": "backlog. This task is in the backlog.",
+   "tr": "lista zadań do zrobienia. To zadanie jest w backlogu.",
+   "pron": "backlog – beklog"
+  },
+  {
+   "id": "english-v044",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Po angielsku: sprint (iteracja)",
+   "a": "sprint. Our sprints are two weeks long.",
+   "tr": "sprint (iteracja). Nasze sprinty trwają dwa tygodnie."
+  },
+  {
+   "id": "english-v045",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Po angielsku: codzienne spotkanie zespołu",
+   "a": "standup. Every day at ten we have a standup.",
+   "tr": "codzienne spotkanie zespołu. Codziennie o dziesiątej mamy standup.",
+   "pron": "standup – stendap"
+  },
+  {
+   "id": "english-v046",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 2,
+   "q": "Co znaczy: retrospective?",
+   "a": "retrospective. In the retrospective, we discuss what went wrong.",
+   "tr": "retrospektywa. Na retrospektywie omawiamy, co poszło źle.",
+   "pron": "retrospective – retrospektyw",
+   "tip": "Potocznie: retro."
+  },
+  {
+   "id": "english-v047",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Po angielsku: przegląd kodu",
+   "a": "code review. Every change goes through code review.",
+   "tr": "przegląd kodu. Każda zmiana przechodzi przegląd kodu.",
+   "pron": "review – riwju"
+  },
+  {
+   "id": "english-v048",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Po angielsku: pull request (prośba o scalenie zmian)",
+   "a": "pull request. I opened a pull request with the fix.",
+   "tr": "pull request (prośba o scalenie zmian). Otworzyłem pull request z poprawką.",
+   "pron": "pull – pul (krótkie „u”)",
+   "tip": "Skrót: PR – pi-ar."
+  },
+  {
+   "id": "english-v049",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 2,
+   "q": "Co znaczy: merge conflict?",
+   "a": "merge conflict. I resolved the merge conflict.",
+   "tr": "konflikt przy scalaniu. Rozwiązałem konflikt przy scalaniu.",
+   "pron": "merge – merdż"
+  },
+  {
+   "id": "english-v050",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 2,
+   "q": "Po angielsku: stary kod (odziedziczony)",
+   "a": "legacy code. I worked a lot with legacy code.",
+   "tr": "stary kod (odziedziczony). Dużo pracowałem ze starym kodem.",
+   "pron": "legacy – legesi"
+  },
+  {
+   "id": "english-v051",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 2,
+   "q": "Po angielsku: dług techniczny",
+   "a": "technical debt. We plan time for technical debt every sprint.",
+   "tr": "dług techniczny. Co sprint planujemy czas na dług techniczny.",
+   "pron": "debt – det (b jest nieme!)"
+  },
+  {
+   "id": "english-v052",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 2,
+   "q": "Co znaczy: refactor?",
+   "a": "refactor. I refactored the service into smaller classes.",
+   "tr": "refaktoryzować. Zrefaktoryzowałem serwis na mniejsze klasy.",
+   "pron": "refactor – rifakter"
+  },
+  {
+   "id": "english-v053",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Po angielsku: wdrożyć / wydanie",
+   "a": "deploy, release. We deploy every day and release every two weeks.",
+   "tr": "wdrożyć / wydanie. Wdrażamy codziennie, a wydajemy co dwa tygodnie.",
+   "pron": "deploy – diploj; release – rilis"
+  },
+  {
+   "id": "english-v054",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Po angielsku: wdrożenie nowej osoby",
+   "a": "onboarding. I helped with the onboarding of two juniors.",
+   "tr": "wdrożenie nowej osoby. Pomagałem we wdrożeniu dwóch juniorów.",
+   "pron": "onboarding – onbordyng",
+   "tip": "Uwaga: „wdrożenie” kodu to deployment, a wdrożenie człowieka to onboarding."
+  },
+  {
+   "id": "english-v055",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 2,
+   "q": "Co znaczy: ownership?",
+   "a": "ownership. I took ownership of the payment module.",
+   "tr": "odpowiedzialność za coś, poczucie własności. Wziąłem odpowiedzialność za moduł płatności.",
+   "pron": "ownership – ołnerszyp"
+  },
+  {
+   "id": "english-v056",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 3,
+   "q": "Po angielsku: kompromis (coś za coś)",
+   "a": "trade-off. It was a trade-off between speed and quality.",
+   "tr": "kompromis (coś za coś). To był kompromis między szybkością a jakością.",
+   "pron": "trade-off – trejdof"
+  },
+  {
+   "id": "english-v057",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Po angielsku: priorytet",
+   "a": "priority. Security was our top priority.",
+   "tr": "priorytet. Bezpieczeństwo było naszym głównym priorytetem.",
+   "pron": "priority – prajoriti"
+  },
+  {
+   "id": "english-v058",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Co znaczy: feedback?",
+   "a": "feedback. I always ask for feedback on my code.",
+   "tr": "informacja zwrotna. Zawsze proszę o informację zwrotną do mojego kodu.",
+   "pron": "feedback – fidbek",
+   "tip": "Feedback jest niepoliczalny: „some feedback”, nie „a feedback”."
+  },
+  {
+   "id": "english-v059",
+   "topic": "Wymowa trudnych słów",
+   "level": 1,
+   "q": "Jak wymówić: cache?",
+   "a": "cache. We keep the results in a cache.",
+   "tr": "cache (pamięć podręczna). Trzymamy wyniki w cache.",
+   "pron": "cache – kesz (nie „kacz”, nie „kasz”)",
+   "tip": "Brzmi jak cash (gotówka)."
+  },
+  {
+   "id": "english-v060",
+   "topic": "Wymowa trudnych słów",
+   "level": 1,
+   "q": "Jak wymówić: queue?",
+   "a": "queue. The messages wait in a queue.",
+   "tr": "queue (kolejka). Wiadomości czekają w kolejce.",
+   "pron": "queue – kju (cztery ostatnie litery są nieme)"
+  },
+  {
+   "id": "english-v061",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: Azure?",
+   "a": "Azure. We host our services on Azure.",
+   "tr": "Azure. Hostujemy nasze serwisy na Azure.",
+   "pron": "Azure – eżer (US) / ażer; nie „azure”"
+  },
+  {
+   "id": "english-v062",
+   "topic": "Wymowa trudnych słów",
+   "level": 1,
+   "q": "Jak wymówić: SQL?",
+   "a": "SQL. I write SQL queries every day.",
+   "tr": "SQL. Codziennie piszę zapytania SQL.",
+   "pron": "SQL – es-kju-el albo sikłel; nie „eskuel”",
+   "tip": "„SQL Server” zwykle czyta się sikłel serwer."
+  },
+  {
+   "id": "english-v063",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: GUI?",
+   "a": "GUI. The tool has a simple GUI.",
+   "tr": "GUI (interfejs graficzny). To narzędzie ma prosty interfejs graficzny.",
+   "pron": "GUI – gui (jak „gooey”) albo dżi-ju-aj"
+  },
+  {
+   "id": "english-v064",
+   "topic": "Wymowa trudnych słów",
+   "level": 1,
+   "q": "Jak wymówić: data?",
+   "a": "data. We store the data in PostgreSQL.",
+   "tr": "data (dane). Przechowujemy dane w PostgreSQL.",
+   "pron": "data – dejta (US też: deta); nie „data”"
+  },
+  {
+   "id": "english-v065",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: width, height?",
+   "a": "width and height. Set the width and height of the image.",
+   "tr": "szerokość i wysokość. Ustaw szerokość i wysokość obrazka.",
+   "pron": "width – łidθ (język między zęby); height – hajt (nie „hejt”, nie „hajθ”)"
+  },
+  {
+   "id": "english-v066",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: suite?",
+   "a": "suite. The test suite runs in five minutes.",
+   "tr": "suite (zestaw). Zestaw testów wykonuje się w pięć minut.",
+   "pron": "suite – słit (jak sweet); nie „sjut”"
+  },
+  {
+   "id": "english-v067",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: algorithm?",
+   "a": "algorithm. This algorithm is too slow for large data.",
+   "tr": "algorytm. Ten algorytm jest za wolny dla dużych danych.",
+   "pron": "algorithm – elgeryðem (akcent na pierwszą sylabę, „th” miękkie)"
+  },
+  {
+   "id": "english-v068",
+   "topic": "Wymowa trudnych słów",
+   "level": 1,
+   "q": "Jak wymówić: architecture?",
+   "a": "architecture. I designed the architecture of the new service.",
+   "tr": "architektura. Zaprojektowałem architekturę nowego serwisu.",
+   "pron": "architecture – arkitekczer (na początku „k”, nie „cz”)"
+  },
+  {
+   "id": "english-v069",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: routing, router?",
+   "a": "routing. Angular routing works with the router.",
+   "tr": "routing. Routing w Angularze działa z routerem.",
+   "pron": "router – rałter (US) / ruter (UK); routing – rałting (US) / ruting (UK)",
+   "tip": "Na rozmowie z firmą z USA mów rałter."
+  },
+  {
+   "id": "english-v070",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: null, char?",
+   "a": "null and char. The value is null. A char is one character.",
+   "tr": "null i char. Wartość to null. Char to jeden znak.",
+   "pron": "null – nal (nie „nul”); char – czar albo kar"
+  },
+  {
+   "id": "english-v071",
+   "topic": "Wymowa trudnych słów",
+   "level": 1,
+   "q": "Jak wymówić: async?",
+   "a": "async. This method is async.",
+   "tr": "async. Ta metoda jest asynchroniczna.",
+   "pron": "async – ejsink; await – ełejt"
+  },
+  {
+   "id": "english-v072",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: Linux, GitHub?",
+   "a": "Linux and GitHub. Our build runs on Linux. The code is on GitHub.",
+   "tr": "Linux i GitHub. Nasz build działa na Linuksie. Kod jest na GitHubie.",
+   "pron": "Linux – linuks (nie „lajnuks”); GitHub – githab"
+  },
+  {
+   "id": "english-v073",
+   "topic": "Wymowa trudnych słów",
+   "level": 3,
+   "q": "Jak wymówić: Kubernetes, nginx?",
+   "a": "Kubernetes and nginx. We run nginx on Kubernetes.",
+   "tr": "Kubernetes i nginx. Uruchamiamy nginx na Kubernetesie.",
+   "pron": "Kubernetes – kubernetis (akcent na „ne”); nginx – endżin-iks",
+   "tip": "Skrót K8s czyta się kejts."
+  },
+  {
+   "id": "english-v074",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: YAML, JSON?",
+   "a": "YAML and JSON. The config is in YAML, the API returns JSON.",
+   "tr": "YAML i JSON. Konfiguracja jest w YAML, API zwraca JSON.",
+   "pron": "YAML – jamel; JSON – dżejsen (nie „json”)"
+  },
+  {
+   "id": "english-v075",
+   "topic": "Wymowa trudnych słów",
+   "level": 1,
+   "q": "Jak wymówić: ASP.NET, C#?",
+   "a": "ASP dot NET and C sharp. I build APIs with ASP dot NET Core and C sharp.",
+   "tr": "ASP.NET i C#. Buduję API w ASP.NET Core i C#.",
+   "pron": "ASP.NET – ej-es-pi dot net; C# – si szarp; Core – kor"
+  },
+  {
+   "id": "english-v076",
+   "topic": "Wymowa trudnych słów",
+   "level": 1,
+   "q": "Jak wymówić: Angular, Docker?",
+   "a": "Angular and Docker. The Angular app runs in a Docker container.",
+   "tr": "Angular i Docker. Aplikacja Angular działa w kontenerze Dockera.",
+   "pron": "Angular – engjuler; Docker – daker (US) / doker (UK)"
+  },
+  {
+   "id": "english-v077",
+   "topic": "Wymowa trudnych słów",
+   "level": 1,
+   "q": "Jak wymówić: debug?",
+   "a": "debug. I debug the code in Visual Studio.",
+   "tr": "debugować. Debuguję kod w Visual Studio.",
+   "pron": "debug – dibag (nie „debug”)"
+  },
+  {
+   "id": "english-v078",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: schedule?",
+   "a": "schedule. The job runs on a schedule.",
+   "tr": "harmonogram. To zadanie działa według harmonogramu.",
+   "pron": "schedule – skedżul (US) / szedżul (UK)"
+  },
+  {
+   "id": "english-v079",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: method, variable?",
+   "a": "method and variable. This method uses a local variable.",
+   "tr": "metoda i zmienna. Ta metoda używa zmiennej lokalnej.",
+   "pron": "method – meθed (język między zęby); variable – weriebel"
+  },
+  {
+   "id": "english-v080",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymówić: integer, boolean?",
+   "a": "integer and boolean. The function takes an integer and returns a boolean.",
+   "tr": "integer i boolean. Funkcja przyjmuje liczbę całkowitą i zwraca wartość logiczną.",
+   "pron": "integer – intydżer (nie „integer” z twardym g); boolean – bulien"
+  },
+  {
+   "id": "english-v081",
+   "topic": "Wymowa trudnych słów",
+   "level": 3,
+   "q": "Jak wymówić: hierarchy?",
+   "a": "hierarchy. The component hierarchy is too deep.",
+   "tr": "hierarchia. Hierarchia komponentów jest za głęboka.",
+   "pron": "hierarchy – hajerarki"
+  },
+  {
+   "id": "english-v082",
+   "topic": "Wymowa trudnych słów",
+   "level": 3,
+   "q": "Jak wymówić: determine, component?",
+   "a": "determine and component. The parent component determines the layout.",
+   "tr": "ustalać i komponent. Komponent nadrzędny ustala układ.",
+   "pron": "determine – ditermin (nie „ditermajn”); component – kempounent (akcent na „pou”)"
+  },
+  {
+   "id": "english-v083",
+   "topic": "Liczby, wersje i symbole",
+   "level": 1,
+   "q": "Po angielsku: jak przeczytać .NET 8 i C# 14?",
+   "a": "dot net eight and C sharp fourteen. We use dot net eight and C sharp fourteen.",
+   "tr": "dot net osiem i C# czternaście. Używamy .NET 8 i C# 14.",
+   "pron": "dot net ejt; si szarp fortin",
+   "tip": "Kropka przed nazwą to „dot”, nie „point”."
+  },
+  {
+   "id": "english-v084",
+   "topic": "Liczby, wersje i symbole",
+   "level": 2,
+   "q": "Po angielsku: jak przeczytać v2.1.3?",
+   "a": "version two point one point three. We released version two point one point three.",
+   "tr": "wersja 2.1.3. Wydaliśmy wersję 2.1.3.",
+   "pron": "wersżyn tu pojnt łan pojnt θri",
+   "tip": "W numerach wersji kropka to „point” (albo „dot”), każdą cyfrę czytasz osobno."
+  },
+  {
+   "id": "english-v085",
+   "topic": "Liczby, wersje i symbole",
+   "level": 2,
+   "q": "Po angielsku: jak przeczytać 99.9%?",
+   "a": "ninety-nine point nine percent. Our uptime is ninety-nine point nine percent.",
+   "tr": "dziewięćdziesiąt dziewięć i dziewięć dziesiątych procenta. Nasza dostępność to 99,9%.",
+   "pron": "najnti-najn pojnt najn persent",
+   "tip": "Potocznie: three nines (trzy dziewiątki). W angielskim ułamki piszemy z kropką, nie przecinkiem."
+  },
+  {
+   "id": "english-v086",
+   "topic": "Liczby, wersje i symbole",
+   "level": 1,
+   "q": "Po angielsku: jak przeczytać 200 ms?",
+   "a": "two hundred milliseconds. The response time is two hundred milliseconds.",
+   "tr": "dwieście milisekund. Czas odpowiedzi to 200 ms.",
+   "pron": "tu handred miliseknz",
+   "tip": "Bez „s” przy hundred: two hundred, nie two hundreds."
+  },
+  {
+   "id": "english-v087",
+   "topic": "Liczby, wersje i symbole",
+   "level": 1,
+   "q": "Po angielsku: jak przeczytać 1.5 GB?",
+   "a": "one point five gigabytes. The log file is one point five gigabytes.",
+   "tr": "półtora gigabajta. Plik logów ma 1,5 GB.",
+   "pron": "łan pojnt fajw gigebajts",
+   "tip": "Można też: one and a half gigabytes."
+  },
+  {
+   "id": "english-v088",
+   "topic": "Liczby, wersje i symbole",
+   "level": 2,
+   "q": "Po angielsku: jak przeczytać 10k requests per second?",
+   "a": "ten thousand requests per second. The API handles ten thousand requests per second.",
+   "tr": "dziesięć tysięcy żądań na sekundę. API obsługuje 10 tys. żądań na sekundę.",
+   "pron": "ten θauzend rikłests per sekend",
+   "tip": "„k” czyta się thousand albo potocznie „kej”: ten kej. Skrót RPS – ar-pi-es."
+  },
+  {
+   "id": "english-v089",
+   "topic": "Liczby, wersje i symbole",
+   "level": 2,
+   "q": "Po angielsku: jak przeczytać =>?",
+   "a": "arrow. Use an arrow function here.",
+   "tr": "strzałka. Użyj tu funkcji strzałkowej.",
+   "pron": "arrow – erou; fat arrow – fet erou",
+   "tip": "W C# mówi się też lambda arrow albo „goes to”."
+  },
+  {
+   "id": "english-v090",
+   "topic": "Liczby, wersje i symbole",
+   "level": 2,
+   "q": "Po angielsku: jak przeczytać !=?",
+   "a": "not equal. If the value is not equal to null, we save it.",
+   "tr": "nie równa się. Jeśli wartość nie jest równa null, zapisujemy ją.",
+   "pron": "not ikłel",
+   "tip": "„!” samo to exclamation mark albo bang."
+  },
+  {
+   "id": "english-v091",
+   "topic": "Liczby, wersje i symbole",
+   "level": 2,
+   "q": "Po angielsku: jak przeczytać && i ||?",
+   "a": "and, or. Double ampersand means and. Double pipe means or.",
+   "tr": "i, lub. Podwójny ampersand oznacza „i”. Podwójna kreska pionowa oznacza „lub”.",
+   "pron": "ampersand – emperzend; pipe – pajp"
+  },
+  {
+   "id": "english-v092",
+   "topic": "Liczby, wersje i symbole",
+   "level": 1,
+   "q": "Po angielsku: jak przeczytać # i @?",
+   "a": "hash and at. Hash is for comments. At is in every email address.",
+   "tr": "hash i at. Hash jest od komentarzy. At jest w każdym adresie e-mail.",
+   "pron": "hash – hesz; at – et",
+   "tip": "W USA # to też pound albo number sign. @ to „at”, nie „małpa”."
+  },
+  {
+   "id": "english-v093",
+   "topic": "Liczby, wersje i symbole",
+   "level": 1,
+   "q": "Po angielsku: jak przeczytać / i \\?",
+   "a": "slash and backslash. URLs use a slash. Windows paths use a backslash.",
+   "tr": "ukośnik i ukośnik wsteczny. Adresy URL używają ukośnika. Ścieżki Windows używają ukośnika wstecznego.",
+   "pron": "slash – slesz; backslash – bekslesz",
+   "tip": "/ to też forward slash."
+  },
+  {
+   "id": "english-v094",
+   "topic": "Liczby, wersje i symbole",
+   "level": 1,
+   "q": "Po angielsku: jak przeczytać _ i -?",
+   "a": "underscore and dash. Use an underscore or a dash in the name.",
+   "tr": "podkreślnik i myślnik. Użyj podkreślnika albo myślnika w nazwie.",
+   "pron": "underscore – anderskor; dash – desz; hyphen – hajfen",
+   "tip": "W liczbach - to minus. W słowach jak „read-only” to hyphen."
+  },
+  {
+   "id": "english-v095",
+   "topic": "Liczby, wersje i symbole",
+   "level": 2,
+   "q": "Po angielsku: jak przeczytać [] i {}?",
+   "a": "square brackets and curly braces. Arrays use square brackets. Objects use curly braces.",
+   "tr": "nawiasy kwadratowe i klamrowe. Tablice używają nawiasów kwadratowych. Obiekty używają klamrowych.",
+   "pron": "square brackets – skłer brekyts; curly braces – kerli brejsyz"
+  },
+  {
+   "id": "english-v096",
+   "topic": "Liczby, wersje i symbole",
+   "level": 2,
+   "q": "Po angielsku: jak przeczytać () i <>?",
+   "a": "parentheses and angle brackets. Method calls use parentheses. Generics use angle brackets.",
+   "tr": "nawiasy okrągłe i ostre. Wywołania metod używają nawiasów okrągłych. Generyki używają nawiasów ostrych.",
+   "pron": "parentheses – pereneθesiz (potocznie: parens – perenz); angle brackets – engel brekyts",
+   "tip": "Pojedynczo: a parenthesis, opening/closing parenthesis."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "english-vq001",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 1,
+   "q": "Jak po angielsku powiedzieć „zależność” (np. od biblioteki)?",
+   "options": [
+    "addiction",
+    "dependency",
+    "relation",
+    "depending"
+   ],
+   "correct": 1,
+   "why": "Dependency to zależność w kodzie. Addiction to uzależnienie (np. od nałogu), relation to relacja, depending to forma czasownika."
+  },
+  {
+   "id": "english-vq002",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Co znaczy „race condition”?",
+   "options": [
+    "błąd, gdy wynik zależy od kolejności wykonania wątków",
+    "wyścig o zasoby serwera przy starcie aplikacji",
+    "warunek w pętli, który kończy się za szybko",
+    "zakleszczenie dwóch transakcji"
+   ],
+   "correct": 0,
+   "why": "Race condition to wyścig: dwa wątki zmieniają te same dane i wynik zależy od kolejności. Zakleszczenie to deadlock."
+  },
+  {
+   "id": "english-vq003",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Uzupełnij: „These modules are loosely ____, so we can change them easily.”",
+   "options": [
+    "connected",
+    "joined",
+    "coupling",
+    "coupled"
+   ],
+   "correct": 3,
+   "why": "Utarte wyrażenie to loosely coupled (luźno powiązane). Coupling to rzeczownik, a connected/joined nie są używane w tym znaczeniu."
+  },
+  {
+   "id": "english-vq004",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 1,
+   "q": "Uzupełnij: „The client sends a ____ and the server returns a response.”",
+   "options": [
+    "question",
+    "demand",
+    "request",
+    "asking"
+   ],
+   "correct": 2,
+   "why": "Mówimy send a request. Question to pytanie od człowieka, demand to żądanie w sensie „domagać się” – nie używa się go dla HTTP."
+  },
+  {
+   "id": "english-vq005",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Jak powiedzieć „wyciek pamięci”?",
+   "options": [
+    "memory leaking hole",
+    "memory leak",
+    "memory drop",
+    "memory loss"
+   ],
+   "correct": 1,
+   "why": "Poprawnie: memory leak. Memory loss to utrata pamięci u człowieka."
+  },
+  {
+   "id": "english-vq006",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 3,
+   "q": "Co znaczy zdanie „I prefer composition over inheritance”?",
+   "options": [
+    "Wolę kompozycję od dziedziczenia.",
+    "Wolę dziedziczenie od kompozycji.",
+    "Kompozycja dziedziczy po klasie bazowej.",
+    "Unikam zarówno kompozycji, jak i dziedziczenia."
+   ],
+   "correct": 0,
+   "why": "Prefer A over B = woleć A od B. Inheritance to dziedziczenie."
+  },
+  {
+   "id": "english-vq007",
+   "topic": "Słownictwo: kod i architektura",
+   "level": 2,
+   "q": "Który wybór jest poprawny: „Each request runs on a separate ____.” (wątek)",
+   "options": [
+    "tread",
+    "threat",
+    "string",
+    "thread"
+   ],
+   "correct": 3,
+   "why": "Thread – wątek. Tread to bieżnik, threat to zagrożenie (tu Polacy często się mylą), string to napis."
+  },
+  {
+   "id": "english-vq008",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 1,
+   "q": "Jak powiedzieć „wąskie gardło”?",
+   "options": [
+    "narrow throat",
+    "tight neck",
+    "bottleneck",
+    "slow point"
+   ],
+   "correct": 2,
+   "why": "Bottleneck (szyjka butelki) to standardowe słowo. Narrow throat to dosłowne, błędne tłumaczenie."
+  },
+  {
+   "id": "english-vq009",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Uzupełnij: „First, I try to ____ the bug locally.”",
+   "options": [
+    "repeat",
+    "reproduce",
+    "replay",
+    "recreate it again"
+   ],
+   "correct": 1,
+   "why": "Reproduce a bug – odtworzyć błąd. Repeat znaczy powtórzyć (np. czynność), nie pasuje do błędu."
+  },
+  {
+   "id": "english-vq010",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Czym różni się latency od throughput?",
+   "options": [
+    "latency = czas jednego żądania, throughput = liczba żądań na sekundę",
+    "latency = liczba żądań, throughput = czas odpowiedzi",
+    "to synonimy",
+    "latency = awaria, throughput = obciążenie"
+   ],
+   "correct": 0,
+   "why": "Latency mierzymy w ms (jak szybko), throughput w requests per second (ile)."
+  },
+  {
+   "id": "english-vq011",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Jak powiedzieć „znaleźliśmy przyczynę źródłową”?",
+   "options": [
+    "We found the source reason.",
+    "We found the main because.",
+    "We found the root reason of cause.",
+    "We found the root cause."
+   ],
+   "correct": 3,
+   "why": "Root cause to stałe wyrażenie (root cause analysis). Pozostałe to kalki z polskiego."
+  },
+  {
+   "id": "english-vq012",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Uzupełnij: „After the failed deployment, we did a ____.”",
+   "options": [
+    "comeback",
+    "turnback",
+    "rollback",
+    "backroll"
+   ],
+   "correct": 2,
+   "why": "Rollback – wycofanie wdrożenia. Comeback to powrót (np. artysty)."
+  },
+  {
+   "id": "english-vq013",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 2,
+   "q": "Co znaczy „outage”?",
+   "options": [
+    "wyjście z budynku",
+    "awaria, niedostępność usługi",
+    "przekroczenie budżetu",
+    "nadgodziny"
+   ],
+   "correct": 1,
+   "why": "Outage to przerwa w działaniu systemu, np. „a two-hour outage”."
+  },
+  {
+   "id": "english-vq014",
+   "topic": "Słownictwo: wydajność i problemy",
+   "level": 3,
+   "q": "Jak powiedzieć „to było obejście, nie prawdziwa poprawka”?",
+   "options": [
+    "It was a workaround, not a real fix.",
+    "It was a walkaround, not a real fix.",
+    "It was a bypass road, not a real fix.",
+    "It was a turnaround, not a real fix."
+   ],
+   "correct": 0,
+   "why": "Workaround – obejście problemu. Walkaround nie istnieje w tym znaczeniu, turnaround to zwrot/czas realizacji."
+  },
+  {
+   "id": "english-vq015",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Uzupełnij: „We finished the project before the ____.”",
+   "options": [
+    "term",
+    "dateline",
+    "finish line",
+    "deadline"
+   ],
+   "correct": 3,
+   "why": "Deadline – ostateczny termin. Term to fałszywy przyjaciel (oznacza semestr, kadencję albo termin jako „pojęcie”)."
+  },
+  {
+   "id": "english-vq016",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 2,
+   "q": "Jak powiedzieć „dług techniczny”?",
+   "options": [
+    "technical credit",
+    "technical loan",
+    "technical debt",
+    "technology duty"
+   ],
+   "correct": 2,
+   "why": "Technical debt to standard. Wymowa: det, bez „b”."
+  },
+  {
+   "id": "english-vq017",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Co znaczy „stakeholder”?",
+   "options": [
+    "właściciel firmy",
+    "interesariusz – osoba zainteresowana wynikiem projektu",
+    "inwestor giełdowy",
+    "tester akceptacyjny"
+   ],
+   "correct": 1,
+   "why": "Stakeholder to każdy, kogo dotyczy projekt: klient, biznes, PO. Shareholder to akcjonariusz."
+  },
+  {
+   "id": "english-vq018",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 2,
+   "q": "Jak powiedzieć „wdrażałem nowego juniora”?",
+   "options": [
+    "I helped with the onboarding of a new junior.",
+    "I deployed a new junior.",
+    "I implemented a new junior.",
+    "I installed a new junior."
+   ],
+   "correct": 0,
+   "why": "Wdrożenie człowieka to onboarding. Deploy dotyczy kodu, implement – funkcjonalności."
+  },
+  {
+   "id": "english-vq019",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 2,
+   "q": "Uzupełnij: „I always ask for ____ on my code.”",
+   "options": [
+    "a feedback",
+    "feedbacks",
+    "a feedbacks",
+    "feedback"
+   ],
+   "correct": 3,
+   "why": "Feedback jest niepoliczalny: some feedback, a lot of feedback – bez „a” i bez „s”."
+  },
+  {
+   "id": "english-vq020",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 3,
+   "q": "Jak powiedzieć „to był kompromis między szybkością a jakością”?",
+   "options": [
+    "It was a compromise of speed or quality.",
+    "It was a deal for speed and quality.",
+    "It was a trade-off between speed and quality.",
+    "It was a change between speed and quality."
+   ],
+   "correct": 2,
+   "why": "W IT o decyzjach „coś za coś” mówi się trade-off. Compromise istnieje, ale konstrukcja „of speed or quality” jest błędna."
+  },
+  {
+   "id": "english-vq021",
+   "topic": "Słownictwo: praca w zespole",
+   "level": 1,
+   "q": "Co znaczy „The task is in the backlog”?",
+   "options": [
+    "Zadanie jest zablokowane.",
+    "Zadanie jest na liście rzeczy do zrobienia.",
+    "Zadanie jest już zrobione.",
+    "Zadanie jest w code review."
+   ],
+   "correct": 1,
+   "why": "Backlog to lista zadań czekających na realizację."
+  },
+  {
+   "id": "english-vq022",
+   "topic": "Wymowa trudnych słów",
+   "level": 1,
+   "q": "Jak wymawia się „cache”?",
+   "options": [
+    "kesz",
+    "kacz",
+    "kasz",
+    "kaszej"
+   ],
+   "correct": 0,
+   "why": "Cache brzmi jak cash – kesz."
+  },
+  {
+   "id": "english-vq023",
+   "topic": "Wymowa trudnych słów",
+   "level": 1,
+   "q": "Jak wymawia się „queue”?",
+   "options": [
+    "kłełe",
+    "kłeł",
+    "kju-e",
+    "kju"
+   ],
+   "correct": 3,
+   "why": "Queue – kju. Końcówka „ueue” jest niema."
+  },
+  {
+   "id": "english-vq024",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymawia się „Azure” (Microsoft)?",
+   "options": [
+    "azure",
+    "azjure",
+    "eżer / ażer",
+    "acur"
+   ],
+   "correct": 2,
+   "why": "W angielskim to eżer (US) albo ażer. „Azure” po polsku brzmi obco dla rekrutera."
+  },
+  {
+   "id": "english-vq025",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymawia się „suite” w „test suite”?",
+   "options": [
+    "sjut",
+    "słit",
+    "suite",
+    "słajt"
+   ],
+   "correct": 1,
+   "why": "Suite brzmi jak sweet – słit."
+  },
+  {
+   "id": "english-vq026",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymawia się „height”?",
+   "options": [
+    "hajt",
+    "hejt",
+    "hajθ",
+    "hegt"
+   ],
+   "correct": 0,
+   "why": "Height – hajt. Hejt to wymowa hate. Uwaga: width kończy się na θ, ale height na „t”."
+  },
+  {
+   "id": "english-vq027",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymawia się „null”?",
+   "options": [
+    "nul",
+    "nol",
+    "nul-e",
+    "nal"
+   ],
+   "correct": 3,
+   "why": "Po angielsku null to nal (krótkie „a”). „Nul” to polska wymowa."
+  },
+  {
+   "id": "english-vq028",
+   "topic": "Wymowa trudnych słów",
+   "level": 3,
+   "q": "Jak wymawia się „determine”?",
+   "options": [
+    "ditermajn",
+    "determajn",
+    "ditermin",
+    "ditermajne"
+   ],
+   "correct": 2,
+   "why": "Determine kończy się na „min”, nie „majn”. To bardzo częsty błąd."
+  },
+  {
+   "id": "english-vq029",
+   "topic": "Wymowa trudnych słów",
+   "level": 2,
+   "q": "Jak wymawia się „integer”?",
+   "options": [
+    "integer (twarde g)",
+    "intydżer",
+    "intedżajer",
+    "integra"
+   ],
+   "correct": 1,
+   "why": "Integer – intydżer, z miękkim „dż”."
+  },
+  {
+   "id": "english-vq030",
+   "topic": "Wymowa trudnych słów",
+   "level": 3,
+   "q": "Jak wymawia się „Kubernetes”?",
+   "options": [
+    "kubernetis (akcent na „ne”)",
+    "kubernetes (jak po polsku)",
+    "kjuberntes",
+    "kubernets"
+   ],
+   "correct": 0,
+   "why": "Kubernetes – kubernetis, akcent na trzecią sylabę."
+  },
+  {
+   "id": "english-vq031",
+   "topic": "Liczby, wersje i symbole",
+   "level": 1,
+   "q": "Jak przeczytać „.NET 8”?",
+   "options": [
+    "point net eight",
+    "net eight dot",
+    "dot net the eighth",
+    "dot net eight"
+   ],
+   "correct": 3,
+   "why": "Kropka przed słowem to dot. Liczbę czytamy zwykle: eight."
+  },
+  {
+   "id": "english-vq032",
+   "topic": "Liczby, wersje i symbole",
+   "level": 2,
+   "q": "Jak przeczytać „v2.1.3”?",
+   "options": [
+    "version two comma one comma three",
+    "version two hundred thirteen",
+    "version two point one point three",
+    "version two and one and three"
+   ],
+   "correct": 2,
+   "why": "W wersjach kropka to point (albo dot). Nigdy comma."
+  },
+  {
+   "id": "english-vq033",
+   "topic": "Liczby, wersje i symbole",
+   "level": 2,
+   "q": "Jak powiedzieć „1,5 GB”?",
+   "options": [
+    "one comma five gigabytes",
+    "one point five gigabytes",
+    "one and five gigabytes",
+    "one point five gigabyte"
+   ],
+   "correct": 1,
+   "why": "Po angielsku ułamek dziesiętny to point. Liczba mnoga: gigabytes."
+  },
+  {
+   "id": "english-vq034",
+   "topic": "Liczby, wersje i symbole",
+   "level": 1,
+   "q": "Jak nazywają się nawiasy „{ }”?",
+   "options": [
+    "curly braces",
+    "square brackets",
+    "parentheses",
+    "angle brackets"
+   ],
+   "correct": 0,
+   "why": "{ } – curly braces, [ ] – square brackets, ( ) – parentheses, < > – angle brackets."
+  },
+  {
+   "id": "english-vq035",
+   "topic": "Liczby, wersje i symbole",
+   "level": 1,
+   "q": "Jak po angielsku powiedzieć „@” w adresie e-mail?",
+   "options": [
+    "monkey",
+    "ape",
+    "snail",
+    "at"
+   ],
+   "correct": 3,
+   "why": "@ to at. „Małpa” to tylko polska nazwa – po angielsku nie mówi się monkey."
+  }
+ ]
+}

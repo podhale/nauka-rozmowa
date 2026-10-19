@@ -1,0 +1,440 @@
+{
+  "cat": "arch",
+  "name": "Architektura i wzorce",
+  "cards": [
+    {
+      "id": "arch-d001",
+      "topic": "DDD: strategiczne",
+      "level": 1,
+      "q": "Czym różni się strategiczne DDD od taktycznego i od czego zaczynasz?",
+      "a": "Strategiczne DDD dotyczy podziału problemu: subdomeny (core, supporting, generic), bounded contexty, ubiquitous language i relacje między kontekstami (context map). Taktyczne DDD to wzorce w kodzie wewnątrz jednego kontekstu: encje, value objecty, agregaty, domain events, repozytoria, domain services. Zaczynam od strategii, bo źle wyznaczone granice psują każdy kod, a wzorce taktyczne stosuję głównie w core domain – tam, gdzie jest złożona logika i przewaga firmy.",
+      "tip": "Częsta czerwona flaga na rozmowie: „robimy DDD, bo mamy encje i repozytoria”. Bez wspólnego języka i granic kontekstów to tylko nazewnictwo."
+    },
+    {
+      "id": "arch-d002",
+      "topic": "DDD: strategiczne",
+      "level": 1,
+      "q": "Jak w praktyce budujesz ubiquitous language i po czym poznać, że go brakuje?",
+      "a": "Ubiquitous language to wspólny, precyzyjny język zespołu i ekspertów domenowych, używany w rozmowach, dokumentacji, testach i w kodzie – w obrębie jednego bounded contextu. Buduję go na warsztatach (np. Event Storming), spisuję słownik pojęć i pilnuję, by nazwy klas, metod i zdarzeń były takie, jak mówi biznes (`order.Cancel()`, `PolicyRenewed`, a nie `UpdateStatus(3)`). Brak widać, gdy programiści tłumaczą „z biznesowego na nasze”, w kodzie jest `Manager`/`Helper`/`Data`, a jedno słowo znaczy różne rzeczy w różnych rozmowach.",
+      "tip": "Gdy to samo słowo („Klient”, „Produkt”) ma różne znaczenia u różnych ekspertów, to sygnał granicy bounded contextu, a nie problem do rozwiązania jedną klasą."
+    },
+    {
+      "id": "arch-d003",
+      "topic": "DDD: strategiczne",
+      "level": 2,
+      "q": "Jak wyznaczasz granice bounded contextów?",
+      "a": "Bounded context to granica, w której model i język są spójne. Szukam miejsc, gdzie zmienia się znaczenie pojęć (Produkt w Katalogu to opis i zdjęcia, w Magazynie – SKU i stan, w Wysyłce – waga i wymiary), gdzie różni się proces biznesowy i kto jest właścicielem reguł. Pomaga Event Storming (grupowanie zdarzeń i komend wokół procesów) oraz analiza zespołów i częstotliwości zmian. Każdy kontekst ma własny model, własne dane i jasne API; idealnie jeden zespół odpowiada za kontekst.",
+      "deep": "Subdomena to przestrzeń problemu (co robi firma), bounded context to przestrzeń rozwiązania (jak to modelujemy) – często pokrywają się 1:1, ale nie muszą. Granice testuję pytaniem: czy da się zmienić ten model bez koordynacji z innym zespołem? Jeśli każda zmiana wymaga zmian w trzech kontekstach, granica jest zła. Bounded context nie musi być mikroserwisem – w modularnym monolicie to moduł z własnym schematem bazy i publicznym kontraktem. Za małe konteksty dają „rozproszony monolit” i chatty komunikację, za duże – „wielką kulę błota” z jednym modelem `Customer` o 80 polach. Granice ewoluują: lepiej zacząć od większych modułów i dzielić, gdy język faktycznie się rozjeżdża."
+    },
+    {
+      "id": "arch-d004",
+      "topic": "DDD: strategiczne",
+      "level": 3,
+      "q": "Omów wzorce context mappingu: shared kernel, customer-supplier, conformist, anticorruption layer, open host service.",
+      "a": "Context map opisuje relacje między bounded contextami i zespołami. Shared kernel – dwa konteksty współdzielą mały fragment modelu (np. biblioteka z typami Money), zmiany tylko za zgodą obu. Customer-supplier – upstream (supplier) dostarcza model, downstream (customer) zgłasza potrzeby, które upstream uwzględnia w planach. Conformist – downstream nie ma wpływu na upstream i przyjmuje jego model taki, jaki jest. Anticorruption layer (ACL) – downstream tłumaczy obcy model na własny w warstwie translacji, chroniąc swój język. Open host service + published language – upstream wystawia stabilne, udokumentowane API/kontrakt dla wielu odbiorców.",
+      "deep": "Pozostałe wzorce: partnership (dwa zespoły planują i wydają razem), separate ways (świadoma rezygnacja z integracji, gdy jest za droga) i big ball of mud (oznaczenie obszaru bez modelu, którego się nie naprawia, tylko izoluje). Mapa opisuje też politykę organizacji: conformist często wynika z braku wpływu na dostawcę (zewnętrzne API płatności, ERP). Shared kernel jest kuszący, ale tworzy silne sprzężenie – trzymaj go minimalnym i stabilnym. Wybór ACL ma sens, gdy model upstream jest słaby lub obcy, a nasz kontekst to core domain; dla generic subdomeny conformist bywa tańszy. W praktyce published language to np. kontrakty zdarzeń integracyjnych w schema registry albo specyfikacja OpenAPI wersjonowana niezależnie od wnętrza serwisu."
+    },
+    {
+      "id": "arch-d005",
+      "topic": "DDD: strategiczne",
+      "level": 2,
+      "q": "Jak wygląda anticorruption layer w kodzie .NET?",
+      "a": "ACL to warstwa w infrastrukturze kontekstu, która implementuje interfejs zdefiniowany w języku naszej domeny i wewnątrz tłumaczy wywołania i modele zewnętrznego systemu (DTO, kody statusów, błędy) na nasze value objecty i wyjątki. Domena zna tylko swój port, np. `ICustomerCreditCheck`, a nie klasy SDK legacy ERP. Dzięki temu zmiana dostawcy lub jego API dotyka tylko adaptera, a dziwne pojęcia z zewnątrz nie przeciekają do modelu.",
+      "code": "// port w domenie / application\npublic interface ICustomerCreditCheck\n{\n    Task<CreditLimit> GetLimitAsync(CustomerId id, CancellationToken ct);\n}\n\n// ACL w infrastrukturze\ninternal sealed class ErpCreditCheck(ErpClient erp) : ICustomerCreditCheck\n{\n    public async Task<CreditLimit> GetLimitAsync(CustomerId id, CancellationToken ct)\n    {\n        var dto = await erp.GetKontrahentAsync(id.Value.ToString(), ct);\n        return dto.STATUS == \"B\"\n            ? CreditLimit.Blocked\n            : new CreditLimit(new Money(dto.LIMIT_KR, \"PLN\"));\n    }\n}",
+      "lang": "csharp",
+      "deep": "ACL może być klasą-adapterem, osobnym modułem, a nawet osobnym serwisem tłumaczącym zdarzenia z systemu legacy na zdarzenia naszego kontekstu (przy strangler fig). Zawiera mapowanie modeli, mapowanie błędów (kody ERP → wyjątki/Result naszej domeny), a często też resilience (timeouty, retry, circuit breaker) i cache. Testuje się go testami kontraktowymi lub integracyjnymi z nagranymi odpowiedziami. Koszt: dodatkowa warstwa i mapowania do utrzymania – przy prostym, dobrze zaprojektowanym API zewnętrznym conformist bywa wystarczający."
+    },
+    {
+      "id": "arch-d006",
+      "topic": "DDD: taktyczne",
+      "level": 1,
+      "q": "Wymień building blocks taktycznego DDD i krótko je opisz.",
+      "a": "Encja – obiekt z tożsamością trwającą w czasie (Order, Customer). Value object – obiekt bez tożsamości, porównywany po wartościach i niemutowalny (Money, Address). Agregat – klaster encji i VO traktowany jako jedna jednostka spójności, z aggregate root jako jedynym punktem wejścia. Domain event – fakt, który zaszedł w domenie (`OrderPlaced`). Repozytorium – abstrakcja kolekcji agregatów do ich ładowania i zapisu. Domain service – operacja domenowa, która nie należy naturalnie do jednej encji. Factory – tworzenie złożonych agregatów. Moduły – grupowanie modelu zgodnie z językiem.",
+      "tip": "Dobrze dodać, że to narzędzia, a nie checklista – w prostym CRUD-zie większość z nich jest zbędna."
+    },
+    {
+      "id": "arch-d007",
+      "topic": "DDD w C#",
+      "level": 2,
+      "q": "Value object jako `record` w C# – jakie są zalety i pułapki?",
+      "a": "`record` daje gratis równość wartościową, `GetHashCode`, `ToString` i niemutowalność przez `init`, więc pasuje do value objectów. Walidację niezmienników robię w konstruktorze lub metodzie fabrycznej, żeby nie dało się utworzyć niepoprawnej wartości. Pułapki: wyrażenie `with` tworzy kopię i ustawia właściwości przez `init`, omijając walidację z konstruktora; kolekcje w rekordzie porównywane są po referencji, więc dwa VO z identyczną listą nie są równe; `record struct` ma też `default`, który pomija konstruktor.",
+      "code": "public sealed record Money\n{\n    public decimal Amount { get; }\n    public string Currency { get; }\n\n    public Money(decimal amount, string currency)\n    {\n        if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));\n        if (currency is not { Length: 3 }) throw new ArgumentException(\"ISO 4217\");\n        (Amount, Currency) = (amount, currency);\n    }\n\n    public Money Add(Money other) => other.Currency == Currency\n        ? new Money(Amount + other.Amount, Currency)\n        : throw new InvalidOperationException(\"Różne waluty\");\n}",
+      "lang": "csharp",
+      "deep": "Właściwości tylko z `get` (bez `init`) blokują `with` dla tych pól – `with` działa tylko na właściwościach z setterem lub init. Alternatywnie walidacja może siedzieć w akcesorze `init` (C# 14 ułatwia to słowem kluczowym `field`). Dla kolekcji nadpisuje się `Equals`/`GetHashCode` (np. `SequenceEqual`) albo używa niemutowalnej kolekcji z własną równością. Rekordy porównują też `EqualityContract`, więc klasa pochodna nie jest równa bazowej – zwykle VO robi się `sealed`. W EF Core VO mapuje się jako owned type albo complex type (od EF Core 8), a pojedyncze wartości – przez value converter. Primitive obsession to sygnał, że brakuje VO: `string email` w 15 miejscach zamiast `Email` z walidacją w jednym."
+    },
+    {
+      "id": "arch-d008",
+      "topic": "DDD w C#",
+      "level": 1,
+      "q": "Jak implementujesz encję w C# i czym są strongly-typed IDs?",
+      "a": "Encja ma tożsamość: dwie encje są tym samym obiektem, gdy mają ten sam Id, nawet jeśli ich pola się różnią. Często robi się bazową klasę `Entity<TId>` z równością po Id. Strongly-typed ID to mały typ zamiast gołego `Guid`/`int`, np. `readonly record struct OrderId(Guid Value)` – kompilator nie pozwoli wtedy przekazać `CustomerId` tam, gdzie oczekiwany jest `OrderId`. Encja nie powinna mieć publicznych setterów – stan zmienia się metodami o nazwach z języka domeny.",
+      "code": "public readonly record struct OrderId(Guid Value)\n{\n    public static OrderId New() => new(Guid.CreateVersion7());\n}\n\npublic abstract class Entity<TId> where TId : struct\n{\n    public TId Id { get; protected init; }\n    public override bool Equals(object? o) =>\n        o is Entity<TId> e && e.GetType() == GetType() && e.Id.Equals(Id);\n    public override int GetHashCode() => Id.GetHashCode();\n}",
+      "lang": "csharp",
+      "tip": "`Guid.CreateVersion7()` (od .NET 9) daje GUID-y uporządkowane czasowo – mniej fragmentacji indeksów niż losowe v4. W EF Core strongly-typed ID mapuje się value converterem."
+    },
+    {
+      "id": "arch-d009",
+      "topic": "DDD: taktyczne",
+      "level": 2,
+      "q": "Czym są niezmienniki (invariants) i gdzie je egzekwujesz?",
+      "a": "Niezmiennik to reguła biznesowa, która musi być prawdziwa zawsze po zakończeniu operacji, np. „suma pozycji zamówienia nie przekracza limitu kredytowego”, „opłaconego zamówienia nie można edytować”, „rezerwacje sali nie mogą się nakładać”. Egzekwuje je agregat w swoich metodach – jeśli operacja złamałaby regułę, rzuca wyjątek domenowy lub zwraca błąd, zanim zmieni stan. To coś innego niż walidacja wejścia (format emaila, wymagane pole), którą robię na brzegu (DTO, FluentValidation), choć VO też chronią swoje proste reguły.",
+      "deep": "Granica agregatu wynika z niezmienników: wszystko, co musi być spójne natychmiast, w jednej transakcji, należy do jednego agregatu. Reguły obejmujące wiele agregatów (unikalność emaila w systemie, „klient ma maks. 3 aktywne wypożyczenia” przy osobnych agregatach Wypożyczenie) wymagają innych mechanizmów: unikalnego indeksu w bazie, domain service ze sprawdzeniem i optimistic concurrency, przeprojektowania agregatu albo akceptacji eventual consistency z kompensacją. Warto pytać biznes, czy reguła naprawdę musi być spójna natychmiast – często wystarczy wykrycie i korekta po fakcie. Niezmienniki trzymane tylko w walidatorach aplikacyjnych łatwo obejść innym use case’em, dlatego rdzeń reguł należy do modelu."
+    },
+    {
+      "id": "arch-d010",
+      "topic": "DDD: taktyczne",
+      "level": 3,
+      "q": "Zasada „jeden agregat na transakcję” – co robisz, gdy use case musi zmienić dwa agregaty?",
+      "a": "Najpierw sprawdzam, czy reguła naprawdę wymaga natychmiastowej spójności obu agregatów. Jeśli nie – modyfikuję jeden agregat, publikuję domain event, a handler w osobnej transakcji zmienia drugi (eventual consistency, z retry i ewentualną kompensacją). Jeśli tak – być może granice są złe i oba obiekty powinny być jednym agregatem albo regułę należy przenieść. Mała, kontrolowana liczba wyjątków (np. dwa agregaty w jednej bazie w modularnym monolicie i jednym DbContext) jest pragmatycznie akceptowalna, ale świadomie i z myślą o współbieżności.",
+      "deep": "Zasady Vernona: modeluj prawdziwe niezmienniki w granicach spójności, projektuj małe agregaty, odwołuj się do innych agregatów przez Id, poza granicą stosuj eventual consistency. Uzasadnienie: duże agregaty i transakcje obejmujące wiele z nich zwiększają konflikty współbieżności (optimistic concurrency failures), blokady i utrudniają późniejszy podział na serwisy. Domain events dispatchowane po zapisie przez outbox dają niezawodność; dispatch in-process w tej samej transakcji „łamie” zasadę, ale bywa świadomym wyborem w monolicie. Przykład: `Order.Place()` emituje `OrderPlaced`, a handler rezerwuje stan w agregacie `Stock`; przy braku towaru zamówienie dostaje status `Rejected` (kompensacja) – UI musi to obsłużyć. Gdy biznes nie akceptuje tego opóźnienia, rozważ rezerwację jako pierwszy krok procesu (najpierw `Reservation`, potem `Order`)."
+    },
+    {
+      "id": "arch-d011",
+      "topic": "DDD: taktyczne",
+      "level": 2,
+      "q": "Aggregate root – dlaczego jest jedynym punktem wejścia i jak to wymusić w C# z EF Core?",
+      "a": "Aggregate root odpowiada za spójność całego agregatu, więc wszystkie zmiany wewnętrznych encji muszą przejść przez jego metody – inaczej ktoś zmieni pozycję zamówienia z pominięciem reguł. W C# wymuszam to: prywatne settery, kolekcje wystawione jako `IReadOnlyCollection` z prywatnym polem, konstruktory wewnętrznych encji `internal`, metody o nazwach z języka domeny. Repozytorium istnieje tylko dla roota, a nie dla encji wewnętrznych.",
+      "code": "public sealed class Order : Entity<OrderId>\n{\n    private readonly List<OrderLine> _lines = [];\n    public IReadOnlyCollection<OrderLine> Lines => _lines.AsReadOnly();\n    public OrderStatus Status { get; private set; }\n\n    public void AddLine(ProductId product, int qty, Money price)\n    {\n        if (Status != OrderStatus.Draft)\n            throw new DomainException(\"Zamówienie jest zamknięte\");\n        _lines.Add(new OrderLine(product, qty, price));\n    }\n}",
+      "lang": "csharp",
+      "tip": "EF Core mapuje backing field `_lines` po konwencji nazw. Sam `IReadOnlyCollection` nie wystarczy, jeśli zwracasz `_lines` bez `AsReadOnly()` – rzutowanie na `List<T>` obejdzie ochronę."
+    },
+    {
+      "id": "arch-d012",
+      "topic": "DDD: taktyczne",
+      "level": 2,
+      "q": "Domain events vs integration events – czym się różnią?",
+      "a": "Domain event to fakt wewnątrz bounded contextu (`OrderPlaced`), zwykle obsługiwany in-process w ramach tego samego serwisu, może zawierać typy domenowe i zmieniać się razem z modelem. Integration event to publiczny kontrakt dla innych kontekstów/serwisów, wysyłany przez broker (zwykle przez outbox), z prostymi typami, stabilny i wersjonowany jak API. Typowy przepływ: agregat emituje domain event, a jego handler mapuje go na integration event i zapisuje do outboxa.",
+      "deep": "Domain events mogą być obsłużone przed commitem (w tej samej transakcji – spójne efekty w tym samym kontekście) albo po commicie; integration events muszą wyjść dopiero po commicie, inaczej świat usłyszy o czymś, co się wycofało – dlatego outbox. Publikowanie domain events wprost na broker wiąże konsumentów z wewnętrznym modelem: każda refaktoryzacja klasy łamie innych. Integration event powinien nieść tyle danych, ile potrzebują odbiorcy (event-carried state transfer) lub tylko identyfikator (notification) – to świadomy trade-off między sprzężeniem a liczbą zapytań zwrotnych. Integration events mają Id do deduplikacji, wersję schematu, timestamp i correlation id. Nazwy w czasie przeszłym, w języku publikującego kontekstu."
+    },
+    {
+      "id": "arch-d013",
+      "topic": "DDD: taktyczne",
+      "level": 2,
+      "q": "Dlaczego repozytorium per agregat, a nie generyczne repozytorium per tabela?",
+      "a": "Repozytorium w DDD to iluzja kolekcji agregatów: ładuje cały agregat (root z wewnętrznymi encjami) i zapisuje go jako całość, więc istnieje tylko dla aggregate rootów. Jego interfejs jest wąski i wyraża potrzeby domeny (`GetByIdAsync`, `Add`, ewentualnie kilka metod wyszukujących potrzebnych komendom). Generyczne `IRepository<T>` dla każdej tabeli pozwala ładować i zmieniać encje wewnętrzne z pominięciem roota, a `IQueryable` w interfejsie wycieka szczegóły ORM do warstwy wyżej.",
+      "code": "public interface IOrderRepository\n{\n    Task<Order?> GetByIdAsync(OrderId id, CancellationToken ct);\n    void Add(Order order);\n}\n// zapis: IUnitOfWork / DbContext.SaveChangesAsync w application service",
+      "lang": "csharp",
+      "deep": "Zapytania do ekranów (listy, filtry, paginacja, dashboardy) nie należą do repozytorium domenowego – to strona odczytu (CQRS), np. bezpośrednio `DbContext` z `AsNoTracking` i projekcją do DTO albo Dapper. Dzięki temu repozytorium nie puchnie do 40 metod. Z EF Core `DbContext` jest już Unit of Work, a `DbSet` – repozytorium; własna abstrakcja ma sens, gdy chcesz egzekwować granice agregatów i trzymać domenę bez zależności od EF, ale dokładanie generycznego repozytorium nad `DbSet` zwykle nic nie daje. Ładowanie agregatu w całości (Include wewnętrznych kolekcji) to argument za małymi agregatami."
+    },
+    {
+      "id": "arch-d014",
+      "topic": "DDD: taktyczne",
+      "level": 2,
+      "q": "Domain service vs application service – czym się różnią? Podaj przykład.",
+      "a": "Application service (handler use case’u) orkiestruje: ładuje agregaty z repozytoriów, wywołuje na nich metody, zarządza transakcją, autoryzacją i publikacją zdarzeń – nie zawiera reguł biznesowych. Domain service zawiera logikę domenową, która nie pasuje do jednej encji, bo dotyczy kilku agregatów lub wymaga polityki z zewnątrz, np. wyliczenie rabatu na podstawie historii klienta i aktywnej promocji albo sprawdzenie, czy przelew między dwoma kontami jest dozwolony. Domain service jest bezstanowy, używa języka domeny i nie zna infrastruktury (najwyżej przez porty).",
+      "code": "// application service\npublic async Task Handle(ApplyDiscount cmd, CancellationToken ct)\n{\n    var order = await _orders.GetByIdAsync(cmd.OrderId, ct) ?? throw new NotFoundException();\n    var history = await _history.GetForAsync(order.CustomerId, ct);\n    var discount = _pricing.CalculateDiscount(order, history, _promotions.Current); // domain service\n    order.ApplyDiscount(discount);\n    await _uow.SaveChangesAsync(ct);\n}",
+      "lang": "csharp",
+      "tip": "Nadużycie domain services prowadzi do modelu anemicznego – jeśli logika dotyczy stanu jednej encji, powinna być metodą tej encji."
+    },
+    {
+      "id": "arch-d015",
+      "topic": "DDD w C#",
+      "level": 2,
+      "q": "Pokaż różnicę między modelem anemicznym a bogatym na tym samym przypadku w C#.",
+      "a": "W modelu anemicznym encja to worek właściwości z publicznymi setterami, a reguły („nie można anulować wysłanego zamówienia”, „anulowanie zapisuje datę i powód”) siedzą w serwisie – i łatwo je obejść lub zduplikować w innym serwisie. W modelu bogatym encja sama pilnuje swoich reguł i stanu; serwis tylko ładuje, woła metodę i zapisuje. Zysk: reguły w jednym miejscu, łatwe testy jednostkowe bez mocków, kod czytany językiem biznesu.",
+      "code": "// anemiczny: reguła w serwisie\nif (order.Status == OrderStatus.Shipped) throw new InvalidOperationException();\norder.Status = OrderStatus.Cancelled;\norder.CancelledAt = clock.UtcNow;\n\n// bogaty: reguła w encji\npublic void Cancel(CancelReason reason, DateTimeOffset now)\n{\n    if (Status == OrderStatus.Shipped)\n        throw new DomainException(\"Wysłanego zamówienia nie można anulować\");\n    Status = OrderStatus.Cancelled;\n    Cancellation = new Cancellation(reason, now);\n    Raise(new OrderCancelled(Id, reason));\n}",
+      "lang": "csharp",
+      "tip": "Model anemiczny nie jest zawsze błędem – w prostym CRUD-zie lub transaction script bywa najlepszym wyborem. Problemem jest anemiczny model w złożonej domenie udający DDD."
+    },
+    {
+      "id": "arch-d016",
+      "topic": "DDD w C#",
+      "level": 3,
+      "q": "Jak mapować bogaty model domeny w EF Core, nie zanieczyszczając go infrastrukturą?",
+      "a": "Konfigurację trzymam w infrastrukturze (`IEntityTypeConfiguration<T>`), nie atrybutami w domenie. EF Core radzi sobie z prywatnymi setterami, prywatnym konstruktorem bezparametrowym (lub konstruktorem z parametrami pasującymi do właściwości) i backing fieldami dla kolekcji. Value objecty mapuję jako owned types lub complex types, strongly-typed IDs – value converterem, a dla współbieżności dodaję token (np. `rowversion` lub właściwość Version). Domain events zbieram w agregacie i dispatchuję z interceptora lub z Unit of Work.",
+      "code": "internal sealed class OrderConfig : IEntityTypeConfiguration<Order>\n{\n    public void Configure(EntityTypeBuilder<Order> b)\n    {\n        b.HasKey(o => o.Id);\n        b.Property(o => o.Id).HasConversion(id => id.Value, v => new OrderId(v));\n        b.ComplexProperty(o => o.ShippingAddress);\n        b.OwnsMany(o => o.Lines, l => l.WithOwner().HasForeignKey(\"OrderId\"));\n        b.Navigation(o => o.Lines).HasField(\"_lines\");\n        b.Property<byte[]>(\"RowVersion\").IsRowVersion();\n    }\n}",
+      "lang": "csharp",
+      "deep": "Kompromisy są nieuniknione: EF potrzebuje konstruktora dla materializacji i czasem wirtualnych właściwości dla lazy loading (którego w agregatach i tak unikam). Owned types dla kolekcji mapują się do osobnej tabeli z kluczem złożonym; complex types (od EF Core 8) nie mają tożsamości, więc lepiej pasują do VO, ale w kolejnych wersjach EF dochodzą nowe możliwości – trzeba sprawdzić, co wspiera używana wersja (np. kolekcje, nullowalność, JSON). Shadow properties (RowVersion, audyt) trzymają kolumny techniczne poza modelem. Alternatywa przy dużych rozjazdach: osobny model persystencji i mapowanie domena ↔ encje EF – czystsza domena, ale dużo kodu mapującego; zwykle robię to dopiero, gdy schemat bazy jest narzucony (legacy). Agregat ładuję w całości (Include/owned są ładowane automatycznie), a zapis jednego agregatu na transakcję upraszcza obsługę `DbUpdateConcurrencyException`."
+    },
+    {
+      "id": "arch-d017",
+      "topic": "CQRS w praktyce",
+      "level": 1,
+      "q": "Jak wygląda CQRS bez osobnej bazy odczytu w aplikacji .NET?",
+      "a": "Jedna baza, dwie ścieżki. Komendy idą przez model domenowy: handler ładuje agregat z repozytorium, wywołuje metodę i zapisuje przez `SaveChanges` – to miejsce na reguły i transakcje. Zapytania omijają domenę: czytają bezpośrednio z bazy z `AsNoTracking` i projekcją `Select` do DTO (albo Dapperem/SQL), dokładnie w kształcie potrzebnym ekranowi. To już daje główne korzyści CQRS: prosty model zapisu bez pól „dla UI” i szybkie, dopasowane odczyty.",
+      "code": "public async Task<OrderListItem[]> Handle(GetMyOrders q, CancellationToken ct) =>\n    await _db.Orders\n        .AsNoTracking()\n        .Where(o => o.CustomerId == q.CustomerId)\n        .OrderByDescending(o => o.PlacedAt)\n        .Select(o => new OrderListItem(o.Id.Value, o.PlacedAt, o.Lines.Count, o.Total.Amount))\n        .Take(50)\n        .ToArrayAsync(ct);",
+      "lang": "csharp",
+      "tip": "Do dispatchowania handlerów nie potrzeba biblioteki – wystarczą interfejsy i DI lub zwykłe minimal API endpointy wywołujące klasy handlerów."
+    },
+    {
+      "id": "arch-d018",
+      "topic": "CQRS w praktyce",
+      "level": 3,
+      "q": "CQRS z osobną bazą odczytu – jak synchronizujesz read model i jakie problemy to rodzi?",
+      "a": "Strona zapisu po commicie publikuje zdarzenia (przez outbox), a projektory konsumują je i aktualizują zdenormalizowane modele odczytu: tabelę w osobnej bazie, dokument w MongoDB/Cosmos, indeks Elasticsearch, cache w Redisie. Daje to niezależne skalowanie i modele idealne pod zapytania. Ceną jest eventual consistency (opóźnienie między zapisem a odczytem), więcej infrastruktury, obsługa duplikatów i kolejności zdarzeń oraz potrzeba odbudowy read modelu.",
+      "deep": "Projektor musi być idempotentny (upsert, zapamiętana wersja/pozycja zdarzenia per encja) i odporny na kolejność – np. ignoruje zdarzenie o wersji niższej niż zapisana. Odbudowa read modelu: przy event sourcingu replay od początku strumienia; bez ES – dodatkowy mechanizm (snapshot z bazy zapisu + zdarzenia od pozycji, albo backfill). Nowe read modele buduję obok starych (blue-green projekcji) i przełączam po nadrobieniu. Monitoruję opóźnienie projekcji (lag) jako metrykę SLO. Osobna baza to duży koszt – uzasadniają ją: bardzo różne wzorce dostępu (full-text, wyszukiwanie geo), duża dysproporcja odczytów do zapisów, potrzeba wielu różnych widoków. Pośrednie rozwiązania: widoki/zmaterializowane widoki w tej samej bazie, repliki odczytowe, tabele read modelu aktualizowane w tej samej transakcji (bez opóźnienia, ale ze sprzężeniem)."
+    },
+    {
+      "id": "arch-d019",
+      "topic": "CQRS w praktyce",
+      "level": 2,
+      "q": "Read model jest aktualizowany asynchronicznie. Jak obsłużyć eventual consistency w UI?",
+      "a": "Mam kilka technik zależnie od przypadku. Po komendzie zwracam id i dane, które UI już zna, i aktualizuję widok optymistycznie (optimistic UI), zamiast od razu czytać listę. Mogę zwrócić `202 Accepted` z adresem statusu, a frontend odpytuje go lub dostaje powiadomienie przez SignalR/SSE, gdy projekcja się zaktualizuje. Read-your-writes: komenda zwraca wersję/pozycję zdarzenia, a zapytanie czeka (z limitem), aż read model dogoni tę wersję. Ważne jest też język UI: „Zamówienie przyjęte, przetwarzamy” zamiast udawania natychmiastowego wyniku.",
+      "deep": "Odpytywanie po stałym opóźnieniu („odczekaj 500 ms”) to kruche obejście – opóźnienie projekcji pod obciążeniem rośnie. W Angularze optimistic update na signalach to dodanie elementu do stanu lokalnego i rollback przy błędzie komendy. Read-your-writes można też uzyskać, czytając świeżo zapisaną encję ze strony zapisu (tylko dla tego jednego elementu), a listę z read modelu. Warto ustalić z biznesem akceptowalne opóźnienie i mierzyć je; często to kilkaset milisekund i wystarczy dobre UX. Jeśli użytkownicy nie akceptują żadnego opóźnienia w danym miejscu, to argument, by read model dla tego widoku aktualizować synchronicznie."
+    },
+    {
+      "id": "arch-d020",
+      "topic": "Event Sourcing",
+      "level": 2,
+      "q": "Jak działa event store i odtwarzanie agregatu w event sourcingu?",
+      "a": "Stan agregatu nie jest zapisywany jako wiersz – zapisujemy append-only strumień zdarzeń per agregat (np. `order-123`), a stan odtwarzamy, aplikując zdarzenia po kolei (rehydration). Komenda ładuje strumień, odtwarza stan, metoda agregatu sprawdza reguły i generuje nowe zdarzenia, które dopisujemy z oczekiwaną wersją strumienia (optimistic concurrency): jeśli ktoś w międzyczasie dopisał zdarzenie, zapis się nie uda i komendę ponawiamy. W .NET popularne są Marten (na PostgreSQL) i KurrentDB (dawniej EventStoreDB).",
+      "code": "public sealed class Order\n{\n    public OrderStatus Status { get; private set; }\n    public decimal Total { get; private set; }\n\n    public void Apply(OrderPlaced e) { Status = OrderStatus.Placed; Total = e.Total; }\n    public void Apply(OrderPaid e) => Status = OrderStatus.Paid;\n\n    public static Order Rehydrate(IEnumerable<object> events)\n    {\n        var order = new Order();\n        foreach (var e in events) order.Apply((dynamic)e);\n        return order;\n    }\n}",
+      "lang": "csharp",
+      "tip": "Metody Apply nie mogą rzucać wyjątków ani mieć efektów ubocznych – zdarzenie to fakt, który już zaszedł. Walidacja jest w metodzie komendy, przed wygenerowaniem zdarzenia."
+    },
+    {
+      "id": "arch-d021",
+      "topic": "Event Sourcing",
+      "level": 3,
+      "q": "Projekcje i snapshoty w event sourcingu – kiedy i jak je stosujesz?",
+      "a": "Projekcja to proces, który czyta zdarzenia i buduje z nich model odczytu (tabelę, dokument), bo zapytań typu „wszystkie otwarte zamówienia klienta” nie da się wydajnie robić po strumieniach. Projekcje bywają inline (w tej samej transakcji co zapis zdarzeń – spójne, ale spowalniają zapis) albo asynchroniczne (osobny proces z checkpointem – eventual consistency, łatwy rebuild). Snapshot to zapisany stan agregatu w danej wersji, żeby nie odtwarzać tysięcy zdarzeń przy każdej komendzie: ładujemy snapshot i tylko zdarzenia po nim.",
+      "deep": "Snapshot to optymalizacja, nie źródło prawdy – można go w każdej chwili wyrzucić i odbudować. Zanim go dodasz, sprawdź, czy długi strumień nie wynika ze złego modelu: często lepiej „zamknąć książki” (np. strumień per okres rozliczeniowy) niż snapshotować. Przy zmianie kształtu agregatu stare snapshoty stają się nieaktualne – wersjonuj je i odrzucaj niepasujące. Projekcje muszą być deterministyczne, idempotentne i bez efektów ubocznych (żadnych maili), bo rebuild odtwarza całą historię; efekty uboczne obsługują osobni subskrybenci. Rebuild dużej projekcji robię obok starej (nowa tabela), a po dogonieniu przełączam. W Marten masz projekcje inline/async/live i self-aggregating snapshots, w KurrentDB – subskrypcje z checkpointami po stronie klienta."
+    },
+    {
+      "id": "arch-d022",
+      "topic": "Event Sourcing",
+      "level": 3,
+      "q": "Jak wersjonujesz zdarzenia w event sourcingu, skoro historii się nie zmienia?",
+      "a": "Zdarzenia zapisane w store są niezmienne i muszą dać się odczytać latami, więc zmiany schematu planuję jak zmiany publicznego API. Najprostsze: zmiany addytywne (nowe pole opcjonalne z wartością domyślną), tolerant reader przy deserializacji. Przy zmianie znaczenia – nowy typ zdarzenia (`OrderShippedV2` lub lepsza nazwa), a stary nadal obsługiwany. Przy zmianie kształtu – upcasting: przy odczycie stare zdarzenie jest transformowane do nowej wersji, zanim trafi do agregatu, więc kod domeny zna tylko najnowszą.",
+      "deep": "Ostateczność to copy-and-transform: migracja strumieni do nowego store’a lub nowych strumieni z przepisanymi zdarzeniami – kosztowna i ryzykowna, ale czasem potrzebna (np. RODO/usunięcie danych osobowych, choć tu częściej stosuje się crypto-shredding: dane osobowe szyfrowane kluczem per osoba, a usunięcie klucza „usuwa” dane). Nazwy typów w store’ze mapuj jawnie (alias), nie przez pełną nazwę klasy .NET, bo refaktoryzacja namespace’u złamie deserializację. Zdarzenia projektuj jako fakty biznesowe (`PriceChanged`), a nie zmiany pól (`ProductUpdated`), bo te drugie zmieniają się przy każdej zmianie modelu. Projekcje i subskrybenci muszą znać wszystkie wersje albo dostać je po upcastingu. Testy: zestaw serializowanych przykładowych zdarzeń z każdej wersji jako regresja."
+    },
+    {
+      "id": "arch-d023",
+      "topic": "DDD: strategiczne",
+      "level": 2,
+      "q": "Kiedy NIE stosować DDD ani event sourcingu?",
+      "a": "Taktycznego DDD nie stosuję w prostych CRUD-ach, panelach administracyjnych i generic subdomenach (logowanie, faktury z gotowego systemu), gdzie logiki jest mało – agregaty i zdarzenia dodają tylko warstwy. Pełne DDD wymaga też dostępu do ekspertów domenowych; bez nich powstaje „DDD z nazwy”. Event sourcingu nie stosuję, gdy nie ma realnej potrzeby historii, audytu lub odtwarzania stanu w czasie, gdy zespół go nie zna, a raportowanie ad hoc po bieżącym stanie jest kluczowe – audyt można zrobić tabelą historii. Strategiczne DDD (język, granice kontekstów) przydaje się prawie zawsze, nawet bez wzorców taktycznych.",
+      "deep": "Koszty ES: projekcje do każdego zapytania, eventual consistency, wersjonowanie zdarzeń na lata, trudniejsze usuwanie danych osobowych, nowi ludzie w zespole uczą się dłużej. ES opłaca się, gdy historia jest wartością biznesową (finanse, księgowość, logistyka, procesy z audytem), gdy potrzebujesz temporalnych zapytań („jaki był stan 1 marca”) albo wielu różnych modeli odczytu z tych samych faktów. Dobrą praktyką jest wybór per bounded context: ES w jednym kontekście core, zwykły CRUD w pozostałych. Sygnał przeinwestowania: agregaty z jedną metodą `Update`, zdarzenia typu `EntityUpdated`, repozytoria owijające `DbSet` bez żadnych reguł."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "arch-dq001",
+      "topic": "DDD: taktyczne",
+      "level": 1,
+      "q": "W systemie zamówień adres dostawy jest kopiowany do zamówienia w momencie jego złożenia. Dwa zamówienia mogą mieć identyczny adres. Jak go zamodelować?",
+      "options": [
+        "Jako encję z własnym Id, współdzieloną przez zamówienia",
+        "Jako osobny agregat z repozytorium",
+        "Jako value object osadzony w zamówieniu, porównywany po wartościach",
+        "Jako domain service"
+      ],
+      "correct": 2,
+      "why": "Adres w zamówieniu nie ma własnej tożsamości ani cyklu życia – liczy się tylko jego wartość, a zmiana adresu klienta nie powinna zmienić starych zamówień. To klasyczny value object. Encja lub agregat dodałyby zbędną tożsamość i współdzielenie."
+    },
+    {
+      "id": "arch-dq002",
+      "topic": "DDD: strategiczne",
+      "level": 1,
+      "q": "W Katalogu „Produkt” to nazwa, opis i zdjęcia, w Magazynie – SKU i stan, a w Wysyłce – waga i wymiary. Zespół chce jedną klasę `Product` z wszystkimi polami używaną wszędzie. Co mówi DDD?",
+      "options": [
+        "To sygnał osobnych bounded contextów – każdy ma własny model produktu, powiązany wspólnym identyfikatorem",
+        "Jedna klasa to dobra praktyka DRY i zapewnia spójność",
+        "Należy zrobić jedną klasę z dziedziczeniem: CatalogProduct, StockProduct, ShippingProduct",
+        "Produkt powinien być value objectem współdzielonym przez wszystkie moduły"
+      ],
+      "correct": 0,
+      "why": "Różne znaczenia tego samego słowa wskazują granice bounded contextów. Każdy kontekst modeluje produkt po swojemu, a łączy je identyfikator i integracja. Jedna wspólna klasa szybko staje się wielkim, sprzężonym modelem, którego nikt nie może zmienić bez wpływu na innych."
+    },
+    {
+      "id": "arch-dq003",
+      "topic": "CQRS w praktyce",
+      "level": 1,
+      "q": "Handler zapytania `GetOrderDetails` przy okazji ustawia `order.LastViewedAt = now` i wywołuje SaveChanges. Co jest nie tak?",
+      "options": [
+        "Nic, to zwykła optymalizacja",
+        "Zapytania w CQRS muszą być asynchroniczne, a ten handler jest synchroniczny",
+        "Zapytania powinny korzystać z repozytorium agregatu zamiast DbContext",
+        "Zapytanie zmienia stan – łamie rozdział komend i zapytań (CQS/CQRS) i daje ukryte efekty uboczne"
+      ],
+      "correct": 3,
+      "why": "W CQRS zapytania nie zmieniają stanu – można je cache’ować, ponawiać i skalować bez ryzyka. Zapis „ostatniego wyświetlenia” to osobna komenda lub zdarzenie (np. wysłane asynchronicznie). Zapytania zwykle omijają repozytorium agregatu, więc ostatnia odpowiedź jest odwrotna do zalecanej."
+    },
+    {
+      "id": "arch-dq004",
+      "topic": "Event Sourcing",
+      "level": 1,
+      "q": "Co jest źródłem prawdy w systemie z event sourcingiem?",
+      "options": [
+        "Tabela z bieżącym stanem agregatu, a zdarzenia są logiem pomocniczym",
+        "Append-only strumień zdarzeń – stan bieżący jest z niego wyliczany",
+        "Najnowszy snapshot agregatu",
+        "Read model zbudowany przez projekcje"
+      ],
+      "correct": 1,
+      "why": "W event sourcingu zapisuje się zdarzenia i to one są źródłem prawdy. Snapshoty i read modele to pochodne, które można wyrzucić i odbudować przez replay. Tabela stanu z logiem obok to zwykły audyt, nie event sourcing."
+    },
+    {
+      "id": "arch-dq005",
+      "topic": "DDD w C#",
+      "level": 2,
+      "q": "Co wypisze ten kod?",
+      "code": "public sealed record Tags(List<string> Items);\n\nvar a = new Tags(new() { \"dotnet\" });\nvar b = new Tags(new() { \"dotnet\" });\nConsole.WriteLine(a == b);",
+      "lang": "csharp",
+      "options": [
+        "True – rekordy porównują wszystkie właściwości po wartości, także zawartość list",
+        "False – List<string> jest porównywana po referencji",
+        "True – listy z tymi samymi elementami mają ten sam hash code",
+        "Błąd kompilacji – rekord nie może mieć właściwości typu List"
+      ],
+      "correct": 1,
+      "why": "Równość rekordu porównuje właściwości przez `EqualityComparer<T>.Default`, a dla `List<T>` to równość referencyjna. Dwie różne listy z tą samą zawartością nie są równe, więc cały rekord też nie. Value object z kolekcją potrzebuje własnego Equals/GetHashCode (np. SequenceEqual) lub kolekcji z równością strukturalną."
+    },
+    {
+      "id": "arch-dq006",
+      "topic": "DDD w C#",
+      "level": 2,
+      "q": "Co się stanie po wykonaniu tego kodu?",
+      "code": "public sealed record Percentage\n{\n    public decimal Value { get; init; }\n    public Percentage(decimal value)\n    {\n        if (value is < 0 or > 100) throw new ArgumentOutOfRangeException();\n        Value = value;\n    }\n}\n\nvar p = new Percentage(20);\nvar q = p with { Value = 150 };",
+      "lang": "csharp",
+      "options": [
+        "ArgumentOutOfRangeException, bo `with` wywołuje konstruktor z nową wartością",
+        "Błąd kompilacji – `with` nie działa dla rekordów z własnym konstruktorem",
+        "q będzie miało Value = 20, bo właściwość jest init-only",
+        "Powstanie obiekt z Value = 150 bez wyjątku – `with` kopiuje rekord i ustawia `init`, nie wywołując konstruktora"
+      ],
+      "correct": 3,
+      "why": "`with` używa konstruktora kopiującego i akcesorów `init`, więc walidacja w konstruktorze jest pomijana. Value object może przez to dostać niepoprawny stan. Rozwiązania: walidacja w akcesorze `init`, właściwość tylko z `get` (wtedy `with` dla niej się nie skompiluje) albo metoda fabryczna i brak publicznego `init`."
+    },
+    {
+      "id": "arch-dq007",
+      "topic": "DDD: strategiczne",
+      "level": 2,
+      "q": "Integrujesz nowy moduł rozliczeń z 20-letnim ERP. ERP ma tabele typu `KONTRAH`, statusy jako litery i dziwne reguły, a Ty nie masz wpływu na jego zmiany. Rozliczenia to core domain. Który wzorzec context mappingu wybierasz?",
+      "options": [
+        "Anticorruption layer tłumaczący model ERP na model rozliczeń",
+        "Shared kernel – wspólne klasy z ERP",
+        "Conformist – przyjęcie modelu ERP w całym module",
+        "Partnership – wspólne planowanie zmian z zespołem ERP"
+      ],
+      "correct": 0,
+      "why": "Gdy upstream ma słaby, obcy model, a nasz kontekst jest kluczowy, ACL chroni nasz język i model przed przeciekaniem pojęć z ERP. Conformist byłby tańszy, ale „zaraziłby” core domain. Shared kernel i partnership wymagają współpracy i wpływu, których tu nie ma."
+    },
+    {
+      "id": "arch-dq008",
+      "topic": "DDD: strategiczne",
+      "level": 2,
+      "q": "Twój serwis korzysta z API dużego zewnętrznego operatora płatności. Nie masz żadnego wpływu na jego model, a jest on rozsądny i dobrze udokumentowany. Używasz jego DTO bezpośrednio w swoim module płatności (generic subdomain). Jak nazywa się ta relacja?",
+      "options": [
+        "Customer-supplier",
+        "Shared kernel",
+        "Conformist",
+        "Separate ways"
+      ],
+      "correct": 2,
+      "why": "Conformist to sytuacja, w której downstream przyjmuje model upstream bez wpływu na niego. Customer-supplier zakłada, że upstream uwzględnia potrzeby odbiorcy w planach – tu tego nie ma. Przy dobrym modelu dostawcy i generic subdomenie conformist jest rozsądnym, tanim wyborem."
+    },
+    {
+      "id": "arch-dq009",
+      "topic": "DDD: taktyczne",
+      "level": 2,
+      "q": "Handler serializuje klasę `OrderPlaced` (domain event z polem `Order Order` – całym agregatem) i publikuje ją na Kafkę, z której korzystają 4 inne zespoły. Co jest głównym problemem?",
+      "options": [
+        "Kafka nie obsługuje zdarzeń większych niż 1 KB",
+        "Domain events nie mogą mieć nazw w czasie przeszłym",
+        "Agregat powinien sam publikować zdarzenia na Kafkę w metodzie Place()",
+        "Domain event wycieka jako kontrakt integracyjny – wewnętrzny model staje się publicznym API, a każda refaktoryzacja agregatu łamie konsumentów"
+      ],
+      "correct": 3,
+      "why": "Domain events są wewnętrzne dla kontekstu. Dla innych zespołów należy zmapować je na stabilny, wersjonowany integration event z prostymi typami (i wysłać przez outbox). Agregat nie powinien znać brokera."
+    },
+    {
+      "id": "arch-dq010",
+      "topic": "DDD: taktyczne",
+      "level": 2,
+      "q": "`IOrderRepository` ma metody: GetByIdAsync, Add, GetPagedForAdminGrid(filter, sort, page), GetDashboardStats(), GetTopCustomersReport(). Co poprawić?",
+      "options": [
+        "Zamienić repozytorium na generyczne IRepository<T> z IQueryable",
+        "Dodać osobne repozytorium dla każdej tabeli używanej w raportach",
+        "Zapytania dla ekranów i raportów przenieść na stronę odczytu (query handlery z projekcją do DTO), w repozytorium zostawić ładowanie i zapis agregatu",
+        "Przenieść wszystkie metody do agregatu Order"
+      ],
+      "correct": 2,
+      "why": "Repozytorium domenowe służy komendom: ładuje i zapisuje agregaty. Gridy, dashboardy i raporty to zapytania, które lepiej robić osobno, z projekcją i AsNoTracking – to sedno CQRS. Generyczne repozytorium z IQueryable wycieka ORM i nie pilnuje granic agregatów."
+    },
+    {
+      "id": "arch-dq011",
+      "topic": "DDD: taktyczne",
+      "level": 2,
+      "q": "Wysokość rabatu zależy od historii zamówień klienta (agregat Customer) i aktualnej promocji (agregat Promotion), a ma zostać zastosowana do zamówienia (agregat Order). Gdzie umieścić logikę wyliczenia?",
+      "options": [
+        "W domain service (np. DiscountPolicy), wywoływanym przez application service, który potem woła `order.ApplyDiscount(...)`",
+        "W kontrolerze API, bo ma dostęp do wszystkich danych",
+        "W agregacie Order, który wczyta Customer i Promotion z repozytoriów",
+        "W application service, w postaci warunków if na właściwościach agregatów"
+      ],
+      "correct": 0,
+      "why": "Logika domenowa obejmująca kilka agregatów, która nie należy naturalnie do żadnego z nich, to domain service. Application service tylko orkiestruje (ładuje dane, woła serwis domenowy i metodę agregatu, zapisuje). Agregat nie powinien sam sięgać po repozytoria, a reguły w kontrolerze czy w if-ach handlera prowadzą do modelu anemicznego."
+    },
+    {
+      "id": "arch-dq012",
+      "topic": "CQRS w praktyce",
+      "level": 2,
+      "q": "Komenda `PlaceOrder` zwraca id nowego zamówienia i jego numer, żeby frontend mógł przekierować na stronę szczegółów. Ktoś na code review mówi, że to łamie CQRS. Jak oceniasz?",
+      "options": [
+        "Ma rację – komenda w CQRS musi zwracać void, a id trzeba pobrać osobnym zapytaniem",
+        "To pragmatycznie w porządku – zwrócenie id, wersji lub wyniku operacji nie zamienia komendy w zapytanie; nie zwraca się za to pełnych modeli do wyświetlania",
+        "Ma rację – frontend powinien wygenerować numer zamówienia sam",
+        "Komenda powinna zwrócić pełny OrderDetailsDto, żeby uniknąć drugiego requestu"
+      ],
+      "correct": 1,
+      "why": "Purystyczne „komenda zwraca void” jest niepraktyczne; powszechnie akceptuje się zwracanie identyfikatora, wersji czy wyniku walidacji. Problemem byłoby budowanie przez komendę modeli odczytu (pełnych DTO), co miesza ścieżki. Id można też generować po stronie klienta (np. GUID v7), ale numer biznesowy zwykle nadaje serwer."
+    },
+    {
+      "id": "arch-dq013",
+      "topic": "DDD: taktyczne",
+      "level": 3,
+      "q": "Złożenie zamówienia (agregat Order) musi zmniejszyć dostępny stan magazynowy (agregat StockItem). W szczycie tysiące zamówień na minutę dotyczą tych samych popularnych produktów i jedna transakcja na oba agregaty powoduje masę konfliktów. Biznes akceptuje, że w rzadkich przypadkach zamówienie zostanie odrzucone chwilę po złożeniu. Co wybierasz?",
+      "options": [
+        "Jedna transakcja Serializable obejmująca Order i StockItem",
+        "Połączenie Order i StockItem w jeden agregat",
+        "Zapis Order w jednej transakcji, zdarzenie OrderPlaced (przez outbox) i rezerwacja stanu w osobnej transakcji; brak towaru → kompensacja (odrzucenie zamówienia z informacją dla klienta)",
+        "Usunięcie kontroli stanu – magazyn sam się wyrówna przy inwentaryzacji"
+      ],
+      "correct": 2,
+      "why": "Skoro biznes akceptuje opóźnione odrzucenie, eventual consistency między agregatami zgodnie z zasadą „jeden agregat na transakcję” usuwa konflikty na gorącym agregacie zamówień. Serializable pogłębi problem blokad, a łączenie agregatów stworzy gigantyczny, sporny agregat. Rezygnacja z reguły nie jest akceptowalna."
+    },
+    {
+      "id": "arch-dq014",
+      "topic": "Event Sourcing",
+      "level": 3,
+      "q": "Dwie komendy jednocześnie wczytały strumień `order-42` w wersji 7 i obie próbują dopisać zdarzenie z oczekiwaną wersją 7. Co powinno się stać?",
+      "options": [
+        "Oba zapisy się powiodą, a zdarzenia zostaną posortowane po timestampie",
+        "Pierwszy zapis się powiedzie (wersja 8), drugi dostanie błąd konfliktu wersji – handler wczyta strumień ponownie i ponowi komendę lub zwróci konflikt",
+        "Event store scali zdarzenia w jedno",
+        "Drugi zapis nadpisze pierwszy, bo jest nowszy"
+      ],
+      "correct": 1,
+      "why": "Optimistic concurrency przez expected version chroni niezmienniki: druga komenda podejmowała decyzję na nieaktualnym stanie. Po konflikcie handler odtwarza agregat z nowymi zdarzeniami i ponownie sprawdza reguły – komenda może się teraz powieść albo zostać odrzucona."
+    },
+    {
+      "id": "arch-dq015",
+      "topic": "Event Sourcing",
+      "level": 3,
+      "q": "W event store są miliony zdarzeń `CustomerRegistered` z polem `Name`. Nowa wersja modelu rozdziela je na `FirstName` i `LastName`. Jakie podejście jest standardowe?",
+      "options": [
+        "UPDATE na tabeli zdarzeń, który przepisze wszystkie stare zdarzenia na nowy format",
+        "Usunięcie starych zdarzeń i odtworzenie ich z read modelu",
+        "Zmiana klasy zdarzenia i liczenie na to, że deserializator zignoruje brakujące pola",
+        "Upcaster przy odczycie, który zamienia starą wersję zdarzenia na nową, zanim trafi do agregatu i projekcji"
+      ],
+      "correct": 3,
+      "why": "Zdarzenia są niezmienną historią, więc ich bezpośrednia modyfikacja jest ostatecznością (copy-and-transform do nowego store’a) i dużym ryzykiem. Upcasting transformuje stare wersje przy odczycie, a kod domeny zna tylko nową. Liczenie na tolerancję deserializatora da puste FirstName/LastName dla historii."
+    },
+    {
+      "id": "arch-dq016",
+      "topic": "Event Sourcing",
+      "level": 3,
+      "q": "Zespół odbudowuje projekcję `CustomerSummary` przez replay 50 mln zdarzeń. Po godzinie klienci zgłaszają lawinę starych maili „Dziękujemy za zamówienie”. Co jest błędem projektowym?",
+      "options": [
+        "Projekcja ma efekty uboczne – wysyłka maili powinna być w osobnym subskrybencie z własnym checkpointem, a projekcje deterministyczne i bez efektów",
+        "Replay powinien być zrobiony z read modelu, a nie ze zdarzeń",
+        "Zabrakło snapshotów agregatu Customer",
+        "Projekcja powinna być inline zamiast asynchronicznej"
+      ],
+      "correct": 0,
+      "why": "Rebuild projekcji odtwarza całą historię, więc każda akcja zewnętrzna w projekcji wykona się ponownie. Efekty uboczne (maile, wywołania API) obsługuje osobny subskrybent, który przetwarza zdarzenia raz od swojego checkpointu i nie bierze udziału w rebuildach. Snapshoty i tryb inline nie mają tu znaczenia."
+    }
+  ]
+}

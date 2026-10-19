@@ -1,0 +1,231 @@
+{
+  "cat": "testing",
+  "name": "Testy (.NET i Angular)",
+  "cards": [
+    {
+      "id": "testing-m001",
+      "topic": "Moq w praktyce",
+      "level": 2,
+      "q": "Jak w praktyce używasz Moq: Setup, Returns, Verify, It.IsAny i Times?",
+      "a": "`new Mock<T>()` tworzy mocka, a do testowanego kodu przekazuje się `mock.Object`. `Setup(x => x.Metoda(args)).Returns(...)` konfiguruje odpowiedź dla pasujących argumentów: konkretna wartość, `It.IsAny<T>()` (dowolna) albo `It.Is<T>(predykat)`. `Verify(x => ..., Times.Once())` sprawdza interakcję, a `VerifyNoOtherCalls()` – że nie było innych wywołań. Domyślnie mock jest „loose”: nieskonfigurowane wywołania zwracają wartości domyślne; `MockBehavior.Strict` rzuca wyjątek przy każdym nieskonfigurowanym wywołaniu. `Callback` pozwala przechwycić argument, a `SetupSequence` zwraca kolejne wartości przy kolejnych wywołaniach.",
+      "code": "var repo = new Mock<IOrderRepository>();\nrepo.Setup(r => r.Get(It.Is<int>(id => id > 0))).Returns(new Order(1, 100m));\nOrder? saved = null;\nrepo.Setup(r => r.Save(It.IsAny<Order>())).Callback<Order>(o => saved = o);\n\nvar sut = new OrderService(repo.Object);\nsut.ApplyDiscount(1, 0.1m);\n\nrepo.Verify(r => r.Save(It.IsAny<Order>()), Times.Once());\nAssert.Equal(90m, saved!.Total);",
+      "lang": "csharp",
+      "tip": "Moq mockuje interfejsy oraz członki `virtual`/`abstract` klas – metody niewirtualne nie zostaną przechwycone."
+    },
+    {
+      "id": "testing-m002",
+      "topic": "NSubstitute w praktyce",
+      "level": 2,
+      "q": "Jak wygląda typowy test z NSubstitute: Returns, Received, Arg.Any i rzucanie wyjątków?",
+      "a": "`Substitute.For<T>()` zwraca od razu obiekt implementujący interfejs – nie ma `.Object`. Konfiguracja to wywołanie metody i `.Returns(wartość)` (także kilka wartości kolejno albo lambda z `CallInfo`). Dopasowanie argumentów: `Arg.Any<T>()` i `Arg.Is<T>(predykat)`. Weryfikacja: `sub.Received(1).Metoda(...)`, `DidNotReceive()`, a `Arg.Do<T>` przechwytuje argument. Wyjątki rzuca się przez `.Throws(...)`/`.ThrowsAsync(...)` z przestrzeni `NSubstitute.ExceptionExtensions` albo `When(...).Do(...)` dla metod void.",
+      "code": "var clock = Substitute.For<IClock>();\nvar mailer = Substitute.For<IMailer>();\nclock.Now.Returns(new DateTime(2026, 1, 1));\nmailer.When(m => m.Send(Arg.Is<Mail>(x => x.To == \"\")))\n      .Do(_ => throw new ArgumentException(\"empty\"));\n\nvar sut = new ReminderService(clock, mailer);\nsut.SendDue();\n\nmailer.Received(2).Send(Arg.Any<Mail>());\nmailer.DidNotReceive().Send(Arg.Is<Mail>(m => m.To == \"admin@x.pl\"));",
+      "lang": "csharp",
+      "tip": "Warto doinstalować NSubstitute.Analyzers – wykrywa konfigurację niewirtualnych członków, która po cichu nie działa."
+    },
+    {
+      "id": "testing-m003",
+      "topic": "Mockowanie async",
+      "level": 2,
+      "q": "Jak mockujesz metody asynchroniczne i HttpClient w testach .NET?",
+      "a": "W Moq dla `Task<T>` używa się `ReturnsAsync(wartość)` i `ThrowsAsync(wyjątek)`; w NSubstitute `Returns(wartość)` działa też dla `Task<T>` (lub jawnie `Task.FromResult`), a wyjątki przez `ThrowsAsync` z ExceptionExtensions. Weryfikację rób po `await` testowanej metody, a argument `CancellationToken` dopasowuj przez `It.IsAny<CancellationToken>()`/`Arg.Any<CancellationToken>()`, bo kod produkcyjny często przekazuje własny token. `HttpClient` nie ma interfejsu – zamiast go mockować podstawia się własny `HttpMessageHandler` (fake zwracający przygotowaną odpowiedź) albo opakowuje się API w typed client z interfejsem i mockuje ten interfejs.",
+      "code": "repo.Setup(r => r.GetAsync(42, It.IsAny<CancellationToken>()))\n    .ReturnsAsync(new User(42, \"Ala\"));\nrepo.Setup(r => r.SaveAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))\n    .ThrowsAsync(new DbUpdateException());\n\nclass StubHandler(HttpResponseMessage resp) : HttpMessageHandler {\n  protected override Task<HttpResponseMessage> SendAsync(\n      HttpRequestMessage req, CancellationToken ct) => Task.FromResult(resp);\n}\nvar http = new HttpClient(new StubHandler(new(HttpStatusCode.OK) {\n  Content = JsonContent.Create(new { id = 42 }) })) { BaseAddress = new(\"https://api/\") };",
+      "lang": "csharp",
+      "tip": "`async void` w kodzie produkcyjnym jest nietestowalne – test nie ma na co czekać, a wyjątek nie trafi do asercji."
+    },
+    {
+      "id": "testing-m004",
+      "topic": "Czego nie mockować",
+      "level": 3,
+      "q": "Czego nie mockować w testach .NET i czym to zastąpić?",
+      "a": "Nie mockuję: (1) value objects, DTO, rekordów i własnej logiki domenowej – używam prawdziwych obiektów; (2) typów, których nie jestem właścicielem (HttpClient, DbContext, SDK chmurowe) – opakowuję je własnym interfejsem albo testuję integracyjnie; (3) `DbContext`/`DbSet` – zamiast mocków Testcontainers z prawdziwą bazą, bo LINQ do mocka nie sprawdza tłumaczenia na SQL; (4) czasu i loggera przez mocki – są gotowe fake'i `FakeTimeProvider` i `FakeLogger`; (5) samego testowanego obiektu (partial mock). Mockuję granice procesu: e-mail, kolejka, zewnętrzne API, płatności – i tylko tam weryfikuję interakcje.",
+      "tip": "Na rozmowie dobrze brzmi: „mockuję granice, nie wnętrze – a dla bazy wolę Testcontainers niż mock DbContext”.",
+      "deep": "Reguła „mockuj tylko to, czego jesteś właścicielem” wynika z tego, że mock obcego typu koduje moje wyobrażenie o jego zachowaniu – test przechodzi, a produkcja pada, bo np. EF Core nie przetłumaczy wyrażenia albo SDK rzuca inny wyjątek. Mockowanie DbSet przez `IQueryable` z listy w pamięci to klasyczny przykład: LINQ-to-Objects zaakceptuje dowolne wyrażenie i inną semantykę porównania stringów. Weryfikacja wywołań `ILogger` przez Moq jest krucha (rozszerzenia `LogInformation` to metody statyczne nad `Log<TState>`) – `FakeLogger` z `Microsoft.Extensions.Diagnostics.Testing` daje listę zapisanych wpisów. Zbyt dużo `Verify` sprawia, że testy łamią się przy refaktoryzacji bez zmiany zachowania; wolę asercje na wyniku i stanie, a Verify tylko dla efektów, których nie da się zaobserwować inaczej (wysłany e-mail, opublikowane zdarzenie). Sygnał ostrzegawczy: test z 6 mockami – zwykle znak, że klasa ma za dużo odpowiedzialności."
+    },
+    {
+      "id": "testing-m005",
+      "topic": "Asercje w praktyce",
+      "level": 2,
+      "q": "FluentAssertions, Shouldly czy wbudowane Assert – co wybierasz w 2026 i jak porównujesz złożone obiekty?",
+      "a": "Wbudowane asercje (xUnit `Assert`, NUnit `Assert.That` z constraintami, MSTest) wystarczą w wielu projektach i nie dodają zależności; xUnit ma też `Assert.Equivalent` do porównań strukturalnych. FluentAssertions daje najbogatsze API (`BeEquivalentTo` z opcjami wykluczeń, asercje kolekcji, wyjątków, czasu) i bardzo czytelne komunikaty; od wersji 8 jest dostępny na licencji komercyjnej przy użyciu komercyjnym, a linia 7.x pozostała na Apache 2.0 – zespoły zostają na 7.x, kupują licencję albo wybierają alternatywy (Shouldly, community fork AwesomeAssertions). Shouldly jest open source i prostsze (`ShouldBe`, `ShouldBeEquivalentTo`, `ShouldThrow`). Ważniejsza od biblioteki jest spójność w repo.",
+      "code": "// xUnit\nAssert.Equivalent(expected, actual);\n// FluentAssertions\nactual.Should().BeEquivalentTo(expected, o => o.Excluding(x => x.Id));\n// Shouldly\nactual.Total.ShouldBe(90m);\nShould.Throw<ArgumentException>(() => sut.Apply(-1));",
+      "lang": "csharp",
+      "tip": "Przy decyzji o bibliotece sprawdź licencję w dziale prawnym/compliance – to częsty temat w firmach po zmianie licencji FluentAssertions."
+    },
+    {
+      "id": "testing-m006",
+      "topic": "Jasmine i Karma",
+      "level": 1,
+      "q": "Jak w Jasmine tworzysz spy i mocki serwisów (spyOn, jasmine.createSpyObj)?",
+      "a": "`spyOn(obiekt, 'metoda')` podmienia istniejącą metodę obiektu i domyślnie NIE wywołuje oryginału; zachowanie ustawia się przez `.and.returnValue(...)`, `.and.callFake(fn)`, `.and.throwError(...)` albo `.and.callThrough()`. `jasmine.createSpyObj('UserService', ['getUser', 'save'])` tworzy cały obiekt ze spy-metodami – można od razu podać obiekt z wartościami zwracanymi. W TestBed podstawia się go przez `{ provide: UserService, useValue: spyObj }`. Asercje: `toHaveBeenCalled()`, `toHaveBeenCalledWith(...)`, `toHaveBeenCalledTimes(n)` oraz `spy.calls.mostRecent().args`.",
+      "code": "const users = jasmine.createSpyObj<UserService>('UserService', {\n  getUser: of({ id: 1, name: 'Ala' }),\n  save: of(void 0),\n});\nTestBed.configureTestingModule({\n  imports: [UserPage],\n  providers: [{ provide: UserService, useValue: users }],\n});\n// ...\nexpect(users.save).toHaveBeenCalledWith(jasmine.objectContaining({ id: 1 }));",
+      "lang": "typescript",
+      "tip": "Spy bez skonfigurowanej wartości zwraca `undefined` – komponent robiący `.subscribe()` na wyniku dostanie TypeError."
+    },
+    {
+      "id": "testing-m007",
+      "topic": "Jasmine i Karma",
+      "level": 2,
+      "q": "Jak testujesz kod czasowy (debounce, setTimeout, interval) w legacy specach Jasmine z fakeAsync?",
+      "a": "`fakeAsync` uruchamia test w strefie z wirtualnym zegarem (wymaga zone.js), więc czas przesuwa się ręcznie: `tick(ms)` przesuwa zegar i wykonuje timery, `flush()` opróżnia wszystkie oczekujące makrozadania, `flushMicrotasks()` – Promise'y. Dzięki temu test `debounceTime(300)` trwa milisekundy zamiast 300 ms i jest deterministyczny. Test zakończy się błędem, jeśli w kolejce zostaną timery – okresowe (`setInterval`, `interval`) trzeba posprzątać przez `discardPeriodicTasks()` lub zniszczenie komponentu. `waitForAsync` czeka na rzeczywiste zakończenie operacji asynchronicznych, ale nie daje kontroli nad czasem.",
+      "code": "it('szuka po 300 ms od ostatniego znaku', fakeAsync(() => {\n  const api = TestBed.inject(SearchApi) as jasmine.SpyObj<SearchApi>;\n  component.query.setValue('an');\n  tick(299);\n  expect(api.search).not.toHaveBeenCalled();\n  tick(1);\n  expect(api.search).toHaveBeenCalledOnceWith('an');\n}));",
+      "lang": "typescript",
+      "tip": "W projektach zoneless lub na Vitest odpowiednikiem wirtualnego czasu są fake timery runnera (`vi.useFakeTimers()`, `vi.advanceTimersByTime()`)."
+    },
+    {
+      "id": "testing-m008",
+      "topic": "Migracja z Karmy",
+      "level": 2,
+      "q": "Jak migrujesz testy Angulara z Jasmine/Karma do Jest lub Vitest?",
+      "a": "Karma jest zdeprecjonowana, a Angular 21 generuje nowe projekty z Vitestem, więc migracja jest naturalna. Kroki: (1) zmiana buildera/konfiguracji testów (dla Vitest wspierany builder Angular CLI, dla Jest zwykle jest-preset-angular); (2) zamiana API spy: `spyOn(o,'m').and.returnValue(x)` → `vi.spyOn(o,'m').mockReturnValue(x)`, `jasmine.createSpyObj` → obiekty z `vi.fn()`, `jasmine.objectContaining` → `expect.objectContaining`, a `toHaveBeenCalledOnceWith` → para `toHaveBeenCalledTimes(1)` + `toHaveBeenCalledWith(...)`; (3) przegląd `fakeAsync`/`tick` – w zoneless zastąpienie fake timerami runnera; (4) uruchomienie w CI i porównanie liczby testów. TestBed i Angular Testing Library działają bez zmian.",
+      "code": "// Jasmine\nconst api = jasmine.createSpyObj<Api>('Api', ['load']);\napi.load.and.returnValue(of([]));\n// Vitest\nconst api = { load: vi.fn().mockReturnValue(of([])) } satisfies Partial<Api>;\n// TestBed: { provide: Api, useValue: api }",
+      "lang": "typescript",
+      "tip": "Migruj stopniowo i mechanicznie (codemod/skrypt + review), a nie przy okazji zmiany logiki testów – inaczej nie wiadomo, czy czerwony test to regresja, czy błąd migracji.",
+      "deep": "Jest działa na jsdom i nie renderuje prawdziwego layoutu, więc testy zależne od wymiarów elementów, `IntersectionObserver` czy `matchMedia` wymagają polyfilli lub mocków; Vitest może dodatkowo działać w trybie przeglądarkowym (np. przez Playwright), co pomaga dla takich przypadków. Duży koszt migracji to zwykle nie składnia, tylko testy oparte o zone.js (`fakeAsync`, `waitForAsync`, `whenStable`) – warto je od razu przepisać na sygnały i fake timery, jeśli projekt idzie w stronę zoneless. Najczęstsze różnice semantyczne: `toEqual` w Jest/Vitest ignoruje pola `undefined`, a do ścisłego porównania jest `toStrictEqual`; spy w Jasmine domyślnie nie woła oryginału, `vi.spyOn` domyślnie woła. Po migracji porównuję liczbę uruchomionych testów i pokrycie z ostatnim przebiegiem Karmy, żeby wykryć „zgubione” pliki specs."
+    },
+    {
+      "id": "testing-m009",
+      "topic": "Cypress i Playwright w praktyce",
+      "level": 3,
+      "q": "Projekt ma kilkaset testów e2e w Cypress – kiedy zostać przy Cypress, a kiedy przejść na Playwright?",
+      "a": "Cypress działa w przeglądarce obok aplikacji, ma świetny interaktywny runner z time-travel i dojrzałe component testing – jeśli testy są stabilne, a zespół je zna, przepisywanie rzadko się opłaca. Playwright steruje przeglądarką z zewnątrz (CDP/protokoły), wspiera Chromium, Firefox i WebKit, wiele kart, okien i domen w jednym teście, równoległość i sharding bez płatnej usługi, trace viewer i auto-waiting lokatorów. Przejście na Playwright ma sens, gdy brakuje Safari/WebKit, potrzebne są scenariusze wielokartowe lub wielodomenowe (np. SSO), czas CI jest problemem albo testy są notorycznie flaky z powodu architektury. Wtedy migruję stopniowo: nowe testy w Playwright, stare przepisuję przy okazji zmian.",
+      "tip": "Rekruter chce usłyszeć kryteria, a nie „Playwright jest lepszy”.",
+      "deep": "Decyzję opieram na danych: odsetek flaky testów, czas przebiegu, koszt utrzymania i luki w pokryciu przeglądarek. Model Cypress (komendy w kolejce, chainable `cy.*`, brak `async/await`) to częste źródło błędów u nowych osób, a Playwright to zwykły TypeScript z `await`, co ułatwia helpery i page objecty. Playwright ma wbudowane retries, trace przy pierwszym retry i `expect` z automatycznym ponawianiem (`toHaveText`, `toBeVisible`), co eliminuje większość sleepów. Cypress również ma retries i `cy.intercept` do kontroli sieci; w Playwright odpowiednikiem jest `page.route`. Równoległa praca dwóch frameworków przez kilka miesięcy jest akceptowalna, jeśli w CI są osobnymi jobami i jest jasna reguła „nowe testy tylko w Playwright”. Przepisanie wszystkiego naraz to zwykle tygodnie pracy bez wartości biznesowej – lepiej zacząć od najbardziej flaky i krytycznych ścieżek."
+    },
+    {
+      "id": "testing-m010",
+      "topic": "Cypress i Playwright w praktyce",
+      "level": 1,
+      "q": "Jakie selektory stosujesz w testach e2e i po co atrybut data-testid?",
+      "a": "Selektor powinien zależeć od tego, co widzi użytkownik lub od jawnego kontraktu testowego, a nie od struktury DOM i klas CSS, które zmieniają się przy każdym refaktorze stylów. Kolejność preferencji: rola i dostępna nazwa (`getByRole('button', { name: 'Zapisz' })`), label i tekst, a gdy to niejednoznaczne (ikony, powtarzalne wiersze, dynamiczny tekst) – dedykowany atrybut `data-testid`. W Playwright `getByTestId` domyślnie czyta `data-testid` (atrybut można zmienić w konfiguracji), w Cypress używa się `cy.get('[data-testid=save]')` lub konwencji `data-cy`. Atrybut testowy to kontrakt – nie zmienia się przy restylingu.",
+      "code": "// Playwright\nawait page.getByRole('button', { name: 'Zapisz' }).click();\nawait page.getByTestId('order-row-42').getByRole('link').click();\nawait expect(page.getByTestId('toast')).toHaveText('Zapisano');\n// Cypress\ncy.get('[data-testid=\"toast\"]').should('contain.text', 'Zapisano');",
+      "lang": "typescript",
+      "tip": "Selektor typu `div > ul li:nth-child(3) .btn` to najczęstsza przyczyna kruchych testów – rekruter często pyta właśnie o to."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "testing-mq001",
+      "topic": "Moq w praktyce",
+      "level": 1,
+      "q": "Co zwróci `repo.Object.Get(2)` w tym teście?",
+      "code": "var repo = new Mock<IOrderRepository>();\nrepo.Setup(r => r.Get(1)).Returns(new Order(1, 100m));\nvar order = repo.Object.Get(2);",
+      "lang": "csharp",
+      "options": [
+        "Zamówienie z Setup, bo Moq dopasowuje typ argumentu",
+        "Wyjątek MockException, bo wywołanie nie zostało skonfigurowane",
+        "null – mock jest loose, a Setup pasuje tylko do argumentu 1",
+        "Nowy obiekt Order z wartościami domyślnymi"
+      ],
+      "correct": 2,
+      "why": "Setup z wartością stałą pasuje tylko do argumentu 1. Domyślny MockBehavior.Loose zwraca dla nieskonfigurowanych wywołań wartość domyślną – dla klasy Order jest to null. Wyjątek byłby przy MockBehavior.Strict; dla dowolnego id trzeba użyć It.IsAny<int>()."
+    },
+    {
+      "id": "testing-mq002",
+      "topic": "Moq w praktyce",
+      "level": 2,
+      "q": "Testowana metoda wywołuje `mailer.Send(...)` dwa razy (raz dla klienta, raz dla działu sprzedaży). Co się stanie w ostatniej linii testu?",
+      "code": "mailer.Verify(m => m.Send(It.IsAny<Mail>()), Times.Once());",
+      "lang": "csharp",
+      "options": [
+        "Test przejdzie, bo Times.Once oznacza „co najmniej raz”",
+        "Test nie przejdzie – Times.Once wymaga dokładnie jednego wywołania pasującego do It.IsAny",
+        "Test przejdzie, bo Verify sprawdza tylko ostatnie wywołanie",
+        "Błąd kompilacji – Verify wymaga Setup dla Send"
+      ],
+      "correct": 1,
+      "why": "Times.Once() oznacza dokładnie jedno wywołanie, a It.IsAny<Mail>() pasuje do obu. „Co najmniej raz” to Times.AtLeastOnce(). Verify nie wymaga wcześniejszego Setup. Poprawka: Times.Exactly(2) albo dwa Verify z It.Is<Mail>(...) dla konkretnych adresatów."
+    },
+    {
+      "id": "testing-mq003",
+      "topic": "NSubstitute w praktyce",
+      "level": 2,
+      "q": "`PriceCalculator` to klasa (nie interfejs) z publiczną, niewirtualną metodą `Calculate`. Co się stanie w teście?",
+      "code": "var calc = Substitute.For<PriceCalculator>();\ncalc.Calculate(Arg.Any<Order>()).Returns(100m);\nvar total = calc.Calculate(new Order());",
+      "lang": "csharp",
+      "options": [
+        "Zwróci 100 – NSubstitute przechwytuje wszystkie metody publiczne",
+        "Wyjątek przy tworzeniu substytutu klasy",
+        "Zwróci 0, bo substytut zawsze zwraca wartości domyślne",
+        "Konfiguracja nie zadziała: wywołanie trafia do prawdziwego kodu, a Returns rzuci wyjątek o braku ostatniego wywołania lub zaburzy inną konfigurację – NSubstitute.Analyzers wykryłby to przy kompilacji"
+      ],
+      "correct": 3,
+      "why": "NSubstitute (jak Moq, przez Castle DynamicProxy) przechwytuje tylko członki wirtualne, abstrakcyjne i interfejsów. Dla metody niewirtualnej wywołanie trafia do prawdziwej implementacji, więc Returns nie ma czego skonfigurować (rzuca wyjątek o braku ostatniego wywołania albo przypina wartość do innego wywołania). Samo utworzenie substytutu klasy z konstruktorem bezparametrowym działa. Rozwiązanie: wyodrębnić interfejs. Analyzers wykrywają ten błąd w czasie kompilacji."
+    },
+    {
+      "id": "testing-mq004",
+      "topic": "Czego nie mockować",
+      "level": 3,
+      "q": "Serwis wysyła zapytania LINQ do `AppDbContext` (EF Core, SQL Server). Zespół chce szybko dopisać testy filtrowania i sortowania. Co najlepiej sprawdzi, że zapytania naprawdę działają?",
+      "options": [
+        "Testy integracyjne z SQL Server w Testcontainers (lub wspólną bazą testową) na prawdziwym DbContext",
+        "Mock DbSet przez IQueryable z listy w pamięci",
+        "Provider EF Core InMemory, bo zachowuje się jak SQL Server",
+        "Mock całego serwisu i Verify, że wywołano odpowiednią metodę"
+      ],
+      "correct": 0,
+      "why": "Tylko prawdziwy silnik sprawdzi tłumaczenie LINQ na SQL, collation, porównania stringów i null semantics. Mock IQueryable używa LINQ-to-Objects i zaakceptuje wyrażenia, których EF nie przetłumaczy. InMemory nie jest relacyjny i ma inną semantykę (Microsoft odradza go do testów). Mock serwisu nie testuje zapytania w ogóle."
+    },
+    {
+      "id": "testing-mq005",
+      "topic": "Asercje w praktyce",
+      "level": 1,
+      "q": "`Order` to zwykła klasa (nie record, bez nadpisanego Equals). Które asercje przejdą?",
+      "code": "var a = new Order(1, 100m);\nvar b = new Order(1, 100m);\na.Should().Be(b);\na.Should().BeEquivalentTo(b);",
+      "lang": "csharp",
+      "options": [
+        "Obie przejdą, bo obiekty mają te same wartości",
+        "Pierwsza przejdzie, druga nie",
+        "Obie nie przejdą, bo to różne instancje",
+        "Pierwsza nie przejdzie (porównanie referencji), druga przejdzie (porównanie strukturalne)"
+      ],
+      "correct": 3,
+      "why": "Dla klasy bez nadpisanego Equals `Be` (i Assert.Equal) porównuje przez Equals, czyli referencje – dwie instancje są różne. `BeEquivalentTo` porównuje właściwości strukturalnie. Gdyby Order był recordem, obie by przeszły."
+    },
+    {
+      "id": "testing-mq006",
+      "topic": "Jasmine i Karma",
+      "level": 1,
+      "q": "Komponent w `ngOnInit` robi `this.users.getAll().subscribe(...)`. Test używa poniższego spy-obiektu. Co się stanie przy `fixture.detectChanges()`?",
+      "code": "const users = jasmine.createSpyObj<UserService>('UserService', ['getAll']);\nTestBed.configureTestingModule({\n  imports: [UserList],\n  providers: [{ provide: UserService, useValue: users }],\n});\nfixture = TestBed.createComponent(UserList);\nfixture.detectChanges();",
+      "lang": "typescript",
+      "options": [
+        "TypeError: Cannot read properties of undefined (reading 'subscribe') – spy bez skonfigurowanej wartości zwraca undefined",
+        "Komponent dostanie pustą tablicę",
+        "Wywoła się prawdziwa metoda getAll z HttpClient",
+        "Test przejdzie, ale z ostrzeżeniem o braku wartości"
+      ],
+      "correct": 0,
+      "why": "Metody z createSpyObj podane jako tablica nazw domyślnie zwracają undefined, a wywołanie .subscribe na undefined rzuca TypeError. Spy nie wywołuje oryginału bez .and.callThrough(). Poprawka: createSpyObj('UserService', { getAll: of([]) }) albo users.getAll.and.returnValue(of([]))."
+    },
+    {
+      "id": "testing-mq007",
+      "topic": "Jasmine i Karma",
+      "level": 2,
+      "q": "Test w fakeAsync kończy się błędem „1 periodic timer(s) still in the queue”. Komponent w ngOnInit uruchamia `interval(5000)` odświeżający dane. Najlepsza poprawka?",
+      "options": [
+        "Zamienić fakeAsync na waitForAsync, bo ten nie sprawdza timerów",
+        "Na końcu testu wywołać discardPeriodicTasks() albo zniszczyć komponent (fixture.destroy()), żeby subskrypcja interval została zamknięta",
+        "Dodać tick(Infinity), żeby interval się zakończył",
+        "Wywołać flushMicrotasks(), który usuwa wszystkie timery"
+      ],
+      "correct": 1,
+      "why": "Okresowy timer nigdy sam się nie kończy, więc fakeAsync zgłasza go jako pozostawiony. discardPeriodicTasks() go usuwa, a fixture.destroy() (przy takeUntilDestroyed/unsubscribe w ngOnDestroy) zamyka subskrypcję – co przy okazji testuje brak wycieku. waitForAsync czekałby w nieskończoność, tick nie kończy interwału, a flushMicrotasks dotyczy tylko mikrozadań."
+    },
+    {
+      "id": "testing-mq008",
+      "topic": "Cypress i Playwright w praktyce",
+      "level": 2,
+      "q": "Test Playwright jest flaky: czasem odczytuje stary tekst licznika koszyka. Który kod jest najlepszą poprawką?",
+      "code": "const badge = page.getByTestId('cart-count');\nawait page.getByRole('button', { name: 'Dodaj do koszyka' }).click();\nexpect(await badge.textContent()).toBe('3');",
+      "lang": "typescript",
+      "options": [
+        "`await page.waitForTimeout(1000); expect(await badge.textContent()).toBe('3');`",
+        "`expect(await badge.innerText()).toBe('3');` z retries: 3 w konfiguracji",
+        "`await expect(badge).toHaveText('3');`",
+        "`await badge.waitFor(); expect(await badge.textContent()).toBe('3');`"
+      ],
+      "correct": 2,
+      "why": "Asercje webowe Playwright (`toHaveText`, `toBeVisible`) automatycznie ponawiają sprawdzenie aż do timeoutu, więc czekają na właściwy stan. textContent() odczytuje wartość jednorazowo – waitFor czeka tylko na obecność elementu, a nie na tekst. Sztywny sleep spowalnia i nadal bywa za krótki, a retries maskują problem zamiast go usuwać."
+    }
+  ]
+}

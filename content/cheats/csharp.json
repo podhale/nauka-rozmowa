@@ -1,0 +1,779 @@
+{
+ "cat": "csharp",
+ "sheets": [
+  {
+   "topic": "Typy wartościowe vs referencyjne",
+   "points": [
+    "**Value type** (`struct`, `int`, `bool`, `enum`, `DateTime`) – zmienna trzyma samą wartość; przypisanie i przekazanie do metody **kopiuje** dane.",
+    "**Reference type** (`class`, `string`, tablice, delegaty, `record`) – zmienna trzyma referencję; przypisanie kopiuje referencję, obie zmienne wskazują ten sam obiekt.",
+    "Różnica dotyczy **semantyki kopiowania**, nie miejsca w pamięci: struct jako pole klasy lub element tablicy żyje na heapie.",
+    "Value types nie mogą być `null` – do tego `Nullable<T>` (`int?`); reference types mogą (ostrzeżenia NRT to tylko compile-time).",
+    "Indekser `List<T>` i właściwości zwracają **kopię** structa – mutacja kopii nie zmienia oryginału (tablica `arr[i]` zwraca zmienną, więc działa).",
+    "Rzutowanie value type na `object`/interfejs = **boxing** (alokacja na heapie).",
+    "Parametry domyślnie przekazywane **przez wartość** – dla klasy kopiowana jest referencja, więc metoda może zmienić obiekt, ale nie podmienić zmiennej wywołującego (do tego `ref`)."
+   ],
+   "pitfalls": [
+    "„Struct zawsze na stosie” – nieprawda; odpowiadaj o semantyce kopiowania.",
+    "`list[0].X = 5` na `List<struct>` to błąd kompilacji (CS1612), a `var c = list[0]; c.Inc();` cicho zmienia tylko kopię."
+   ],
+   "code": "struct P { public int X; }\nclass  C { public int X; }\n\nvar p1 = new P { X = 1 }; var p2 = p1; p2.X = 2; // p1.X == 1\nvar c1 = new C { X = 1 }; var c2 = c1; c2.X = 2; // c1.X == 2",
+   "lang": "csharp",
+   "say": "Value type niesie dane i jest kopiowany przy przypisaniu, reference type niesie referencję do obiektu na heapie, więc kopie dzielą stan. Gdzie fizycznie leży struct, zależy od kontekstu – kluczowa jest semantyka kopiowania."
+  },
+  {
+   "topic": "struct / class / record",
+   "points": [
+    "`class` – domyślny wybór: tożsamość, zachowanie, encje, serwisy.",
+    "`struct` – małe (do ~16 B), krótko żyjące wartości bez tożsamości; najlepiej `readonly struct`. Brak alokacji, ale kopiowanie przy każdym przekazaniu.",
+    "`record` (= `record class`) – typ referencyjny z **value equality**, generowanym `ToString`, `Deconstruct` i wyrażeniem `with`; idealny na DTO, komendy, value objects.",
+    "`record struct` – to samo jako value type; pozycyjny `record struct` ma **mutowalne** właściwości, więc zwykle `readonly record struct`.",
+    "Pozycyjny `record Person(string Name)` generuje właściwości `init`, konstruktor i dekonstrukcję.",
+    "**Defensive copy**: wywołanie metody na `readonly` polu/`in` parametrze nie-readonly structa robi ukrytą kopię – mutacja ginie, a duży struct kosztuje.",
+    "Duży struct bywa wolniejszy od klasy (kopiowanie); struct rzutowany na interfejs jest boxowany."
+   ],
+   "pitfalls": [
+    "`with` robi **płytką** kopię – kolekcje w recordzie są współdzielone.",
+    "Record z `List<T>` – value equality porównuje referencję listy, nie jej zawartość.",
+    "`readonly` pole typu mutowalnego structa: `_c.Inc()` zmienia kopię, pole zostaje 0."
+   ],
+   "code": "public readonly record struct Money(decimal Amount, string Currency);\npublic record OrderDto(int Id, string Customer);\n\nvar a = new OrderDto(1, \"Jan\");\nvar b = a with { Customer = \"Ala\" };\nConsole.WriteLine(a == new OrderDto(1, \"Jan\")); // True (value equality)",
+   "lang": "csharp",
+   "say": "Class dla obiektów z tożsamością, record dla niemutowalnych danych porównywanych po wartości, a struct – najlepiej readonly – tylko dla małych wartości, gdzie liczy się brak alokacji. Record daje equality, with i ToString za darmo."
+  },
+  {
+   "topic": "Boxing",
+   "points": [
+    "**Boxing** – opakowanie value type w obiekt na heapie przy rzutowaniu na `object` lub interfejs; **unboxing** – jawny cast z powrotem.",
+    "Unboxing sprawdza **dokładny** typ: `(long)(object)42` → `InvalidCastException` (trzeba `(long)(int)o`).",
+    "Koszt: alokacja + praca dla GC; problem w gorących ścieżkach, nie w pojedynczym wywołaniu.",
+    "Typowe źródła: `ArrayList`/`Hashtable`, struct przypisany do zmiennej interfejsu, `Equals(object)` bez `IEquatable<T>`, `string.Format`/`params object[]`.",
+    "Generics eliminują boxing: `List<int>`, `Dictionary<int,…>`, constraint `where T : IComparable<T>` wywołuje metodę bez opakowania.",
+    "Interpolacja stringów od C# 10 (`DefaultInterpolatedStringHandler`) unika boxingu dla value types.",
+    "Wywołanie nadpisanej metody (`ToString`) na struct nie boksuje; metody nienadpisane z `object`/`ValueType` – tak."
+   ],
+   "pitfalls": [
+    "Struct jako klucz słownika bez `IEquatable<T>` i `GetHashCode` – domyślne Equals przez refleksję + boxing.",
+    "Mutowanie structa po zboxowaniu do interfejsu zmienia kopię w boxie, nie oryginał."
+   ],
+   "code": "int a = 5;\nobject o = a;               // boxing\nIComparable c = a;          // boxing\nint b = (int)o;             // unboxing\nvar list = new List<int> { a }; // bez boxingu",
+   "lang": "csharp",
+   "say": "Boxing to alokacja obiektu na heapie, gdy value type traktujemy jako object albo interfejs. Unikam go generics i IEquatable<T> – ma znaczenie w gorących ścieżkach i kolekcjach."
+  },
+  {
+   "topic": "string i StringBuilder",
+   "points": [
+    "`string` jest **immutable** – `Replace`, `ToUpper`, `+` zwracają nowy obiekt; trzeba przypisać wynik.",
+    "Zalety niemutowalności: thread-safety, bezpieczne klucze słowników, interning literałów (`string.Intern`).",
+    "Sklejanie w pętli przez `+=` to O(n²) alokacji i kopiowania – używaj `StringBuilder` (mutowalny bufor).",
+    "Dla kilku elementów kompilator i tak używa `string.Concat`; interpolacja `$\"...\"` jest wydajna (handler od C# 10).",
+    "Alternatywy: `string.Join`, `string.Create`, `ReadOnlySpan<char>` do parsowania bez `Substring`.",
+    "Porównania: `string.Equals(a, b, StringComparison.OrdinalIgnoreCase)` zamiast `ToLower() ==`; `==` porównuje treść.",
+    "Raw string literals `\"\"\"...\"\"\"` (C# 11) – JSON/SQL bez escapowania; `u8` daje `ReadOnlySpan<byte>` UTF-8."
+   ],
+   "pitfalls": [
+    "`s.ToUpper();` bez przypisania – nic się nie zmienia.",
+    "Porównania kulturowe domyślnie w `StartsWith`/`IndexOf(string)` i `ToUpper()` – dla identyfikatorów używaj `Ordinal`."
+   ],
+   "code": "var sb = new StringBuilder();\nforeach (var item in items)\n    sb.Append(item.Name).Append(';');\nstring result = sb.ToString();",
+   "lang": "csharp",
+   "say": "String jest niemutowalny, więc każda operacja tworzy nowy obiekt – to daje bezpieczeństwo wątkowe, ale w pętli sklejanie jest kwadratowe. Wtedy StringBuilder albo string.Join, a do parsowania Span."
+  },
+  {
+   "topic": "ref / out / in",
+   "points": [
+    "Wszystkie trzy przekazują argument **przez referencję** (bez kopii).",
+    "`ref` – zmienna musi być zainicjalizowana; metoda czyta i może zmienić.",
+    "`out` – nie musi być zainicjalizowana; metoda **musi** przypisać przed powrotem (wzorzec `TryParse`, `TryGetValue`). Deklaracja inline: `out var x`, odrzucenie: `out _`.",
+    "`in` – referencja tylko do odczytu; sens dla **dużych structów**, żeby uniknąć kopii (uwaga na defensive copy dla nie-readonly struct).",
+    "`ref readonly` parametr (C# 12) – jak `in`, ale sygnalizuje, że oczekiwana jest zmienna (ostrzeżenie dla wartości tymczasowej).",
+    "Są też `ref` returns i `ref` locals (`ref var x = ref arr[0];`) – podstawa wydajnego kodu ze `Span<T>`.",
+    "Metody `async` i iteratory nie mogą mieć parametrów `ref/out/in`."
+   ],
+   "pitfalls": [
+    "`ref` na typie referencyjnym nie jest potrzebny do zmiany obiektu – tylko do podmiany samej referencji.",
+    "Nadużywanie `out` zamiast zwrócenia krotki/recordu pogarsza czytelność."
+   ],
+   "code": "if (int.TryParse(input, out var n)) Console.WriteLine(n);\n\nstatic void Swap(ref int a, ref int b) => (a, b) = (b, a);\nstatic double Len(in Vector3 v) => Math.Sqrt(v.X*v.X + v.Y*v.Y + v.Z*v.Z);",
+   "lang": "csharp",
+   "say": "ref, out i in przekazują przez referencję: ref – czytaj i pisz, out – metoda musi przypisać, jak w TryParse, in – tylko odczyt, głównie dla dużych structów. Na co dzień out w Try-wzorcach, reszta to optymalizacje."
+  },
+  {
+   "topic": "Nullable reference types",
+   "points": [
+    "Włączane `<Nullable>enable</Nullable>` (domyślnie w nowych szablonach): `string` = nie-null, `string?` = może być null.",
+    "Kompilator robi **flow analysis** i ostrzega przy dereferencji możliwego nulla i przypisaniu nulla do typu non-nullable.",
+    "To **wyłącznie compile-time** – w runtime `string` i `string?` to ten sam `System.String`, zero sprawdzeń.",
+    "`!` (null-forgiving) wycisza ostrzeżenie – używaj świadomie, nie jako „naprawę”.",
+    "Atrybuty kontraktu: `[NotNullWhen(true)]`, `[MaybeNull]`, `[NotNull]`, `[MemberNotNull]`, `[AllowNull]`.",
+    "Na granicach (deserializacja JSON, refleksja, kod bez NRT) null nadal może przyjść – waliduj (`ArgumentNullException.ThrowIfNull`).",
+    "`<WarningsAsErrors>nullable</WarningsAsErrors>` zamienia ostrzeżenia w błędy; `required` rozwiązuje ostrzeżenia CS8618 dla DTO.",
+    "`int?` to inna rzecz – `Nullable<T>` dla value types istnieje w runtime."
+   ],
+   "pitfalls": [
+    "Myślenie, że NRT gwarantuje brak nulla w runtime.",
+    "Masowe `= null!` na właściwościach, by uciszyć CS8618, zamiast `required` lub konstruktora."
+   ],
+   "code": "public bool TryFind(int id, [NotNullWhen(true)] out User? user)\n{\n    user = _repo.Get(id);\n    return user is not null;\n}",
+   "lang": "csharp",
+   "say": "NRT to adnotacje i analiza przepływu w czasie kompilacji – mówią, gdzie null jest dozwolony, i ostrzegają przed dereferencją. W runtime nic nie sprawdzają, więc na granicach systemu nadal waliduję wejście."
+  },
+  {
+   "topic": "Generics i constraints",
+   "points": [
+    "Generics dają **type safety** bez rzutowania i bez boxingu (`List<int>` vs `ArrayList`).",
+    "Constraints (`where`) ograniczają T i pozwalają używać jego możliwości: `class`, `class?`, `struct`, `notnull`, `unmanaged`, `new()`, klasa bazowa, interfejs, `default`.",
+    "`allows ref struct` (C# 13) – anti-constraint pozwalający podstawić `Span<T>` itp.",
+    "Static abstract members w interfejsach (C# 11/.NET 7) → **generic math**: `INumber<T>`, `T.Zero`, `T.Parse`.",
+    "Dla value types JIT generuje osobny kod per typ (specjalizacja, szybko), dla reference types – wspólny kod.",
+    "Kolekcje niegeneryczne (`ArrayList`, `Hashtable`) to legacy – w nowym kodzie zawsze generyczne odpowiedniki.",
+    "Pola statyczne w typie generycznym są osobne dla każdego zamkniętego typu (`Cache<int>` ≠ `Cache<string>`)."
+   ],
+   "pitfalls": [
+    "`new()` wywołuje konstruktor przez `Activator` – nie nadaje się do gorących ścieżek ani DI.",
+    "Zbyt wiele constraintów/parametrów typów zamiast prostego interfejsu – over-engineering."
+   ],
+   "code": "static T Sum<T>(IEnumerable<T> xs) where T : INumber<T>\n{\n    T acc = T.Zero;\n    foreach (var x in xs) acc += x;\n    return acc;\n}",
+   "lang": "csharp",
+   "say": "Generics dają bezpieczeństwo typów i brak boxingu, a constraints mówią kompilatorowi, co T potrafi, np. where T : class, new() albo interfejs. Od .NET 7 przez static abstract members mamy generic math, np. INumber<T>."
+  },
+  {
+   "topic": "Kowariancja i kontrawariancja",
+   "points": [
+    "**Kowariancja** (`out T`) – `IEnumerable<string>` → `IEnumerable<object>`; T tylko na wyjściu.",
+    "**Kontrawariancja** (`in T`) – `Action<object>` → `Action<string>`, `IComparer<Animal>` → `IComparer<Dog>`; T tylko na wejściu.",
+    "Działa wyłącznie dla **interfejsów i delegatów** i tylko dla argumentów **referencyjnych** (`IEnumerable<int>` ↛ `IEnumerable<object>`).",
+    "`List<T>`, `IList<T>` są **inwariantne** – T jest na wejściu (Add) i wyjściu.",
+    "Przykłady wbudowane: `IEnumerable<out T>`, `IReadOnlyList<out T>`, `Func<in T, out TResult>`, `Action<in T>`, `IComparer<in T>`.",
+    "Tablice referencyjne są kowariantne „po staremu” – `object[] a = new string[1]; a[0] = 1;` → `ArrayTypeMismatchException` w runtime."
+   ],
+   "pitfalls": [
+    "Oczekiwanie, że `List<Dog>` da się przypisać do `List<Animal>`.",
+    "Wariancja dla value types nie działa – `IEnumerable<int>` nie jest `IEnumerable<object>`."
+   ],
+   "code": "IEnumerable<object> objs = new List<string>();   // OK (out T)\nAction<object> log = o => Console.WriteLine(o);\nAction<string> logStr = log;                     // OK (in T)\n// IList<object> bad = new List<string>();       // błąd",
+   "lang": "csharp",
+   "say": "Kowariancja (out) pozwala traktować producenta Dogów jak producenta Animali, kontrawariancja (in) – konsumenta Animali jak konsumenta Dogów. Działa tylko w interfejsach i delegatach, dla typów referencyjnych; List<T> jest inwariantna."
+  },
+  {
+   "topic": "Delegaty, Func i Action",
+   "points": [
+    "Delegat – typ reprezentujący referencję do metody o danej sygnaturze (typowo bezpieczny wskaźnik na funkcję).",
+    "`Func<T1,…,TResult>` – zwraca wartość (ostatni parametr to wynik); `Action<T1,…>` – zwraca void; `Predicate<T>` ≈ `Func<T,bool>`.",
+    "Lambdy i method groups konwertują się do delegatów; od C# 10 lambdy mają naturalny typ (`var f = (int x) => x * 2;`).",
+    "Delegaty są **multicast** (`+=`) – dla `Func` zwracana jest wartość **ostatniego** handlera.",
+    "`Expression<Func<T,bool>>` to drzewo wyrażeń (dane), nie kod – na tym opiera się `IQueryable`/EF Core.",
+    "Lambda przechwytująca zmienne alokuje closure; `static` lambda (C# 9) blokuje przechwycenie.",
+    "Własny typ delegata gdy potrzebne `ref`/`out` lub czytelna nazwa; w pozostałych przypadkach Func/Action."
+   ],
+   "pitfalls": [
+    "Wyjątek w jednym handlerze multicast przerywa wywołanie kolejnych.",
+    "Wywołanie delegata `null` → `NullReferenceException`; używaj `handler?.Invoke(...)`."
+   ],
+   "code": "Func<int, int, int> add = (a, b) => a + b;\nAction<string> log = Console.WriteLine;\nPredicate<int> isEven = x => x % 2 == 0;\nConsole.WriteLine(add(2, 3)); // 5",
+   "lang": "csharp",
+   "say": "Delegat to typowany wskaźnik na metodę; Func zwraca wynik, Action nie, Predicate to Func<T,bool>. Na nich stoi LINQ, eventy i callbacki, a Expression<Func> to już drzewo, które EF tłumaczy na SQL."
+  },
+  {
+   "topic": "Eventy",
+   "points": [
+    "`event` to opakowanie delegata: z zewnątrz tylko `+=` i `-=`; wywołać (i nadpisać `=`) może tylko klasa deklarująca.",
+    "Konwencja: `EventHandler` / `EventHandler<TEventArgs>`, sygnatura `(object? sender, TEventArgs e)`, metoda `protected virtual OnXxx`.",
+    "Wywołanie thread-safe: `Changed?.Invoke(this, e);` (kopia delegata przed sprawdzeniem nulla).",
+    "**Memory leak**: publisher trzyma referencję do subskrybenta – długo żyjący publisher (singleton, static) nie pozwoli GC zebrać subskrybenta bez `-=`.",
+    "Handlery wykonują się **synchronicznie** i sekwencyjnie na wątku wywołującym.",
+    "Handler `async void` jest jedynym uzasadnionym `async void` – opakuj ciało w try/catch.",
+    "W architekturze aplikacji zamiast eventów C# częściej: domain events, MediatR/kanały, message broker."
+   ],
+   "pitfalls": [
+    "Zapomniane `-=` przy subskrypcji eventu singletona → wyciek pamięci.",
+    "`-=` z nową lambdą nie odpina wcześniejszej lambdy – trzeba trzymać referencję do handlera."
+   ],
+   "code": "public class Order\n{\n    public event EventHandler<decimal>? Paid;\n    public void Pay(decimal amount) => Paid?.Invoke(this, amount);\n}",
+   "lang": "csharp",
+   "say": "Event to delegat z ograniczonym dostępem – z zewnątrz można się tylko zapisać i wypisać, wywołuje właściciel. Główna pułapka to wyciek pamięci, gdy długo żyjący publisher trzyma subskrybentów, którzy się nie odpięli."
+  },
+  {
+   "topic": "Closure",
+   "points": [
+    "Closure – lambda/funkcja lokalna przechwytująca zmienne z otaczającego zakresu.",
+    "Kompilator przenosi przechwycone zmienne do wygenerowanej klasy (display class) – lambda widzi **zmienną**, nie wartość z chwili utworzenia.",
+    "Pętla `for`: jedna zmienna `i` na całą pętlę → wszystkie lambdy widzą wartość końcową.",
+    "`foreach` od C# 5 tworzy nową zmienną w każdej iteracji – problem nie występuje.",
+    "Fix dla `for`: skopiuj do lokalnej zmiennej w ciele pętli (`var copy = i;`).",
+    "Koszt: alokacja closure i delegata; w gorących ścieżkach `static` lambda lub przekazanie stanu parametrem (np. `GetOrAdd(key, factory, arg)`).",
+    "Przechwycenie przedłuża życie obiektu (np. `this`, duży bufor) – możliwy wyciek przy długo żyjących delegatach."
+   ],
+   "pitfalls": [
+    "Lambdy w `for` + `Task.Run`/lista akcji wypisują tę samą (końcową) wartość.",
+    "Przypadkowe przechwycenie `this` w lambdzie rejestrowanej w singletonie."
+   ],
+   "code": "var actions = new List<Action>();\nfor (int i = 0; i < 3; i++)\n{\n    int copy = i;                 // bez tego: 3 3 3\n    actions.Add(() => Console.Write(copy));\n}\nactions.ForEach(a => a());        // 0 1 2",
+   "lang": "csharp",
+   "say": "Closure przechwytuje zmienną, nie jej wartość – kompilator przenosi ją do ukrytej klasy. Stąd klasyczna pułapka z for, gdzie wszystkie lambdy widzą końcowe i; w foreach od C# 5 każda iteracja ma własną zmienną."
+  },
+  {
+   "topic": "LINQ – deferred execution",
+   "points": [
+    "Większość operatorów (`Where`, `Select`, `OrderBy`, `Take`, `Skip`) jest **leniwa** – buduje opis zapytania.",
+    "Wykonanie przy enumeracji: `foreach`, `ToList()`, `ToArray()`, `ToDictionary()`, `Count()`, `First()`, `Any()`, `Sum()`.",
+    "Zapytanie widzi stan źródła z chwili **enumeracji**, nie definicji.",
+    "Każda enumeracja wykonuje pracę od nowa – w EF Core to kolejne zapytanie SQL (ostrzeżenie analizatora CA1851 o wielokrotnej enumeracji).",
+    "Jeśli wynik używany wielokrotnie – zmaterializuj raz przez `ToList()`/`ToArray()`.",
+    "`OrderBy`, `GroupBy`, `Reverse` są leniwe, ale przy starcie enumeracji buforują całe źródło.",
+    "Nowości: `CountBy`, `AggregateBy`, `Index` (.NET 9), `LeftJoin`/`RightJoin` (.NET 10)."
+   ],
+   "pitfalls": [
+    "`Any()` potem `Count()` na leniwym zapytaniu = dwa przebiegi (dwa razy efekty uboczne / dwa SQL).",
+    "Wyjątek z lambdy pojawia się dopiero przy enumeracji, często daleko od miejsca definicji."
+   ],
+   "code": "var list = new List<int> { 1, 2, 3 };\nvar q = list.Where(x => x > 1);   // nic się nie wykonuje\nlist.Add(4);\nConsole.WriteLine(q.Count());     // 3 (2, 3, 4)",
+   "lang": "csharp",
+   "say": "LINQ jest leniwy – Where czy Select tylko opisują zapytanie, a wykonanie następuje przy foreach, ToList albo Count. Każda enumeracja liczy wszystko od nowa, więc wynik używany wiele razy materializuję."
+  },
+  {
+   "topic": "IEnumerable vs IQueryable",
+   "points": [
+    "`IEnumerable<T>` – LINQ to Objects, wykonanie **w pamięci**, lambdy to skompilowane `Func<T,bool>`.",
+    "`IQueryable<T>` – przyjmuje `Expression<Func<T,bool>>` (drzewo wyrażeń); provider (EF Core) tłumaczy je na **SQL** po stronie bazy.",
+    "Przejście na IEnumerable (`AsEnumerable()`, `ToList()`, parametr typu `IEnumerable<T>`) przed filtrem = pobranie całej tabeli.",
+    "Filtrowanie, sortowanie, projekcję (`Select` do DTO) i paging rób na IQueryable, materializuj na końcu.",
+    "EF Core rzuca wyjątek dla nietłumaczalnych wyrażeń (poza końcową projekcją) – nie ma już cichej client evaluation jak w EF Core 2.",
+    "Zwracanie `IQueryable` z repozytorium przecieka szczegóły ORM do wyższych warstw – świadoma decyzja.",
+    "Async materializacja: `ToListAsync`, `FirstOrDefaultAsync` (EF Core) z `CancellationToken`."
+   ],
+   "pitfalls": [
+    "`AsEnumerable().Where(...)` – SELECT bez WHERE.",
+    "Metoda pomocnicza przyjmująca `IEnumerable<T>` zamiast `IQueryable<T>` przełącza zapytanie w tryb in-memory."
+   ],
+   "code": "// źle: pobiera całą tabelę\nvar a = db.Users.AsEnumerable().Where(u => u.Email.EndsWith(\"@x.pl\")).ToList();\n// dobrze: WHERE ... LIKE '%@x.pl'\nvar b = await db.Users.Where(u => u.Email.EndsWith(\"@x.pl\"))\n                      .Select(u => new UserDto(u.Id, u.Email)).ToListAsync(ct);",
+   "lang": "csharp",
+   "say": "IEnumerable wykonuje LINQ w pamięci na delegatach, IQueryable buduje drzewo wyrażeń, które EF Core tłumaczy na SQL. Pilnuję, żeby filtry i projekcje zostały na IQueryable, a materializacja była na końcu."
+  },
+  {
+   "topic": "yield",
+   "points": [
+    "Metoda z `yield return` to **iterator** – kompilator generuje maszynę stanów implementującą `IEnumerable<T>`/`IEnumerator<T>`.",
+    "Wykonanie leniwe: kod biegnie dopiero przy `MoveNext()`, kawałek po kawałku do kolejnego `yield return`.",
+    "`yield break` kończy sekwencję.",
+    "Zastosowania: strumieniowanie dużych danych (plik linia po linii), sekwencje nieskończone, własne operatory LINQ.",
+    "Każda enumeracja uruchamia ciało od początku.",
+    "Wariant async: `async IAsyncEnumerable<T>` + `await foreach`, z `[EnumeratorCancellation] CancellationToken`.",
+    "`finally`/`using` w iteratorze wykona się przy zakończeniu lub `Dispose()` enumeratora (foreach robi to automatycznie)."
+   ],
+   "pitfalls": [
+    "Walidacja argumentów w iteratorze wykona się dopiero przy pierwszym `MoveNext()` – wydziel ją do zwykłej metody-wrappera.",
+    "Iterator nie może mieć parametrów `ref`/`out`; `yield` nie działa w bloku `catch`."
+   ],
+   "code": "public static IEnumerable<int> Range(int count)\n{\n    ArgumentOutOfRangeException.ThrowIfNegative(count); // od razu\n    return Iter(count);\n    static IEnumerable<int> Iter(int n) { for (int i = 0; i < n; i++) yield return i; }\n}",
+   "lang": "csharp",
+   "say": "yield return zamienia metodę w leniwy iterator – maszynę stanów, która produkuje elementy na żądanie bez budowania kolekcji. Pamiętam, że walidacja w iteratorze odpala się dopiero przy pierwszym MoveNext."
+  },
+  {
+   "topic": "async/await – mechanizm",
+   "points": [
+    "Kompilator przepisuje metodę `async` na **maszynę stanów** (`IAsyncStateMachine`).",
+    "`await` na niezakończonym zadaniu rejestruje kontynuację i **zwraca kontrolę** wywołującemu; wątek wraca do puli.",
+    "async/await **nie tworzy wątków** – przy I/O w trakcie oczekiwania żaden wątek nie jest zablokowany → skalowalność serwera.",
+    "Do pierwszego niezakończonego `await` metoda wykonuje się **synchronicznie** na wątku wywołującym.",
+    "Kontynuacja wraca do przechwyconego `SynchronizationContext` (UI, stary ASP.NET) albo na thread pool; ASP.NET Core **nie ma** SynchronizationContext.",
+    "Wyjątki są zapisywane w Tasku i rzucane przy `await` (pierwszy z AggregateException).",
+    "CPU-bound: `Task.Run` tylko w UI/desktop; w ASP.NET Core nie opakowuj synchronicznej pracy w `Task.Run`.",
+    "`HttpContext` i `DbContext` nie są thread-safe – nie używaj ich równolegle mimo braku kontekstu."
+   ],
+   "pitfalls": [
+    "„async = nowy wątek” – błąd; to nieblokujące czekanie.",
+    "Blokowanie (`.Result`, `Thread.Sleep`) w kodzie async → thread pool starvation."
+   ],
+   "code": "public async Task<string> GetAsync(string url, CancellationToken ct)\n{\n    // synchronicznie do pierwszego await\n    var res = await _http.GetAsync(url, ct);   // wątek wraca do puli\n    res.EnsureSuccessStatusCode();\n    return await res.Content.ReadAsStringAsync(ct);\n}",
+   "lang": "csharp",
+   "say": "Kompilator robi z metody async maszynę stanów: przy await na nieskończonej operacji metoda oddaje wątek, a po zakończeniu I/O kontynuacja wraca na pulę albo do kontekstu synchronizacji. Nie ma tu nowego wątku – zyskiem jest to, że wątki nie czekają bezczynnie."
+  },
+  {
+   "topic": "Task vs ValueTask",
+   "points": [
+    "`Task`/`Task<T>` – klasa, zwykle alokacja na każde wywołanie (poza cache'owanymi, np. `Task.CompletedTask`, małe wyniki bool).",
+    "`ValueTask<T>` – struct; może zawierać gotowy wynik bez alokacji albo `Task`/`IValueTaskSource` (pooling).",
+    "Opłaca się w gorących ścieżkach, które **często kończą się synchronicznie** (cache, bufor, `Stream.ReadAsync`).",
+    "Ograniczenia: awaitować **tylko raz**, nie współbieżnie, nie wołać `.Result` przed zakończeniem.",
+    "Potrzebujesz wielokrotnego await / `WhenAll` / przechowania → `.AsTask()`.",
+    "Domyślnie zwracaj `Task`; `ValueTask` po pomiarze (BenchmarkDotNet) albo w interfejsach o wysokiej częstotliwości (`IAsyncDisposable.DisposeAsync`)."
+   ],
+   "pitfalls": [
+    "Podwójny `await` tego samego ValueTask – zachowanie niezdefiniowane (poolowany source mógł zostać ponownie użyty).",
+    "Zamiana wszystkiego na ValueTask „bo szybsze” – struct jest większy, kopiowanie i dodatkowe sprawdzenia mogą być wolniejsze."
+   ],
+   "code": "public ValueTask<User> GetAsync(int id) =>\n    _cache.TryGetValue(id, out var u)\n        ? ValueTask.FromResult(u)               // bez alokacji\n        : new ValueTask<User>(LoadAsync(id));",
+   "lang": "csharp",
+   "say": "Task to klasa i zwykle alokacja, ValueTask to struct, który pozwala uniknąć alokacji, gdy wynik jest często gotowy synchronicznie. Ma ostre zasady – await tylko raz – więc domyślnie zwracam Task, a ValueTask stosuję po pomiarze."
+  },
+  {
+   "topic": "ConfigureAwait",
+   "points": [
+    "Domyślnie `await` przechwytuje `SynchronizationContext`/`TaskScheduler` i wznawia w nim (np. wątek UI).",
+    "`ConfigureAwait(false)` – kontynuuj na dowolnym wątku z puli: drobny zysk wydajności i ochrona przed deadlockiem przy `.Result` wyżej.",
+    "ASP.NET Core nie ma SynchronizationContext → w kodzie aplikacji praktycznie bez znaczenia.",
+    "W **bibliotekach** ogólnego przeznaczenia (NuGet) nadal zalecane – nie wiesz, gdzie zostaną użyte (WPF, WinForms, MAUI).",
+    "W kodzie UI **nie** używaj po `await`, jeśli potem dotykasz kontrolek.",
+    "Od .NET 8: `ConfigureAwait(ConfigureAwaitOptions)` – np. `SuppressThrowing`, `ForceYielding`.",
+    "Nie działa „wstecz”: liczy się każdy `await` w łańcuchu, a pierwszy synchronicznie zakończony nie zmienia wątku."
+   ],
+   "pitfalls": [
+    "Traktowanie `ConfigureAwait(false)` jako lekarstwa na deadlock – prawdziwy fix to async all the way.",
+    "Dostęp do UI po `ConfigureAwait(false)` → wyjątek cross-thread."
+   ],
+   "say": "ConfigureAwait(false) mówi, żeby kontynuacja nie wracała do przechwyconego kontekstu synchronizacji. W ASP.NET Core tego kontekstu nie ma, więc w kodzie aplikacji pomijam, ale w bibliotekach NuGet nadal stosuję."
+  },
+  {
+   "topic": "Deadlock przy .Result/.Wait()",
+   "points": [
+    "Scenariusz: jednowątkowy `SynchronizationContext` (WPF, WinForms, klasyczny ASP.NET) + `.Result`/`.Wait()` na metodzie async.",
+    "Wątek kontekstu blokuje się na `.Result`, a kontynuacja po `await` czeka na ten sam wątek → oba czekają na siebie.",
+    "ASP.NET Core: brak klasycznego deadlocka, ale blokowanie wątków przy obciążeniu → **thread pool starvation** (rosnące latencje, timeouty).",
+    "Zasada: **async all the way** – od kontrolera/handlera do I/O.",
+    "Konstruktor nie może być async → statyczna fabryka `CreateAsync`, `IHostedService`, leniwa inicjalizacja async.",
+    "Jeśli API ma wersję synchroniczną (`HttpClient.Send`), użyj jej zamiast blokowania na async.",
+    "Gdy musisz blokować: raz, na brzegu, `GetAwaiter().GetResult()` (oryginalny wyjątek zamiast `AggregateException`)."
+   ],
+   "pitfalls": [
+    "`ConfigureAwait(false)` tylko w części `await`-ów nie chroni – wystarczy jeden bez niego.",
+    "`Task.Run(() => X()).Result` jako „obejście” nadal zabiera wątek z puli."
+   ],
+   "code": "// WPF – deadlock:\nprivate void Btn_Click(object s, RoutedEventArgs e)\n    => Text.Text = LoadAsync().Result;\n// poprawnie:\nprivate async void Btn_Click(object s, RoutedEventArgs e)\n    => Text.Text = await LoadAsync();",
+   "lang": "csharp",
+   "say": "Deadlock powstaje, gdy wątek z jednowątkowym kontekstem blokuje się na Result, a kontynuacja chce wrócić właśnie na ten wątek. W ASP.NET Core nie ma deadlocka, ale jest głodzenie puli wątków – dlatego async all the way."
+  },
+  {
+   "topic": "async void",
+   "points": [
+    "`async void` nie zwraca Taska – nie da się go awaitować ani sprawdzić, kiedy się skończył.",
+    "Wyjątek nie trafia do wywołującego – rzucany na `SynchronizationContext` lub thread pool → zwykle **crash procesu**.",
+    "`try/catch` wokół wywołania `async void` nie złapie wyjątku rzuconego po pierwszym `await`.",
+    "Jedyny uzasadniony przypadek: **event handlery** (sygnatura void narzucona) – całe ciało w try/catch.",
+    "Utrudnia testy (test kończy się przed operacją); analizatory (VSTHRD100) to wykrywają.",
+    "Uwaga na lambdy: `Action` przypisana lambdzie async = niejawny async void (np. `list.ForEach(async x => ...)`)."
+   ],
+   "pitfalls": [
+    "`list.ForEach(async x => await SaveAsync(x))` – fire-and-forget bez obsługi błędów.",
+    "Fire-and-forget w ASP.NET Core zamiast kolejki/`BackgroundService` – praca ginie i używa disposed scope."
+   ],
+   "code": "// źle\npublic async void Save() => await _repo.SaveAsync();\n// dobrze\npublic async Task SaveAsync() => await _repo.SaveAsync();\n// handler UI\nprivate async void OnClick(object? s, EventArgs e)\n{\n    try { await SaveAsync(); } catch (Exception ex) { _log.LogError(ex, \"Save\"); }\n}",
+   "lang": "csharp",
+   "say": "async void nie daje Taska, więc wywołujący nie wie, kiedy metoda się skończyła, a wyjątek potrafi położyć proces. Używam go tylko w event handlerach UI, z try/catch w środku; wszędzie indziej async Task."
+  },
+  {
+   "topic": "CancellationToken",
+   "points": [
+    "Anulowanie jest **kooperacyjne**: `CancellationTokenSource` wydaje token, kod sam sprawdza i przerywa.",
+    "Przepuszczaj token przez cały łańcuch aż do I/O (EF Core, HttpClient, `Task.Delay`) – parametr ostatni, `CancellationToken ct = default`.",
+    "ASP.NET Core: parametr akcji/endpointu wiąże się z `HttpContext.RequestAborted` – anulowany, gdy klient zerwie połączenie.",
+    "Timeout: `cts.CancelAfter(TimeSpan)` lub `new CancellationTokenSource(timeout)`; łączenie: `CreateLinkedTokenSource(a, b)`.",
+    "W pętlach CPU: `ct.ThrowIfCancellationRequested()`; anulowanie sygnalizuje `OperationCanceledException` (`TaskCanceledException` to podklasa).",
+    "`CancellationTokenSource` jest `IDisposable` (szczególnie linked i z timerem) – `using`.",
+    "BackgroundService: `stoppingToken` w `ExecuteAsync` – sygnał zamykania hosta."
+   ],
+   "pitfalls": [
+    "Łapanie `OperationCanceledException` jako błędu i logowanie go jako Error (to normalne anulowanie).",
+    "Nieprzekazanie tokena do zapytań EF/HTTP – anulowanie nic nie przerywa."
+   ],
+   "code": "app.MapGet(\"/report\", async (ReportService svc, CancellationToken ct) =>\n{\n    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);\n    cts.CancelAfter(TimeSpan.FromSeconds(10));\n    return await svc.BuildAsync(cts.Token);\n});",
+   "lang": "csharp",
+   "say": "Anulowanie w .NET jest kooperacyjne – token przekazuję przez cały łańcuch aż do EF Core i HttpClienta, a w ASP.NET Core dostaję go z RequestAborted. Timeouty robię przez CancelAfter albo linked token source."
+  },
+  {
+   "topic": "Task.WhenAll i równoległość",
+   "points": [
+    "Najpierw **wystartuj** wszystkie zadania (wywołanie bez `await`), potem `await Task.WhenAll(...)` – czas ≈ najdłuższa operacja, nie suma.",
+    "`await Task.WhenAll` rzuca tylko **pierwszy** wyjątek; wszystkie są w `whenAllTask.Exception` (`AggregateException`).",
+    "`WhenAll` z `Task<T>[]` zwraca `T[]` w kolejności wejścia.",
+    "`Task.WhenAny` – pierwszy zakończony (timeouty, wyścigi); `Task.WhenEach` (.NET 9) – przetwarzanie w kolejności kończenia przez `await foreach`.",
+    "Ograniczanie współbieżności: `Parallel.ForEachAsync` z `MaxDegreeOfParallelism` albo `SemaphoreSlim`.",
+    "`Parallel.For/ForEach` i PLINQ – dla pracy **CPU-bound**; dla I/O – async + WhenAll.",
+    "Jeden `DbContext` nie obsłuży równoległych zapytań – osobny kontekst (`IDbContextFactory`) na zadanie."
+   ],
+   "pitfalls": [
+    "`await` każdego zadania zaraz po utworzeniu w pętli – wykonanie sekwencyjne.",
+    "WhenAll na 10 000 żądań HTTP bez limitu – wyczerpanie socketów/rate limit."
+   ],
+   "code": "var userTask  = _users.GetAsync(id, ct);\nvar ordersTask = _orders.GetAsync(id, ct);\nawait Task.WhenAll(userTask, ordersTask);\nvar (user, orders) = (userTask.Result, ordersTask.Result); // już zakończone\n\nawait Parallel.ForEachAsync(urls,\n    new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct },\n    async (url, t) => await _http.GetStringAsync(url, t));",
+   "lang": "csharp",
+   "say": "Żeby operacje szły równolegle, najpierw je startuję, a potem czekam przez Task.WhenAll – czas to najdłuższa z nich. await zwraca pierwszy wyjątek, resztę mam w Exception taska, a przy dużej liczbie ograniczam współbieżność przez Parallel.ForEachAsync."
+  },
+  {
+   "topic": "lock i SemaphoreSlim",
+   "points": [
+    "`lock` (Monitor) – wzajemne wykluczanie dla kodu **synchronicznego**; reentrant dla tego samego wątku.",
+    "`await` w `lock` to błąd kompilacji (CS1996) – Monitor jest przypisany do wątku, a kontynuacja może biec na innym.",
+    "Kod async: `SemaphoreSlim(1, 1)` + `await WaitAsync(ct)` + `Release()` w `finally`; nie jest reentrant.",
+    "`System.Threading.Lock` (.NET 9 / C# 13) – dedykowany typ; `lock` na nim używa `EnterScope()`, szybciej niż Monitor na `object`.",
+    "Proste operacje atomowe: `Interlocked.Increment`, `Add`, `Exchange`, `CompareExchange`.",
+    "Lockuj na prywatnym `readonly` obiekcie, nigdy na `this`, `typeof(X)` ani stringu.",
+    "Te mechanizmy działają **w jednym procesie** – przy wielu instancjach potrzebny lock rozproszony (Redis, DB) lub idempotencja."
+   ],
+   "pitfalls": [
+    "Brak `Release()` w `finally` → semafor zablokowany na zawsze po wyjątku.",
+    "Ponowne `WaitAsync` z tej samej ścieżki (rekurencja) na SemaphoreSlim(1,1) → deadlock."
+   ],
+   "code": "private readonly Lock _sync = new();\nprivate readonly SemaphoreSlim _gate = new(1, 1);\n\npublic void Add(int x) { lock (_sync) { _total += x; } }\n\npublic async Task RefreshAsync(CancellationToken ct)\n{\n    await _gate.WaitAsync(ct);\n    try { _data = await LoadAsync(ct); }\n    finally { _gate.Release(); }\n}",
+   "lang": "csharp",
+   "say": "lock służy do synchronicznych sekcji krytycznych i nie pozwala na await, bo Monitor jest związany z wątkiem. W kodzie async używam SemaphoreSlim z WaitAsync i Release w finally, a od .NET 9 do zwykłego locka biorę typ Lock."
+  },
+  {
+   "topic": "ConcurrentDictionary",
+   "points": [
+    "Pojedyncze operacje (`TryAdd`, `TryGetValue`, `TryRemove`, `TryUpdate`, indekser, `GetOrAdd`, `AddOrUpdate`) są **atomowe** i thread-safe.",
+    "Odczyty są lock-free; zapisy blokują drobnoziarniście (lock striping).",
+    "Fabryki w `GetOrAdd`/`AddOrUpdate` wykonują się **poza lockiem** – mogą zostać wywołane wielokrotnie; do słownika trafi jeden wynik, reszta porzucona (bez Dispose).",
+    "Kosztowna lub z efektami ubocznymi fabryka → wartość `Lazy<T>` (`ExecutionAndPublication`).",
+    "Sekwencja „sprawdź, potem dodaj” (`ContainsKey` + `TryAdd`) **nie jest atomowa** – używaj metod złożonych.",
+    "`GetOrAdd(key, factory, arg)` – przekazanie stanu bez alokacji closure.",
+    "`Count`, `Keys`, `ToArray()` biorą wszystkie locki – drogie w gorącej ścieżce; enumeracja jest bezpieczna, ale nie jest snapshotem."
+   ],
+   "pitfalls": [
+    "Założenie, że fabryka w `GetOrAdd` wykona się dokładnie raz.",
+    "Używanie ConcurrentDictionary jako cache bez limitu/wygaśnięcia – wyciek pamięci (lepiej `IMemoryCache`/`HybridCache`)."
+   ],
+   "code": "private readonly ConcurrentDictionary<string, Lazy<Task<Config>>> _cache = new();\n\npublic Task<Config> GetAsync(string key) =>\n    _cache.GetOrAdd(key, k => new Lazy<Task<Config>>(() => LoadAsync(k))).Value;",
+   "lang": "csharp",
+   "say": "ConcurrentDictionary gwarantuje atomowość pojedynczych operacji, ale fabryki w GetOrAdd biegną poza lockiem i mogą wykonać się kilka razy. Gdy tworzenie jest drogie, trzymam w nim Lazy<T>."
+  },
+  {
+   "topic": "Garbage Collector",
+   "points": [
+    "GC **generacyjny**: gen 0 (nowe, często i tanio), gen 1 (bufor), gen 2 (długo żyjące, pełne GC – najdroższe).",
+    "Hipoteza: większość obiektów umiera młodo; obiekty przeżywające kolekcję są promowane.",
+    "**LOH**: obiekty ≥ **85 000 B**, zbierane z gen 2, domyślnie niekompaktowane → fragmentacja; `ArrayPool<T>` zamiast dużych tymczasowych tablic. Jest też POH (pinned).",
+    "Workstation GC vs **Server GC** (sterta i wątek GC na rdzeń; domyślny w ASP.NET Core); background GC zbiera gen 2 równolegle z aplikacją.",
+    "**DATAS** (domyślny przy Server GC od .NET 9) – dynamicznie dobiera liczbę stert do obciążenia → dużo mniejsze zużycie pamięci w kontenerach; wyłączenie `GCDynamicAdaptationMode=0`.",
+    "GC szanuje limity kontenera (cgroups); `GCHeapHardLimit`/`GCHeapHardLimitPercent` do strojenia.",
+    "Diagnostyka: `dotnet-counters`, `dotnet-gcdump`, `dotnet-trace`, metryki `System.Runtime`.",
+    "`GC.Collect()` ręcznie prawie nigdy – psuje heurystyki."
+   ],
+   "pitfalls": [
+    "Wycieki w .NET to trzymane referencje: statyczne kolekcje, eventy, cache bez limitu, captive dependency.",
+    "Wiele krótkotrwałych dużych buforów (≥85 KB) → częste gen 2 i fragmentacja LOH."
+   ],
+   "say": "GC w .NET jest generacyjny – gen 0 sprzątany często i tanio, gen 2 rzadko i drogo, duże obiekty od 85 KB idą na LOH. ASP.NET Core używa Server GC, a od .NET 9 DATAS dopasowuje liczbę stert do ruchu, co mocno obniża zużycie pamięci w kontenerach."
+  },
+  {
+   "topic": "IDisposable vs finalizer",
+   "points": [
+    "`Dispose()` – **deterministyczne** zwolnienie zasobów (połączenia, pliki, uchwyty) w wybranym momencie.",
+    "Finalizer (`~Klasa`) – wołany przez GC w nieokreślonym czasie na wątku finalizera; opóźnia zebranie obiektu o co najmniej jeden cykl.",
+    "Finalizer tylko jako siatka bezpieczeństwa dla zasobów **niezarządzanych** – w praktyce `SafeHandle` zamiast własnego finalizera.",
+    "`using` wywołuje `Dispose` w `finally`; `await using` → `DisposeAsync` (`IAsyncDisposable`).",
+    "`using var x = ...;` – Dispose na końcu **otaczającego zakresu**, w odwrotnej kolejności deklaracji.",
+    "Pełny dispose pattern (`Dispose(bool)`, `GC.SuppressFinalize`) potrzebny tylko w klasach z finalizerem lub do dziedziczenia; zwykle wystarczy `sealed` + prosty Dispose.",
+    "Kontener DI sam disposuje utworzone przez siebie obiekty – nie wywołuj Dispose na wstrzykniętych zależnościach.",
+    "Dispose powinien być idempotentny; użycie po dispose → `ObjectDisposedException.ThrowIf`."
+   ],
+   "pitfalls": [
+    "`using var` trzyma zasób (plik, połączenie) do końca metody – czasem potrzebny blok `using { }`.",
+    "`using` na `HttpClient` tworzonym per żądanie → socket exhaustion; używaj `IHttpClientFactory`."
+   ],
+   "code": "public sealed class Exporter : IAsyncDisposable\n{\n    private readonly FileStream _fs = File.Create(\"out.csv\");\n    public ValueTask DisposeAsync() => _fs.DisposeAsync();\n}\n\nawait using var exp = new Exporter();",
+   "lang": "csharp",
+   "say": "IDisposable to deterministyczne zwalnianie zasobów przez using, finalizer to ostatnia deska ratunku wywoływana przez GC kiedyś. W praktyce nie piszę finalizerów – używam SafeHandle, using i await using."
+  },
+  {
+   "topic": "Span<T> i Memory<T>",
+   "points": [
+    "`Span<T>` – `ref struct` opisujący ciągły fragment pamięci (tablica, `stackalloc`, pamięć natywna) **bez kopiowania i alokacji**.",
+    "Tani slicing: `ReadOnlySpan<char>` zamiast `Substring`, parsowanie przez `int.Parse(span)`.",
+    "Ograniczenia ref struct: tylko na stosie – nie może być polem klasy, nie może być boxowany, nie przetrwa `await` ani nie trafi do lambdy.",
+    "C# 13 pozwala na `ref struct` w metodach async/iteratorach, o ile nie przekracza granicy `await`/`yield`.",
+    "`Memory<T>` / `ReadOnlyMemory<T>` – odpowiednik do trzymania na heapie (pola, async); do operacji `.Span`.",
+    "C# 14: niejawne konwersje tablic do `Span<T>`/`ReadOnlySpan<T>` (first-class spans) – mniej przeciążeń i rzutowań.",
+    "Używane szeroko w BCL: `System.Text.Json`, `Utf8Parser`, `stackalloc` dla małych buforów, `ArrayPool<T>` dla dużych."
+   ],
+   "pitfalls": [
+    "Próba zapisania Spana w polu klasy lub użycia po `await` – błąd kompilacji.",
+    "Duży `stackalloc` (np. zależny od wejścia) → `StackOverflowException`; limituj rozmiar i przechodź na `ArrayPool`."
+   ],
+   "code": "ReadOnlySpan<char> line = \"2026-10-19;42\";\nint sep = line.IndexOf(';');\nvar date = DateOnly.Parse(line[..sep]);\nint qty  = int.Parse(line[(sep + 1)..]);   // zero alokacji stringów",
+   "lang": "csharp",
+   "say": "Span<T> to okno na ciągłą pamięć bez alokacji – świetne do parsowania i slicingu. Jako ref struct żyje tylko na stosie, więc w polach i w kodzie async używam Memory<T> i sięgam po .Span przy przetwarzaniu."
+  },
+  {
+   "topic": "Kolekcje – złożoność",
+   "points": [
+    "`List<T>` – dynamiczna tablica: indeks O(1), `Add` zamortyzowane O(1) (podwaja capacity), `Insert`/`RemoveAt` w środku i `Contains` – O(n).",
+    "`Dictionary<K,V>` / `HashSet<T>` – tablice haszujące: dodanie, wyszukanie, usunięcie średnio **O(1)**, najgorzej O(n) (kolizje).",
+    "`SortedDictionary`/`SortedSet` – drzewo czerwono-czarne, O(log n), uporządkowane klucze; `SortedList` – tablica, tańsza pamięciowo, wolniejsze wstawianie.",
+    "`Queue<T>`, `Stack<T>` – O(1) enqueue/dequeue/push/pop; `PriorityQueue<TElement,TPriority>` (.NET 6) – O(log n).",
+    "`LinkedList<T>` – O(1) wstawianie przy znanym węźle, ale słaba lokalność cache – rzadko opłacalna.",
+    "Wielokrotne sprawdzanie przynależności → `HashSet<T>` zamiast `List.Contains` (O(n·m) → O(n+m)).",
+    "Znany rozmiar → podaj `capacity` w konstruktorze; `BinarySearch` na posortowanej liście – O(log n)."
+   ],
+   "pitfalls": [
+    "`list.Contains` w pętli na dużych danych – ukryte O(n²).",
+    "`RemoveAt(0)` w pętli na `List<T>` – O(n²); użyj `Queue<T>`."
+   ],
+   "say": "List to tablica dynamiczna z O(1) po indeksie i O(n) dla Contains, Dictionary i HashSet dają średnio O(1) dla wyszukiwania, a Sorted* – O(log n) z zachowaniem kolejności. Przy wielu sprawdzeniach przynależności zawsze HashSet."
+  },
+  {
+   "topic": "Kolekcje read-only, immutable, frozen",
+   "points": [
+    "`IReadOnlyList<T>`/`IReadOnlyCollection<T>` – tylko **widok**: wywołujący nie zmieni przez interfejs, ale właściciel może (i da się zrzutować na `List<T>`).",
+    "`ReadOnlyCollection<T>` (`list.AsReadOnly()`) – wrapper blokujący rzutowanie, ale nadal odzwierciedla zmiany źródła.",
+    "`System.Collections.Immutable` (`ImmutableArray`, `ImmutableList`, `ImmutableDictionary`) – naprawdę niezmienne; „modyfikacja” zwraca nową instancję, thread-safe.",
+    "`ImmutableArray<T>` – struct nad tablicą, najszybszy odczyt; `ImmutableList` – drzewo, tańsze modyfikacje, wolniejszy odczyt.",
+    "`FrozenDictionary`/`FrozenSet` (.NET 8) – kosztowne tworzenie (`ToFrozenDictionary()`), bardzo szybkie odczyty; idealne dla danych tworzonych raz przy starcie.",
+    "Collection expressions (C# 12): `IReadOnlyList<int> x = [1, 2, 3];`, `ImmutableArray<int> y = [..a, 4];`.",
+    "W API publicznym zwracaj interfejsy read-only, żeby nie wiązać się z implementacją."
+   ],
+   "pitfalls": [
+    "Zwrócenie `IReadOnlyList` opakowującego wewnętrzną listę – konsument widzi późniejsze zmiany i może rzutować.",
+    "Budowanie ImmutableList w pętli przez `Add` – użyj `ImmutableList.CreateBuilder()`."
+   ],
+   "code": "private static readonly FrozenDictionary<string, decimal> Vat =\n    new Dictionary<string, decimal> { [\"PL\"] = 0.23m, [\"DE\"] = 0.19m }\n        .ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);",
+   "lang": "csharp",
+   "say": "IReadOnly* to tylko widok – właściciel może dalej zmieniać kolekcję. Kolekcje Immutable są naprawdę niezmienne i bezpieczne wątkowo, a Frozen z .NET 8 są dla danych tworzonych raz i czytanych bardzo często."
+  },
+  {
+   "topic": "Pattern matching",
+   "points": [
+    "Type pattern: `if (o is string s)`; `is not null` – czytelny i nieprzeciążalny null check.",
+    "Relational i logical: `x is > 0 and <= 100`, `c is 'a' or 'b'`, `not`.",
+    "Property pattern: `order is { Status: Status.Paid, Total: > 100 }`; extended `{ Customer.Address.City: \"Kraków\" }` (C# 10).",
+    "Positional: dekonstrukcja recordów/krotek – `(x, y) switch { (0, 0) => ... }`.",
+    "List pattern (C# 11): `[first, .., last]`, `[_, _]`, slice `..var rest`.",
+    "**Switch expression** zwraca wartość; kompilator ostrzega o niewyczerpujących przypadkach (CS8509), `_` jako default.",
+    "Ramiona sprawdzane **od góry** – bardziej szczegółowe przypadki wyżej (kompilator wykrywa nieosiągalne)."
+   ],
+   "pitfalls": [
+    "Kolejność ramion: ogólny `int` przed `int and > 100` → drugie nieosiągalne (błąd CS8510).",
+    "`case null` vs `is null` – w switch typu `object` null nie pasuje do type pattern, potrzebne osobne ramię."
+   ],
+   "code": "decimal Discount(Order o) => o switch\n{\n    { Total: > 1000, Customer.IsVip: true } => 0.15m,\n    { Total: > 1000 }                         => 0.10m,\n    { Items: [_, _, ..] }                     => 0.05m,\n    _                                         => 0m\n};",
+   "lang": "csharp",
+   "say": "Nowoczesny C# ma type, relational, logical, property, positional i list patterns, najwygodniej w switch expression, które zwraca wartość i ostrzega o niewyczerpujących przypadkach. Zastępuje to łańcuchy if-ów i rzutowań."
+  },
+  {
+   "topic": "Interfejs vs klasa abstrakcyjna",
+   "points": [
+    "Klasa abstrakcyjna: stan (pola), konstruktory (zwykle `protected`), modyfikatory dostępu, częściowa implementacja; **jedno** dziedziczenie.",
+    "Nie da się zrobić `new` na klasie abstrakcyjnej (CS0144), ale zmienna typu abstrakcyjnego może wskazywać pochodną.",
+    "Metoda `abstract` – bez ciała, niejawnie virtual, pochodna musi `override`; klasa z metodą abstrakcyjną sama musi być abstrakcyjna.",
+    "Interfejs: kontrakt, klasa implementuje **wiele** – podstawa DI, mockowania i testowalności.",
+    "Default interface methods (C# 8) – ewolucja API bez łamania implementacji; dostępne tylko przez typ interfejsu; brak stanu instancji.",
+    "Static abstract members (C# 11) – kontrakt na poziomie typu (generic math).",
+    "Reguła: interfejs dla kontraktu i wymienności, klasa abstrakcyjna dla wspólnego kodu i stanu w hierarchii (template method)."
+   ],
+   "pitfalls": [
+    "Wywołanie default interface method przez zmienną typu klasy – błąd kompilacji (trzeba przez interfejs).",
+    "Głębokie hierarchie abstrakcyjne zamiast kompozycji – kruche i trudne w testach."
+   ],
+   "code": "public interface IGreeter { string Greet() => \"Hi\"; }\npublic class Greeter : IGreeter { }\n\nIGreeter g = new Greeter();\ng.Greet();                  // OK\n// new Greeter().Greet();   // błąd kompilacji",
+   "lang": "csharp",
+   "say": "Interfejs definiuje kontrakt i można ich implementować wiele – to podstawa DI i testów. Klasa abstrakcyjna daje wspólny stan i implementację w jednej hierarchii; default interface methods służą głównie do rozwijania API bez łamania implementacji."
+  },
+  {
+   "topic": "sealed i static",
+   "points": [
+    "`sealed class` – zakaz dziedziczenia; `sealed override` – zakaz dalszego nadpisywania metody.",
+    "`sealed` wyraża intencję i pozwala JIT na **devirtualizację** (drobny zysk); wiele zespołów pieczętuje klasy domyślnie (analizator CA1852).",
+    "`static class` – brak instancji i dziedziczenia, tylko składowe statyczne; typowo helpery i extension methods.",
+    "Składowa instancji należy do obiektu (`this`), statyczna – do typu: jedna kopia na typ (per proces/AppDomain), wywołanie przez nazwę typu.",
+    "Odwołanie do statycznej składowej przez instancję (`a.Total`) – błąd CS0176.",
+    "Statyczne czyste funkcje i fabryki są OK; problemem jest **mutowalny stan statyczny** – współdzielony przez wątki/żądania, wymaga synchronizacji i przecieka między testami.",
+    "Konstruktor statyczny wykonuje się raz, leniwie, thread-safe; wyjątek w nim → `TypeInitializationException` i typ bezużyteczny do końca procesu."
+   ],
+   "pitfalls": [
+    "Statyczny cache/serwis zamiast singletona w DI – brak możliwości podmiany w testach.",
+    "Mutowalne pole statyczne w aplikacji webowej – wyścigi między żądaniami."
+   ],
+   "say": "sealed blokuje dziedziczenie, co jasno mówi, że klasa nie jest do rozszerzania, i daje JIT-owi devirtualizację. static oznacza składowe typu, nie instancji – bezstanowe helpery są OK, ale mutowalny stan statyczny unikam i zastępuję singletonem z DI."
+  },
+  {
+   "topic": "Extension methods",
+   "points": [
+    "Statyczna metoda w **statycznej** klasie, pierwszy parametr oznaczony `this` – wywoływana jak metoda instancji.",
+    "Czysty cukier składniowy: kompilator zamienia na zwykłe wywołanie statyczne – brak dostępu do składowych prywatnych.",
+    "Metoda instancji o tej samej sygnaturze **zawsze wygrywa** z extension method.",
+    "Widoczność przez `using` przestrzeni nazw – konflikty dwóch rozszerzeń o tej samej nazwie = błąd niejednoznaczności.",
+    "Cały LINQ to rozszerzenia `IEnumerable<T>`/`IQueryable<T>`; w ASP.NET Core konwencja `AddXyz(this IServiceCollection)` i `UseXyz(this IApplicationBuilder)`.",
+    "Można rozszerzać interfejsy, enumy, typy generyczne z constraintami; wywołanie na `null` jest możliwe (brak NRE dopóki metoda nie dereferuje).",
+    "C# 14 dodaje bloki `extension` (właściwości, statyczne składowe) – klasyczna składnia `this` pozostaje w pełni wspierana."
+   ],
+   "pitfalls": [
+    "Extension methods nie są wirtualne – wybór następuje po typie **statycznym** w czasie kompilacji.",
+    "Rozszerzenia z logiką biznesową na `object`/`string` zaśmiecają IntelliSense i ukrywają zależności."
+   ],
+   "code": "public static class ServiceCollectionExtensions\n{\n    public static IServiceCollection AddOrders(this IServiceCollection s) =>\n        s.AddScoped<IOrderService, OrderService>();\n}",
+   "lang": "csharp",
+   "say": "Extension method to statyczna metoda z this na pierwszym parametrze, którą wywołuje się jak metodę instancji – kompilator zamienia to na zwykłe wywołanie statyczne. Tak zbudowany jest LINQ i rejestracja serwisów AddXyz w ASP.NET Core."
+  },
+  {
+   "topic": "Extension members (C# 14)",
+   "points": [
+    "C# 14 (.NET 10) wprowadza bloki `extension(...)` wewnątrz statycznej klasy.",
+    "Odbiorca (receiver) deklarowany **raz** dla całego bloku, np. `extension(string s)` albo generycznie `extension<T>(IEnumerable<T> source)`.",
+    "W bloku: extension **methods**, extension **properties** (np. `IsEmpty`), oraz składowe **statyczne** rozszerzające sam typ (`extension(string)` bez nazwy parametru).",
+    "Stare `this`-extension methods działają dalej i są zgodne binarnie oraz źródłowo – migracja nieobowiązkowa.",
+    "Nadal brak stanu: extension property nie ma pola (backing field) – oblicza wartość z odbiorcy.",
+    "Inne nowości C# 14: słowo `field` w akcesorach, `?.=` (null-conditional assignment), first-class spans, `nameof(List<>)`, partial constructors/events."
+   ],
+   "pitfalls": [
+    "Oczekiwanie, że extension property może przechowywać stan – nie może.",
+    "Mylenie z „extension everything” z wcześniejszych propozycji – nie ma rozszerzania o implementację interfejsu."
+   ],
+   "code": "public static class EnumerableExtensions\n{\n    extension<T>(IEnumerable<T> source)\n    {\n        public bool IsEmpty => !source.Any();\n        public IEnumerable<T> WhereNotNull() => source.Where(x => x is not null);\n    }\n    extension(string)\n    {\n        public static string Dash => \"-\";\n    }\n}\n// użycie: list.IsEmpty, string.Dash",
+   "lang": "csharp",
+   "say": "C# 14 dodaje bloki extension, w których raz deklaruję odbiorcę i mogę dodać nie tylko metody, ale też właściwości i składowe statyczne typu. Stare extension methods z this działają dalej, więc migracja nie jest konieczna."
+  },
+  {
+   "topic": "Primary constructors",
+   "points": [
+    "C# 12: primary constructor w **klasie i structcie** – `class OrderService(IRepo repo, ILogger<OrderService> log)`.",
+    "Parametry dostępne w całym ciele typu; kompilator przechwytuje je do ukrytego pola tylko, gdy są używane poza inicjalizacją.",
+    "W klasie **nie** powstają publiczne właściwości (w odróżnieniu od `record`, gdzie powstają właściwości `init`).",
+    "Parametry **nie są readonly** – można je nadpisać w metodzie; gdy zależy ci na niezmienności, przypisz do `private readonly` pola.",
+    "Inne konstruktory muszą wołać primary przez `: this(...)`.",
+    "Idealne do serwisów z DI – mniej boilerplate'u; klasa bazowa: `class B(int x) : A(x)`.",
+    "Analizator ostrzega (CS9124), gdy parametr jest przechwytywany i jednocześnie użyty do inicjalizacji pola/właściwości."
+   ],
+   "pitfalls": [
+    "Podwójny stan: parametr przypisany do właściwości i jednocześnie używany bezpośrednio – dwie kopie mogą się rozjechać.",
+    "Przypadkowe nadpisanie parametru (`repo = null`) – brak `readonly`."
+   ],
+   "code": "public sealed class OrderService(IOrderRepo repo, ILogger<OrderService> log)\n{\n    public async Task PlaceAsync(Order o, CancellationToken ct)\n    {\n        await repo.AddAsync(o, ct);\n        log.LogInformation(\"Order {Id} placed\", o.Id);\n    }\n}",
+   "lang": "csharp",
+   "say": "Primary constructors w klasach skracają wstrzykiwanie zależności – parametry są widoczne w całym typie. W odróżnieniu od recordów nie tworzą publicznych właściwości i nie są readonly, więc gdy to ważne, przypisuję je do pola readonly."
+  },
+  {
+   "topic": "required i init",
+   "points": [
+    "`init` (C# 9) – setter dostępny tylko przy inicjalizacji: konstruktor, object initializer, `with`; potem właściwość read-only.",
+    "`required` (C# 11) – wymusza ustawienie w object initializerze; brak = **błąd kompilacji** CS9035.",
+    "Razem: niemutowalne obiekty z czytelnym initializerem zamiast długich konstruktorów; rozwiązują CS8618 przy NRT.",
+    "Konstruktor ustawiający wszystkie wymagane składowe oznacz `[SetsRequiredMembers]`.",
+    "`required` to tylko compile-time – brak walidacji w runtime (refleksja/deserializacja może pominąć).",
+    "System.Text.Json (od .NET 8) respektuje `required` – brak właściwości w JSON → `JsonException`.",
+    "C# 14: słowo kluczowe `field` pozwala dodać logikę w akcesorze (`init => field = value.Trim();`) bez ręcznego pola."
+   ],
+   "pitfalls": [
+    "Mylenie `required` (musi być ustawione) z `[Required]` z DataAnnotations (walidacja w runtime, np. modelu API).",
+    "`init` nie daje głębokiej niezmienności – lista ustawiona w `init` nadal może być modyfikowana."
+   ],
+   "code": "public sealed class CreateUser\n{\n    public required string Email { get; init; }\n    public string? Name { get; init; }\n}\nvar u = new CreateUser { Email = \"a@b.pl\" };   // bez Email: CS9035",
+   "lang": "csharp",
+   "say": "init pozwala ustawić właściwość tylko podczas tworzenia obiektu, a required wymusza to w kompilacji. Razem dają niemutowalne DTO z czytelnym object initializerem, ale to nie jest walidacja w runtime."
+  },
+  {
+   "topic": "Equality",
+   "points": [
+    "`==` dla klas domyślnie porównuje **referencje**, chyba że typ przeciąża operator (`string`, `record`).",
+    "`==` jest wybierane statycznie (typ w czasie kompilacji) – dla zmiennych typu `object` porówna referencje nawet dla stringów.",
+    "`Equals` jest **wirtualny**: dla klas domyślnie referencyjny, dla structów porównuje pola (przez refleksję → wolno, boxing).",
+    "`ReferenceEquals` zawsze porównuje referencje.",
+    "Kontrakt: równe wg `Equals` ⇒ ten sam `GetHashCode`; nadpisuj oba razem, najlepiej z `IEquatable<T>` i `HashCode.Combine(...)`.",
+    "Hash na **niezmiennych** polach – zmiana klucza po dodaniu do `Dictionary`/`HashSet` = element „zgubiony”.",
+    "Records generują value equality, `==`, `!=` i `GetHashCode` automatycznie.",
+    "Dla stringów: `string.Equals(a, b, StringComparison.Ordinal[IgnoreCase])` i `StringComparer` w słownikach."
+   ],
+   "pitfalls": [
+    "Mutowanie właściwości użytej w `GetHashCode` obiektu będącego kluczem słownika.",
+    "Nadpisanie `Equals` bez `GetHashCode` (ostrzeżenie CS0659) – HashSet/Dictionary działają źle."
+   ],
+   "code": "object a = \"abc\";\nobject b = new string(\"abc\".ToCharArray());\nConsole.WriteLine((string)a == (string)b); // True\nConsole.WriteLine(a == b);                 // False (referencje)\nConsole.WriteLine(a.Equals(b));            // True (wirtualny)",
+   "lang": "csharp",
+   "say": "== domyślnie porównuje referencje dla klas i jest rozstrzygane w kompilacji, Equals jest wirtualny, a ReferenceEquals zawsze referencyjny. Equals i GetHashCode nadpisuję razem, na niezmiennych polach – albo po prostu używam recordów."
+  },
+  {
+   "topic": "Wyjątki – dobre praktyki",
+   "points": [
+    "`throw;` zachowuje oryginalny stack trace; `throw ex;` go **resetuje** do bieżącego miejsca.",
+    "Łap tylko wyjątki, które umiesz obsłużyć; ogólny `catch (Exception)` tylko na granicy (middleware, `IExceptionHandler`, globalny handler).",
+    "Opakowując, przekazuj oryginał jako `InnerException`: `throw new DomainException(\"...\", ex);`.",
+    "Filtry `catch (X ex) when (cond)` wykonują się **przed rozwinięciem stosu** – fałsz = wyjątek leci dalej z pełnym stanem.",
+    "Nie steruj przepływem wyjątkami (drogie) – `TryParse`, Result pattern dla oczekiwanych błędów biznesowych.",
+    "Guard clauses: `ArgumentNullException.ThrowIfNull`, `ArgumentException.ThrowIfNullOrEmpty`, `ArgumentOutOfRangeException.ThrowIfNegative`.",
+    "ASP.NET Core: `AddProblemDetails()` + `UseExceptionHandler()` + `IExceptionHandler` → spójne odpowiedzi RFC 9457.",
+    "`ExceptionDispatchInfo.Capture(ex).Throw()` – ponowne rzucenie w innym miejscu z zachowaniem stosu."
+   ],
+   "pitfalls": [
+    "`throw ex;` – utrata informacji, gdzie powstał błąd.",
+    "Pusty `catch { }` połykający wyjątki; logowanie i ponowne rzucanie na każdej warstwie (duplikaty w logach)."
+   ],
+   "code": "try { await _gateway.ChargeAsync(p, ct); }\ncatch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Conflict)\n{\n    throw new PaymentConflictException(p.Id, ex);\n}",
+   "lang": "csharp",
+   "say": "throw; zachowuje stack trace, throw ex go nadpisuje. Łapię tylko to, co umiem obsłużyć, opakowuję z InnerException, a ogólną obsługę mam w jednym miejscu – w ASP.NET Core przez IExceptionHandler i ProblemDetails."
+  },
+  {
+   "topic": ".NET vs .NET Framework",
+   "points": [
+    "**.NET Framework** (ostatnia 4.8.1) – tylko Windows, część systemu, wyłącznie poprawki bezpieczeństwa; brak nowych funkcji.",
+    "**.NET** (dawniej Core, od 5) – cross-platform, open source, modularny, dużo wydajniejszy, wydanie co roku w listopadzie.",
+    "Parzyste wersje **LTS** (3 lata): .NET 8 (do XI 2026), **.NET 10** (XI 2025 – XI 2028); nieparzyste **STS** (24 miesiące): .NET 9.",
+    "C# idzie w parze z runtime: .NET 8 → C# 12, .NET 9 → C# 13, **.NET 10 → C# 14**.",
+    "Wdrożenie: framework-dependent, self-contained (runtime w paczce), Native AOT; obrazy kontenerowe `mcr.microsoft.com/dotnet/aspnet`.",
+    "`.NET Standard` służył do współdzielenia bibliotek między platformami – dziś nowe biblioteki celują w `net8.0`/`net10.0` (multi-targeting).",
+    "Migracja z Framework: .NET Upgrade Assistant / GitHub Copilot app modernization, przepisanie WebForms/WCF (CoreWCF, gRPC), System.Web → ASP.NET Core."
+   ],
+   "pitfalls": [
+    "Mówienie „.NET Core 10” – od wersji 5 nazwa to po prostu .NET (ale „ASP.NET Core”, „EF Core” zostały).",
+    "Wybór STS dla systemu bez regularnych aktualizacji – krótsze wsparcie."
+   ],
+   "say": ".NET Framework to legacy tylko na Windows, utrzymywany wyłącznie poprawkami. Nowoczesny .NET jest cross-platform i open source, wydawany co roku; dziś celuję w .NET 10 LTS z C# 14."
+  },
+  {
+   "topic": "CLR, JIT, AOT",
+   "points": [
+    "Roslyn kompiluje C# do **IL** w assembly; **CLR** ładuje IL, zarządza pamięcią (GC), typami, wyjątkami, wątkami.",
+    "**JIT** kompiluje metody do kodu natywnego przy pierwszym wywołaniu.",
+    "**Tiered compilation**: tier 0 (szybko, bez optymalizacji) → gorące metody rekompilowane w tier 1; **Dynamic PGO** domyślnie od .NET 8.",
+    "**ReadyToRun** – prekompilacja skracająca start, JIT nadal dostępny (może dooptymalizować).",
+    "**Native AOT** (`<PublishAot>true</PublishAot>`) – jedna natywna binarka bez JIT i runtime: start w ms, mniej RAM, mniejszy obraz; zawsze z **trimmingiem**.",
+    "Ograniczenia AOT: brak `Reflection.Emit`/dynamicznego ładowania assembly, refleksja tylko analizowalna, MVC Controllers nieobsługiwane (Minimal API tak), EF Core ograniczony.",
+    "Ostrzeżenia IL2026/IL3050 → przejście na source generatory (`JsonSerializerContext`, Configuration binder, `[LoggerMessage]`), nie wyciszanie.",
+    "AOT dla serverless, CLI, gęstych kontenerów; długo działające API często szybsze na JIT dzięki PGO."
+   ],
+   "pitfalls": [
+    "Włączenie AOT i ignorowanie ostrzeżeń trimmingu – crash w runtime przy refleksji.",
+    "Newtonsoft.Json / AutoMapper oparte na refleksji w projekcie AOT."
+   ],
+   "code": "[JsonSerializable(typeof(Order))]\ninternal partial class AppJsonContext : JsonSerializerContext { }\n\nbuilder.Services.ConfigureHttpJsonOptions(o =>\n    o.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonContext.Default));",
+   "lang": "csharp",
+   "say": "C# kompiluje się do IL, a CLR z JIT tłumaczy go do kodu natywnego, z tiered compilation i Dynamic PGO. Native AOT daje szybki start i mały footprint, ale kosztem refleksji i dynamicznego kodu – dlatego biorę go do serverless i CLI, a nie do każdego API."
+  },
+  {
+   "topic": "DI – lifetimes",
+   "points": [
+    "**Transient** – nowa instancja przy każdym rozwiązaniu; lekkie, bezstanowe serwisy.",
+    "**Scoped** – jedna na scope = jedno żądanie HTTP; `DbContext` (AddDbContext → Scoped), unit of work, kontekst użytkownika.",
+    "**Singleton** – jedna na aplikację; musi być thread-safe: cache, konfiguracja, `HttpClient` przez factory, klienci SDK.",
+    "Kontener disposuje utworzone przez siebie `IDisposable`/`IAsyncDisposable` na końcu scope'u (singletony przy zamknięciu aplikacji).",
+    "Transient `IDisposable` rozwiązywany z root providera żyje do końca aplikacji – ukryty wyciek.",
+    "Reguła zależności: dłuższy lifetime **nie może** zależeć od krótszego (captive dependency).",
+    "Keyed services (.NET 8): `AddKeyedScoped<IX, Impl>(\"key\")` + `[FromKeyedServices(\"key\")]`.",
+    "`TryAdd*` nie nadpisuje istniejących rejestracji; ostatnia rejestracja wygrywa przy pojedynczym rozwiązaniu, `IEnumerable<T>` zwraca wszystkie."
+   ],
+   "pitfalls": [
+    "DbContext jako Singleton – współdzielony między równoległymi żądaniami, nie jest thread-safe.",
+    "Stan per-użytkownik trzymany w singletonie."
+   ],
+   "code": "builder.Services.AddTransient<IClock, SystemClock>();\nbuilder.Services.AddScoped<IOrderService, OrderService>();\nbuilder.Services.AddDbContext<AppDb>(o => o.UseNpgsql(cs));   // Scoped\nbuilder.Services.AddSingleton<IRateCache, RateCache>();",
+   "lang": "csharp",
+   "say": "Transient to nowa instancja za każdym razem, Scoped – jedna na żądanie, jak DbContext, Singleton – jedna na aplikację i musi być thread-safe. Pilnuję, żeby dłużej żyjący serwis nie zależał od krótszego."
+  },
+  {
+   "topic": "Captive dependency",
+   "points": [
+    "Serwis o dłuższym lifetime trzyma zależność o krótszym – np. singleton z `DbContext` (Scoped) w konstruktorze.",
+    "Scoped zostaje „uwięziony” na całe życie aplikacji: DbContext współdzielony między wątkami, change tracker rośnie, stare dane.",
+    "Development: `ValidateScopes` + `ValidateOnBuild` włączone → `InvalidOperationException` „Cannot consume scoped service … from singleton”.",
+    "Production: walidacja domyślnie wyłączona – aplikacja startuje, błędy wychodzą pod obciążeniem.",
+    "Fix w singletonie/`BackgroundService`: `IServiceScopeFactory.CreateAsyncScope()` i rozwiązanie Scoped wewnątrz scope'u.",
+    "Alternatywy: `IDbContextFactory<T>` (`AddDbContextFactory`), zmiana lifetime konsumenta na Scoped.",
+    "Transient wstrzyknięty do singletonu też żyje jak singleton – problem, jeśli ma stan lub jest IDisposable."
+   ],
+   "pitfalls": [
+    "Wstrzyknięcie `IServiceProvider` i rozwiązywanie Scoped z root providera – ten sam problem, tylko ukryty.",
+    "Włączanie walidacji tylko lokalnie – warto `ValidateOnBuild` również w testach integracyjnych."
+   ],
+   "code": "public sealed class Cleanup(IServiceScopeFactory scopes) : BackgroundService\n{\n    protected override async Task ExecuteAsync(CancellationToken ct)\n    {\n        await using var scope = scopes.CreateAsyncScope();\n        var db = scope.ServiceProvider.GetRequiredService<AppDb>();\n        await db.Sessions.Where(s => s.Expired).ExecuteDeleteAsync(ct);\n    }\n}",
+   "lang": "csharp",
+   "say": "Captive dependency to sytuacja, gdy singleton trzyma serwis Scoped, np. DbContext, i ten żyje przez całą aplikację, współdzielony między wątkami. W Development wyłapuje to ValidateScopes; naprawiam przez IServiceScopeFactory albo IDbContextFactory."
+  }
+ ]
+}

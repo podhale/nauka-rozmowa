@@ -1,0 +1,113 @@
+{
+  "cat": "web",
+  "name": "HTTP, REST i bezpieczeństwo",
+  "cards": [
+    {
+      "id": "web-m001",
+      "topic": "GraphQL",
+      "level": 1,
+      "q": "Czym jest GraphQL? Omów schema oraz operacje query, mutation i subscription.",
+      "a": "GraphQL to język zapytań do API i środowisko, które je wykonuje. Zwykle jest jeden endpoint (`POST /graphql`), a klient deklaruje dokładnie, jakich pól potrzebuje. Odpowiedź to JSON w tym samym kształcie, więc nie ma over-fetchingu (za dużo danych) ani under-fetchingu (kilka wywołań, żeby złożyć jeden ekran). Kontraktem jest silnie typowany schema w SDL: typy obiektowe, skalary, enumy, typy `input`, `!` oznacza non-null. Dzięki introspekcji IDE i generatory kodu znają schemat. Są trzy operacje: query (odczyt), mutation (zapis; pola najwyższego poziomu wykonują się po kolei) i subscription (zdarzenia push z serwera, zwykle przez WebSocket albo SSE).",
+      "code": "type Book { id: ID! title: String! author: Author! }\ntype Author { id: ID! name: String! books: [Book!]! }\ninput AddBookInput { title: String! authorId: ID! }\n\ntype Query { bookById(id: ID!): Book }\ntype Mutation { addBook(input: AddBookInput!): Book! }\ntype Subscription { bookAdded: Book! }\n\n# zapytanie klienta:\nquery { bookById(id: \"1\") { title author { name } } }",
+      "lang": "text",
+      "tip": "Częste dopytanie: „czy GraphQL to baza danych?” – nie. To warstwa API, a dane mogą pochodzić z SQL, innych serwisów albo REST."
+    },
+    {
+      "id": "web-m002",
+      "topic": "GraphQL",
+      "level": 2,
+      "q": "Czym są resolvery i skąd w GraphQL bierze się problem N+1? Jak działa DataLoader?",
+      "a": "Każde pole w schemacie ma resolver, czyli funkcję, która zwraca jego wartość. Silnik przechodzi drzewo zapytania i wywołuje resolvery pole po polu. Dla `books { author { name } }` resolver `author` wywoła się raz dla każdej książki: 1 zapytanie o 50 książek + 50 zapytań o autorów. To N+1. DataLoader zbiera klucze z resolverów w ramach jednego requestu (batching) i wykonuje jedno zapytanie `WHERE Id IN (...)`. Potem przypisuje wyniki z powrotem do kluczy i dodatkowo cache'uje je per request. W Hot Chocolate (od v14) DataLoader generuje source generator z metody oznaczonej `[DataLoader]`. Przy EF Core alternatywą są projekcje (`UseProjection`), które zamieniają wybrane pola na jedno zapytanie SQL z JOIN.",
+      "code": "public static class AuthorDataLoaders\n{\n    [DataLoader]\n    public static async Task<IReadOnlyDictionary<int, Author>> GetAuthorByIdAsync(\n        IReadOnlyList<int> ids, AppDbContext db, CancellationToken ct)\n        => await db.Authors.Where(a => ids.Contains(a.Id))\n                           .ToDictionaryAsync(a => a.Id, ct);\n}\n\n// resolver pola Book.author\npublic static Task<Author?> GetAuthorAsync(\n    [Parent] Book book, IAuthorByIdDataLoader authorById, CancellationToken ct)\n    => authorById.LoadAsync(book.AuthorId, ct);",
+      "lang": "csharp",
+      "deep": "DataLoader działa, bo silnik najpierw zbiera wywołania `LoadAsync` z całego poziomu drzewa, a dopiero potem wykonuje batch. Dlatego batch ma jedno zapytanie na poziom zapytania, a nie na element. Instancja jest per request: cache nie przecieka między użytkownikami, ale też nie zastępuje cache'u aplikacyjnego. Funkcja batchowa musi obsłużyć brakujące klucze (zwrócić null zamiast rzucać wyjątek) i zachować dopasowanie klucz–wynik. Przy relacjach 1:N używa się wariantu grupującego (klucz → lista). Hot Chocolate domyślnie wykonuje resolvery równolegle, a DbContext nie jest thread-safe. Każdy resolver lub DataLoader powinien więc dostać własną instancję (np. przez pooled DbContextFactory), inaczej pojawi się błąd „A second operation was started on this context”. Problem N+1 wraca też przy zagnieżdżonych listach (`authors { books { reviews } }`), więc warto mierzyć liczbę zapytań SQL na operację w testach albo w tracingu.",
+      "tip": "Rekruter często zaczyna od „masz listę zamówień z klientem i pozycjami – ile zapytań do bazy wykona naiwny serwer GraphQL?”. Policz to na głos, a dopiero potem podaj rozwiązanie."
+    },
+    {
+      "id": "web-m003",
+      "topic": "GraphQL",
+      "level": 2,
+      "q": "Jak zbudować API GraphQL w .NET (Hot Chocolate) i jak korzysta się z niego w Angularze?",
+      "a": "Hot Chocolate (ChilliCream) to najpopularniejszy serwer GraphQL w .NET. W podejściu implementation-first schemat powstaje z klas C#: metoda `GetBooks` w klasie `Query` staje się polem `books`. Atrybuty middleware dokładają paging (cursor, Relay connections), projekcje, filtrowanie i sortowanie na `IQueryable`, które EF Core tłumaczy na SQL. Kolejność atrybutów ma znaczenie: UsePaging → UseProjection → UseFiltering → UseSorting. `MapGraphQL()` wystawia endpoint `/graphql` z IDE Nitro do testowania zapytań. W Angularze najczęściej używa się Apollo Angular: serwis `Apollo` (`query`, `watchQuery`, `mutate`) zwraca Observable i ma znormalizowany cache po stronie klienta. Typy TS generuje się ze schematu (GraphQL Code Generator). W prostych przypadkach wystarczy zwykły `HttpClient.post`.",
+      "code": "builder.Services\n    .AddGraphQLServer()\n    .AddQueryType<Query>()\n    .AddProjections()\n    .AddFiltering()\n    .AddSorting();\n\nvar app = builder.Build();\napp.MapGraphQL(); // /graphql\n\npublic class Query\n{\n    [UsePaging, UseProjection, UseFiltering, UseSorting]\n    public IQueryable<Book> GetBooks(AppDbContext db) => db.Books;\n}",
+      "lang": "csharp",
+      "tip": "Filtrowanie na `IQueryable` daje klientowi dużą swobodę. Ogranicz pola do filtrowania i maksymalny rozmiar strony, bo inaczej klient może wygenerować bardzo kosztowny SQL."
+    },
+    {
+      "id": "web-m004",
+      "topic": "GraphQL",
+      "level": 3,
+      "q": "GraphQL czy REST – jak argumentujesz wybór i jakie są ukryte koszty GraphQL?",
+      "a": "GraphQL opłaca się, gdy wiele klientów (web, mobile, partnerzy) potrzebuje różnych kształtów danych z wielu źródeł, UI szybko się zmienia, a dane są mocno powiązane. Wtedy działa jak elastyczny BFF. REST jest lepszy dla prostego CRUD, publicznych API dla firm trzecich, dużego ruchu wymagającego cache na CDN, plików i webhooków. Ukryte koszty GraphQL: cache HTTP prawie nie działa (jeden endpoint i POST), błędy wracają jako HTTP 200 z tablicą `errors`, trzeba bronić się przed kosztownymi zapytaniami, autoryzacja schodzi na poziom pól, a monitoring trzeba robić per operacja, nie per URL.",
+      "deep": "Wersjonowanie wygląda inaczej: zamiast `/v2` schemat się ewoluuje – dodaje się pola, a stare oznacza `@deprecated(reason: ...)` i usuwa, gdy metryki pokażą, że nikt ich nie używa. To wymaga śledzenia użycia pól. Cache odzyskuje się przez persisted queries: klient wysyła hash znanej operacji, co pozwala na GET i cache na CDN, a przy okazji ogranicza dowolne zapytania. Monitoring: alerty oparte tylko na 5xx nie zobaczą błędów GraphQL (200 + `errors`, częściowe dane), więc trzeba mierzyć błędy i latencję per nazwana operacja. Przy wielu serwisach dochodzi kompozycja schematów (Apollo Federation, Hot Chocolate Fusion), co jest osobnym kawałkiem infrastruktury do utrzymania. Na rozmowie dobrze wypada odpowiedź „to zależy od klientów API”: dla jednego frontendu Angular i jednego zespołu REST z dobrze zaprojektowanymi endpointami jest zwykle tańszy, a GraphQL zaczyna się opłacać przy kilku konsumentach o różnych potrzebach.",
+      "tip": "Pokaż, że wybór nie jest zero-jedynkowy: wiele systemów ma REST dla partnerów i webhooków, a GraphQL jako BFF dla własnych frontendów."
+    },
+    {
+      "id": "web-m005",
+      "topic": "GraphQL",
+      "level": 3,
+      "q": "Jak zabezpieczyć API GraphQL na produkcji przed nadużyciami i problemami z wydajnością?",
+      "a": "Najważniejsze jest ograniczenie kosztu zapytań, bo klient sam buduje zapytanie: limit głębokości, analiza złożoności lub kosztu (każde pole i lista ma wagę, a zapytanie powyżej progu jest odrzucane), obowiązkowa paginacja z limitem rozmiaru strony i timeout wykonania. Dla własnych klientów warto przyjmować tylko persisted (trusted) operations – znane zapytania z allowlisty. Autoryzację robi się na poziomie pól lub resolverów (w Hot Chocolate `[Authorize]` z politykami ASP.NET Core), bo jeden endpoint nie wystarczy jako granica. Na produkcji dla niepublicznego API wyłącza się introspekcję i ukrywa szczegóły wyjątków.",
+      "deep": "Typowe ataki to głęboko zagnieżdżone zapytania po relacjach cyklicznych (`friends { friends { friends … } }`), które mnożą liczbę rekordów wykładniczo, oraz nadużycie aliasów i batchingu. Jedno żądanie HTTP może zawierać 1000 aliasów `login(...)`, więc rate limiting liczony per request HTTP nie zatrzyma brute force. Limity trzeba liczyć per operacja lub per koszt. Wyłączenie introspekcji to tylko utrudnienie, nie zabezpieczenie: nazwy pól można zgadywać z podpowiedzi w komunikatach błędów lub z kodu frontendu. Prawdziwą ochroną są autoryzacja i limity kosztu. Hot Chocolate ma wbudowaną analizę kosztu i paging z limitem `MaxPageSize`. Domyślnie nie pokazuje szczegółów wyjątków klientowi, chyba że świadomie je włączysz (`IncludeExceptionDetails`). Mutacje powinny być idempotentne albo przyjmować klucz idempotencji tak jak w REST. Do obserwowalności: nazwane operacje, tracing per resolver dla wolnych pól i logowanie hasha zapytania zamiast pełnej treści z danymi osobowymi.",
+      "tip": "Dobra odpowiedź łączy trzy warstwy: limity kosztu, autoryzację na poziomie pól i allowlistę operacji. Samo „wyłączę introspekcję” to za mało."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "web-mq001",
+      "topic": "GraphQL",
+      "level": 2,
+      "q": "Naiwny serwer GraphQL (bez DataLoadera i projekcji) wykonuje zapytanie `{ books(first: 50) { title author { name } } }`. Każdy resolver odpytuje bazę osobno. Ile zapytań SQL zostanie wykonanych i jak to najlepiej naprawić?",
+      "options": [
+        "1 zapytanie – GraphQL zawsze łączy pola w jeden SQL.",
+        "2 zapytania – osobno książki i osobno autorzy; nic nie trzeba poprawiać.",
+        "51 zapytań (1 + 50); DataLoader w resolverze `author`, który zbiera id i wykonuje jedno `WHERE Id IN (...)`.",
+        "51 zapytań; należy zwiększyć pulę połączeń do bazy."
+      ],
+      "correct": 2,
+      "why": "Resolver `author` wywołuje się dla każdej z 50 książek, więc mamy klasyczne N+1. DataLoader zamienia to w 2 zapytania (książki + jeden batch autorów). GraphQL sam z siebie nie łączy zapytań – robią to dopiero DataLoader albo projekcje na IQueryable. Większa pula połączeń nie zmniejsza liczby zapytań, tylko przesuwa problem."
+    },
+    {
+      "id": "web-mq002",
+      "topic": "GraphQL",
+      "level": 2,
+      "q": "Monitoring API GraphQL alarmuje tylko przy odpowiedziach 5xx. Użytkownicy zgłaszają puste sekcje na dashboardzie, ale alertów nie ma. Co jest najbardziej prawdopodobne?",
+      "options": [
+        "Serwer zwraca HTTP 200 z częściowymi danymi i tablicą `errors` (np. resolver jednego pola rzucił wyjątek) – trzeba monitorować błędy per operacja, a nie tylko kody HTTP.",
+        "Przeglądarka cache'uje odpowiedzi POST /graphql przez Cache-Control.",
+        "GraphQL nie zwraca błędów – brak danych oznacza, że ich nie ma w bazie.",
+        "Subskrypcje WebSocket wyparły zwykłe zapytania."
+      ],
+      "correct": 0,
+      "why": "W GraphQL błąd jednego pola nie przerywa całej operacji: pole dostaje null, a opis trafia do `errors`, przy kodzie HTTP 200. Alerty na 5xx tego nie zobaczą. B – odpowiedzi POST nie są domyślnie cache'owane przez przeglądarkę. C – GraphQL ma ustandaryzowane zwracanie błędów. D nie ma związku z problemem."
+    },
+    {
+      "id": "web-mq003",
+      "topic": "GraphQL",
+      "level": 1,
+      "q": "Panel Angulara ma pokazywać nowe zgłoszenia w momencie ich utworzenia, bez odpytywania serwera co kilka sekund. Której operacji GraphQL użyjesz?",
+      "options": [
+        "query z krótkim cache po stronie klienta",
+        "mutation wywoływanej co sekundę",
+        "query z parametrem `live: true`",
+        "subscription – serwer wysyła zdarzenia (zwykle przez WebSocket lub SSE)"
+      ],
+      "correct": 3,
+      "why": "Subscription to operacja do zdarzeń wysyłanych przez serwer. Query (A) to jednorazowy odczyt i bez pollingu nie da powiadomień. Mutation (B) służy do zmian, a wywoływanie jej co sekundę to nadużycie. Standardowy GraphQL nie ma parametru `live: true` (C) – to wymyślona opcja."
+    },
+    {
+      "id": "web-mq004",
+      "topic": "GraphQL",
+      "level": 3,
+      "q": "Publiczne API GraphQL ma typ `User { friends: [User!]! }`. Atakujący wysyła zapytanie zagnieżdżone na 15 poziomów `friends`, a baza przestaje odpowiadać. Co jest właściwą ochroną?",
+      "options": [
+        "Wyłączenie introspekcji schematu na produkcji.",
+        "Limit głębokości i analiza kosztu zapytań, obowiązkowa paginacja z maksymalnym rozmiarem strony oraz timeout wykonania.",
+        "Rate limiting 100 żądań HTTP na minutę na adres IP.",
+        "Zmiana metody z POST na GET, żeby zapytania trafiały do cache CDN."
+      ],
+      "correct": 1,
+      "why": "Problemem jest koszt pojedynczego zapytania, który rośnie wykładniczo z głębokością – trzeba go ograniczyć przed wykonaniem (depth, cost) i ograniczyć listy (paging, max page size). A tylko utrudnia poznanie schematu – a tu atakujący już zna pole `friends`. C nie pomaga, bo do przeciążenia wystarczy jedno żądanie. D nie zmniejsza kosztu, a dowolne zapytania i tak rzadko trafiają w cache."
+    }
+  ]
+}

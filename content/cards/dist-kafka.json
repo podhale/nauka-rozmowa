@@ -1,0 +1,452 @@
+{
+  "cat": "dist",
+  "name": "Systemy rozproszone i messaging",
+  "cards": [
+    {
+      "id": "dist-k001",
+      "topic": "Kafka: podstawy",
+      "level": 1,
+      "q": "Dlaczego o Kafce mówi się „rozproszony commit log”, a nie „kolejka”? Co z tego wynika w praktyce?",
+      "a": "Kafka zapisuje rekordy na końcu append-only logu (per partycja) i nie usuwa ich po przeczytaniu – kasuje je dopiero polityka retencji. Konsument sam pamięta, dokąd doczytał (offset), więc ten sam strumień może czytać wiele niezależnych grup, każda we własnym tempie. Wynikają z tego: replay (cofnięcie offsetu i ponowne przetworzenie historii), dołączanie nowych konsumentów do starych danych i bardzo wysoka przepustowość. Ceną jest brak per-wiadomościowego ack, routingu, priorytetów i opóźnionych wiadomości, które daje klasyczny broker.",
+      "tip": "Rekruter lubi follow-up: „to jak skasować jedną wiadomość?” – nie da się selektywnie; można tylko czekać na retencję albo użyć compaction z tombstone."
+    },
+    {
+      "id": "dist-k002",
+      "topic": "Kafka: podstawy",
+      "level": 1,
+      "q": "Z czego składa się rekord w Kafce i jak jest fizycznie przechowywany na brokerze?",
+      "a": "Rekord ma opcjonalny key, value (bajty – format ustala aplikacja: JSON, Avro, Protobuf), headers (np. correlation id, typ zdarzenia, traceparent) i timestamp; po zapisie dostaje offset w partycji. Partycja to katalog na dysku brokera podzielony na segmenty (pliki .log z indeksami offsetu i czasu); zapis trafia zawsze do aktywnego segmentu, a retencja usuwa całe stare segmenty. Każda partycja ma replikę-lidera na jednym brokerze i followery na innych; klaster brokerów zarządzany jest przez kontrolery KRaft.",
+      "tip": "Wspomnij, że headers to dobre miejsce na metadane (typ, wersja schematu, trace context) – nie trzeba rozpakowywać payloadu, żeby skierować lub odfiltrować wiadomość."
+    },
+    {
+      "id": "dist-k003",
+      "topic": "Kafka: podstawy",
+      "level": 2,
+      "q": "Czym jest KRaft i co zmieniło się w Kafce 4.0?",
+      "a": "KRaft to tryb, w którym metadane klastra (topici, partycje, liderzy, ACL) przechowuje i replikuje kworum kontrolerów samej Kafki, z protokołem opartym o Raft, zamiast zewnętrznego ZooKeepera. Kafka 4.0 (2025) działa wyłącznie w KRaft – wsparcie ZooKeepera usunięto. Daje to jeden system do wdrożenia i monitorowania, szybszy failover kontrolera i obsługę znacznie większej liczby partycji. Migracja istniejącego klastra z ZooKeepera musi przejść przez wersję pomostową 3.x, zanim podniesie się go do 4.x.",
+      "deep": "Metadane są zapisywane jako log zdarzeń w wewnętrznym topicu `__cluster_metadata`; brokery trzymają je w pamięci i dostają przyrostowe zmiany zamiast odpytywać ZooKeepera. Kontrolerów jest zwykle 3 (toleruje 1 awarię) lub 5 (toleruje 2) – większość kworum musi żyć. Rola procesu ustawiana jest przez `process.roles` (broker, controller albo oba – tryb combined nadaje się do dev, na produkcji kontrolery zwykle są osobno). W wersji 4.0 usunięto też stare formaty wiadomości i podniesiono wymagania Javy, więc upgrade starych klientów trzeba sprawdzić. Na rozmowie wystarczy: „od 4.0 nie ma ZooKeepera, metadane są w Raftowym kworum kontrolerów, a migracja idzie przez 3.x”."
+    },
+    {
+      "id": "dist-k004",
+      "topic": "Kafka: podstawy",
+      "level": 3,
+      "q": "Dlaczego Kafka jest tak wydajna, mimo że wszystko zapisuje na dysk?",
+      "a": "Bo zapis to sekwencyjne dopisywanie do pliku (append-only), a odczyt to zwykle sekwencyjne czytanie od offsetu – dyski i SSD są w tym bardzo szybkie. Kafka korzysta z page cache systemu operacyjnego zamiast własnego cache na stercie JVM, wysyła dane do konsumentów przez zero-copy (`sendfile`), a producenci i konsumenci pracują na batchach, często skompresowanych (lz4, zstd). Broker jest „głupi” – nie śledzi stanu każdej wiadomości, tylko serwuje bajty od offsetu.",
+      "deep": "Batching jest kluczowy: producent zbiera rekordy per partycja (`linger.ms`, `batch.size`), kompresuje cały batch i broker zapisuje go bez rozpakowywania. Większy linger to wyższa przepustowość kosztem kilku milisekund opóźnienia. Zero-copy nie działa przy TLS (dane muszą przejść przez szyfrowanie w user space), więc szyfrowanie ma zauważalny koszt CPU. Konsument czytający „ogon” logu obsługiwany jest z page cache bez dotykania dysku; konsument nadrabiający dużą historię czyta z dysku i może wypychać gorące dane z cache, co spowalnia innych. Wydajność skaluje się partycjami – jedna partycja to jeden log na jednym liderze, więc limit przepustowości per partycja jest realny. Duże wiadomości (powyżej ok. 1 MB domyślnego limitu) psują ten model – lepszy jest claim-check: payload w blob storage, w Kafce referencja."
+    },
+    {
+      "id": "dist-k005",
+      "topic": "Kafka: partycje i kolejność",
+      "level": 1,
+      "q": "Kiedy wysyłasz wiadomości z kluczem, a kiedy bez klucza?",
+      "a": "Z kluczem, gdy potrzebuję kolejności lub lokalności per encja: klucz = OrderId, CustomerId, DeviceId sprawia, że wszystkie zdarzenia tej encji trafiają do jednej partycji i są czytane w kolejności zapisu. Klucz jest też wymagany przy log compaction. Bez klucza, gdy wiadomości są niezależne (logi, metryki, kliknięcia) – wtedy producent rozkłada je po partycjach dla równego obciążenia i lepszego batchowania.",
+      "tip": "Dobry klucz ma dużą liczbę różnych wartości i równomierny rozkład. TenantId przy jednym dużym tenancie robi „gorącą partycję”."
+    },
+    {
+      "id": "dist-k006",
+      "topic": "Kafka: partycje i kolejność",
+      "level": 2,
+      "q": "Topic ma 6 partycji i chcesz zwiększyć do 12. Co się stanie z kolejnością zdarzeń per klucz i jak to zrobić bezpiecznie?",
+      "a": "Partycja dla klucza to hash(key) mod liczba_partycji, więc po zmianie liczby partycji część kluczy zacznie trafiać do innych partycji. Stare zdarzenia klucza zostają w starej partycji, nowe idą do nowej – przez okno przejścia konsument może przetworzyć nowe przed starymi. Liczby partycji nie da się też zmniejszyć. Bezpiecznie: zaplanować partycje z zapasem od początku, a gdy trzeba zwiększyć – zatrzymać producentów i poczekać na zerowy lag przed zmianą albo utworzyć nowy topic z większą liczbą partycji i przełączyć się z kontrolowaną migracją.",
+      "deep": "Jeśli konsumenci są idempotentni i odporni na kolejność (np. sprawdzają wersję encji i ignorują starsze zdarzenia), zwiększenie partycji „na żywo” jest akceptowalne. Topic compacted jest szczególnie wrażliwy: po zmianie mapowania dla jednego klucza mogą istnieć dwie „ostatnie wartości” w dwóch partycjach, a konsument odtwarzający stan może dostać starszą jako ostatnią. Migracja na nowy topic: dual-write lub bridge (konsument starego topicu publikuje do nowego z tym samym kluczem), przełączenie konsumentów po wyrównaniu lagu, wygaszenie starego. Nie dodawaj partycji jako pierwszej reakcji na lag – najpierw sprawdź, czy wąskim gardłem nie jest wolny handler albo hot key."
+    },
+    {
+      "id": "dist-k007",
+      "topic": "Kafka: partycje i kolejność",
+      "level": 2,
+      "q": "Jak dobierasz liczbę partycji dla nowego topicu?",
+      "a": "Liczba partycji wyznacza maksymalną równoległość konsumpcji w jednej grupie (jedna partycja = najwyżej jeden konsument w grupie) i skalowanie przepustowości zapisu. Liczę: docelowa przepustowość / przepustowość jednego konsumenta (z realnym handlerem, nie samym odczytem), z zapasem na wzrost, bo partycji nie da się zmniejszyć, a zwiększanie łamie mapowanie kluczy. Dla typowego topicu biznesowego to zwykle kilka–kilkadziesiąt partycji, nie tysiące.",
+      "deep": "Za dużo partycji też kosztuje: więcej plików i pamięci na brokerach, dłuższe przełączenia liderów, więcej pamięci i połączeń w klientach (bufory per partycja), dłuższe rebalance i rzadsze, mniejsze batche. Przy kluczowanym topicu rozkład zależy od rozkładu kluczy – 50 partycji nie pomoże, jeśli 70% ruchu ma jeden klucz. Wygodna heurystyka: wybrać liczbę z wieloma dzielnikami (6, 12, 24), żeby równo rozdzielać partycje przy różnej liczbie instancji konsumenta. Warto pamiętać, że skalowanie konsumentów w Kubernetes (np. KEDA na podstawie lagu) i tak zatrzymuje się na liczbie partycji."
+    },
+    {
+      "id": "dist-k008",
+      "topic": "Kafka: consumer groups i offsety",
+      "level": 2,
+      "q": "Auto commit vs ręczny commit offsetów – jak skonfigurować konsumenta Confluent.Kafka, żeby dostać at-least-once?",
+      "a": "Domyślnie klient ma `EnableAutoCommit = true` i `EnableAutoOffsetStore = true`: offset jest „zapamiętywany” już przy zwróceniu wiadomości z Consume, a commit leci w tle co kilka sekund – crash po commicie, a przed przetworzeniem gubi wiadomość. Dla at-least-once ustawiam `EnableAutoOffsetStore = false` i po udanym przetworzeniu wołam `StoreOffset(result)` – commit dalej idzie w tle, ale tylko dla przetworzonych wiadomości. Alternatywa: `EnableAutoCommit = false` i `Commit(result)` co N wiadomości, co daje pełną kontrolę kosztem dodatkowych wywołań do brokera. W obu wariantach handler musi być idempotentny, bo po awarii część wiadomości przyjdzie ponownie.",
+      "code": "var config = new ConsumerConfig\n{\n    BootstrapServers = \"kafka:9092\",\n    GroupId = \"billing\",\n    EnableAutoCommit = true,        // commit w tle...\n    EnableAutoOffsetStore = false   // ...ale tylko tego, co zapisałem\n};\n// w pętli:\nvar cr = consumer.Consume(ct);\nawait handler.HandleAsync(cr.Message, ct);\nconsumer.StoreOffset(cr);",
+      "lang": "csharp",
+      "deep": "Commit oznacza „następny offset do przeczytania” – klient sam dodaje +1 do offsetu przetworzonego rekordu. Synchroniczny `Commit()` po każdej wiadomości potrafi zredukować przepustowość o rząd wielkości; commit co N wiadomości lub co kilka sekund zwiększa tylko okno duplikatów po awarii. Przy rebalancingu warto zacommitować przetworzone offsety w handlerze revoked, żeby nowy właściciel partycji nie dublował pracy. Pułapka: równoległe przetwarzanie wiadomości z partycji i store offsetu „ostatniej skończonej” – jeśli offset 105 skończył się przed 103, commit 106 przeskoczy nieprzetworzoną 103. Offsety grup są przechowywane w compacted topicu `__consumer_offsets` i wygasają po okresie nieaktywności grupy (domyślnie 7 dni) – wtedy wraca `auto.offset.reset`."
+    },
+    {
+      "id": "dist-k009",
+      "topic": "Kafka: consumer groups i offsety",
+      "level": 3,
+      "q": "Co wyzwala rebalancing consumer group i jak ograniczasz jego koszt na produkcji?",
+      "a": "Rebalancing to ponowny przydział partycji do konsumentów grupy. Wyzwala go dołączenie lub odejście instancji (deploy, autoskalowanie), brak heartbeatów przez `session.timeout.ms`, przekroczenie `max.poll.interval.ms` między wywołaniami Consume oraz zmiana liczby partycji lub subskrybowanych topiców. Koszt ograniczam przez cooperative-sticky assignor (przenosi tylko potrzebne partycje zamiast zatrzymywać całą grupę), static membership (`group.instance.id` – restart poda w ramach session timeout nie wywołuje rebalancingu) i krótkie, przewidywalne przetwarzanie w pętli.",
+      "code": "var config = new ConsumerConfig\n{\n    GroupId = \"billing\",\n    PartitionAssignmentStrategy = PartitionAssignmentStrategy.CooperativeSticky,\n    GroupInstanceId = Environment.GetEnvironmentVariable(\"POD_NAME\"),\n    SessionTimeoutMs = 45000\n};",
+      "lang": "csharp",
+      "deep": "W klasycznym protokole „eager” wszyscy konsumenci oddają wszystkie partycje i czekają na nowy przydział – przy 50 instancjach rolling deploy wywołuje serię „stop-the-world”. Cooperative-sticky robi to przyrostowo w kilku rundach. Kafka 4.0 uczyniła GA nowy protokół grup konsumenckich (KIP-848, `group.protocol=consumer`), w którym przydziałem zarządza broker, a rebalance nie wymaga globalnej synchronizacji klientów – wsparcie w konkretnym kliencie (np. librdkafka/Confluent.Kafka) trzeba sprawdzić dla używanej wersji. Static membership ma koszt: dopóki nie minie session timeout, partycje martwego poda nikt nie czyta, więc lag rośnie. Zmiana strategii przydziału z eager na cooperative wymaga dwukrokowego rolling upgrade. W handlerach przydziału/odebrania partycji commitujesz offsety i czyścisz stan lokalny (np. bufory per partycja), inaczej powstają duplikaty albo wycieki."
+    },
+    {
+      "id": "dist-k010",
+      "topic": "Kafka: consumer groups i offsety",
+      "level": 2,
+      "q": "Konsument przetwarza paczkę długo i co jakiś czas „wypada” z grupy, a wiadomości są przetwarzane podwójnie. Dlaczego?",
+      "a": "Jeśli odstęp między kolejnymi wywołaniami Consume przekroczy `max.poll.interval.ms` (domyślnie 5 minut), klient uznaje konsumenta za zawieszonego i opuszcza grupę – partycje dostaje ktoś inny i przetwarza od ostatniego zacommitowanego offsetu, więc część pracy wykonuje się dwa razy. Gdy problem dotyka wszystkich instancji, grupa wpada w pętlę rebalancingu. Naprawa: skrócić pracę na wiadomość (timeouty na wywołaniach zewnętrznych), mniejsze paczki, w ostateczności podnieść `max.poll.interval.ms` – a handler zrobić idempotentny.",
+      "deep": "Heartbeaty wysyła osobny wątek, więc `session.timeout.ms` wykrywa martwy proces, a `max.poll.interval.ms` – żywy proces, który nie robi postępu. Typowe przyczyny: wywołanie HTTP bez timeoutu, retry z długim backoffem wewnątrz handlera, blokada w bazie. Retry z opóźnieniem lepiej wynieść do osobnego topicu retry niż czekać w pętli konsumenta. Przy bardzo długich zadaniach (minuty) można wstrzymać partycję (`Pause`), przetwarzać w tle i dalej wołać Consume, a po zakończeniu `Resume` i store offsetu – to bardziej skomplikowane i wymaga obsługi revoke. Podnoszenie limitu do godzin maskuje problem i spowalnia wykrywanie realnie zawieszonych konsumentów."
+    },
+    {
+      "id": "dist-k011",
+      "topic": "Kafka: consumer groups i offsety",
+      "level": 1,
+      "q": "Czym jest consumer lag i jak go monitorujesz?",
+      "a": "Lag to różnica między ostatnim offsetem w partycji (log end offset) a offsetem zacommitowanym przez grupę – mówi, ile wiadomości grupa ma jeszcze do przetworzenia. Rosnący lag oznacza, że konsumenci nie nadążają albo stoją. Sprawdzam go narzędziem `kafka-consumer-groups.sh --describe --group <grupa>`, a na produkcji eksportuję metryki (np. Kafka exporter lub Burrow do Prometheusa, Grafana) i alertuję na trend lub na „lag w czasie”, a nie na jedną liczbę.",
+      "code": "kafka-consumer-groups.sh --bootstrap-server kafka:9092 \\\n  --describe --group billing\n# TOPIC  PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG",
+      "lang": "bash",
+      "tip": "Lag 10 000 wiadomości przy 50 000 msg/s to 0,2 s opóźnienia, a przy 10 msg/s – kwadrans. Dlatego lepiej mierzyć opóźnienie w czasie. Lag tylko na jednej partycji sugeruje hot key lub zablokowaną wiadomość."
+    },
+    {
+      "id": "dist-k012",
+      "topic": "Kafka: retention i compaction",
+      "level": 1,
+      "q": "Czy wiadomość w Kafce znika po przeczytaniu? Jak działa retencja?",
+      "a": "Nie – przeczytanie niczego nie usuwa. Topic z `cleanup.policy=delete` trzyma dane przez `retention.ms` (domyślnie 7 dni) i/lub do rozmiaru `retention.bytes` (domyślnie bez limitu) na partycję. Usuwane są całe zamknięte segmenty, więc dane mogą żyć trochę dłużej niż ustawiona retencja. Konsument, który nie zdążył przeczytać danych przed retencją, traci je – po powrocie zacznie od najstarszego dostępnego offsetu albo od końca, zależnie od `auto.offset.reset`.",
+      "tip": "Retencję ustawia się per topic: krótka dla telemetrii, długa lub nieskończona (`retention.ms=-1`) dla zdarzeń, które mają służyć do replay. Pamiętaj o koszcie dysku × replication factor."
+    },
+    {
+      "id": "dist-k013",
+      "topic": "Kafka: gwarancje dostarczenia",
+      "level": 2,
+      "q": "Jak działa replikacja w Kafce: leader, followers, ISR i replication factor?",
+      "a": "Każda partycja ma `replication factor` kopii na różnych brokerach (produkcyjnie zwykle 3). Jedna replika jest liderem – przyjmuje zapisy i (domyślnie) obsługuje odczyty; followery pobierają dane od lidera jak konsumenci. ISR (in-sync replicas) to repliki, które nadążają za liderem w granicach `replica.lag.time.max.ms`. Po awarii lidera kontroler wybiera nowego tylko spośród ISR, więc potwierdzone zapisy (przy acks=all) nie giną.",
+      "deep": "High watermark to najwyższy offset zreplikowany na wszystkie repliki ISR – konsumenci widzą tylko dane do high watermark, więc nie przeczytają czegoś, co mogłoby zniknąć po failoverze. `unclean.leader.election.enable` (domyślnie false) pozwala wybrać lidera spoza ISR – przywraca dostępność kosztem utraty potwierdzonych danych; włącza się go świadomie tylko dla danych „best effort”. Repliki rozkłada się po rackach/strefach (`broker.rack`), żeby awaria jednej strefy nie zabrała wszystkich kopii. Odczyt z najbliższego followera (KIP-392, `client.rack`) obniża koszty ruchu między strefami w chmurze. Replikacja jest asynchroniczna względem followerów, ale acks=all czeka na całe aktualne ISR."
+    },
+    {
+      "id": "dist-k014",
+      "topic": "Kafka: gwarancje dostarczenia",
+      "level": 3,
+      "q": "Jak skonfigurować producenta i topic, żeby potwierdzony zapis nie zginął? Omów acks i min.insync.replicas.",
+      "a": "`acks=0` – producent nie czeka na nic; `acks=1` – czeka na zapis u lidera, więc awaria lidera przed replikacją gubi dane; `acks=all` – czeka, aż zapis potwierdzą wszystkie repliki z aktualnego ISR. Samo acks=all nie wystarczy, bo ISR może skurczyć się do samego lidera – dlatego topic ma `min.insync.replicas=2` przy replication factor 3. Wtedy zapis jest potwierdzany tylko, gdy ma co najmniej dwie kopie; jeśli żywych replik w ISR jest mniej, producent dostaje błąd NotEnoughReplicas zamiast fałszywego sukcesu. Do tego idempotentny producent i retry.",
+      "deep": "RF=3 + min.insync=2 toleruje utratę jednego brokera bez przerwy w zapisach i bez utraty danych; przy dwóch awariach zapisy stają (wybór CP zamiast AP), ale odczyty dalej działają z lidera. min.insync=3 przy RF=3 oznacza, że restart jednego brokera blokuje zapisy – zwykle za ostro. Trwałość dotyczy też page cache: Kafka nie robi fsync na każdy zapis i polega na replikacji między niezależnymi maszynami/strefami. Producent musi obsłużyć błędy: callback delivery report z błędem to dane niezapisane – sukcesem jest dopiero potwierdzenie z offsetem. W librdkafka `acks` domyślnie jest all, ale `enable.idempotence` trzeba włączyć jawnie; w kliencie Javy od 3.0 oba są domyślnie włączone. Opóźnienie acks=all to czas najwolniejszej repliki w ISR, dlatego follower z wolnym dyskiem podnosi p99 całego topicu."
+    },
+    {
+      "id": "dist-k015",
+      "topic": "Kafka: gwarancje dostarczenia",
+      "level": 2,
+      "q": "Czym jest idempotentny producent i jakie duplikaty eliminuje, a jakich nie?",
+      "a": "Producent z `enable.idempotence=true` dostaje producer id i numeruje batche per partycja; broker odrzuca batch z numerem, który już zapisał. Dzięki temu retry po timeoucie (gdy zapis się udał, ale ack nie dotarł) nie tworzy duplikatu i nie zmienia kolejności, nawet przy kilku równoległych requestach w locie (do 5). Nie chroni przed duplikatami z aplikacji: ponownym wysłaniem tej samej wiadomości po restarcie procesu, przez relay outboxa czy z ponownego przetworzenia po stronie konsumenta.",
+      "code": "var config = new ProducerConfig\n{\n    BootstrapServers = \"kafka:9092\",\n    EnableIdempotence = true,   // wymusza acks=all i bezpieczne retry\n    Acks = Acks.All\n};",
+      "lang": "csharp",
+      "deep": "Gwarancja obejmuje jedną sesję producenta – po restarcie dostaje on nowe producer id, a broker nie wie, że to „ta sama” wiadomość. Dlatego end-to-end potrzebny jest identyfikator biznesowy/zdarzenia i deduplikacja u konsumenta (inbox, unikalny klucz, upsert). Koszt włączenia idempotencji jest pomijalny, więc to domyślny wybór. W razie fatalnego błędu sekwencji klient zgłasza błąd, a producenta trzeba utworzyć od nowa. Idempotencja jest też warunkiem transakcji."
+    },
+    {
+      "id": "dist-k016",
+      "topic": "Kafka: gwarancje dostarczenia",
+      "level": 3,
+      "q": "Transakcje i exactly-once w Kafce – co dokładnie gwarantują i gdzie ta gwarancja się kończy?",
+      "a": "Transakcyjny producent (`transactional.id`) może atomowo zapisać rekordy do wielu partycji i zacommitować offsety konsumenta (`SendOffsetsToTransaction`) – albo wszystko, albo nic. Konsument z `isolation.level=read_committed` nie widzi rekordów z przerwanych transakcji. Tak działa exactly-once w Kafka Streams (`processing.guarantee=exactly_once_v2`): wzorzec read-process-write w obrębie Kafki. Gwarancja kończy się na granicy Kafki: zapis do bazy, wysłanie maila czy wywołanie HTTP w handlerze może się powtórzyć, więc tam dalej potrzebna jest idempotencja albo outbox/inbox.",
+      "deep": "`transactional.id` musi być stabilny dla danej instancji/partycji – po restarcie nowa instancja „odgradza” (fencing) starego zombie-producenta z tym samym id, podbijając epokę. W Confluent.Kafka API to `InitTransactions`, `BeginTransaction`, `Produce`, `SendOffsetsToTransaction(offsets, consumer.ConsumerGroupMetadata, timeout)`, `CommitTransaction`/`AbortTransaction`. Transakcje dodają opóźnienie (markery commit, koordynator transakcji) i zmniejszają przepustowość przy małych transakcjach, a otwarta transakcja blokuje konsumentów read_committed na tej partycji (last stable offset). Popularny błąd na rozmowie to stwierdzenie „Kafka ma exactly-once delivery” – poprawnie: exactly-once processing dla przepływów Kafka→Kafka, przy założeniu, że wszystkie efekty uboczne są w Kafce. Dla .NET nie ma oficjalnego odpowiednika Kafka Streams; transakcje stosuje się ręcznie albo wybiera at-least-once + idempotencję, co w praktyce jest prostsze."
+    },
+    {
+      "id": "dist-k017",
+      "topic": "Kafka: retention i compaction",
+      "level": 2,
+      "q": "Jak działa log compaction i do czego jej używasz?",
+      "a": "Przy `cleanup.policy=compact` Kafka w tle przepisuje stare segmenty, zostawiając dla każdego klucza tylko ostatnią wartość. Topic staje się „tabelą” aktualnego stanu: nowy konsument może zbudować pełny stan (np. cache słownika produktów, konfigurację, stan encji z CDC) bez czytania całej historii. Usunięcie klucza to tombstone – rekord z tym kluczem i wartością null; po `delete.retention.ms` (domyślnie 1 dzień) znika i sam tombstone. Można łączyć `compact,delete`, żeby dodatkowo usuwać stare klucze po czasie.",
+      "deep": "Compaction nie działa na aktywnym segmencie i uruchamia się według progów (`min.cleanable.dirty.ratio`, `min.compaction.lag.ms`), więc konsument przez jakiś czas widzi też starsze wartości – musi to tolerować. Offsety nie zmieniają się, tylko powstają „dziury”. Wymaga klucza w każdym rekordzie. Konsument, który przeczyta dane wolniej niż `delete.retention.ms`, może przegapić tombstone i zachować usunięty klucz w swoim stanie. Compacted topic to nie event sourcing: historia zdarzeń znika, zostaje tylko ostatni stan. Wewnętrzne `__consumer_offsets` i topiki changelog w Kafka Streams są compacted właśnie po to, by odtwarzać stan."
+    },
+    {
+      "id": "dist-k018",
+      "topic": "Kafka: schema registry",
+      "level": 2,
+      "q": "Po co schema registry przy Kafce i jak działa z Avro lub Protobuf?",
+      "a": "Kafka przechowuje tylko bajty – kontrakt wiadomości musi pilnować ktoś inny. Schema registry (np. Confluent Schema Registry, Apicurio, Karapace) przechowuje wersjonowane schematy per subject (domyślnie `<topic>-value`) i przy rejestracji nowej wersji sprawdza kompatybilność. Serializer zapisuje w wiadomości tylko krótki prefiks: magic byte i 4-bajtowe ID schematu, a deserializer pobiera (i cache’uje) schemat po ID. Dzięki temu producent nie może wypuścić zmiany, która złamie konsumentów, a payload Avro/Protobuf jest kompaktowy.",
+      "deep": "Tryby kompatybilności: BACKWARD (domyślny – nowy schemat czyta dane zapisane starym, więc aktualizujesz najpierw konsumentów), FORWARD (stary schemat czyta nowe dane – najpierw producenci), FULL (oba), warianty `_TRANSITIVE` sprawdzają wszystkie wcześniejsze wersje, NONE wyłącza ochronę. W Avro bezpieczne jest dodanie lub usunięcie pola z wartością domyślną; dodanie pola wymaganego bez defaultu łamie BACKWARD. W Protobuf nie zmienia się numerów pól i nie używa ponownie usuniętych – oznacza się je `reserved`. JSON Schema też jest wspierany, ale ewolucja jest trudniejsza. W .NET: pakiety `Confluent.SchemaRegistry.Serdes.Avro`/`.Protobuf`, `AvroSerializer<T>` podpinany przez `SetValueSerializer`, a po stronie konsumenta `AvroDeserializer<T>(...).AsSyncOverAsync()`. Rejestrację schematów lepiej robić w CI niż automatycznie z produkcyjnego producenta (`AutoRegisterSchemas = false`)."
+    },
+    {
+      "id": "dist-k019",
+      "topic": "Kafka w .NET",
+      "level": 1,
+      "q": "Jak wygląda prosty producent Kafki w .NET z Confluent.Kafka?",
+      "a": "Tworzę `ProducerConfig`, buduję producenta przez `ProducerBuilder<TKey, TValue>` i wysyłam `ProduceAsync` z kluczem i wartością – wynik zawiera partycję i offset, czyli potwierdzenie zapisu. Producent jest thread-safe i kosztowny w tworzeniu (połączenia, bufory), więc rejestruję go jako singleton i przy zamykaniu aplikacji wołam `Flush`. Dla dużej przepustowości zamiast czekać na każde `ProduceAsync` używam `Produce` z callbackiem lub wysyłam wiele zadań naraz, bo klient sam batchuje.",
+      "code": "var config = new ProducerConfig\n{\n    BootstrapServers = \"kafka:9092\",\n    EnableIdempotence = true,\n    LingerMs = 5\n};\nusing var producer = new ProducerBuilder<string, string>(config).Build();\n\nvar dr = await producer.ProduceAsync(\"orders\",\n    new Message<string, string> { Key = orderId.ToString(), Value = json });\n\nConsole.WriteLine($\"{dr.TopicPartitionOffset}\");",
+      "lang": "csharp",
+      "tip": "Typowy błąd na code review: `new ProducerBuilder(...).Build()` w każdym żądaniu HTTP – nowe połączenia, brak batchowania i wyciek zasobów."
+    },
+    {
+      "id": "dist-k020",
+      "topic": "Kafka w .NET",
+      "level": 2,
+      "q": "Jak zaimplementować konsumenta Kafki w ASP.NET Core (BackgroundService) z Confluent.Kafka?",
+      "a": "Konsument żyje w `BackgroundService`: subskrybuje topic, w pętli woła `Consume(ct)`, przetwarza wiadomość, a potem zapisuje offset (store/commit). `Consume` jest blokujące, więc pętlę uruchamiam w osobnym wątku (`Task.Run`), a scoped zależności (DbContext) biorę z `IServiceScopeFactory` per wiadomość. Na koniec `Close()`, żeby grupa szybko przejęła partycje i zacommitowały się offsety.",
+      "code": "protected override Task ExecuteAsync(CancellationToken ct) => Task.Run(async () =>\n{\n    using var consumer = new ConsumerBuilder<string, string>(_config).Build();\n    consumer.Subscribe(\"orders\");\n    try\n    {\n        while (!ct.IsCancellationRequested)\n        {\n            var cr = consumer.Consume(ct);\n            using var scope = _scopes.CreateScope();\n            await scope.ServiceProvider.GetRequiredService<OrderHandler>()\n                .HandleAsync(cr.Message, ct);\n            consumer.StoreOffset(cr);\n        }\n    }\n    catch (OperationCanceledException) { }\n    finally { consumer.Close(); }\n}, ct);",
+      "lang": "csharp",
+      "deep": "Konfiguracja do tego kodu: `EnableAutoOffsetStore = false`, auto commit włączony – at-least-once z commitem w tle. Wyjątek z handlera nie może zabić pętli bez decyzji: albo retry z limitem, albo przekazanie wiadomości do topicu retry/DLT i store offsetu, inaczej jedna zła wiadomość blokuje partycję (poison message). Nieobsłużony wyjątek w BackgroundService domyślnie zatrzymuje hosta (od .NET 6), co w Kubernetes oznacza restart poda i rebalance. Jedna instancja konsumenta obsługuje wiele partycji sekwencyjnie – równoległość uzyskuje się większą liczbą instancji albo przetwarzaniem równoległym per partycja/klucz z ostrożnym zarządzaniem offsetami. Biblioteki wyższego poziomu (MassTransit Kafka rider, Wolverine, KafkaFlow) dają retry, middleware i równoległość per klucz gotowe."
+    },
+    {
+      "id": "dist-k021",
+      "topic": "Kafka w .NET",
+      "level": 3,
+      "q": "Jak połączyć transactional outbox z Kafką? Relay pollingowy czy CDC (Debezium)?",
+      "a": "Serwis w jednej transakcji bazy zapisuje zmianę agregatu i rekord do tabeli outbox (id zdarzenia, aggregate id, typ, payload). Osobny proces publikuje rekordy do Kafki z kluczem = aggregate id i oznacza je jako wysłane. Relay pollingowy jest prosty (worker czytający tabelę co sekundę), ale obciąża bazę i trzeba pilnować kolejności przy wielu instancjach. CDC, np. Debezium z Outbox Event Router, czyta log transakcyjny bazy (WAL, binlog, SQL Server CDC) i publikuje zmiany w kolejności commitów, bez pollingu – kosztem dodatkowej infrastruktury (Kafka Connect). W obu przypadkach to at-least-once, więc konsumenci deduplikują po id zdarzenia.",
+      "deep": "Kolejność per agregat wymaga, by relay publikował rekordy jednego agregatu sekwencyjnie i z tym samym kluczem; dwie instancje relaya bez koordynacji potrafią opublikować zdarzenia w złej kolejności. Rozwiązania: jedna aktywna instancja (lock/lease, leader election), partycjonowanie outboxa po aggregate id na instancje, albo CDC. Publikację z relaya robię idempotentnym producentem, a oznaczenie „wysłane” po potwierdzeniu z Kafki – crash pomiędzy daje duplikat, nie stratę. Id zdarzenia przekazuję w headerze, żeby konsument mógł deduplikować bez parsowania payloadu. Tabelę outbox trzeba sprzątać (partycjonowanie po dacie, job czyszczący), bo inaczej rośnie bez końca. Przy CDC payload zdarzenia projektuje się jako publiczny kontrakt – nie publikuje się surowych zmian tabel domenowych, bo to wiąże konsumentów ze schematem bazy."
+    },
+    {
+      "id": "dist-k022",
+      "topic": "Kafka vs RabbitMQ",
+      "level": 3,
+      "q": "Kiedy wybierasz Kafkę, a kiedy RabbitMQ lub Azure Service Bus?",
+      "a": "Kafkę wybieram do strumieni zdarzeń: duża przepustowość, wielu niezależnych konsumentów tych samych danych, potrzeba replay i dłuższej retencji, CDC, analityka, stream processing, kolejność per klucz. RabbitMQ lub Service Bus wybieram do kolejek zadań i komend między serwisami: per-wiadomościowy ack i retry, dead-lettering, routing, opóźnione/zaplanowane wiadomości, priorytety, umiarkowany ruch i prostsza operacyjność. Service Bus dodatkowo jako usługa zarządzana w Azure z sesjami (FIFO per klucz), duplicate detection i transakcjami.",
+      "deep": "Kafka wymusza myślenie partycjami: kolejka zadań z nierównym czasem przetwarzania na Kafce cierpi, bo jedna wolna wiadomość blokuje całą partycję (head-of-line blocking), a skalowanie kończy się na liczbie partycji. W linii 4.x pojawiają się share groups („Queues for Kafka”, KIP-932) z semantyką kolejki – przed użyciem trzeba sprawdzić ich status w danej wersji i wsparcie klienta. RabbitMQ też ma Streams z replay, ale ekosystem (Connect, Streams, schema registry) to mocna strona Kafki. W Azure odpowiednikiem Kafki jest Event Hubs, który udostępnia endpoint zgodny z protokołem Kafki. Koszt operacyjny samodzielnej Kafki jest wysoki – przy małej skali częściej wybiera się usługę zarządzaną (Confluent Cloud, Amazon MSK, Event Hubs) albo prostszy broker. Częsty, sensowny układ: Kafka jako szkielet zdarzeń integracyjnych między domenami, a RabbitMQ/Service Bus do kolejek zadań wewnątrz serwisu."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "dist-kq001",
+      "topic": "Kafka: podstawy",
+      "level": 1,
+      "q": "Grupa `billing` przeczytała i zacommitowała wiadomość 3 dni temu. Dziś uruchamiasz nowy serwis z grupą `analytics` (`AutoOffsetReset.Earliest`). Retencja topicu to 7 dni. Czy nowy serwis zobaczy tę wiadomość?",
+      "options": [
+        "Nie – wiadomość została usunięta po commicie grupy billing",
+        "Tak – dane zostają do końca retencji niezależnie od odczytów, a każda grupa ma własne offsety",
+        "Tylko jeśli grupa billing jeszcze działa i nie zamknęła połączenia",
+        "Nie – Earliest oznacza najstarszą niezacommitowaną wiadomość w całym klastrze"
+      ],
+      "correct": 1,
+      "why": "Kafka nie usuwa danych po odczycie. Offsety są per grupa, więc `analytics` czyta od początku dostępnej historii (Earliest) i zobaczy wiadomość, dopóki nie usunie jej retencja. To jedna z głównych różnic względem klasycznej kolejki."
+    },
+    {
+      "id": "dist-kq002",
+      "topic": "Kafka: consumer groups i offsety",
+      "level": 1,
+      "q": "Wdrażasz nowego konsumenta z nową nazwą grupy, nie ustawiając `AutoOffsetReset`. Topic ma dane z ostatniego tygodnia. Co przetworzy konsument po starcie?",
+      "options": [
+        "Wszystkie wiadomości od początku retencji",
+        "Wiadomości od offsetu zacommitowanego przez inne grupy",
+        "Nic – konsument rzuci wyjątek, bo nie ma zacommitowanego offsetu",
+        "Tylko wiadomości wysłane po jego dołączeniu – domyślnie `latest`"
+      ],
+      "correct": 3,
+      "why": "Gdy grupa nie ma zacommitowanego offsetu, decyduje `auto.offset.reset`, którego domyślna wartość to `latest` – konsument zaczyna od końca logu. Żeby przetworzyć historię, ustawia się `Earliest`. Offsety innych grup nie mają znaczenia. Wyjątek byłby tylko przy ustawieniu `none`/`Error`."
+    },
+    {
+      "id": "dist-kq003",
+      "topic": "Kafka: retention i compaction",
+      "level": 1,
+      "q": "Topic ma `cleanup.policy=delete` i `retention.ms` = 7 dni. Wszystkie grupy przeczytały wiadomość po godzinie. Kiedy zostanie usunięta?",
+      "options": [
+        "Po około 7 dniach, gdy cały segment, w którym leży, przekroczy retencję – czasem nieco później",
+        "Natychmiast po commicie ostatniej grupy",
+        "Po 7 dniach od ostatniego odczytu przez dowolną grupę",
+        "Nigdy – retencja dotyczy tylko wiadomości nieprzeczytanych"
+      ],
+      "correct": 0,
+      "why": "Retencja zależy od wieku danych, a nie od odczytów. Kafka usuwa całe zamknięte segmenty, więc rekord może przeżyć ustawioną retencję o czas potrzebny na zamknięcie segmentu."
+    },
+    {
+      "id": "dist-kq004",
+      "topic": "Kafka vs RabbitMQ",
+      "level": 1,
+      "q": "Zdarzenia o zmianach zamówień mają czytać: billing, wyszukiwarka, hurtownia danych i nowy serwis rekomendacji, który ma przy starcie przetworzyć historię z ostatnich 30 dni. Co pasuje najlepiej?",
+      "options": [
+        "Jedna kolejka RabbitMQ z competing consumers dla wszystkich serwisów",
+        "Redis Pub/Sub",
+        "Kafka – topic z retencją 30 dni, każdy serwis we własnej consumer group",
+        "Azure Service Bus queue z ReceiveAndDelete"
+      ],
+      "correct": 2,
+      "why": "Wielu niezależnych konsumentów i replay historii to klasyczne zastosowanie Kafki. Jedna kolejka z competing consumers rozdzieliłaby wiadomości między serwisy zamiast dać każdemu kopię; Redis Pub/Sub i ReceiveAndDelete nie przechowują historii."
+    },
+    {
+      "id": "dist-kq005",
+      "topic": "Kafka: gwarancje dostarczenia",
+      "level": 1,
+      "q": "Co oznacza `acks=1` w konfiguracji producenta?",
+      "options": [
+        "Wiadomość zostanie dostarczona do dokładnie jednego konsumenta",
+        "Producent czeka na zapis we wszystkich replikach",
+        "Producent dostaje potwierdzenie po zapisie u lidera partycji, bez czekania na followery",
+        "Producent nie czeka na żadne potwierdzenie"
+      ],
+      "correct": 2,
+      "why": "acks dotyczy potwierdzenia zapisu przez brokery, a nie dostarczenia do konsumentów. acks=1 to potwierdzenie samego lidera – jeśli padnie przed replikacją, zapis zginie. acks=all czeka na ISR, acks=0 nie czeka wcale."
+    },
+    {
+      "id": "dist-kq006",
+      "topic": "Kafka: partycje i kolejność",
+      "level": 2,
+      "q": "Serwis .NET (Confluent.Kafka, domyślna konfiguracja) i serwis Java (domyślny klient) wysyłają zdarzenia z tym samym kluczem `CustomerId` do tego samego topicu. Konsument widzi zdarzenia jednego klienta w różnych partycjach i w złej kolejności. Dlaczego?",
+      "options": [
+        "Klienty używają różnych domyślnych partitionerów (librdkafka: consistent_random/CRC32, Java: murmur2) – w .NET trzeba ustawić `Partitioner.Murmur2Random`",
+        "Klucze typu string są hashowane losowo przy każdym wysłaniu",
+        "Kafka przydziela partycje round-robin niezależnie od klucza",
+        "Brakuje idempotencji producenta, więc retry zmienia partycję"
+      ],
+      "correct": 0,
+      "why": "librdkafka (pod Confluent.Kafka) domyślnie używa partitionera `consistent_random` opartego o CRC32, a klient Javy – murmur2. Ten sam klucz trafia więc do różnych partycji. Przy mieszanych producentach ustawia się w .NET `Partitioner = Partitioner.Murmur2Random`. Idempotencja nie zmienia wyboru partycji."
+    },
+    {
+      "id": "dist-kq007",
+      "topic": "Kafka: partycje i kolejność",
+      "level": 2,
+      "q": "Topic `orders` (klucz OrderId) ma 6 partycji. Zespół w trakcie ruchu zwiększa je do 12. Co realnie może się stać?",
+      "options": [
+        "Kafka automatycznie przeniesie istniejące rekordy do nowych partycji zgodnie z nowym hashem",
+        "Nowe zdarzenia części zamówień trafią do innych partycji niż wcześniejsze, więc przez pewien czas mogą zostać przetworzone przed starszymi",
+        "Nic – mapowanie kluczy na partycje jest stałe niezależnie od ich liczby",
+        "Operacja się nie powiedzie, bo liczby partycji nie można zmienić"
+      ],
+      "correct": 1,
+      "why": "Partycja = hash(key) mod N. Zmiana N zmienia mapowanie, ale istniejących danych nikt nie przenosi. Starsze zdarzenia czekają w starej partycji, nowe idą do nowej i kolejność per klucz może się złamać. Partycje można zwiększać, nie da się ich zmniejszać."
+    },
+    {
+      "id": "dist-kq008",
+      "topic": "Kafka: consumer groups i offsety",
+      "level": 2,
+      "q": "Handler wywołuje zewnętrzne API, które czasem odpowiada po 6 minutach (brak timeoutu). `max.poll.interval.ms` jest domyślne. W logach: ciągłe rebalance i te same zamówienia przetworzone kilka razy. Co jest przyczyną?",
+      "options": [
+        "Za krótki `session.timeout.ms` – heartbeaty nie są wysyłane podczas przetwarzania",
+        "Broker usuwa wiadomości, których przetwarzanie trwa dłużej niż 5 minut",
+        "Idempotentny producent wysyła duplikaty przy długich odpowiedziach",
+        "Przekroczenie max.poll.interval.ms (5 min) – konsument opuszcza grupę, partycję przejmuje inny i przetwarza od ostatniego commitu"
+      ],
+      "correct": 3,
+      "why": "Heartbeaty działają w tle, więc session timeout tu nie pomaga – to `max.poll.interval.ms` (domyślnie 300 000 ms) pilnuje postępu pętli. Po jego przekroczeniu konsument wypada, następuje rebalance i nieskomitowane wiadomości są przetwarzane ponownie. Naprawa: timeout na HTTP, krótsza praca, idempotencja."
+    },
+    {
+      "id": "dist-kq009",
+      "topic": "Kafka w .NET",
+      "level": 3,
+      "q": "Co jest najpoważniejszym problemem tego konsumenta (domyślne EnableAutoCommit i EnableAutoOffsetStore)?",
+      "code": "while (!ct.IsCancellationRequested)\n{\n    var cr = consumer.Consume(ct);\n    _ = Task.Run(() => handler.HandleAsync(cr.Message.Value));\n}",
+      "lang": "csharp",
+      "options": [
+        "Offsety są commitowane w tle, zanim zadania się wykonają – crash lub błąd w Task.Run gubi wiadomości, a kolejność w partycji nie jest zachowana",
+        "Task.Run blokuje wątek Consume, więc przepustowość spada do jednej wiadomości naraz",
+        "Konsument nigdy nie commituje offsetów, więc po restarcie przetworzy wszystko od początku",
+        "Kod się nie skompiluje, bo Consume wymaga await"
+      ],
+      "correct": 0,
+      "why": "Z domyślną konfiguracją offset jest zapisywany przy zwróceniu wiadomości z Consume i commitowany w tle niezależnie od wyniku zadania. Fire-and-forget daje więc at-most-once, połknięte wyjątki i brak kolejności. Poprawnie: przetworzyć (lub kontrolować równoległość per klucz), a dopiero potem `StoreOffset`."
+    },
+    {
+      "id": "dist-kq010",
+      "topic": "Kafka: gwarancje dostarczenia",
+      "level": 2,
+      "q": "Topic: replication factor 3, `min.insync.replicas=2`, producent `acks=all`. Padają dwa z trzech brokerów z replikami partycji. Co się dzieje?",
+      "options": [
+        "Zapisy działają normalnie, bo lider jest dostępny",
+        "Producent zapisuje z acks=1 automatycznie, a potem uzupełnia repliki",
+        "Zapisy kończą się błędem NotEnoughReplicas, a odczyt dotychczasowych danych z żywego lidera nadal działa",
+        "Cały klaster przestaje obsługiwać zarówno zapisy, jak i odczyty"
+      ],
+      "correct": 2,
+      "why": "ISR ma tylko jedną replikę, mniej niż min.insync.replicas=2, więc broker odrzuca zapisy z acks=all – Kafka wybiera spójność zamiast dostępności zapisu. Odczyty z lidera dalej działają. Producent nie obniża acks samoczynnie."
+    },
+    {
+      "id": "dist-kq011",
+      "topic": "Kafka: gwarancje dostarczenia",
+      "level": 2,
+      "q": "Zespół włączył `EnableIdempotence = true` w producencie i uznał, że konsumenci nie muszą już deduplikować. Kiedy duplikat nadal się pojawi?",
+      "options": [
+        "Gdy producent ponowi wysłanie batcha po timeoucie w tej samej sesji",
+        "Gdy aplikacja wyśle tę samą wiadomość ponownie, np. relay outboxa po restarcie przed oznaczeniem rekordu jako wysłany",
+        "Gdy kilka requestów jest w locie jednocześnie",
+        "Nigdy – idempotentny producent daje exactly-once end-to-end"
+      ],
+      "correct": 1,
+      "why": "Idempotencja deduplikuje retry tego samego producenta w jednej sesji (także przy wielu requestach w locie). Nowa sesja po restarcie i ponowna publikacja przez aplikację to „nowa” wiadomość dla brokera. Do tego dochodzi ponowne przetworzenie po stronie konsumenta, więc deduplikacja po id zdarzenia jest dalej potrzebna."
+    },
+    {
+      "id": "dist-kq012",
+      "topic": "Kafka: retention i compaction",
+      "level": 2,
+      "q": "Topic `product-prices` ma `cleanup.policy=compact`. Produkt został wycofany i ma zniknąć ze stanu odtwarzanego przez konsumentów. Co publikujesz?",
+      "options": [
+        "Rekord z kluczem produktu i wartością `{ \"deleted\": true }` – compaction usunie wtedy klucz",
+        "Nic – wystarczy poczekać na retention.ms",
+        "Wywołujesz usunięcie offsetu tego rekordu w kliencie admin",
+        "Rekord z kluczem produktu i wartością null (tombstone)"
+      ],
+      "correct": 3,
+      "why": "Tombstone (null value) oznacza usunięcie klucza: po compaction zostaje tylko tombstone, a po `delete.retention.ms` znika i on. Wartość z flagą „deleted” to zwykła ostatnia wartość, którą compaction zachowa. Pojedynczych offsetów nie da się kasować."
+    },
+    {
+      "id": "dist-kq013",
+      "topic": "Kafka: schema registry",
+      "level": 2,
+      "q": "Subject ma tryb kompatybilności BACKWARD. Producent próbuje zarejestrować nową wersję schematu Avro z nowym polem `string loyaltyTier` bez wartości domyślnej. Co się stanie?",
+      "options": [
+        "Schemat zostanie przyjęty, bo dodawanie pól jest zawsze bezpieczne",
+        "Schemat zostanie przyjęty, a starzy konsumenci dostaną wyjątek przy deserializacji",
+        "Registry nadpisze poprzednią wersję schematu tym samym ID",
+        "Registry odrzuci schemat – nowy schemat nie odczyta starych danych, w których pola nie ma"
+      ],
+      "correct": 3,
+      "why": "BACKWARD wymaga, by nowy schemat czytał dane zapisane poprzednim. Stare rekordy nie mają `loyaltyTier`, a bez defaultu Avro nie wie, co wstawić – rejestracja jest odrzucana. Poprawka: dodać pole z wartością domyślną (np. union z null i default null)."
+    },
+    {
+      "id": "dist-kq014",
+      "topic": "Kafka w .NET",
+      "level": 2,
+      "q": "Co jest nie tak w tym kontrolerze?",
+      "code": "[HttpPost]\npublic async Task<IActionResult> Create(OrderDto dto)\n{\n    using var producer = new ProducerBuilder<string, string>(_config).Build();\n    await producer.ProduceAsync(\"orders\",\n        new Message<string, string> { Key = dto.Id, Value = JsonSerializer.Serialize(dto) });\n    return Accepted();\n}",
+      "lang": "csharp",
+      "options": [
+        "ProduceAsync nie może być awaitowane w kontrolerze",
+        "Producent tworzony per żądanie – za każdym razem nowe połączenia i metadane, brak batchowania; powinien być singletonem",
+        "Klucz wiadomości musi być liczbą",
+        "Brakuje wywołania Commit po wysłaniu"
+      ],
+      "correct": 1,
+      "why": "`IProducer` jest thread-safe i drogi w tworzeniu: łączy się z brokerami, pobiera metadane i utrzymuje bufory. Tworzenie go per request zabija wydajność i może wyczerpać połączenia. Rejestruje się go jako singleton w DI. Commit dotyczy konsumentów (lub transakcji), nie zwykłego wysyłania."
+    },
+    {
+      "id": "dist-kq015",
+      "topic": "Kafka: gwarancje dostarczenia",
+      "level": 3,
+      "q": "Serwis czyta `payments`, w transakcji Kafki publikuje `payment-processed` i commituje offsety (`SendOffsetsToTransaction`), ale w handlerze dodatkowo wysyła maila i zapisuje rekord do SQL. Po awarii klient dostał dwa maile. Dlaczego?",
+      "options": [
+        "Exactly-once obejmuje tylko zapisy i offsety w Kafce – przerwana transakcja jest ponawiana, a mail i SQL wykonują się ponownie",
+        "Konsument nie ma `isolation.level=read_committed`",
+        "Transakcje Kafki nie obejmują commitowania offsetów",
+        "Producent nie ma włączonej idempotencji"
+      ],
+      "correct": 0,
+      "why": "Po awarii transakcja jest przerywana, offsety się nie zapisują i wiadomość jest przetwarzana ponownie – zapisy do Kafki z poprzedniej próby są odrzucane, ale efekty zewnętrzne nie. Mail i SQL potrzebują idempotencji (np. inbox, unikalny klucz) albo przeniesienia za outbox. read_committed dotyczy konsumentów wyjścia, a idempotencja jest i tak wymagana przez transakcje."
+    },
+    {
+      "id": "dist-kq016",
+      "topic": "Kafka: consumer groups i offsety",
+      "level": 3,
+      "q": "Topic ma 12 partycji, grupa 12 instancji, ruch rozkłada się równo. Lag rośnie na wszystkich partycjach, CPU konsumentów ~5%, bo każda wiadomość czeka ~200 ms na zewnętrzne API. Co pomoże najbardziej?",
+      "options": [
+        "Dodanie 12 kolejnych instancji konsumenta",
+        "Zwiększenie `max.poll.interval.ms`",
+        "Przetwarzanie równoległe wewnątrz instancji z zachowaniem kolejności per klucz (np. kolejki per klucz) i store offsetu dopiero po zakończeniu wcześniejszych",
+        "Zmiana `acks` producenta na 1"
+      ],
+      "correct": 2,
+      "why": "Instancji ponad liczbę partycji nie da się wykorzystać – dostaną zero partycji. Wąskie gardło to czekanie na I/O, więc rozwiązaniem jest współbieżność w obrębie partycji z zachowaniem kolejności per klucz (lub zwiększenie partycji ze świadomością zmiany mapowania). Ustawienia max.poll i acks nie wpływają na przepustowość handlera."
+    },
+    {
+      "id": "dist-kq017",
+      "topic": "Kafka: gwarancje dostarczenia",
+      "level": 3,
+      "q": "Topic: RF=3, `min.insync.replicas=1`, producent `acks=1`, `unclean.leader.election.enable=true`. Lider potwierdził zapis i padł, zanim followery go pobrały; jeden follower od kilku minut był poza ISR. Co prawdopodobnie się stało?",
+      "options": [
+        "Nowym liderem mógł zostać nieaktualny follower – potwierdzone zapisy zniknęły, a partycja dalej przyjmuje dane",
+        "Kafka wstrzymała partycję do powrotu starego lidera, więc nic nie zginęło",
+        "Producent automatycznie ponowił zapisy do nowego lidera, bo nie dostał ack",
+        "Zapisy trafiły do `__consumer_offsets` jako kopia zapasowa"
+      ],
+      "correct": 0,
+      "why": "acks=1 potwierdza zapis tylko u lidera, a unclean leader election pozwala wybrać lidera spoza ISR. Konfiguracja wybiera dostępność kosztem trwałości: potwierdzone rekordy, których nie ma na nowym liderze, przepadają. Producent już dostał ack, więc niczego nie ponawia. Bezpieczny wariant: acks=all, min.insync=2, unclean=false."
+    },
+    {
+      "id": "dist-kq018",
+      "topic": "Kafka w .NET",
+      "level": 3,
+      "q": "Relay outboxa działa na 3 replikach serwisu; każda co sekundę pobiera 100 najstarszych niewysłanych rekordów, publikuje je do Kafki (klucz = OrderId) i oznacza jako wysłane. Konsumenci widzą `OrderShipped` przed `OrderPaid` i duplikaty. Co poprawić?",
+      "options": [
+        "Zwiększyć liczbę partycji topicu, żeby każda replika miała własne",
+        "Jedna aktywna instancja relaya (lock/lease) albo CDC publikujące w kolejności commitów, plus deduplikacja po id zdarzenia u konsumentów",
+        "Wyłączyć idempotencję producenta, bo powoduje duplikaty",
+        "Publikować bez klucza, żeby wiadomości równo rozkładały się po partycjach"
+      ],
+      "correct": 1,
+      "why": "Trzy niezależne relaye pobierają te same lub nakładające się rekordy i publikują je równolegle – stąd duplikaty i zmiana kolejności, mimo że klucz trafia do tej samej partycji. Potrzebna jest koordynacja (jeden publikujący lub podział po aggregate id) albo CDC (Debezium). Publikacja bez klucza zniszczyłaby kolejność całkowicie."
+    }
+  ]
+}

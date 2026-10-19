@@ -1,0 +1,881 @@
+{
+  "module": "dist",
+  "title": "Systemy rozproszone i asynchroniczność",
+  "order": 5,
+  "lessons": [
+    {
+      "id": "dist-messaging",
+      "cat": "dist",
+      "title": "Komunikacja asynchroniczna i kolejki – podstawy",
+      "level": 2,
+      "minutes": 14,
+      "intro": "Zrozumiesz na prostych przykładach, czym różni się „dzwonienie” (komunikacja synchroniczna) od „wysyłania listu” (asynchroniczna), jak działają kolejki i co znaczą gwarancje at-most-once, at-least-once i exactly-once. Rekruterzy prawie zawsze pytają: „co się stanie, gdy wiadomość przyjdzie dwa razy?” albo „jak zapewnisz, że zapis do bazy i wysłanie zdarzenia się nie rozjadą?” – po tej lekcji odpowiesz na oba.",
+      "sections": [
+        {
+          "h": "Telefon kontra skrzynka pocztowa",
+          "text": "Wyobraź sobie, że chcesz coś załatwić z urzędem. Możesz **zadzwonić**: czekasz na linii, aż ktoś odbierze, i dopiero wtedy wracasz do swoich spraw. Możesz też **wrzucić list do skrzynki**: wracasz do pracy od razu, a urzędnik przeczyta list, kiedy przyjdzie do biura.\n\nTo dokładnie różnica między komunikacją **synchroniczną** i **asynchroniczną**:\n- **synchroniczna** (np. HTTP, gRPC) – serwis A woła serwis B i czeka na odpowiedź. Obie strony muszą działać w tej samej chwili,\n- **asynchroniczna** – serwis A zostawia wiadomość u pośrednika i od razu wraca do pracy. Serwis B odbierze ją, gdy będzie gotowy.\n\nTym pośrednikiem jest **broker** – program, który przyjmuje wiadomości, przechowuje je i oddaje odbiorcom. Przykłady: RabbitMQ, Apache Kafka, Azure Service Bus, Amazon SQS.\n\nProblem „telefonu” w systemach to **temporal coupling** – czyli uzależnienie od tego, że druga strona działa *teraz*. Jeśli B leży, A też nie może skończyć pracy. W łańcuchu A → B → C → D awarie i opóźnienia się kumulują: cztery serwisy z dostępnością 99% dają razem ok. 96%."
+        },
+        {
+          "h": "Co zyskujemy, a co tracimy",
+          "text": "Zyski z „listów” zamiast „telefonów”:\n- **odporność** – gdy odbiorca ma awarię, wiadomości grzecznie czekają w kolejce, nic nie ginie,\n- **wyrównywanie obciążenia** (load leveling) – w Black Friday przychodzi 10 000 zamówień na minutę; trafiają do kolejki, a serwis przerabia je we własnym tempie, zamiast się przewrócić,\n- **luźne powiązanie** – nadawca nie musi wiedzieć, kto i ilu odbiorców przeczyta wiadomość,\n- **łatwe skalowanie** – dokładasz kolejne instancje odbiorcy i praca rozkłada się sama.\n\nKoszty są realne:\n- **eventual consistency** – dane w różnych serwisach będą zgodne „za chwilę”, a nie natychmiast,\n- **duplikaty** i **zmiana kolejności** wiadomości,\n- trudniejsze debugowanie – potrzebny **correlation id** (wspólny identyfikator przekazywany w każdej wiadomości) i **distributed tracing** (śledzenie jednego żądania przez wiele serwisów, np. OpenTelemetry),\n- dodatkowa infrastruktura do utrzymania.\n\nProsta reguła: **synchronicznie**, gdy użytkownik czeka na odpowiedź (pokaż mi koszyk). **Asynchronicznie**, gdy coś ma się wydarzyć w tle (wyślij maila, wystaw fakturę, zaktualizuj magazyn)."
+        },
+        {
+          "h": "Kolejka i pub/sub – kto dostaje wiadomość",
+          "text": "Są dwa podstawowe modele i łatwo je zapamiętać na przykładach z życia.\n\n**Kolejka (point-to-point)** to jak kolejka w piekarni z kilkoma kasami: każdego klienta obsłuży **dokładnie jedna** kasa. Kilka instancji tego samego serwisu „walczy” o wiadomości – to wzorzec **competing consumers** (konkurujący konsumenci). Dobre dla **komend**, np. `WystawFakture`.\n\n**Publish/subscribe** (pub/sub) to jak newsletter: każdy subskrybent dostaje **własną kopię**. Dobre dla **zdarzeń**, np. `ZamowienieZlozone` – magazyn, fakturowanie i powiadomienia reagują niezależnie.\n\nW praktyce oba modele się łączą:\n1. Serwis zamówień publikuje `OrderPlaced`.\n2. Każdy zainteresowany serwis ma swoją kolejkę i dostaje do niej kopię (pub/sub).\n3. Każdą z tych kolejek czyta kilka instancji jednego serwisu (competing consumers).\n\nRozróżniaj **komendę** i **zdarzenie**:\n- komenda = rozkaz („zrób X”), jeden adresat, może zostać odrzucona,\n- zdarzenie = fakt w czasie przeszłym („X się stało”), zero lub wielu odbiorców, nie da się go „cofnąć”."
+        },
+        {
+          "h": "Gwarancje dostarczenia: at-most, at-least, exactly-once",
+          "text": "Najpierw problem. Odbiorca (**konsument**) po przetworzeniu wiadomości wysyła brokerowi **ack** (acknowledgement – „potwierdzam, zrobione”). Co, jeśli konsument zapisał wynik w bazie, ale padł tuż przed wysłaniem ack? Broker nie wie, czy praca została wykonana. Musi wybrać strategię:\n\n- **At-most-once** (najwyżej raz) – potwierdzamy *przed* przetworzeniem. Jak kurier, który zostawia paczkę pod drzwiami i odjeżdża: jeśli zginie, trudno. Nadaje się do metryk i mało ważnych logów.\n- **At-least-once** (co najmniej raz) – potwierdzamy *po* przetworzeniu. Brak ack = broker wyśle wiadomość jeszcze raz. Jak kurier, który wraca, dopóki nie dostanie podpisu – czasem przywiezie tę samą paczkę dwa razy. **Duplikaty są tu normalne.** To najczęstszy wybór.\n- **Exactly-once** (dokładnie raz) – brzmi idealnie, ale w systemie rozproszonym z efektami „na zewnątrz” (mail, płatność) **nie da się tego zagwarantować samym transportem**. Kafka ma exactly-once, ale tylko gdy czytasz z Kafki i piszesz do Kafki.\n\nCo więc robi się w praktyce? **At-least-once + idempotentny konsument.** Broker może dostarczyć dwa razy, a konsument dba, żeby efekt wystąpił raz. Mówi się wtedy o *effectively-once*. To jedno zdanie warto mieć wyuczone na rozmowę."
+        },
+        {
+          "h": "Idempotentny konsument i inbox – źle → dobrze",
+          "text": "**Idempotentna** operacja to taka, którą możesz wykonać wiele razy, a efekt będzie jak po jednym razie. Przycisk „piętro 3” w windzie jest idempotentny – naciśnięty pięć razy i tak zawiezie cię na trzecie. `SET status = 'Paid'` jest idempotentne; `saldo = saldo + 100` – nie, każde powtórzenie dodaje kolejne 100 zł.\n\nSposoby na idempotencję:\n- **projektuj „ustaw stan” zamiast „zmień o”** – upsert (wstaw lub zaktualizuj) zamiast insertu,\n- **warunek biznesowy** – „oznacz jako opłacone, tylko jeśli status = Pending”,\n- **inbox** – tabela z identyfikatorami (MessageId) już przetworzonych wiadomości; duplikat rozpoznajesz i pomijasz.\n\nŹle: dodajesz kwotę do salda i osobno, później, zapisujesz MessageId. Jeśli proces padnie pomiędzy, duplikat przejdzie.\n\nDobrze (kod poniżej), krok po kroku:\n1. Otwierasz transakcję.\n2. Sprawdzasz, czy MessageId jest już w inbox – jeśli tak, kończysz.\n3. Robisz zmianę biznesową z warunkiem na status.\n4. Dodajesz MessageId do inbox.\n5. Zapisujesz wszystko **w jednej transakcji** – albo wszystko, albo nic. Unikalny indeks na MessageId odrzuci duplikat przetwarzany równolegle.",
+          "code": "public async Task Handle(PaymentReceived msg, CancellationToken ct)\n{\n    await using var tx = await _db.Database.BeginTransactionAsync(ct);\n\n    if (await _db.InboxMessages.AnyAsync(m => m.MessageId == msg.MessageId, ct))\n        return; // duplikat - już przetworzone\n\n    var order = await _db.Orders.SingleAsync(o => o.Id == msg.OrderId, ct);\n    if (order.Status == OrderStatus.Pending)\n        order.MarkPaid(msg.Amount);\n\n    _db.InboxMessages.Add(new InboxMessage(msg.MessageId, DateTime.UtcNow));\n    await _db.SaveChangesAsync(ct); // unikalny indeks na MessageId\n    await tx.CommitAsync(ct);\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Retry, DLQ i poison messages",
+          "text": "Błędy dzielimy na dwa rodzaje:\n- **przejściowe** (transient) – chwilowe, np. timeout bazy albo „503, spróbuj później”. Jak zajęta linia telefoniczna – za minutę pewnie się uda,\n- **trwałe** – np. wiadomość bez wymaganego pola. Jak list bez adresu – ile razy byś go nie wysyłał, nie dojdzie.\n\nNa przejściowe stosujemy **retry** (ponowienie). Najpierw kilka szybkich prób, potem coraz dłuższe przerwy: 1 s, 2 s, 4 s, 8 s – to **exponential backoff**. Dodajemy też **jitter**, czyli losowy rozrzut, żeby tysiąc klientów nie uderzyło ponownie w tej samej milisekundzie.\n\nWiadomość, która ciągle wywala konsumenta, to **poison message** (zatruta wiadomość). Gdyby wracała na początek kolejki, kręciłaby się w kółko i blokowała inne. Dlatego po limicie prób trafia do **DLQ** (Dead Letter Queue) – osobnej „kolejki martwych listów”, czyli przechowalni problematycznych wiadomości.\n\nDobre praktyki:\n- ustaw **alert** na liczbę wiadomości w DLQ – DLQ, do której nikt nie zagląda, to cichy kosz na dane,\n- zapisuj powód błędu i liczbę prób w nagłówkach,\n- miej sposób na **redrive**, czyli przeniesienie wiadomości z powrotem po naprawie błędu,\n- błędy ewidentnie trwałe wysyłaj do DLQ od razu, bez ponawiania."
+        },
+        {
+          "h": "Kolejność wiadomości i dual write (outbox)",
+          "text": "**Kolejność.** Kolejka kojarzy się z FIFO (first in, first out – kto pierwszy, ten lepszy), ale gdy wiadomości czyta kilku konsumentów, wiadomość nr 2 może skończyć się przed nr 1. Retry też miesza kolejność. Rozwiązanie: gwarantuj kolejność **tylko per klucz**, np. per zamówienie (w Kafce – ten sam klucz trafia do tej samej partycji), a resztę projektuj odpornie, np. numer wersji w wiadomości i ignorowanie starszych zdarzeń.\n\n**Dual write.** Zapisujesz zamówienie w bazie i wysyłasz `OrderPlaced` do brokera. To dwa różne systemy bez wspólnej transakcji:\n- zapis się udał, wysyłka padła → zdarzenie zginęło,\n- wysłałeś, a zapis się wycofał → świat wie o zamówieniu, którego nie ma.\n\n**Transactional outbox** działa jak skrzynka „do wysłania” w biurze:\n1. W tej samej transakcji zapisujesz zamówienie i wiadomość do tabeli `Outbox`.\n2. Osobny proces w tle (**message relay**) co chwilę czyta nieopublikowane wiersze.\n3. Wysyła je do brokera i oznacza jako wysłane.\n\nZamiast odpytywania tabeli można użyć **CDC** (Change Data Capture – czytanie dziennika zmian bazy, np. Debezium). Relay może wysłać coś dwa razy (padnie przed oznaczeniem), więc outbox zawsze idzie w parze z **idempotentnym konsumentem / inbox**.",
+          "code": "await using var tx = await db.Database.BeginTransactionAsync(ct);\n\ndb.Orders.Add(order);\ndb.OutboxMessages.Add(new OutboxMessage\n{\n    Id = Guid.NewGuid(),\n    Type = nameof(OrderPlaced),\n    Payload = JsonSerializer.Serialize(new OrderPlaced(order.Id, order.Total)),\n    OccurredAt = DateTime.UtcNow\n});\n\nawait db.SaveChangesAsync(ct);   // zamówienie + wiadomość atomowo\nawait tx.CommitAsync(ct);\n// publikacją zajmie się osobny OutboxProcessor (BackgroundService)",
+          "lang": "csharp"
+        },
+        {
+          "h": "Jak o tym mówić na rozmowie",
+          "text": "Na pytanie „jak zaprojektujesz komunikację między serwisami?” odpowiadaj w tej kolejności:\n1. **Kryterium**: synchronicznie dla zapytań, na które użytkownik czeka; asynchronicznie dla procesów w tle.\n2. **Model**: komendy do kolejki, zdarzenia przez pub/sub.\n3. **Gwarancje**: at-least-once, więc konsumenci idempotentni.\n4. **Spójność publikacji**: outbox zamiast dual write.\n5. **Błędy**: retry z backoffem i jitterem, DLQ z alertem.\n6. **Kolejność**: tylko per klucz, tam gdzie biznes tego wymaga.\n7. **Obserwowalność**: correlation id, tracing, metryki długości kolejek.\n\nNiuanse seniorskie, które warto dorzucić samemu: duże pliki przesyłaj jako referencję, nie w wiadomości (wzorzec *claim check*); wersjonuj kontrakty wiadomości (dodawaj pola, nie zmieniaj znaczenia starych); uważaj na „rozproszony monolit” – serwisy, które przez kolejki i tak czekają na siebie nawzajem."
+        }
+      ],
+      "takeaways": [
+        "Komunikacja asynchroniczna usuwa temporal coupling i wyrównuje obciążenie, ale wprowadza eventual consistency, duplikaty i problemy z kolejnością.",
+        "Kolejka = jeden odbiorca (competing consumers, komendy); pub/sub = każdy subskrybent dostaje kopię (zdarzenia).",
+        "At-least-once to praktyczny standard; exactly-once buduje się jako at-least-once + idempotentny konsument.",
+        "Idempotencję zapewnia naturalny projekt operacji (ustaw stan, upsert) albo tabela inbox z MessageId zapisywana w tej samej transakcji co zmiana biznesowa.",
+        "Błędy przejściowe ponawiamy z exponential backoff i jitterem; poison messages po limicie prób trafiają do DLQ, którą trzeba monitorować.",
+        "Kolejność gwarantuje się realnie tylko per klucz (partycja, sesja); resztę projektuje się odpornie na nieporządek.",
+        "Dual write (baza + broker) rozwiązuje transactional outbox, a jego duplikaty – inbox po stronie konsumenta."
+      ],
+      "interview": [
+        "Kiedy wybierzesz komunikację synchroniczną, a kiedy asynchroniczną między serwisami?",
+        "Czym różni się at-least-once od exactly-once i czy exactly-once jest w ogóle możliwe?",
+        "Jak zaprojektujesz konsumenta, żeby był idempotentny?",
+        "Co to jest poison message i jak go obsłużyć?",
+        "Jak zapewnisz, że zapis w bazie i publikacja zdarzenia nie rozjadą się?"
+      ],
+      "exam": [
+        {
+          "id": "dist-messaging-e1",
+          "q": "Konsument przetworzył wiadomość i zapisał wynik w bazie, ale padł przed wysłaniem ack. Broker działa w trybie at-least-once. Co się stanie?",
+          "options": [
+            "Wiadomość zostanie utracona, bo broker uzna ją za przetworzoną",
+            "Wiadomość zostanie dostarczona ponownie, więc konsument musi obsłużyć duplikat",
+            "Broker automatycznie wycofa zmiany w bazie konsumenta",
+            "Wiadomość trafi od razu do DLQ"
+          ],
+          "correct": 1,
+          "why": "Przy at-least-once brak ack oznacza ponowne dostarczenie. Broker nie wie, że praca została wykonana, dlatego pojawia się duplikat – stąd wymóg idempotentnego konsumenta."
+        },
+        {
+          "id": "dist-messaging-e2",
+          "q": "Które zdanie najlepiej opisuje exactly-once w praktyce systemów z efektami ubocznymi poza brokerem?",
+          "options": [
+            "Wystarczy włączyć odpowiednią opcję brokera",
+            "Wymaga rozproszonej transakcji 2PC między wszystkimi serwisami",
+            "Jest osiągane jako at-least-once dostarczenie plus idempotentne przetwarzanie",
+            "Jest tożsame z at-most-once, tylko szybsze"
+          ],
+          "correct": 2,
+          "why": "Na poziomie transportu exactly-once w ogólności nie istnieje. Efekt „dokładnie raz” uzyskuje się przez ponowienia (at-least-once) i deduplikację/idempotencję po stronie konsumenta."
+        },
+        {
+          "id": "dist-messaging-e3",
+          "q": "Zdarzenie `OrderPlaced` ma być obsłużone przez magazyn, fakturowanie i powiadomienia. Jaki model jest właściwy?",
+          "options": [
+            "Publish/subscribe – każdy subskrybent dostaje własną kopię",
+            "Jedna kolejka z trzema competing consumers z różnych serwisów",
+            "Synchroniczne wywołanie HTTP z serwisu zamówień do każdego z trzech",
+            "Kolejka point-to-point z priorytetami"
+          ],
+          "correct": 0,
+          "why": "Zdarzenie ma wielu niezależnych odbiorców, więc każdy potrzebuje swojej kopii (pub/sub). Competing consumers na jednej kolejce sprawiłyby, że każdą wiadomość obsłużyłby tylko jeden z trzech serwisów."
+        },
+        {
+          "id": "dist-messaging-e4",
+          "q": "Konsument zapisuje MessageId do tabeli inbox w osobnej transakcji, PO zatwierdzeniu zmiany biznesowej. Jaki to problem?",
+          "options": [
+            "Żaden – kolejność zapisów nie ma znaczenia",
+            "Tabela inbox urośnie zbyt szybko",
+            "Spadnie przepustowość, bo są dwie transakcje",
+            "Awaria pomiędzy transakcjami sprawi, że duplikat nie zostanie rozpoznany i zmiana wykona się dwa razy"
+          ],
+          "correct": 3,
+          "why": "Wpis do inbox i zmiana biznesowa muszą być atomowe. Inaczej istnieje okno, w którym zmiana jest zapisana, a MessageId nie – ponowne dostarczenie wykona operację drugi raz."
+        },
+        {
+          "id": "dist-messaging-e5",
+          "q": "Która operacja jest naturalnie idempotentna?",
+          "options": [
+            "`UPDATE Accounts SET Balance = Balance + 100 WHERE Id = 5`",
+            "`UPDATE Orders SET Status = 'Shipped' WHERE Id = 7`",
+            "`INSERT INTO Payments (Amount) VALUES (100)` bez klucza unikalnego",
+            "Wysłanie e-maila z potwierdzeniem"
+          ],
+          "correct": 1,
+          "why": "Ustawienie stanu na konkretną wartość daje ten sam efekt niezależnie od liczby powtórzeń. Inkrementacja, insert bez klucza i wysłanie maila przy powtórzeniu zmieniają świat ponownie."
+        },
+        {
+          "id": "dist-messaging-e6",
+          "q": "Wiadomość ma brakujące wymagane pole i deserializacja zawsze rzuca wyjątek. Co jest najlepszą reakcją?",
+          "options": [
+            "Ponawiać w nieskończoność z exponential backoff",
+            "Zwrócić ją na początek kolejki, aż ktoś naprawi producenta",
+            "Przenieść ją do DLQ (najlepiej od razu, bez ponowień) i zaalarmować",
+            "Potwierdzić (ack) i zignorować bez śladu"
+          ],
+          "correct": 2,
+          "why": "To błąd trwały – poison message. Ponowienia nic nie dadzą i blokują kolejkę. DLQ zachowuje wiadomość do analizy i ewentualnego redrive, a cicha utrata danych jest najgorszą opcją."
+        },
+        {
+          "id": "dist-messaging-e7",
+          "q": "Dlaczego do opóźnionych ponowień dodaje się jitter?",
+          "options": [
+            "Żeby wiele klientów nie ponawiało w tym samym momencie i nie zalało odzyskującego się systemu",
+            "Żeby zagwarantować kolejność wiadomości",
+            "Żeby zmniejszyć liczbę duplikatów do zera",
+            "Żeby broker mógł szybciej przenieść wiadomość do DLQ"
+          ],
+          "correct": 0,
+          "why": "Bez losowego rozrzutu wszystkie klienci, którzy zawiedli w tym samym momencie, ponowią też synchronicznie (thundering herd). Jitter rozprasza falę ponowień w czasie."
+        },
+        {
+          "id": "dist-messaging-e8",
+          "q": "Serwis zapisuje zamówienie w bazie, a potem publikuje zdarzenie do brokera. Publikacja czasem się nie udaje. Jakie rozwiązanie zaproponowano w lekcji?",
+          "options": [
+            "Publikować przed zapisem do bazy",
+            "Owinąć oba zapisy w `TransactionScope`",
+            "Dodać retry na publikacji w tym samym żądaniu HTTP",
+            "Zapisać wiadomość do tabeli outbox w tej samej transakcji co zamówienie i publikować ją osobnym procesem"
+          ],
+          "correct": 3,
+          "why": "To dual write problem. Outbox zamienia dwa zapisy w jeden atomowy zapis do bazy, a niezawodną publikację przejmuje message relay (polling lub CDC). Retry w żądaniu nie chroni przed awarią procesu, a 2PC z brokerem zwykle nie jest dostępne."
+        },
+        {
+          "id": "dist-messaging-e9",
+          "q": "Zdarzenia dotyczące tego samego zamówienia muszą być przetwarzane po kolei, ale chcesz skalować konsumentów. Co jest najlepszym podejściem?",
+          "options": [
+            "Jeden konsument dla całego systemu",
+            "Globalny numer sekwencyjny i sortowanie po stronie konsumenta",
+            "Gwarantowanie kolejności per klucz (OrderId), np. przez partycję lub sesję",
+            "Wyłączenie ponowień, bo to one psują kolejność"
+          ],
+          "correct": 2,
+          "why": "Kolejność zwykle jest potrzebna tylko w obrębie agregatu. Kluczowanie po OrderId (partycje Kafki, sesje Service Bus) zachowuje porządek per zamówienie, a różne zamówienia przetwarzane są równolegle."
+        }
+      ]
+    },
+    {
+      "id": "dist-rabbitmq",
+      "cat": "dist",
+      "title": "RabbitMQ i MassTransit w .NET",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Na przykładzie poczty zrozumiesz, jak RabbitMQ rozsyła wiadomości: exchange, kolejki, bindingi i routing key. Potem krok po kroku przejdziesz przez potwierdzenia (ack/nack), prefetch, dead-lettering, publisher confirms i quorum queues, a na końcu zobaczysz, ile tej hydrauliki zdejmuje z ciebie MassTransit. RabbitMQ to najczęstszy broker w ogłoszeniach .NET, więc pytania o routing i potwierdzenia są standardem.",
+      "sections": [
+        {
+          "h": "RabbitMQ jak poczta: sortownia, adres i worki",
+          "text": "RabbitMQ to broker (pośrednik wiadomości) oparty na protokole **AMQP** (Advanced Message Queuing Protocol – standard opisujący, jak programy wymieniają wiadomości przez brokera). Najważniejsza rzecz do zapamiętania: **producent nie wrzuca wiadomości prosto do kolejki**.\n\nWyobraź sobie pocztę:\n- **exchange** to sortownia – przyjmuje listy i decyduje, gdzie je przekazać,\n- **routing key** to adres na kopercie, np. `order.eu.created`,\n- **binding** to reguła w sortowni: „listy z adresem pasującym do X wrzucaj do worka Y”,\n- **queue** (kolejka) to worek, z którego listonosz, czyli **konsument**, wyjmuje listy.\n\nCała droga krok po kroku:\n1. Producent wysyła wiadomość do exchange z routing key.\n2. Exchange porównuje routing key z bindingami.\n3. Do każdej pasującej kolejki trafia kopia wiadomości.\n4. Konsument pobiera wiadomość z kolejki i potwierdza jej obsłużenie.\n\nJeszcze trzy pojęcia techniczne:\n- **connection** – jedno trwałe połączenie TCP z brokerem na całą aplikację,\n- **channel** – lekki „pas ruchu” w tym połączeniu, na którym wykonujesz operacje,\n- **virtual host** – osobne „mieszkanie” w brokerze z własnymi kolejkami i uprawnieniami.\n\nŻeby wiadomość przetrwała restart brokera, potrzebujesz **dwóch rzeczy naraz**: kolejki **durable** (trwałej) i wiadomości **persistent** (zapisywanej na dysk). Trwały worek z listami pisanymi znikającym atramentem po restarcie będzie pusty."
+        },
+        {
+          "h": "Typy exchange – cztery sposoby sortowania",
+          "text": "- **direct** – „dokładnie ten adres”. Kopia trafia do kolejek, których binding key jest **równy** routing key, np. `pdf` albo `email`.\n- **fanout** – „do wszystkich”. Ignoruje adres i wrzuca kopię do każdej podpiętej kolejki. Jak ogłoszenie przez megafon.\n- **topic** – „adres ze wzorcem”. Routing key to słowa oddzielone kropkami, a binding może mieć symbole wieloznaczne: `*` = **dokładnie jedno** słowo, `#` = **zero lub więcej** słów. Przykład: `order.*.created` złapie `order.eu.created`, ale nie `order.created`; `order.#` złapie wszystko, co zaczyna się od `order`.\n- **headers** – sortowanie po nagłówkach wiadomości zamiast po adresie. Rzadko używany.\n\nCiekawostka z tutoriali: gdy „wysyłasz prosto do kolejki”, tak naprawdę używasz **default exchange** – direct exchange bez nazwy, do którego każda kolejka jest automatycznie podpięta pod swoją nazwą.\n\nA co z listem, który nie pasuje do żadnej reguły? Domyślnie **ginie po cichu**. Ratunek: flaga `mandatory` (broker odeśle go producentowi) albo **alternate exchange** – „sortownia zapasowa” na niedoręczalne listy.\n\nPoniżej deklaracja topic exchange, trwałej kolejki z dead-letteringiem i publikacja (RabbitMQ.Client 7.x, w pełni asynchroniczne API).",
+          "code": "await channel.ExchangeDeclareAsync(\"orders\", ExchangeType.Topic, durable: true);\nawait channel.QueueDeclareAsync(\"billing\", durable: true, exclusive: false,\n    autoDelete: false, arguments: new Dictionary<string, object?>\n    {\n        [\"x-queue-type\"] = \"quorum\",\n        [\"x-dead-letter-exchange\"] = \"orders.dlx\"\n    });\nawait channel.QueueBindAsync(\"billing\", \"orders\", routingKey: \"order.*.created\");\n\nvar body = JsonSerializer.SerializeToUtf8Bytes(new OrderCreated(orderId, 199m));\nvar props = new BasicProperties { Persistent = true, MessageId = Guid.NewGuid().ToString() };\nawait channel.BasicPublishAsync(\"orders\", \"order.eu.created\", mandatory: true,\n    basicProperties: props, body: body);",
+          "lang": "csharp"
+        },
+        {
+          "h": "Ack, nack i prefetch – źle → dobrze",
+          "text": "**Ack** to podpis kuriera: „odebrałem i obsłużyłem”. Dopiero po nim broker usuwa wiadomość. Masz trzy odpowiedzi:\n- **ack** – zrobione, usuń,\n- **nack z requeue = true** – „oddaj do kolejki”; wiadomość wróci, często natychmiast (uwaga na pętlę bez końca),\n- **nack z requeue = false** – „odrzucam”; jeśli kolejka ma DLX (patrz niżej), wiadomość trafi tam, inaczej zniknie.\n\n**Źle:** `autoAck: true`. Broker uznaje wiadomość za obsłużoną w chwili wysłania do konsumenta. Jeśli aplikacja padnie w trakcie przetwarzania, wiadomość przepadła – to at-most-once.\n\n**Dobrze:** `autoAck: false` i ack **po** przetworzeniu (kod niżej). Gdy konsument się rozłączy z niepotwierdzonymi wiadomościami, broker sam dostarczy je ponownie (z flagą `redelivered`). To at-least-once.\n\nCo robi kod linijka po linijce:\n1. `BasicQosAsync` ustawia **prefetch** na 20.\n2. `ReceivedAsync` to obsługa każdej nadchodzącej wiadomości.\n3. Po udanym przetworzeniu – `BasicAckAsync`.\n4. Przy wyjątku – `BasicNackAsync` bez requeue, więc wiadomość pójdzie do DLX.\n5. `BasicConsumeAsync` z `autoAck: false` uruchamia konsumpcję.\n\n**Prefetch** to limit wiadomości „na biurku” konsumenta – ile może trzymać niepotwierdzonych naraz. Bez limitu jedna instancja dostanie tysiące wiadomości i zapcha pamięć, a inne będą się nudzić. Prefetch = 1 jest sprawiedliwy, ale wolny. Zwykle startuje się od kilkunastu–kilkudziesięciu i stroi pomiarami.",
+          "code": "await channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 20, global: false);\n\nvar consumer = new AsyncEventingBasicConsumer(channel);\nconsumer.ReceivedAsync += async (_, ea) =>\n{\n    try\n    {\n        var msg = JsonSerializer.Deserialize<OrderCreated>(ea.Body.Span)!;\n        await handler.HandleAsync(msg);\n        await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);\n    }\n    catch (Exception)\n    {\n        // requeue: false -> wiadomość trafi do DLX\n        await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false);\n    }\n};\nawait channel.BasicConsumeAsync(\"billing\", autoAck: false, consumer: consumer);",
+          "lang": "csharp"
+        },
+        {
+          "h": "DLX i ponowienia z opóźnieniem",
+          "text": "**DLX** (Dead Letter Exchange) to „dział listów niedoręczalnych”. Wskazujesz go argumentem kolejki `x-dead-letter-exchange`. Wiadomość trafia tam, gdy:\n- została odrzucona z `requeue = false`,\n- minął jej **TTL** (Time To Live – czas życia wiadomości),\n- kolejka przekroczyła limit długości,\n- w quorum queue przekroczono limit dostarczeń.\n\nBroker dopisuje nagłówek `x-death` z historią: skąd i dlaczego.\n\nRabbitMQ nie ma wbudowanego „ponów za 5 minut”. Klasyczna sztuczka z kolejką-poczekalnią:\n1. Konsument odrzuca wiadomość – trafia do kolejki `retry-5m`, której nikt nie czyta.\n2. Ta kolejka ma `x-message-ttl` = 5 minut i DLX wskazujący z powrotem na kolejkę główną.\n3. Po 5 minutach wiadomość „umiera” w poczekalni i wraca do przetworzenia.\n4. Licznik prób w nagłówku; po N próbach wiadomość ląduje w kolejce „parking lot” do ręcznej analizy.\n\nAlternatywą jest plugin **delayed message exchange**. Tak czy inaczej to sporo ręcznej roboty – i to jest główny powód, dla którego używa się MassTransit."
+        },
+        {
+          "h": "Publisher confirms i quorum queues",
+          "text": "Dotąd chroniliśmy konsumenta. A producent? Samo `BasicPublish` jest jak wrzucenie listu do skrzynki – nie wiesz, czy dotarł do sortowni. Przy zerwaniu połączenia wiadomość może zginąć bez śladu.\n\n**Publisher confirms** to „list polecony z potwierdzeniem odbioru”. Broker odpowiada ack, gdy bezpiecznie przyjął wiadomość (dla trwałych – po zapisie i replikacji), albo nack, gdy nie mógł. W RabbitMQ.Client 7.x włączasz je przy tworzeniu kanału (`CreateChannelOptions`), a `BasicPublishAsync` czeka na potwierdzenie i rzuca wyjątek przy odmowie.\n\n**Quorum queues** rozwiązują problem awarii węzła. Zwykła (**classic**) kolejka żyje na jednym serwerze klastra. Quorum queue (`x-queue-type: quorum`) ma kopie na kilku węzłach i używa algorytmu **Raft** – sposobu, w jaki węzły „głosują”, żeby uzgodnić stan. Wiadomość jest przyjęta, gdy zapisze ją **większość** kopii, dlatego klastry mają 3 lub 5 węzłów.\n\nDodatkowo quorum queue ma wbudowany **delivery limit**: wiadomość dostarczana za dużo razy idzie do DLX zamiast krążyć w kółko (w RabbitMQ 4.x domyślnie 20). Stare **mirrored queues** zostały w RabbitMQ 4.0 usunięte.\n\nPełny łańcuch niezawodności: publisher confirms → quorum/durable queue → persistent messages → ack po przetworzeniu → idempotentny konsument."
+        },
+        {
+          "h": "MassTransit – „menedżer poczty” dla .NET",
+          "text": "Pisanie wszystkiego na surowym kliencie to jak samodzielne sortowanie listów. **MassTransit** to biblioteka, która robi to za ciebie: ty piszesz klasy-konsumentów i publikujesz zwykłe obiekty C#. Działa z RabbitMQ, Azure Service Bus, Amazon SQS, Kafką i wersją in-memory do testów.\n\nCo dostajesz z pudełka:\n- **topologię** – sam tworzy exchange i kolejki na podstawie typów wiadomości i konsumentów,\n- **Publish vs Send** – `Publish` rozsyła zdarzenie do wszystkich zainteresowanych, `Send` wysyła komendę na konkretny adres,\n- **obsługę błędów** – nieudana wiadomość trafia do kolejki `<nazwa>_error`, a na bus leci zdarzenie `Fault<T>`; wiadomości bez konsumenta lądują w `<nazwa>_skipped`,\n- **retry** (`UseMessageRetry`) – szybkie ponowienia w pamięci, w trakcie tej samej obsługi,\n- **redelivery** (`UseDelayedRedelivery`) – „oddaj brokerowi i dostarcz za 5 minut”; konsument nie trzyma wiadomości (na RabbitMQ wymaga mechanizmu opóźniania, np. delayed exchange),\n- integrację z DI, OpenTelemetry i testami (`ITestHarness`).\n\nW kodzie: kolejność w callbacku ma znaczenie – redelivery „opakowuje” retry, więc najpierw kilka szybkich prób, a jeśli zawiodą, ponowienie za 1 i 5 minut. Licencja: MassTransit **v8** jest open source (Apache 2.0), **v9** jest komercyjny – warto to wiedzieć przy wyborze biblioteki.",
+          "code": "builder.Services.AddMassTransit(x =>\n{\n    x.AddConsumer<OrderPlacedConsumer>();\n    x.AddConfigureEndpointsCallback((ctx, name, cfg) =>\n    {\n        cfg.UseDelayedRedelivery(r => r.Intervals(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5)));\n        cfg.UseMessageRetry(r => r.Exponential(3, TimeSpan.FromMilliseconds(200),\n            TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(200)));\n    });\n    x.UsingRabbitMq((ctx, cfg) =>\n    {\n        cfg.Host(\"rabbitmq\", \"/\", h => { h.Username(\"app\"); h.Password(\"secret\"); });\n        cfg.ConfigureEndpoints(ctx);\n    });\n});\n\npublic class OrderPlacedConsumer(IBillingService billing) : IConsumer<OrderPlaced>\n{\n    public Task Consume(ConsumeContext<OrderPlaced> ctx) => billing.InvoiceAsync(ctx.Message.OrderId);\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Outbox i saga w MassTransit oraz jak o tym mówić",
+          "text": "**Outbox w MassTransit** (`AddEntityFrameworkOutbox<TDbContext>`) ma dwa tryby:\n- **bus outbox** (`UseBusOutbox()`) – w kontrolerze `Publish` nie wysyła od razu, tylko zapisuje wiadomość do tabeli w tym samym `DbContext`. Po `SaveChangesAsync` proces w tle dostarcza ją do brokera. To gotowe rozwiązanie problemu dual write,\n- **consumer outbox + inbox** – w konsumencie wiadomości wysyłane w trakcie obsługi wychodzą dopiero po udanym zapisie, a tabela `InboxState` pamięta przetworzone MessageId i odrzuca duplikaty.\n\n**Saga** to „kierownik projektu” dla długiego procesu, np. zamówienie → płatność → wysyłka. W MassTransit pisze się ją jako **state machine** (`MassTransitStateMachine<TState>`): opisujesz stany (`Submitted`, `Paid`, `Shipped`) i reguły typu „w stanie Submitted, gdy przyjdzie `PaymentCompleted`, wyślij `ShipOrder` i przejdź do `Paid`”. Stan każdej instancji (z `CorrelationId`) jest zapisywany w bazie.\n\nNa rozmowie:\n- opisz drogę wiadomości: producent → exchange → binding → kolejka → konsument → ack,\n- powiedz, jak chronisz każdy etap (confirms, quorum, persistent, manual ack, DLX),\n- wyjaśnij, co daje MassTransit, ale dodaj, że **nie zwalnia z myślenia** o idempotencji i wersjonowaniu kontraktów.\n\nNiuans seniorski: wspomnij o licencji v9 i alternatywach (Wolverine, Rebus, NServiceBus) – to pokazuje, że śledzisz ekosystem."
+        }
+      ],
+      "takeaways": [
+        "Producent publikuje do exchange z routing key; bindingi decydują, które kolejki dostaną kopię.",
+        "direct = dokładne dopasowanie, fanout = do wszystkich, topic = wzorce z * (jedno słowo) i # (zero lub więcej słów), headers = po nagłówkach.",
+        "Trwałość wymaga durable/quorum queue i persistent messages; po stronie producenta – publisher confirms.",
+        "Manual ack po przetworzeniu daje at-least-once; nack z requeue=false kieruje wiadomość do DLX.",
+        "Prefetch ogranicza liczbę nierozliczonych wiadomości na konsumenta i jest kompromisem między przepustowością a sprawiedliwym rozkładem.",
+        "Quorum queues (Raft) zastąpiły mirrored queues i mają wbudowany delivery limit przeciw poison messages.",
+        "MassTransit daje topologię, retry/redelivery, kolejki _error, outbox/inbox i sagi; v8 jest open source, v9 komercyjny."
+      ],
+      "interview": [
+        "Jakie są typy exchange w RabbitMQ i kiedy użyjesz topic zamiast direct?",
+        "Co się dzieje z wiadomością, gdy konsument padnie przed wysłaniem ack?",
+        "Jak zaimplementujesz opóźnione ponowienia i dead-lettering w RabbitMQ?",
+        "Czym są publisher confirms i quorum queues?",
+        "Co daje MassTransit w porównaniu z surowym RabbitMQ.Client?"
+      ],
+      "exam": [
+        {
+          "id": "dist-rabbitmq-e1",
+          "q": "Binding kolejki do topic exchange ma wzorzec `order.*.created`. Która routing key do niej trafi?",
+          "options": [
+            "`order.created`",
+            "`order.eu.pl.created`",
+            "`order.eu.updated`",
+            "`order.eu.created`"
+          ],
+          "correct": 3,
+          "why": "`*` zastępuje dokładnie jedno słowo, więc pasuje tylko `order.eu.created`. `order.created` ma za mało słów, `order.eu.pl.created` – za dużo (to złapałby `#`)."
+        },
+        {
+          "id": "dist-rabbitmq-e2",
+          "q": "Kolejka jest durable, ale po restarcie brokera okazała się pusta, choć przed restartem miała wiadomości. Najbardziej prawdopodobna przyczyna?",
+          "options": [
+            "Wiadomości były publikowane jako nietrwałe (bez persistent / delivery mode 2)",
+            "Konsument miał zbyt duży prefetch",
+            "Exchange był typu fanout",
+            "Publisher confirms były włączone"
+          ],
+          "correct": 0,
+          "why": "Durable queue przetrwa restart jako definicja, ale wiadomości przetrwają tylko, jeśli były oznaczone jako persistent. Potrzebne są oba warunki."
+        },
+        {
+          "id": "dist-rabbitmq-e3",
+          "q": "Konsument wywołuje `BasicNack(..., requeue: false)`, a kolejka ma ustawiony `x-dead-letter-exchange`. Co się stanie z wiadomością?",
+          "options": [
+            "Wróci na początek tej samej kolejki",
+            "Zostanie zwrócona producentowi przez basic.return",
+            "Trafi do wskazanego dead letter exchange",
+            "Zostanie bezpowrotnie usunięta mimo DLX"
+          ],
+          "correct": 2,
+          "why": "Odrzucenie bez requeue to jeden z powodów dead-letteringu. Gdy kolejka ma DLX, broker przekazuje tam wiadomość z nagłówkiem x-death; bez DLX wiadomość by zniknęła."
+        },
+        {
+          "id": "dist-rabbitmq-e4",
+          "q": "Do czego służy prefetch count?",
+          "options": [
+            "Określa, ile razy broker ponowi wiadomość przed DLX",
+            "Ogranicza liczbę nierozliczonych (unacked) wiadomości wysłanych do konsumenta",
+            "Ustala maksymalną długość kolejki",
+            "Włącza grupowanie wiadomości w batch po stronie producenta"
+          ],
+          "correct": 1,
+          "why": "Prefetch (basic.qos) to okno wiadomości w locie. Chroni pojedynczą instancję przed zalaniem i pozwala rozłożyć pracę między konsumentów, a jego wartość wpływa na przepustowość."
+        },
+        {
+          "id": "dist-rabbitmq-e5",
+          "q": "Dlaczego bez publisher confirms producent może zgubić wiadomości, nie wiedząc o tym?",
+          "options": [
+            "Bo bez confirms wiadomości są zawsze nietrwałe",
+            "Bo bez confirms exchange nie stosuje bindingów",
+            "Bo konsument nie może wysłać ack",
+            "Bo sama publikacja nie potwierdza, że broker przyjął i zapisał wiadomość – zerwanie połączenia może ją zgubić po cichu"
+          ],
+          "correct": 3,
+          "why": "Publikacja w AMQP jest asynchroniczna. Dopiero confirm od brokera mówi, że wiadomość została bezpiecznie przyjęta; bez niego awaria w złym momencie kończy się cichą utratą."
+        },
+        {
+          "id": "dist-rabbitmq-e6",
+          "q": "Co jest prawdą o quorum queues?",
+          "options": [
+            "To nowa nazwa classic mirrored queues, działająca identycznie",
+            "Przechowują wiadomości wyłącznie w pamięci, więc są najszybsze",
+            "Są replikowane algorytmem Raft i mają delivery limit kierujący zapętlone wiadomości do DLX",
+            "Nie wspierają dead-letteringu"
+          ],
+          "correct": 2,
+          "why": "Quorum queues replikują dane konsensusem Raft (zapis potwierdzony przez większość) i mają wbudowany limit dostarczeń. Mirrored queues zostały usunięte w RabbitMQ 4.0."
+        },
+        {
+          "id": "dist-rabbitmq-e7",
+          "q": "W MassTransit konsument rzuca wyjątek przy każdej próbie, aż wyczerpie skonfigurowane retry. Gdzie domyślnie trafi wiadomość?",
+          "options": [
+            "Do kolejki `<nazwa-endpointu>_error`, a na bus publikowane jest `Fault<T>`",
+            "Do kolejki `<nazwa-endpointu>_skipped`",
+            "Zostaje usunięta bez śladu",
+            "Wraca na koniec tej samej kolejki w nieskończoność"
+          ],
+          "correct": 0,
+          "why": "MassTransit przenosi nieprzetworzone wiadomości do kolejki _error (z nagłówkami wyjątku) i publikuje Fault<T>. Kolejka _skipped jest dla wiadomości, dla których nie ma konsumenta."
+        },
+        {
+          "id": "dist-rabbitmq-e8",
+          "q": "Czym różni się `UseDelayedRedelivery` od `UseMessageRetry` w MassTransit?",
+          "options": [
+            "Nie różnią się, to aliasy",
+            "Redelivery oddaje wiadomość brokerowi do ponownego dostarczenia po dłuższym czasie, zwalniając konsumenta; retry ponawia w pamięci w trakcie tej samej obsługi",
+            "Retry działa tylko dla Kafki, redelivery tylko dla RabbitMQ",
+            "Redelivery wysyła wiadomość od razu do kolejki _error"
+          ],
+          "correct": 1,
+          "why": "Retry to szybkie ponowienia w obrębie jednego dostarczenia (konsument trzyma wiadomość). Redelivery planuje ponowne dostarczenie za minuty – lepsze dla dłuższych awarii zależności."
+        },
+        {
+          "id": "dist-rabbitmq-e9",
+          "q": "Jaki problem rozwiązuje bus outbox w MassTransit (`UseBusOutbox`) używany w kontrolerze API?",
+          "options": [
+            "Deduplikację przychodzących wiadomości u konsumenta",
+            "Ograniczenie liczby wiadomości w locie (prefetch)",
+            "Dual write – Publish zapisuje wiadomość w tej samej transakcji EF co dane, a dostarczenie następuje po commicie",
+            "Automatyczne tworzenie quorum queues"
+          ],
+          "correct": 2,
+          "why": "Bus outbox przechwytuje Publish/Send i zapisuje wiadomości do tabeli w DbContext, więc zapis danych i wiadomości jest atomowy. Deduplikacja po stronie odbiorcy to rola inbox w consumer outbox."
+        }
+      ]
+    },
+    {
+      "id": "dist-kafka",
+      "cat": "dist",
+      "title": "Apache Kafka dla dewelopera .NET",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Kafka to nie „kolejka”, tylko rozproszony dziennik zdarzeń – i od zrozumienia tej różnicy zależy reszta. Poznasz topic, partycje, offsety, consumer groups, gwarancje dostarczenia, retencję i compaction, a potem napiszesz producenta i konsumenta w Confluent.Kafka. Na koniec dowiesz się, kiedy wybrać Kafkę, a kiedy RabbitMQ – to jedno z ulubionych pytań rekruterów.",
+      "sections": [
+        {
+          "h": "Kafka to dziennik, nie skrzynka pocztowa",
+          "text": "W RabbitMQ wiadomość jest jak list: konsument go odbiera i list znika ze skrzynki. Kafka działa inaczej – jak **księga rachunkowa** albo czarna skrzynka samolotu. Zdarzenia są **dopisywane na końcu** (append-only) i **zostają**, nawet gdy ktoś je przeczyta.\n\nTen dziennik to **log** – uporządkowana lista zdarzeń, do której można tylko dopisywać. Każdy czytelnik ma własną **zakładkę** w książce i sam decyduje, dokąd doczytał. Dzięki temu:\n- wielu niezależnych odbiorców czyta te same dane bez wzajemnego przeszkadzania,\n- możesz **przewinąć** i przeczytać historię jeszcze raz (replay), np. po naprawie błędu albo by zbudować nowy widok danych,\n- Kafka przechowuje dane przez skonfigurowany czas (np. 7 dni) albo na zawsze.\n\nPodstawowe pojęcia:\n- **broker** – pojedynczy serwer Kafki; kilka brokerów tworzy **klaster**,\n- **topic** – nazwana kategoria zdarzeń, np. `orders`; coś jak tabela albo folder,\n- **producer** – program, który zapisuje zdarzenia do topicu,\n- **consumer** – program, który je czyta.\n\nKafka nie pcha wiadomości do konsumentów. To konsument sam **pobiera** (pull) kolejne porcje, we własnym tempie."
+        },
+        {
+          "h": "Partycje, offsety i klucz",
+          "text": "Jeden wielki dziennik byłby wąskim gardłem, więc topic jest podzielony na **partycje** – kilka niezależnych dzienników. Wyobraź sobie kasy w supermarkecie: każda kasa (partycja) ma swoją kolejkę paragonów, a sklep (topic) obsługuje ich wiele naraz. Partycje leżą na różnych brokerach i mają **repliki** na wypadek awarii serwera.\n\n**Offset** to numer kolejny zdarzenia w danej partycji: 0, 1, 2, 3… Jest jak numer strony w książce. Offset jest unikalny tylko w obrębie partycji – w partycji 0 i 1 może być zdarzenie z offsetem 42.\n\nKtóra partycja dostanie zdarzenie? Decyduje **klucz** (key):\n1. Producent wysyła zdarzenie z kluczem, np. `OrderId = 123`.\n2. Klient liczy hash klucza i wybiera partycję: zawsze tę samą dla tego samego klucza.\n3. Wszystkie zdarzenia zamówienia 123 trafiają do jednej partycji, w kolejności zapisu.\n\nZ tego wynika najważniejsza zasada: **Kafka gwarantuje kolejność tylko w obrębie partycji**, nie w całym topicu. Chcesz mieć po kolei wszystkie zdarzenia danego zamówienia? Używaj `OrderId` jako klucza.\n\nPułapki:\n- brak klucza = zdarzenia rozrzucane po partycjach, kolejność per zamówienie znika,\n- „gorący klucz” (np. jeden ogromny klient) przeciąża jedną partycję,\n- zmiana liczby partycji zmienia mapowanie klucz → partycja, więc liczbę partycji planuj z góry."
+        },
+        {
+          "h": "Consumer groups i rebalancing",
+          "text": "**Consumer group** to drużyna konsumentów z tym samym `GroupId`, która wspólnie czyta topic. Zasada: **każda partycja jest przypisana do dokładnie jednego konsumenta w grupie**. To jak podział regałów w magazynie między pracowników – nikt nie bierze towaru z cudzego regału.\n\nPrzykład: topic ma 6 partycji.\n- 1 konsument w grupie → czyta wszystkie 6,\n- 3 konsumentów → po 2 partycje,\n- 6 konsumentów → po 1,\n- 8 konsumentów → 6 pracuje, **2 stoją bezczynnie**. Liczba partycji to górny limit równoległości grupy.\n\nRóżne grupy są od siebie niezależne. Grupa `billing` i grupa `analytics` czytają ten sam topic i każda dostaje **wszystkie** zdarzenia, każda z własnymi zakładkami. W ten sposób Kafka realizuje pub/sub (między grupami) i competing consumers (w grupie) jednocześnie.\n\n**Rebalancing** to ponowny podział partycji, gdy konsument dołącza, odchodzi albo zostaje uznany za martwego. Typowa przyczyna kłopotów: przetwarzanie jednej porcji trwa dłużej niż `max.poll.interval.ms` – Kafka uznaje konsumenta za zawieszonego, wyrzuca go z grupy, a jego partycje dostaje ktoś inny. Efekt: duplikaty i „burza rebalansów”.\n\nŁagodzenie: przypisanie **cooperative-sticky** (przenosi tylko potrzebne partycje zamiast zatrzymywać wszystkich), krótsze porcje pracy, a w Kafka 4.x nowy protokół grup konsumentów (KIP-848), w którym koordynację przejmuje broker."
+        },
+        {
+          "h": "Commit offsetów i semantyka dostarczenia",
+          "text": "Zakładka konsumenta to **committed offset** – zapisany w Kafce (w wewnętrznym topicu `__consumer_offsets`) numer następnego zdarzenia do przeczytania. Po restarcie konsument zaczyna od tego miejsca. Moment, w którym przesuwasz zakładkę, decyduje o gwarancjach:\n\n- **commit przed przetworzeniem** → at-most-once. Padniesz w trakcie – zdarzenie przepadło.\n- **commit po przetworzeniu** → at-least-once. Padniesz po przetworzeniu, a przed commitem – zdarzenie przyjdzie jeszcze raz. Potrzebny idempotentny konsument.\n\n**Źle:** domyślny auto-commit (`enable.auto.commit = true`) zapisuje offsety co kilka sekund w tle, niezależnie od tego, czy skończyłeś pracę. Przy awarii możesz zgubić albo powtórzyć zdarzenia – nie wiadomo które.\n\n**Dobrze:** wyłącz auto-commit i rób commit **po** udanym przetworzeniu (przykład niżej). Dla wydajności commituj co N zdarzeń albo co kilka sekund, a nie po każdym.\n\n`auto.offset.reset` mówi, od czego zacząć, gdy grupa nie ma jeszcze zakładki: `earliest` – od początku dziennika, `latest` – tylko nowe zdarzenia.\n\n**Lag** (opóźnienie) to różnica między końcem dziennika a zakładką grupy – ile zdarzeń czeka na przeczytanie. To najważniejsza metryka konsumenta: rosnący lag znaczy, że nie nadążasz."
+        },
+        {
+          "h": "Producent i konsument w Confluent.Kafka",
+          "text": "Oficjalny klient .NET to **Confluent.Kafka** (nakładka na bibliotekę C librdkafka). Producent krok po kroku:\n1. `Acks = Acks.All` – broker potwierdza zapis dopiero, gdy zdarzenie mają wszystkie zsynchronizowane repliki (ISR – in-sync replicas).\n2. `EnableIdempotence = true` – ochrona przed duplikatami przy ponowieniach (szczegóły w następnej sekcji).\n3. `ProduceAsync` z kluczem `OrderId` – kolejność per zamówienie.\n4. Producenta tworzysz **raz** (singleton) – jest thread-safe i kosztowny w budowie.\n\nKonsument:\n1. `GroupId` – nazwa drużyny.\n2. `EnableAutoCommit = false` – sami decydujemy o zakładce.\n3. `Consume` blokuje wątek, aż przyjdzie zdarzenie, więc pętlę uruchamia się w `BackgroundService`.\n4. `Commit(result)` po przetworzeniu zapisuje offset następnego zdarzenia.\n5. `Close()` przy zamknięciu – grupa szybciej przejmie partycje.",
+          "code": "// Producent (singleton)\nvar producer = new ProducerBuilder<string, string>(new ProducerConfig\n{\n    BootstrapServers = \"kafka:9092\", Acks = Acks.All, EnableIdempotence = true\n}).Build();\nawait producer.ProduceAsync(\"orders\",\n    new Message<string, string> { Key = order.Id.ToString(), Value = json }, ct);\n\n// Konsument (w BackgroundService)\nusing var consumer = new ConsumerBuilder<string, string>(new ConsumerConfig\n{\n    BootstrapServers = \"kafka:9092\", GroupId = \"billing\",\n    AutoOffsetReset = AutoOffsetReset.Earliest, EnableAutoCommit = false\n}).Build();\nconsumer.Subscribe(\"orders\");\nwhile (!ct.IsCancellationRequested)\n{\n    var result = consumer.Consume(ct);\n    await handler.HandleAsync(result.Message.Key, result.Message.Value, ct);\n    consumer.Commit(result); // at-least-once\n}\nconsumer.Close();",
+          "lang": "csharp"
+        },
+        {
+          "h": "Idempotent producer, transakcje, retencja i compaction",
+          "text": "**Idempotent producer.** Scenariusz: producent wysłał zdarzenie, broker je zapisał, ale potwierdzenie zginęło w sieci. Producent ponawia i… w dzienniku są dwie kopie. Przy włączonej idempotencji producent dostaje identyfikator, a każda wiadomość numer sekwencyjny – broker rozpozna powtórkę i jej nie zapisze. Jak numer zamówienia w sklepie internetowym: drugie kliknięcie „Kup” z tym samym numerem nie tworzy drugiego zamówienia.\n\n**Transakcje** idą krok dalej: pozwalają atomowo zapisać zdarzenia do kilku topiców **razem z offsetami** konsumenta. To daje exactly-once dla schematu „przeczytaj z Kafki → przetwórz → zapisz do Kafki”. Konsumenci muszą wtedy czytać z `isolation.level = read_committed`, żeby nie widzieć wycofanych zapisów. Ważne: gdy wysyłasz maila albo piszesz do SQL, wracasz do at-least-once + idempotencji.\n\n**Retencja** (`cleanup.policy = delete`) – stare segmenty dziennika są usuwane po czasie (`retention.ms`, domyślnie 7 dni) lub po przekroczeniu rozmiaru. Jak monitoring w sklepie, który nadpisuje nagrania starsze niż tydzień.\n\n**Compaction** (`cleanup.policy = compact`) – Kafka zachowuje **ostatnią wartość dla każdego klucza**, starsze wersje sprząta. Jak książka adresowa: liczy się aktualny adres, nie historia przeprowadzek. Wiadomość z kluczem i pustą wartością (**tombstone**) oznacza „usuń ten klucz”. Compaction służy do przechowywania aktualnego stanu, np. profili klientów."
+        },
+        {
+          "h": "Schema Registry i KRaft",
+          "text": "**Schema Registry** to „urząd standaryzacji” formatów wiadomości. Producent rejestruje schemat (Avro, Protobuf albo JSON Schema), a w wiadomości wysyła tylko jego krótki identyfikator. Konsument pobiera schemat i wie, jak czytać dane.\n\nNajwiększa wartość to **kontrola zgodności**. Rejestr odrzuci nowy schemat, który złamałby istniejących konsumentów. Tryby:\n- **backward** – nowi konsumenci przeczytają stare dane (np. dodajesz pole z wartością domyślną),\n- **forward** – starzy konsumenci przeczytają nowe dane,\n- **full** – oba naraz.\n\nW .NET używasz pakietów `Confluent.SchemaRegistry` i serializerów, np. `Confluent.SchemaRegistry.Serdes.Avro`.\n\n**KRaft** (Kafka Raft) to wbudowany mechanizm zarządzania metadanymi klastra (kto jest liderem partycji, jakie są topiki). Dawniej Kafka potrzebowała osobnego systemu **ZooKeeper**. Od **Kafka 4.0 ZooKeeper został usunięty** i KRaft jest jedynym trybem – mniej elementów do utrzymania i szybsze przełączanie awaryjne. Na rozmowie wystarczy: „nowe klastry działają w KRaft, bez ZooKeepera”."
+        },
+        {
+          "h": "Kafka vs RabbitMQ i jak o tym mówić",
+          "text": "Prosta analogia: **RabbitMQ to poczta kurierska**, **Kafka to archiwum z czytelnią**.\n\nWybierz **RabbitMQ**, gdy:\n- przesyłasz **komendy i zadania** do wykonania (wyślij maila, wygeneruj PDF),\n- potrzebujesz elastycznego **routingu** (topic/headers exchange), priorytetów, TTL, opóźnień,\n- wiadomość po obsłużeniu jest niepotrzebna,\n- skala to tysiące–dziesiątki tysięcy wiadomości na sekundę.\n\nWybierz **Kafkę**, gdy:\n- masz **strumień zdarzeń** czytany przez wielu niezależnych odbiorców,\n- potrzebujesz **replay** historii, event sourcingu lub zasilania analityki,\n- liczy się bardzo duża przepustowość (setki tysięcy+ zdarzeń na sekundę),\n- chcesz przetwarzania strumieniowego (Kafka Streams, Flink) albo CDC.\n\nPułapki Kafki, o których warto powiedzieć samemu:\n- brak natywnego DLQ i opóźnionych ponowień – robisz to sam (topic `orders.retry`, `orders.dlt`),\n- jedna „zatruta” wiadomość blokuje partycję, bo offset musi iść po kolei,\n- równoległość ograniczona liczbą partycji.\n\nNiuans seniorski: Kafka 4.x wprowadza **share groups** (KIP-932, „queues for Kafka”), czyli konsumpcję w stylu kolejki z potwierdzaniem pojedynczych wiadomości – funkcja jest nowa (wczesny dostęp/preview), więc nie traktuj jej jeszcze jako standardu produkcyjnego."
+        }
+      ],
+      "takeaways": [
+        "Kafka to rozproszony, append-only log: zdarzenia zostają po przeczytaniu, a konsumenci mają własne offsety i mogą robić replay.",
+        "Topic dzieli się na partycje; kolejność jest gwarantowana tylko w partycji, a klucz decyduje, do której partycji trafia zdarzenie.",
+        "W consumer group każda partycja ma jednego konsumenta; liczba partycji ogranicza równoległość, a różne grupy czytają niezależnie.",
+        "Commit offsetu po przetworzeniu daje at-least-once; auto-commit w tle może gubić lub powtarzać zdarzenia.",
+        "Idempotent producer eliminuje duplikaty przy ponowieniach, a transakcje dają exactly-once tylko w obrębie Kafki (read-process-write).",
+        "Retencja usuwa stare dane po czasie, compaction zostawia ostatnią wartość per klucz (tombstone usuwa klucz).",
+        "Lag to kluczowa metryka konsumenta; od Kafka 4.0 klaster działa w KRaft bez ZooKeepera.",
+        "RabbitMQ – komendy, routing, zadania; Kafka – strumienie zdarzeń, replay, duża przepustowość."
+      ],
+      "interview": [
+        "Jak Kafka zapewnia kolejność wiadomości i jaką rolę pełni klucz?",
+        "Co się stanie, gdy w consumer group jest więcej konsumentów niż partycji?",
+        "Kiedy commitujesz offset i jakie ma to konsekwencje dla gwarancji dostarczenia?",
+        "Czym różni się retention od log compaction?",
+        "Kiedy wybierzesz Kafkę, a kiedy RabbitMQ?"
+      ],
+      "exam": [
+        {
+          "id": "dist-kafka-e1",
+          "q": "Konsument przeczytał zdarzenie z Kafki i je przetworzył. Co dzieje się ze zdarzeniem w topicu?",
+          "options": [
+            "Jest usuwane natychmiast po commicie offsetu",
+            "Jest przenoszone do topicu `__consumer_offsets`",
+            "Zostaje w logu do czasu wygaśnięcia retencji (lub compaction); inne grupy nadal mogą je czytać",
+            "Jest oznaczane jako przeczytane i ukryte dla pozostałych konsumentów"
+          ],
+          "correct": 2,
+          "why": "Kafka to append-only log – przeczytanie niczego nie usuwa. Każda grupa ma własny offset, a dane znikają dopiero według polityki retencji lub compaction."
+        },
+        {
+          "id": "dist-kafka-e2",
+          "q": "Wszystkie zdarzenia danego zamówienia muszą być przetwarzane w kolejności. Co robisz po stronie producenta?",
+          "options": [
+            "Ustawiasz OrderId jako klucz wiadomości",
+            "Tworzysz topic z jedną partycją dla całego systemu",
+            "Wyłączasz idempotencję producenta",
+            "Ustawiasz `acks = 0`, żeby zapisy szły szybciej"
+          ],
+          "correct": 0,
+          "why": "Ten sam klucz trafia zawsze do tej samej partycji, a kolejność jest gwarantowana w partycji. Jedna partycja też by zadziałała, ale zabija skalowanie całego topicu."
+        },
+        {
+          "id": "dist-kafka-e3",
+          "q": "Topic ma 4 partycje, a w grupie `billing` uruchomiono 6 konsumentów. Co się dzieje?",
+          "options": [
+            "Każda partycja jest czytana przez 1–2 konsumentów równolegle",
+            "Kafka automatycznie tworzy 2 nowe partycje",
+            "Grupa nie wystartuje i zgłosi błąd konfiguracji",
+            "4 konsumentów dostaje po partycji, 2 pozostaje bezczynnych"
+          ],
+          "correct": 3,
+          "why": "W grupie partycja jest przypisana do dokładnie jednego konsumenta. Nadmiarowi konsumenci czekają w rezerwie – liczba partycji to górny limit równoległości."
+        },
+        {
+          "id": "dist-kafka-e4",
+          "q": "Konsument ma wyłączony auto-commit i robi `Commit` po przetworzeniu. Padł po przetworzeniu, a przed commitem. Skutek?",
+          "options": [
+            "Zdarzenie zostanie utracone",
+            "Po restarcie zdarzenie zostanie przeczytane ponownie – trzeba obsłużyć duplikat",
+            "Kafka wycofa zmiany wykonane w bazie przez konsumenta",
+            "Zdarzenie trafi automatycznie do dead letter topic"
+          ],
+          "correct": 1,
+          "why": "Commit po przetworzeniu to at-least-once. Zakładka nie została przesunięta, więc konsument (lub inny w grupie) przeczyta zdarzenie jeszcze raz."
+        },
+        {
+          "id": "dist-kafka-e5",
+          "q": "Dlaczego domyślny auto-commit bywa niebezpieczny?",
+          "options": [
+            "Bo wyłącza replikację partycji",
+            "Bo wymusza at-most-once dla wszystkich grup",
+            "Bo commituje offsety w tle co pewien czas, niezależnie od tego, czy przetwarzanie się zakończyło",
+            "Bo działa tylko z jedną partycją"
+          ],
+          "correct": 2,
+          "why": "Auto-commit nie wie, czy twój kod skończył pracę. Awaria może skutkować zarówno utratą (offset przesunięty przed końcem pracy), jak i powtórką."
+        },
+        {
+          "id": "dist-kafka-e6",
+          "q": "Jaki problem rozwiązuje idempotent producer?",
+          "options": [
+            "Duplikaty konsumenta po rebalansie",
+            "Duplikaty w logu, gdy producent ponawia wysyłkę po zgubionym potwierdzeniu",
+            "Utratę kolejności między różnymi kluczami",
+            "Zbyt duży lag grupy konsumentów"
+          ],
+          "correct": 1,
+          "why": "Dzięki identyfikatorowi producenta i numerom sekwencyjnym broker rozpoznaje ponowioną wiadomość i nie zapisuje jej drugi raz. Nie chroni przed duplikatami po stronie konsumenta."
+        },
+        {
+          "id": "dist-kafka-e7",
+          "q": "Topic przechowuje aktualne profile klientów (klucz = CustomerId). Jaka polityka czyszczenia pasuje najlepiej?",
+          "options": [
+            "`cleanup.policy = compact` – zostaje ostatnia wartość dla każdego klucza",
+            "`cleanup.policy = delete` z retencją 1 godzina",
+            "Brak retencji i ręczne usuwanie partycji",
+            "Ustawienie `acks = all`"
+          ],
+          "correct": 0,
+          "why": "Compaction zachowuje najnowszą wersję per klucz, więc topic zawsze odzwierciedla aktualny stan. Usunięcie klienta realizuje się tombstonem (klucz z pustą wartością)."
+        },
+        {
+          "id": "dist-kafka-e8",
+          "q": "Transakcje w Kafce dają exactly-once. W jakim zakresie?",
+          "options": [
+            "Dla każdego efektu ubocznego, także wysyłki maili",
+            "Tylko dla konsumentów z auto-commit",
+            "Dla zapisów do bazy SQL w tej samej transakcji",
+            "Dla schematu read-process-write w obrębie Kafki (zapisy do topiców + offsety atomowo)"
+          ],
+          "correct": 3,
+          "why": "Transakcja obejmuje zapisy do topiców i offsety konsumenta. Efekty poza Kafką (SQL, e-mail) nie są nią objęte – tam nadal potrzebna jest idempotencja."
+        },
+        {
+          "id": "dist-kafka-e9",
+          "q": "Konsument przetwarza porcję zdarzeń dłużej niż `max.poll.interval.ms`. Co najpewniej się stanie?",
+          "options": [
+            "Kafka wydłuży retencję topicu",
+            "Producent zostanie wstrzymany",
+            "Konsument zostanie uznany za zawieszonego, nastąpi rebalancing, a niezacommitowane zdarzenia trafią do innego konsumenta",
+            "Offset zostanie automatycznie zacommitowany"
+          ],
+          "correct": 2,
+          "why": "Przekroczenie max.poll.interval.ms wyrzuca konsumenta z grupy. Jego partycje są przydzielane innym, które zaczynają od ostatniego commitu – stąd duplikaty i ryzyko burzy rebalansów."
+        },
+        {
+          "id": "dist-kafka-e10",
+          "q": "Który scenariusz lepiej pasuje do RabbitMQ niż do Kafki?",
+          "options": [
+            "Strumień kliknięć czytany przez analitykę, ML i rekomendacje, z możliwością replay",
+            "Kolejka zadań generowania PDF z routingiem po typie dokumentu i opóźnionymi ponowieniami",
+            "Event sourcing z odtwarzaniem stanu z historii",
+            "Zasilanie hurtowni danych przez CDC z wielu baz"
+          ],
+          "correct": 1,
+          "why": "Zadania do wykonania, elastyczny routing i opóźnione ponowienia to mocne strony RabbitMQ. Replay, wielu niezależnych czytelników strumienia i CDC to domena Kafki."
+        }
+      ]
+    },
+    {
+      "id": "dist-patterns",
+      "cat": "dist",
+      "title": "Wzorce rozproszone: saga, outbox, idempotencja, resilience",
+      "level": 3,
+      "minutes": 15,
+      "intro": "W systemie rozproszonym nie ma jednej transakcji na wszystko, a sieć czasem zawodzi. Ta lekcja pokazuje cztery „pasy bezpieczeństwa”: sagę z kompensacjami zamiast rozproszonej transakcji, outbox w EF Core, idempotency keys w API oraz retry, timeout i circuit breaker z Polly / Microsoft.Extensions.Http.Resilience. To typowy zestaw pytań na poziomie mid+ i senior.",
+      "sections": [
+        {
+          "h": "Dlaczego nie jedna wielka transakcja?",
+          "text": "W monolicie z jedną bazą robisz `BEGIN TRANSACTION`, zapisujesz zamówienie, płatność i rezerwację magazynu, a potem `COMMIT`. Albo wszystko, albo nic – to **ACID** (atomowość, spójność, izolacja, trwałość).\n\nW mikroserwisach każdy serwis ma **własną bazę**. Zamówienia, płatności i magazyn to trzy osobne systemy. Istnieje **2PC** (two-phase commit – protokół, w którym koordynator najpierw pyta wszystkich „czy możecie zatwierdzić?”, a potem każe zatwierdzić), ale:\n- blokuje zasoby we wszystkich serwisach, dopóki wszyscy nie odpowiedzą,\n- awaria koordynatora potrafi zawiesić cały proces,\n- większość brokerów i baz w chmurze go nie wspiera.\n\nDlatego w praktyce akceptujemy **eventual consistency** – dane będą spójne za chwilę – i używamy wzorców, które to bezpiecznie organizują. Analogia: rezerwacja wakacji. Biuro nie „blokuje” jednocześnie lotu, hotelu i samochodu w jednej transakcji. Rezerwuje po kolei, a gdy hotel odmówi – **anuluje** lot. To właśnie saga."
+        },
+        {
+          "h": "Saga: choreografia vs orkiestracja",
+          "text": "**Saga** to długi proces biznesowy rozbity na ciąg **lokalnych transakcji**: każdy krok to zwykła transakcja w jednym serwisie. Jeśli któryś krok się nie uda, uruchamiamy **kompensacje** – operacje, które biznesowo „odwracają” wcześniejsze kroki.\n\nSą dwa sposoby koordynacji:\n\n**Choreografia** – jak taniec, w którym każdy zna swoje kroki i reaguje na partnerów. Nie ma szefa:\n1. Zamówienia publikują `OrderPlaced`.\n2. Płatności słyszą to, pobierają pieniądze, publikują `PaymentCompleted`.\n3. Magazyn słyszy `PaymentCompleted`, rezerwuje towar, publikuje `StockReserved`.\n\nZalety: prostota przy 2–3 krokach, brak centralnego punktu. Wady: trudno zobaczyć cały proces „w jednym miejscu”, łatwo o cykliczne zależności, debugowanie przez zgadywanie.\n\n**Orkiestracja** – jak dyrygent orkiestry. Jeden komponent (**orchestrator**, np. saga state machine w MassTransit) wysyła komendy (`ChargePayment`, `ReserveStock`), czeka na odpowiedzi i decyduje, co dalej. Stan procesu jest zapisany w bazie.\n\nZalety: cały przepływ w jednym miejscu, łatwe timeouty i kompensacje, prosty monitoring. Wady: dodatkowy komponent, ryzyko, że orkiestrator przejmie logikę, która powinna być w serwisach.\n\nReguła kciuka: krótkie, proste przepływy – choreografia; dłuższe procesy z wieloma ścieżkami błędów – orkiestracja."
+        },
+        {
+          "h": "Kompensacje i pułapki sagi",
+          "text": "**Kompensacja to nie rollback.** Rollback cofa zmiany, jakby ich nie było. Kompensacja to **nowa operacja**, która biznesowo naprawia skutki: zwrot pieniędzy zamiast „cofnięcia płatności”, zwolnienie rezerwacji, wysłanie maila „przepraszamy, zamówienie anulowane”. Klient mógł już zobaczyć potwierdzenie – historia się wydarzyła.\n\nPrzykład krok po kroku, gdy magazyn nie ma towaru:\n1. `OrderPlaced` → zamówienie w stanie `Pending`.\n2. Płatność pobrana → `PaymentCompleted`.\n3. Magazyn: brak towaru → `StockReservationFailed`.\n4. Kompensacja: `RefundPayment` w płatnościach.\n5. Zamówienie przechodzi w `Cancelled`.\n\nPułapki:\n- **brak izolacji** – inne procesy widzą stany pośrednie. Lekarstwo: **semantic lock**, czyli stan typu `Pending`, który mówi „nie ruszaj, w toku”,\n- **kompensacje też mogą się nie udać** – muszą być idempotentne i ponawialne,\n- **niektórych kroków nie da się odwrócić** (wysłana paczka, mail). Ustawiaj je na końcu sagi, po tzw. **pivot transaction** – kroku, po którym saga już tylko idzie do przodu,\n- **timeouty** – co, jeśli odpowiedź nigdy nie przyjdzie? Orkiestrator powinien mieć harmonogram i reagować po czasie."
+        },
+        {
+          "h": "Outbox w EF Core – krok po kroku",
+          "text": "Przypomnienie: **outbox** rozwiązuje problem zapisu do bazy i wysłania zdarzenia „naraz”. Wiadomość ląduje w tabeli `OutboxMessages` w tej samej transakcji co dane, a osobny proces ją wysyła.\n\n**Źle:** w każdym handlerze ręcznie tworzyć `OutboxMessage` – łatwo zapomnieć.\n\n**Dobrze:** agregaty zbierają **domain events** (zdarzenia domenowe – obiekty opisujące, co się stało w modelu), a **interceptor** EF Core zamienia je na wiersze outbox tuż przed zapisem. Co robi kod poniżej:\n1. `SavingChangesAsync` wywołuje się przed każdym `SaveChangesAsync`.\n2. Szuka śledzonych encji implementujących `IHasDomainEvents`.\n3. Każde zdarzenie serializuje do `OutboxMessage` i dodaje do kontekstu.\n4. Czyści listę zdarzeń, żeby nie zapisać ich dwa razy.\n5. EF zapisuje dane i outbox w **jednej transakcji** (jedno `SaveChanges` = jedna transakcja).\n\nDrugą połową jest **OutboxProcessor** (`BackgroundService`): co kilka sekund pobiera porcję niewysłanych wierszy, publikuje je i ustawia `ProcessedAt`. Przy kilku instancjach aplikacji użyj blokowania wierszy, np. `FOR UPDATE SKIP LOCKED` w PostgreSQL albo `WITH (UPDLOCK, READPAST)` w SQL Server, żeby dwie instancje nie wysłały tego samego. Pamiętaj też o sprzątaniu starych, wysłanych wierszy.",
+          "code": "public sealed class OutboxInterceptor : SaveChangesInterceptor\n{\n    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(\n        DbContextEventData data, InterceptionResult<int> result, CancellationToken ct = default)\n    {\n        var db = data.Context!;\n        var events = db.ChangeTracker.Entries<IHasDomainEvents>()\n            .SelectMany(e => e.Entity.PopDomainEvents())\n            .ToList();\n\n        db.Set<OutboxMessage>().AddRange(events.Select(e => new OutboxMessage\n        {\n            Id = Guid.NewGuid(),\n            Type = e.GetType().Name,\n            Payload = JsonSerializer.Serialize(e, e.GetType()),\n            OccurredAt = DateTime.UtcNow\n        }));\n        return base.SavingChangesAsync(data, result, ct);\n    }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Idempotency keys w API",
+          "text": "Scenariusz: użytkownik klika „Zapłać”, żądanie dociera, płatność się wykonuje, ale odpowiedź ginie przez słabe Wi-Fi. Aplikacja mobilna ponawia `POST /payments`. Bez zabezpieczenia – **dwa obciążenia karty**.\n\n`GET`, `PUT` i `DELETE` są z definicji idempotentne, ale `POST` nie. Rozwiązanie to **idempotency key** – unikalny identyfikator (np. GUID) generowany przez klienta raz na operację i wysyłany w nagłówku `Idempotency-Key`. Tak robi np. Stripe; jest też szkic standardu IETF.\n\nJak to działa po stronie serwera:\n1. Przychodzi żądanie z kluczem – sprawdzasz tabelę `IdempotencyRecords`.\n2. Klucza nie ma → zapisujesz go ze statusem „w toku” (unikalny indeks chroni przed wyścigiem), wykonujesz operację, zapisujesz odpowiedź.\n3. Klucz jest i ma odpowiedź → zwracasz **tę samą zapisaną odpowiedź**, bez ponownego wykonania.\n4. Klucz jest, ale „w toku” → zwracasz `409 Conflict`, niech klient spróbuje za chwilę.\n5. Ten sam klucz z **innym** body (porównujesz hash żądania) → `422`, bo to błąd klienta.\n\nKlucze przechowuj ograniczony czas (np. 24 h). Najlepiej zapisuj rekord klucza w tej samej transakcji co efekt biznesowy.",
+          "code": "app.MapPost(\"/payments\", async ([FromHeader(Name = \"Idempotency-Key\")] Guid key,\n    PaymentRequest req, PaymentsDb db, IPaymentService payments, CancellationToken ct) =>\n{\n    var existing = await db.IdempotencyRecords.FindAsync([key], ct);\n    if (existing is { Response: not null })\n        return Results.Json(existing.Response, statusCode: existing.StatusCode);\n    if (existing is not null)\n        return Results.Conflict(\"Request in progress\");\n\n    db.IdempotencyRecords.Add(new IdempotencyRecord(key, req.Hash()));\n    await db.SaveChangesAsync(ct); // unikalny klucz = ochrona przed wyścigiem\n\n    var result = await payments.ChargeAsync(req, ct);\n    await db.SaveResponseAsync(key, result, StatusCodes.Status201Created, ct);\n    return Results.Created($\"/payments/{result.Id}\", result);\n});",
+          "lang": "csharp"
+        },
+        {
+          "h": "Retry z jitter, timeout i circuit breaker",
+          "text": "Trzy podstawowe strategie **resilience** (odporności na awarie zależności):\n\n**Timeout** – „nie czekam w nieskończoność”. Jak dzwonienie do kogoś, kto nie odbiera: po 30 sekundach się rozłączasz. Bez timeoutu wątki i połączenia wiszą, a awaria jednego serwisu rozlewa się na następne (**cascading failure** – efekt domina).\n\n**Retry** – „spróbuj jeszcze raz”, ale mądrze:\n- tylko dla błędów przejściowych (timeout, 503, 429), nie dla 400 czy 404,\n- z **exponential backoff** (200 ms, 400 ms, 800 ms…) i **jitterem** (losowym rozrzutem), żeby klienci nie uderzali chórem,\n- tylko dla operacji idempotentnych – inaczej `POST` może wykonać się dwa razy,\n- z limitem prób – retry na każdej warstwie (UI → API → serwis → baza) mnoży obciążenie wykładniczo (**retry storm**).\n\n**Circuit breaker** – jak bezpiecznik w domu:\n1. **Closed** (zamknięty) – ruch płynie normalnie, liczymy błędy.\n2. Gdy błędów jest za dużo (np. 50% w 30 s), przechodzi w **Open** – żądania od razu dostają błąd, bez obciążania chorego serwisu.\n3. Po czasie przejścia przechodzi w **Half-Open** – puszcza kilka próbnych żądań.\n4. Sukces → Closed; porażka → znowu Open.\n\nDzięki temu chory serwis dostaje czas na dojście do siebie, a wywołujący szybko dostaje błąd i może użyć **fallbacku** (wartości zastępczej, cache)."
+        },
+        {
+          "h": "Polly i Microsoft.Extensions.Http.Resilience",
+          "text": "**Polly** to biblioteka .NET do resilience. Od wersji 8 opiera się na **resilience pipeline** – łańcuchu strategii (retry, timeout, circuit breaker, fallback, hedging, rate limiter). **Microsoft.Extensions.Http.Resilience** integruje Polly v8 z `HttpClientFactory`.\n\nNajprostsza opcja to `AddStandardResilienceHandler()`. W jednej linii dostajesz rozsądny zestaw: rate limiter, całkowity timeout, retry z wykładniczym backoffem i jitterem, circuit breaker i timeout pojedynczej próby. Dobra praktyka: `options.Retry.DisableForUnsafeHttpMethods()` – wyłącza ponawianie `POST`/`PATCH` itp., które nie są idempotentne.\n\nGdy potrzebujesz kontroli, budujesz własny pipeline (kod niżej). **Kolejność ma znaczenie**: strategia dodana pierwsza jest najbardziej zewnętrzna. Czytaj od góry:\n1. **Total timeout** 10 s – limit na całą operację razem z ponowieniami.\n2. **Retry** – 3 próby, wykładniczo, z jitterem.\n3. **Circuit breaker** – liczy każdą próbę osobno.\n4. **Attempt timeout** 2 s – limit na pojedynczą próbę.\n\nCzęsty błąd: tylko jeden timeout ustawiony „na zewnątrz” retry. Wtedy pierwsza wolna próba zjada cały budżet czasu i retry nie ma szans zadziałać.",
+          "code": "builder.Services.AddHttpClient<InventoryClient>(c => c.BaseAddress = new(\"https://inventory\"))\n    .AddResilienceHandler(\"inventory\", pipeline =>\n    {\n        pipeline.AddTimeout(TimeSpan.FromSeconds(10)); // całość\n        pipeline.AddRetry(new HttpRetryStrategyOptions\n        {\n            MaxRetryAttempts = 3,\n            BackoffType = DelayBackoffType.Exponential,\n            UseJitter = true,\n            Delay = TimeSpan.FromMilliseconds(200)\n        });\n        pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions\n        {\n            FailureRatio = 0.5, MinimumThroughput = 10,\n            SamplingDuration = TimeSpan.FromSeconds(30), BreakDuration = TimeSpan.FromSeconds(15)\n        });\n        pipeline.AddTimeout(TimeSpan.FromSeconds(2)); // pojedyncza próba\n    });",
+          "lang": "csharp"
+        },
+        {
+          "h": "Jak o tym mówić na rozmowie",
+          "text": "Gdy padnie pytanie „jak zrealizujesz zamówienie obejmujące płatność i magazyn w mikroserwisach?”, poprowadź odpowiedź tak:\n1. Nie ma rozproszonej transakcji – 2PC jest kosztowne i niedostępne, więc **saga**.\n2. Wybór koordynacji: choreografia dla prostych przepływów, orkiestracja dla złożonych, z timeoutami.\n3. **Kompensacje** zamiast rollbacku; nieodwracalne kroki na końcu, po pivot transaction.\n4. Każdy krok publikuje zdarzenia przez **outbox**, konsumenci są **idempotentni** (inbox).\n5. API przyjmujące płatności wymaga **Idempotency-Key**.\n6. Wywołania synchroniczne owinięte w timeout, retry z jitterem i circuit breaker.\n\nNiuanse seniorskie:\n- resilience to nie tylko biblioteka – mierz (metryki stanów circuit breakera, liczby ponowień),\n- **budżet ponowień** zamiast retry na każdej warstwie; ponawiaj w jednym miejscu,\n- **hedging** (wysłanie równoległego żądania, gdy pierwsze się dłuży) tylko dla operacji idempotentnych,\n- **bulkhead** (grodzie, jak w statku – osobne pule zasobów), żeby jedna wolna zależność nie zajęła wszystkich wątków i połączeń."
+        }
+      ],
+      "takeaways": [
+        "W mikroserwisach zamiast rozproszonej transakcji (2PC) stosuje się sagę: ciąg lokalnych transakcji z kompensacjami.",
+        "Choreografia = serwisy reagują na zdarzenia bez centrali; orkiestracja = orchestrator wysyła komendy i trzyma stan procesu.",
+        "Kompensacja to nowa operacja biznesowa (zwrot, zwolnienie rezerwacji), a nie rollback; musi być idempotentna i ponawialna.",
+        "Outbox w EF Core najwygodniej zasilać interceptorem zamieniającym domain events na wiersze w tej samej transakcji; procesor przy wielu instancjach używa blokowania wierszy.",
+        "Idempotency-Key pozwala bezpiecznie ponawiać POST: serwer zapamiętuje klucz i zwraca tę samą odpowiedź.",
+        "Retry tylko dla błędów przejściowych i operacji idempotentnych, z exponential backoff i jitterem; circuit breaker przechodzi Closed → Open → Half-Open.",
+        "W Polly v8 pierwsza dodana strategia jest najbardziej zewnętrzna; potrzebne są dwa timeouty – całkowity i na próbę."
+      ],
+      "interview": [
+        "Czym różni się saga choreograficzna od orkiestrowanej i kiedy wybierzesz każdą z nich?",
+        "Czym kompensacja różni się od rollbacku? Podaj przykład.",
+        "Jak zaimplementujesz outbox w EF Core przy kilku instancjach aplikacji?",
+        "Jak zabezpieczysz endpoint płatności przed podwójnym wykonaniem przy ponowieniu żądania?",
+        "Jak działa circuit breaker i jak skonfigurujesz resilience dla HttpClient w .NET?"
+      ],
+      "exam": [
+        {
+          "id": "dist-patterns-e1",
+          "q": "Dlaczego w mikroserwisach zwykle nie używa się 2PC do spójności między serwisami?",
+          "options": [
+            "Bo blokuje zasoby we wszystkich uczestnikach, jest wrażliwe na awarię koordynatora i często nie jest wspierane przez brokery/bazy w chmurze",
+            "Bo 2PC gwarantuje tylko at-most-once",
+            "Bo 2PC działa wyłącznie z Kafką",
+            "Bo 2PC nie zapewnia atomowości"
+          ],
+          "correct": 0,
+          "why": "2PC zapewnia atomowość, ale kosztem blokad, dostępności i zależności od koordynatora. Dlatego w praktyce wybiera się sagi i eventual consistency."
+        },
+        {
+          "id": "dist-patterns-e2",
+          "q": "Magazyn zgłasza brak towaru po pobraniu płatności. Co jest poprawną kompensacją w sadze?",
+          "options": [
+            "Rollback transakcji w bazie płatności sprzed godziny",
+            "Ponawianie rezerwacji w nieskończoność",
+            "Usunięcie rekordu zamówienia, jakby nigdy nie istniało",
+            "Nowa operacja `RefundPayment` i oznaczenie zamówienia jako anulowane"
+          ],
+          "correct": 3,
+          "why": "Lokalna transakcja płatności jest już zatwierdzona, więc nie da się jej wycofać. Kompensacja to nowa operacja biznesowa (zwrot), a historia zamówienia zostaje z odpowiednim stanem."
+        },
+        {
+          "id": "dist-patterns-e3",
+          "q": "Proces ma 7 kroków, wiele ścieżek błędów i wymaga timeoutów. Którą koordynację sagi wybierzesz i dlaczego?",
+          "options": [
+            "Choreografię, bo nie ma żadnego centralnego komponentu",
+            "Orkiestrację, bo cały przepływ, stan, timeouty i kompensacje są w jednym miejscu",
+            "Żadną – użyjesz jednej transakcji SQL obejmującej wszystkie serwisy",
+            "Choreografię, bo łatwiej zobaczyć cały proces"
+          ],
+          "correct": 1,
+          "why": "Przy złożonych procesach choreografia rozprasza logikę i utrudnia zrozumienie przepływu. Orkiestrator trzyma stan i jawnie decyduje o kolejnych krokach, timeoutach i kompensacjach."
+        },
+        {
+          "id": "dist-patterns-e4",
+          "q": "Dwie instancje aplikacji uruchamiają OutboxProcessor na tej samej tabeli. Jak uniknąć podwójnej publikacji tych samych wierszy?",
+          "options": [
+            "Wyłączyć transakcje w procesorze",
+            "Publikować wiadomości przed zapisem do outbox",
+            "Pobierać porcję z blokadą wierszy i pomijaniem zablokowanych (np. `FOR UPDATE SKIP LOCKED`)",
+            "Zwiększyć interwał odpytywania do 1 minuty"
+          ],
+          "correct": 2,
+          "why": "Blokowanie wierszy z pomijaniem zablokowanych sprawia, że każda instancja bierze inną porcję. Mimo to konsumenci powinni być idempotentni, bo outbox daje at-least-once."
+        },
+        {
+          "id": "dist-patterns-e5",
+          "q": "Do czego służy `OutboxInterceptor` z lekcji?",
+          "options": [
+            "Zamienia domain events z encji na wiersze OutboxMessage tuż przed SaveChanges, w tej samej transakcji",
+            "Wysyła wiadomości do brokera bezpośrednio z SaveChanges",
+            "Usuwa stare wiersze z tabeli outbox",
+            "Deduplikuje przychodzące wiadomości po MessageId"
+          ],
+          "correct": 0,
+          "why": "Interceptor zbiera zdarzenia z agregatów i dodaje je do kontekstu jako OutboxMessage, więc dane i wiadomości zapisują się atomowo. Publikacją zajmuje się osobny procesor."
+        },
+        {
+          "id": "dist-patterns-e6",
+          "q": "Klient ponawia `POST /payments` z tym samym Idempotency-Key, a pierwsze żądanie zakończyło się sukcesem. Co powinien zrobić serwer?",
+          "options": [
+            "Wykonać płatność ponownie i zwrócić nowy identyfikator",
+            "Zwrócić 409 Conflict",
+            "Zwrócić zapisaną wcześniej odpowiedź bez ponownego wykonania operacji",
+            "Zwrócić 400 Bad Request, bo klucz został już użyty"
+          ],
+          "correct": 2,
+          "why": "Idempotency key służy temu, by ponowienie dało ten sam wynik. 409 stosuje się, gdy pierwsze żądanie jest jeszcze w toku, a 422 – gdy ten sam klucz przyszedł z innym body."
+        },
+        {
+          "id": "dist-patterns-e7",
+          "q": "Circuit breaker jest w stanie Open. Co dzieje się z nowymi wywołaniami?",
+          "options": [
+            "Są kolejkowane do czasu przejścia w Closed",
+            "Są wykonywane normalnie, a błędy tylko liczone",
+            "Są ponawiane z exponential backoff",
+            "Od razu kończą się błędem (fail fast), bez obciążania zależności, aż do okresu Half-Open"
+          ],
+          "correct": 3,
+          "why": "Otwarty obwód odcina ruch, dając zależności czas na regenerację. Po BreakDuration breaker przechodzi w Half-Open i przepuszcza próbne wywołania."
+        },
+        {
+          "id": "dist-patterns-e8",
+          "q": "W pipeline Polly v8 dodano tylko jeden timeout 10 s jako pierwszą (zewnętrzną) strategię, przed retry. Jaki jest problem?",
+          "options": [
+            "Retry nie zadziała dla błędów 503",
+            "Jedna wolna próba może zużyć cały budżet czasu i retry nie zdąży się wykonać – brakuje timeoutu na pojedynczą próbę",
+            "Circuit breaker nie zadziała bez drugiego timeoutu",
+            "Zewnętrzny timeout wyłącza jitter"
+          ],
+          "correct": 1,
+          "why": "Zewnętrzny timeout ogranicza całość. Bez timeoutu na pojedynczą próbę zawieszona odpowiedź czeka do końca budżetu, więc ponowienia nie mają szansy. Stąd dwa timeouty: całkowity i na próbę."
+        },
+        {
+          "id": "dist-patterns-e9",
+          "q": "Dlaczego w `AddStandardResilienceHandler` warto wywołać `Retry.DisableForUnsafeHttpMethods()`?",
+          "options": [
+            "Żeby nie ponawiać nieidempotentnych metod (np. POST), które mogłyby wykonać operację dwa razy",
+            "Żeby wyłączyć circuit breaker dla GET",
+            "Żeby przyspieszyć żądania GET",
+            "Żeby wymusić HTTPS"
+          ],
+          "correct": 0,
+          "why": "Retry jest bezpieczny tylko dla operacji idempotentnych. Ponowienie POST bez idempotency key może np. dwukrotnie obciążyć kartę."
+        }
+      ]
+    },
+    {
+      "id": "dist-cache",
+      "cat": "dist",
+      "title": "Cache i Redis",
+      "level": 2,
+      "minutes": 14,
+      "intro": "Cache to najtańszy sposób na szybszą aplikację – i jedno z najłatwiejszych miejsc, by narobić błędów ze starymi danymi. Poznasz strategie cache-aside i write-through, TTL, invalidację i cache stampede, różnice między IMemoryCache, IDistributedCache i HybridCache, struktury Redisa, pub/sub, rozproszone blokady oraz output caching w ASP.NET Core.",
+      "sections": [
+        {
+          "h": "Cache jak lodówka w kuchni",
+          "text": "Wyobraź sobie kucharza. Po mleko może za każdym razem jechać do hurtowni (baza danych) – pewne, ale wolne. Może też trzymać mleko w **lodówce** obok (cache) – szybko, ale mleko ma **datę ważności** i czasem trzeba je wyrzucić.\n\n**Cache** to szybka, tymczasowa kopia danych, które drogo jest wyliczyć lub pobrać. Kluczowe pojęcia:\n- **cache hit** – dane są w cache, zwracamy je od razu,\n- **cache miss** – danych nie ma, trzeba sięgnąć do źródła,\n- **hit ratio** – jaki procent odczytów trafia w cache; główna metryka skuteczności,\n- **TTL** (Time To Live) – „data ważności”, po której wpis znika,\n- **eviction** – usuwanie wpisów, gdy brakuje miejsca (np. najdawniej używane – LRU, Least Recently Used).\n\nCo warto cache'ować: dane czytane często, a zmieniane rzadko (katalog produktów, konfiguracja, słowniki), wyniki ciężkich obliczeń, odpowiedzi wolnych zewnętrznych API.\n\nCzego nie: danych, które muszą być zawsze aktualne co do sekundy (saldo przy przelewie), danych unikalnych dla każdego żądania. Pamiętaj zdanie Phila Karltona: w informatyce są dwie trudne rzeczy – nazywanie i **invalidacja cache**."
+        },
+        {
+          "h": "Strategie: cache-aside, write-through, write-behind",
+          "text": "**Cache-aside** (lazy loading) – najpopularniejsza. Aplikacja sama zarządza cache:\n1. Sprawdź cache.\n2. Hit → zwróć.\n3. Miss → pobierz z bazy.\n4. Zapisz w cache z TTL.\n5. Zwróć wynik.\n\nPrzy zapisie do bazy **usuwasz** wpis z cache (zamiast go aktualizować), a następny odczyt załaduje świeże dane. Usuwanie jest bezpieczniejsze: dwie równoległe aktualizacje cache mogą się „wyprzedzić” i zostawić starszą wartość.\n\n**Write-through** – każdy zapis idzie przez cache do bazy, synchronicznie. Cache jest zawsze aktualny, ale zapis jest wolniejszy, a do cache trafiają też dane, których nikt nie czyta.\n\n**Write-behind** (write-back) – zapis trafia do cache, a do bazy asynchronicznie, później. Bardzo szybkie zapisy, ale awaria cache przed zrzutem = **utrata danych**. Używane rzadko i świadomie.\n\nNa rozmowie wystarczy: „domyślnie cache-aside z TTL i usuwaniem wpisu przy zapisie; write-through, gdy odczyty po zapisie muszą być od razu świeże”."
+        },
+        {
+          "h": "TTL, invalidacja i cache stampede",
+          "text": "**TTL** to siatka bezpieczeństwa: nawet jeśli zapomnisz o invalidacji, stara wartość zniknie po czasie. Dobór TTL to kompromis – krótki = świeższe dane, ale więcej trafień do bazy; długi = odwrotnie.\n- **absolute expiration** – wpis wygasa o konkretnej porze lub po X minutach od dodania,\n- **sliding expiration** – licznik resetuje się przy każdym odczycie; wpis żyje, dopóki ktoś go używa. Łącz z absolutnym limitem, żeby „popularny” wpis nie żył wiecznie.\n\n**Invalidacja** to jawne usunięcie wpisu, gdy dane się zmieniły. Przy wielu kluczach pomagają **tagi** (usuń wszystko z tagiem `products`) albo wersjonowanie kluczy (`products:v42:...`).\n\n**Cache stampede** (thundering herd – „tratowanie przez stado”):\n1. Popularny wpis (strona główna) wygasa.\n2. W tej samej sekundzie przychodzi 1000 żądań.\n3. Wszystkie mają miss i **równocześnie** odpytują bazę tym samym ciężkim zapytaniem.\n4. Baza się dławi, a czasem pada.\n\nLekarstwa:\n- **single-flight / lock per klucz** – tylko jedno żądanie liczy wartość, reszta czeka na wynik (to robi HybridCache),\n- **jitter w TTL** – losowy rozrzut wygasania, żeby wiele kluczy nie wygasło naraz,\n- **wcześniejsze odświeżanie** w tle, zanim wpis wygaśnie."
+        },
+        {
+          "h": "IMemoryCache, IDistributedCache i HybridCache – źle → dobrze",
+          "text": "W .NET masz trzy abstrakcje:\n- **IMemoryCache** – cache w pamięci procesu. Najszybszy, przechowuje obiekty bez serializacji. Ale każda instancja aplikacji ma **własną** kopię, a restart ją czyści. Ustaw `SizeLimit`, żeby nie zjadł pamięci.\n- **IDistributedCache** – wspólny cache poza procesem (Redis, SQL Server). Wszystkie instancje widzą to samo i dane przetrwają restart aplikacji. Wolniejszy (sieć + serializacja), API operuje na `byte[]`/string.\n- **HybridCache** (`Microsoft.Extensions.Caching.Hybrid`, stabilny od .NET 9) – łączy oba: **L1** w pamięci + **L2** rozproszony. Daje ochronę przed stampede, serializację, tagi i jedną metodę `GetOrCreateAsync`.\n\n**Źle** (ręczny cache-aside na IDistributedCache): sprawdzenie, deserializacja, zapytanie, serializacja, zapis – sporo kodu i brak ochrony przed stampede; 1000 równoległych miss = 1000 zapytań.\n\n**Dobrze** (HybridCache, kod niżej), linijka po linijce:\n1. `GetOrCreateAsync` szuka klucza w L1, potem w L2.\n2. Przy miss wywołuje fabrykę – **tylko raz na klucz** w danej instancji, reszta żądań czeka na ten sam wynik.\n3. Wynik zapisuje w L1 i L2 z podanym czasem życia.\n4. Tag `products` pozwala później unieważnić całą grupę przez `RemoveByTagAsync`.\n\nUwaga: L1 na innych instancjach nie jest automatycznie czyszczony po zmianie – wygasa po `LocalCacheExpiration`, więc ustaw go krótko.",
+          "code": "builder.Services.AddStackExchangeRedisCache(o => o.Configuration = \"redis:6379\"); // L2\nbuilder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions\n{\n    Expiration = TimeSpan.FromMinutes(10),\n    LocalCacheExpiration = TimeSpan.FromMinutes(1)\n});\n\npublic class ProductService(HybridCache cache, ShopDb db)\n{\n    public ValueTask<ProductDto?> GetAsync(int id, CancellationToken ct) =>\n        cache.GetOrCreateAsync($\"product:{id}\",\n            async token => await db.Products.Where(p => p.Id == id)\n                .Select(p => new ProductDto(p.Id, p.Name, p.Price))\n                .FirstOrDefaultAsync(token),\n            tags: [\"products\"], cancellationToken: ct);\n\n    public async Task UpdatedAsync(int id, CancellationToken ct) =>\n        await cache.RemoveAsync($\"product:{id}\", ct);\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Redis: więcej niż słownik",
+          "text": "**Redis** to baza danych w pamięci (in-memory) typu klucz–wartość. Jest bardzo szybka, bo trzyma dane w RAM i wykonuje komendy **jedną po drugiej w jednym wątku** – dzięki temu pojedyncza komenda jest **atomowa** (nikt nie wejdzie w środek). Opcjonalnie zapisuje dane na dysk (snapshoty RDB lub dziennik AOF).\n\nStruktury danych – każdą łatwo skojarzyć z zastosowaniem:\n- **string** – tekst/liczba/JSON; `INCR` daje atomowy licznik (np. rate limiting),\n- **hash** – mini-słownik pól (`user:42` → name, email), można czytać pojedyncze pole,\n- **list** – lista z dodawaniem na końce; prosta kolejka lub „ostatnie 10 zdarzeń”,\n- **set** – zbiór unikalnych wartości (np. tagi, unikalni użytkownicy),\n- **sorted set** – zbiór z punktacją, posortowany; idealny na **rankingi** i leaderboardy,\n- **stream** – trwały dziennik zdarzeń z consumer groups (mini-Kafka).\n\nW .NET używasz **StackExchange.Redis**. `ConnectionMultiplexer` tworzysz **raz** i trzymasz jako singleton – jest thread-safe, a tworzenie go per żądanie to klasyczny błąd wyczerpujący połączenia.\n\nKontekst rynkowy: w 2024 Redis zmienił licencję na nie-open-source'ową, co dało początek forkowi **Valkey** (Linux Foundation); Redis 8 dodał z powrotem opcję AGPL. Dla aplikacji .NET protokół i klient są te same."
+        },
+        {
+          "h": "Redis pub/sub i rozproszona blokada",
+          "text": "**Pub/sub w Redisie** to jak radio: nadajesz na kanale, słyszą tylko ci, którzy mają radio włączone **w tej chwili**. Brak trwałości i potwierdzeń – subskrybent offline traci wiadomości. Nadaje się do sygnałów typu „unieważnij lokalny cache” albo backplane SignalR, a nie do ważnych zdarzeń biznesowych (do tego są Streams albo prawdziwy broker).\n\n**Rozproszona blokada** (distributed lock) – „tylko jedna instancja naraz robi X”, np. generowanie raportu. Poprawny przepis:\n1. `SET lock:report <losowy-token> NX PX 30000` – ustaw klucz tylko, jeśli nie istnieje (NX), z czasem życia 30 s (PX).\n2. Wykonaj pracę.\n3. Zwolnij blokadę **tylko jeśli token wciąż jest twój** (atomowo, skryptem Lua lub `LockReleaseAsync`).\n\n**Źle:** `DEL lock:report` bez sprawdzenia tokenu – jeśli twoja blokada już wygasła i przejął ją ktoś inny, usuniesz **cudzą**.\n\nPułapki, o których warto mówić:\n- praca trwa dłużej niż TTL (albo proces zatrzymała pauza GC) – blokada wygasa i dwie instancje działają jednocześnie,\n- przy przełączeniu na replikę blokada może zniknąć, bo replikacja jest asynchroniczna,\n- algorytm **Redlock** (blokada na większości niezależnych węzłów) jest dyskusyjny dla poprawności.\n\nWniosek: blokada w Redisie jest dobra dla **wydajności** (żeby nie liczyć dwa razy). Gdy chodzi o **poprawność** danych, dodaj zabezpieczenie w źródle: unikalny indeks, optimistic concurrency lub **fencing token** (rosnący numer sprawdzany przez zasób).",
+          "code": "var db = redis.GetDatabase();\nvar token = Guid.NewGuid().ToString();\n\nif (await db.LockTakeAsync(\"lock:report\", token, TimeSpan.FromSeconds(30)))\n{\n    try\n    {\n        await reportService.GenerateAsync(ct);\n    }\n    finally\n    {\n        // usuwa klucz tylko, jeśli wartość == nasz token\n        await db.LockReleaseAsync(\"lock:report\", token);\n    }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Output caching w ASP.NET Core",
+          "text": "Dotąd cache'owaliśmy **dane**. **Output caching** cache'uje **całą odpowiedź HTTP** po stronie serwera: przy trafieniu endpoint w ogóle się nie wykonuje. Jak gotowe kanapki w witrynie zamiast robienia każdej od zera.\n\nKrok po kroku:\n1. `AddOutputCache()` rejestruje usługę (można dodać polityki).\n2. `UseOutputCache()` w potoku middleware.\n3. `.CacheOutput(...)` na endpoincie – czas życia, tagi, zmienność po parametrach (`SetVaryByQuery`).\n4. Po zmianie danych: `IOutputCacheStore.EvictByTagAsync(\"products\", ct)`.\n\nRóżnica względem starszego **response caching**: response caching opiera się na nagłówkach HTTP `Cache-Control` i klient może go obejść; output caching jest konfigurowany na serwerze, wspiera tagi, invalidację i ochronę przed stampede. Domyślnie cache'uje tylko `GET`/`HEAD` z odpowiedzią 200 i **pomija** żądania uwierzytelnione oraz odpowiedzi ustawiające cookies – żeby nie pokazać jednemu użytkownikowi danych innego. Przy wielu instancjach magazyn można przenieść do Redisa (`AddStackExchangeRedisOutputCache`).",
+          "code": "builder.Services.AddOutputCache(o =>\n    o.AddPolicy(\"products\", p => p.Expire(TimeSpan.FromMinutes(5)).Tag(\"products\")));\n\napp.UseOutputCache();\n\napp.MapGet(\"/products\", (ShopDb db) => db.Products.AsNoTracking().ToListAsync())\n   .CacheOutput(\"products\");\n\napp.MapPut(\"/products/{id:int}\", async (int id, ProductDto dto, ShopDb db,\n    IOutputCacheStore store, CancellationToken ct) =>\n{\n    await db.UpdateProductAsync(id, dto, ct);\n    await store.EvictByTagAsync(\"products\", ct);\n    return Results.NoContent();\n});",
+          "lang": "csharp"
+        },
+        {
+          "h": "Jak o tym mówić na rozmowie",
+          "text": "Gdy pytają „jak przyspieszysz endpoint listy produktów?”, odpowiedz warstwowo:\n1. Najpierw **zmierz** – czy wąskim gardłem jest baza, serializacja czy sieć.\n2. **Output cache** dla publicznych, identycznych odpowiedzi, z tagami do invalidacji.\n3. **HybridCache** (L1 + Redis jako L2) dla danych współdzielonych przez wiele endpointów, ze strategią cache-aside.\n4. **TTL + jawna invalidacja** przy zapisie (usuwanie wpisu, tagi).\n5. Ochrona przed **stampede**: single-flight i jitter.\n6. Monitoring **hit ratio**, pamięci i latencji Redisa.\n\nNiuanse seniorskie:\n- cache to dodatkowe źródło niespójności – ustal z biznesem, jak stare dane są akceptowalne,\n- przy wielu instancjach L1 wymaga krótkiego TTL lub sygnału invalidacji (np. Redis pub/sub),\n- **cache nie jest bazą** – aplikacja musi działać (wolniej), gdy Redis leży; dlatego timeouty i fallback do źródła,\n- uważaj na klucze zależne od użytkownika i tenantów – wyciek danych między użytkownikami przez cache to poważny incydent bezpieczeństwa,\n- distributed lock tylko dla wydajności; poprawność zapewnia źródło danych."
+        }
+      ],
+      "takeaways": [
+        "Cache-aside: sprawdź cache, przy miss pobierz ze źródła i zapisz z TTL; przy zapisie usuń wpis zamiast go aktualizować.",
+        "Write-through daje zawsze aktualny cache kosztem wolniejszych zapisów; write-behind grozi utratą danych.",
+        "TTL to siatka bezpieczeństwa, invalidacja (klucze, tagi) to główny mechanizm świeżości; stampede gasi single-flight i jitter.",
+        "IMemoryCache – szybki, lokalny per instancja; IDistributedCache – współdzielony, wolniejszy; HybridCache – L1 + L2, ochrona przed stampede i tagi.",
+        "Redis wykonuje komendy w jednym wątku (atomowość); struktury: string, hash, list, set, sorted set, stream; ConnectionMultiplexer jako singleton.",
+        "Redis pub/sub nie ma trwałości – nadaje się do sygnałów, nie do ważnych zdarzeń biznesowych.",
+        "Rozproszona blokada: SET NX PX z unikalnym tokenem i bezpieczne zwolnienie; służy wydajności, poprawność zapewnia źródło danych (fencing, constraints).",
+        "Output caching cache'uje całe odpowiedzi po stronie serwera, z tagami i domyślnym pomijaniem żądań uwierzytelnionych."
+      ],
+      "interview": [
+        "Opisz strategię cache-aside i jak radzisz sobie z invalidacją.",
+        "Czym jest cache stampede i jak mu zapobiec?",
+        "Czym różnią się IMemoryCache, IDistributedCache i HybridCache?",
+        "Jak zaimplementujesz rozproszoną blokadę w Redisie i jakie ma pułapki?",
+        "Czym różni się output caching od response caching w ASP.NET Core?"
+      ],
+      "exam": [
+        {
+          "id": "dist-cache-e1",
+          "q": "W strategii cache-aside produkt został zaktualizowany w bazie. Co jest zalecaną reakcją po stronie cache?",
+          "options": [
+            "Nic – TTL w końcu wszystko załatwi",
+            "Usunąć wpis z cache, aby następny odczyt załadował świeże dane",
+            "Zapisać nową wartość do cache przed zapisem do bazy",
+            "Wyczyścić cały cache aplikacji"
+          ],
+          "correct": 1,
+          "why": "Usunięcie wpisu jest proste i odporne na wyścigi równoległych aktualizacji. Samo TTL zostawia stare dane do czasu wygaśnięcia, a czyszczenie całego cache wywołuje lawinę miss."
+        },
+        {
+          "id": "dist-cache-e2",
+          "q": "Popularny wpis wygasa i 1000 równoczesnych żądań uderza w bazę tym samym zapytaniem. Jak nazywa się zjawisko i co pomaga?",
+          "options": [
+            "Cache poisoning; szyfrowanie kluczy",
+            "Write-behind; przejście na write-through",
+            "Cache penetration; wydłużenie TTL do nieskończoności",
+            "Cache stampede; single-flight (jedno wyliczenie na klucz) i jitter w TTL"
+          ],
+          "correct": 3,
+          "why": "To stampede (thundering herd). Pomaga dopuszczenie tylko jednego wyliczenia na klucz (np. HybridCache) i rozrzucenie czasów wygaśnięcia."
+        },
+        {
+          "id": "dist-cache-e3",
+          "q": "Aplikacja działa na 4 instancjach i używa wyłącznie IMemoryCache. Jaki jest główny problem?",
+          "options": [
+            "Każda instancja ma własną kopię danych, więc po zmianie mogą zwracać różne wartości, a invalidacja dotyczy tylko jednej instancji",
+            "IMemoryCache nie obsługuje TTL",
+            "IMemoryCache wymaga serializacji do JSON",
+            "IMemoryCache działa tylko z Redisem"
+          ],
+          "correct": 0,
+          "why": "Cache w pamięci procesu nie jest współdzielony. Usunięcie wpisu na jednej instancji nie wpływa na pozostałe, więc użytkownicy mogą widzieć niespójne dane."
+        },
+        {
+          "id": "dist-cache-e4",
+          "q": "Co HybridCache daje ponad ręczny cache-aside na IDistributedCache?",
+          "options": [
+            "Gwarancję, że L1 na wszystkich instancjach jest natychmiast czyszczony po zmianie",
+            "Transakcje między cache a bazą",
+            "Dwupoziomowy cache (L1 w pamięci + L2 rozproszony), ochronę przed stampede, serializację i tagi w jednym API",
+            "Zastąpienie bazy danych"
+          ],
+          "correct": 2,
+          "why": "HybridCache łączy L1 i L2 i wywołuje fabrykę raz na klucz. Nie czyści jednak automatycznie L1 na innych instancjach – stąd krótki LocalCacheExpiration."
+        },
+        {
+          "id": "dist-cache-e5",
+          "q": "Dlaczego pojedyncza komenda Redisa, np. `INCR`, jest atomowa?",
+          "options": [
+            "Bo Redis zawsze używa transakcji MULTI/EXEC",
+            "Bo Redis wykonuje komendy sekwencyjnie w jednym wątku, więc nic nie wejdzie w trakcie komendy",
+            "Bo klient StackExchange.Redis blokuje klucz lokalnie",
+            "Bo Redis zapisuje każdą komendę na dysk przed wykonaniem"
+          ],
+          "correct": 1,
+          "why": "Model jednowątkowego wykonywania komend sprawia, że każda komenda wykonuje się w całości, bez przeplotu z innymi. Dlatego INCR nadaje się na liczniki i rate limiting."
+        },
+        {
+          "id": "dist-cache-e6",
+          "q": "Instancja zwalnia blokadę zwykłym `DEL lock:report`. Jaki problem może wystąpić?",
+          "options": [
+            "Jeśli jej blokada już wygasła i przejął ją ktoś inny, usunie cudzą blokadę",
+            "DEL nie działa na kluczach z TTL",
+            "DEL zablokuje Redis na czas usuwania",
+            "Klucz zostanie przeniesiony na replikę"
+          ],
+          "correct": 0,
+          "why": "Zwolnienie musi sprawdzać, czy wartość to nasz token (atomowo, np. skryptem Lua lub LockReleaseAsync). Inaczej po wygaśnięciu TTL można usunąć blokadę innej instancji."
+        },
+        {
+          "id": "dist-cache-e7",
+          "q": "Do czego NIE nadaje się Redis pub/sub?",
+          "options": [
+            "Do wysłania sygnału „unieważnij lokalny cache” do instancji",
+            "Do backplane SignalR",
+            "Do powiadamiania online subskrybentów w czasie rzeczywistym",
+            "Do przekazywania ważnych zdarzeń biznesowych, których nie wolno zgubić, gdy odbiorca jest offline"
+          ],
+          "correct": 3,
+          "why": "Pub/sub w Redisie nie przechowuje wiadomości – subskrybent offline je traci. Do trwałych zdarzeń używa się Redis Streams lub brokera."
+        },
+        {
+          "id": "dist-cache-e8",
+          "q": "Rozproszona blokada w Redisie chroni przed podwójnym naliczeniem faktury. Dlaczego lekcja zaleca dodatkowe zabezpieczenie w bazie?",
+          "options": [
+            "Bo Redis nie obsługuje kluczy z TTL",
+            "Bo blokady Redis działają tylko w jednym wątku aplikacji",
+            "Bo blokada może wygasnąć w trakcie pracy (np. pauza GC) lub zniknąć przy failoverze, więc dwie instancje mogą działać naraz",
+            "Bo LockTakeAsync zawsze zwraca true"
+          ],
+          "correct": 2,
+          "why": "Blokada oparta o TTL i asynchroniczną replikację nie gwarantuje wzajemnego wykluczania w każdej sytuacji. Poprawność zapewnia źródło danych: unikalny indeks, optimistic concurrency lub fencing token."
+        },
+        {
+          "id": "dist-cache-e9",
+          "q": "Endpoint `/products` ma `.CacheOutput(\"products\")`. Po aktualizacji produktu klienci nadal widzą stare dane. Co należy zrobić?",
+          "options": [
+            "Ustawić nagłówek `Cache-Control: no-cache` w żądaniu klienta",
+            "Wywołać `IOutputCacheStore.EvictByTagAsync(\"products\")` po zapisie",
+            "Zrestartować aplikację po każdej zmianie",
+            "Przejść na IMemoryCache"
+          ],
+          "correct": 1,
+          "why": "Output cache jest sterowany po stronie serwera i nie zależy od nagłówków klienta. Invalidację robi się tagami przez IOutputCacheStore.EvictByTagAsync."
+        }
+      ]
+    }
+  ]
+}

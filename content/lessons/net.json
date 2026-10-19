@@ -1,0 +1,962 @@
+{
+  "module": "net",
+  "title": ".NET i backend",
+  "order": 1,
+  "lessons": [
+    {
+      "id": "net-csharp-oop",
+      "cat": "csharp",
+      "title": "C# i OOP: fundamenty, o które zawsze pytają",
+      "level": 1,
+      "minutes": 15,
+      "intro": "Ta lekcja krok po kroku porządkuje fundamenty C#: czym różni się „wartość” od „wskazania na obiekt”, kiedy wybrać class, record albo struct, jak działa polimorfizm, generics, LINQ i sprzątanie pamięci. Rekruterzy zaczynają od tych tematów, bo w kilka minut pokazują, czy rozumiesz język, czy tylko go używasz.",
+      "sections": [
+        {
+          "h": "Typy wartościowe vs referencyjne: kartka z liczbą i kartka z adresem",
+          "text": "Analogia: masz dwie kartki. Na pierwszej zapisana jest **liczba** – jeśli ją skserujesz, masz dwie niezależne liczby i zmiana jednej nie rusza drugiej. Na drugiej zapisany jest **adres domu** – ksero daje dwie kartki z tym samym adresem, ale dom dalej jest jeden. Jeśli ktoś przemaluje dom „z pierwszej kartki”, zobaczysz to także, idąc pod adres z drugiej.\n\nW C# to dokładnie ta różnica:\n\n- **Typ wartościowy** (value type) – zmienna przechowuje samą wartość. Należą tu `struct`, `enum` i typy proste: `int`, `double`, `bool`, `decimal`, `DateTime`. Przypisanie `b = a` kopiuje całą wartość.\n- **Typ referencyjny** (reference type) – zmienna przechowuje **referencję**, czyli „adres” obiektu w pamięci. Należą tu `class`, `record`, `string`, tablice i delegaty. Przypisanie kopiuje tylko adres, obiekt jest wciąż jeden.\n\nCzęsto słyszysz „wartościowe są na stosie, referencyjne na stercie”. **Stos** (stack) to szybka pamięć na zmienne lokalne metody, **sterta** (heap) to pamięć na obiekty, którą sprząta Garbage Collector. To uproszczenie bywa mylące: pole `int` w klasie żyje na stercie razem z obiektem. Na rozmowie lepiej mówić o **sposobie kopiowania**.\n\nDwa dodatkowe pojęcia:\n\n- **Boxing** – „zapakowanie” typu wartościowego w obiekt na stercie, gdy przypisujesz go do `object` lub interfejsu. Kosztuje alokację, a pudełko to osobna kopia. **Unboxing** to wyjęcie wartości z pudełka.\n- `string` jest referencyjny, ale **niemutowalny** (nie da się go zmienić) – każde „doklejenie” tworzy nowy string. W pętlach używaj `StringBuilder`.",
+          "code": "struct Point { public int X; }\nclass Box { public int X; }\n\nvar p1 = new Point { X = 1 };\nvar p2 = p1;      // 1. kopiujemy wartość – powstaje drugi, niezależny Point\np2.X = 99;        // 2. zmieniamy tylko kopię\nConsole.WriteLine(p1.X); // 3. wypisze 1\n\nvar b1 = new Box { X = 1 };\nvar b2 = b1;      // 1. kopiujemy adres – obiekt nadal jest jeden\nb2.X = 99;        // 2. zmieniamy wspólny obiekt\nConsole.WriteLine(b1.X); // 3. wypisze 99\n\nobject boxed = p1;  // boxing: kopia Point na stercie",
+          "lang": "csharp"
+        },
+        {
+          "h": "class, record, struct: osoba, banknot i liczba",
+          "text": "Analogia pomaga wybrać typ:\n\n- **class** jest jak **osoba z numerem PESEL**. Dwie osoby o tym samym imieniu i wieku to wciąż dwie różne osoby – liczy się **tożsamość**. Domyślnie dwa obiekty klasy są równe tylko wtedy, gdy to ten sam obiekt. Klasa to domyślny wybór dla serwisów i encji bazodanowych.\n- **record** jest jak **banknot 100 zł**. Nie obchodzi cię, który to egzemplarz – liczy się **wartość**. Kompilator generuje porównanie wszystkich właściwości, czytelne `ToString()`, dekonstrukcję i wyrażenie `with`, które tworzy zmienioną kopię zamiast modyfikować oryginał.\n- **struct** jest jak **liczba zapisana na kartce** – mała, kopiowana w całości. Dobre na drobne wartości: współrzędne, kwotę z walutą. `readonly struct` gwarantuje, że wartości nie da się zmienić.\n- **record struct** łączy obie cechy: typ wartościowy z wygodami rekordu.\n\nGdzie przydaje się record? Na **DTO** (Data Transfer Object – prosty obiekt do przesyłania danych, np. odpowiedź API), komendy, zdarzenia i **value objects** (obiekty opisane wyłącznie wartością, jak kwota czy adres). Właściwości z nawiasu rekordu są `init`-only: ustawisz je tylko przy tworzeniu.\n\nPułapki krok po kroku:\n\n1. Rekord z właściwością `List<T>` porównuje listy po adresie, więc dwa rekordy z identyczną zawartością list nie będą równe.\n2. Rekord jako encja EF Core to zły pomysł – encja ma tożsamość (Id) i jest zmieniana w miejscu, a rekord udaje wartość.\n3. Duży struct (dziesiątki pól) kopiowany przy każdym wywołaniu metody jest wolniejszy niż klasa.\n\nOd C# 12 również klasy mają **primary constructor** (parametry konstruktora w nagłówku). Uwaga: w klasie te parametry to nie właściwości, tylko zmienne dostępne w ciele klasy.",
+          "code": "public record Money(decimal Amount, string Currency);\n\nvar a = new Money(10m, \"PLN\");\nvar b = new Money(10m, \"PLN\");\nConsole.WriteLine(a == b);          // True – porównanie wartości\nvar c = a with { Amount = 20m };    // nowa kopia, a zostaje bez zmian\nvar (amount, currency) = c;         // dekonstrukcja na zmienne\n\npublic readonly record struct Coordinates(double Lat, double Lng);\n\n// primary constructor w klasie (C# 12+)\npublic class OrderService(IOrderRepository repo)\n{\n    public Task<Order?> Get(int id) => repo.FindAsync(id);\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Dziedziczenie i polimorfizm: jeden pilot, różne telewizory",
+          "text": "Analogia: masz uniwersalny pilot z przyciskiem „włącz”. Naciskasz ten sam przycisk, ale telewizor Samsunga i LG włączają się każdy po swojemu. To jest **polimorfizm** – wspólny kontrakt, różne zachowanie, a o tym, który kod się wykona, decyduje **prawdziwy typ obiektu w czasie działania programu**, a nie typ zmiennej.\n\nSłowa kluczowe, które musisz rozróżniać:\n\n- `virtual` – „ta metoda może być nadpisana w klasie pochodnej”.\n- `override` – „nadpisuję ją”. Wywołanie przez zmienną typu bazowego i tak trafi do wersji z klasy pochodnej.\n- `new` – **ukrycie** metody. To nie jest nadpisanie: przy zmiennej typu bazowego wykona się wersja bazowa. Ulubiony podchwytliwy przykład rekruterów.\n- `abstract` – metoda bez ciała; klasa pochodna musi ją dostarczyć.\n- `sealed` – „dalej już nie dziedziczysz / nie nadpisujesz”.\n\nCo dzieje się w przykładzie poniżej, krok po kroku:\n\n1. Zmienna `a` ma typ `Animal`, ale wskazuje na obiekt `Dog`.\n2. `a.Speak()` – metoda jest `virtual` i `override`, więc runtime patrzy na obiekt: wykona się wersja psa.\n3. `a.Name()` – metoda jest ukryta przez `new`, więc kompilator patrzy na typ zmiennej: wykona się wersja `Animal`.\n\nC# pozwala dziedziczyć tylko po **jednej** klasie, ale implementować wiele interfejsów. Dziedziczenie mocno wiąże klasę z bazą, dlatego popularna zasada to **composition over inheritance**: zamiast dziedziczyć, składaj obiekt z mniejszych części i wstrzykuj je. Dziedzicz tylko wtedy, gdy relacja to naprawdę „jest” (pies **jest** zwierzęciem).",
+          "code": "class Animal\n{\n    public virtual string Speak() => \"...\";\n    public string Name() => \"Animal\";\n}\nclass Dog : Animal\n{\n    public override string Speak() => \"Hau\";\n    public new string Name() => \"Dog\";   // ukrywanie, nie nadpisanie\n}\n\nAnimal a = new Dog();\nConsole.WriteLine(a.Speak()); // Hau    – decyduje obiekt (override)\nConsole.WriteLine(a.Name());  // Animal – decyduje typ zmiennej (new)",
+          "lang": "csharp"
+        },
+        {
+          "h": "Interfejs vs klasa abstrakcyjna: prawo jazdy i półprodukt",
+          "text": "Analogia:\n\n- **Interfejs** jest jak **prawo jazdy kategorii B**. Mówi tylko, co umiesz („potrafię prowadzić auto”), nie mówi, kim jesteś. Jedna osoba może mieć wiele uprawnień – klasa może implementować wiele interfejsów.\n- **Klasa abstrakcyjna** jest jak **ciasto z gotowym spodem**. Część roboty jest już zrobiona (wspólny kod, pola, konstruktor), a ty dokładasz tylko nadzienie (metody abstrakcyjne). Klasa może mieć tylko jeden taki „spód” – dziedziczy po jednej klasie.\n\nKiedy co wybrać:\n\n1. **Interfejs** – gdy opisujesz zdolność, którą mogą mieć zupełnie różne typy (`IDisposable` – „umiem posprzątać po sobie”), gdy wstrzykujesz zależność przez DI i chcesz ją podmienić w testach na atrapę (mock).\n2. **Klasa abstrakcyjna** – gdy kilka podobnych klas współdzieli stan i kod, np. wzorzec **Template Method**: baza ustala kolejność kroków, a klasy pochodne wypełniają jeden z nich.\n3. Często **oba**: interfejs jako publiczny kontrakt, klasa abstrakcyjna jako wygodna baza implementacji (jak w przykładzie).\n\nNowsze możliwości interfejsów: od C# 8 **default interface methods** (metoda z domyślnym ciałem – służy głównie do dodania metody bez psucia istniejących implementacji), a od C# 11 **static abstract members** (statyczne składowe w kontrakcie, na nich zbudowane jest generic math, np. `INumber<T>`). Interfejs nadal nie ma pól instancji.\n\nWarto dorzucić **Interface Segregation Principle**: lepiej kilka małych interfejsów niż jeden „gruby”, z którego każdy implementuje połowę.",
+          "code": "public interface INotifier\n{\n    Task SendAsync(string to, string msg);\n}\n\npublic abstract class NotifierBase : INotifier\n{\n    protected readonly ILogger Log;\n    protected NotifierBase(ILogger log) => Log = log;\n\n    public async Task SendAsync(string to, string msg)\n    {\n        Log.LogInformation(\"Sending to {To}\", to);   // wspólny krok\n        await SendCoreAsync(to, msg);                 // krok do uzupełnienia\n    }\n    protected abstract Task SendCoreAsync(string to, string msg);\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Generics: pudełko z etykietą",
+          "text": "Analogia: `List<T>` to **pudełko z etykietą** „tylko jabłka”. Wiesz, co wyjmiesz, i nikt nie wrzuci tam gwoździa. Stary `ArrayList` był pudłem „cokolwiek” – przy wyjmowaniu trzeba było zgadywać i rzutować, a liczby były boksowane.\n\n**Generics** (typy generyczne) to kod pisany raz, z parametrem typu `T`, który podstawiasz przy użyciu. Zalety: **bezpieczeństwo typów** (błąd wyłapie kompilator) i brak boxingu dla typów wartościowych.\n\nW .NET generics są **reifikowane** – czyli `T` istnieje naprawdę w czasie działania programu (w Javie jest „wymazywany”). Działa `typeof(T)`, a dla `List<int>` JIT generuje osobny, szybki kod.\n\n**Ograniczenia** (`where`) mówią kompilatorowi, czego możesz od `T` wymagać:\n\n- `where T : class` / `struct` – typ referencyjny / wartościowy,\n- `where T : new()` – da się zrobić `new T()`,\n- `where T : IEntity` – `T` implementuje interfejs, więc możesz użyć `item.Id`,\n- `where T : notnull` – `T` nie może być nullowalny.\n\n**Wariancja** brzmi groźnie, a chodzi o proste pytanie: czy pudełko jabłek mogę traktować jak pudełko owoców?\n\n- Jeśli z pudełka tylko **wyjmujesz** (`IEnumerable<out T>`) – tak, to **kowariancja**.\n- Jeśli możesz też **wkładać** (`List<T>`) – nie, bo ktoś włożyłby gruszkę do pudełka jabłek. To **inwariancja**.\n- **Kontrawariancja** (`in T`) to odwrotność: coś, co umie „zjeść” każdy owoc (`Action<Fruit>`), poradzi sobie też z jabłkiem.",
+          "code": "public interface IEntity { int Id { get; } }\n\npublic class Repository<T> where T : class, IEntity\n{\n    private readonly Dictionary<int, T> _items = new();\n    public void Add(T item) => _items[item.Id] = item; // Id dostępne dzięki where\n    public T? Find(int id) => _items.GetValueOrDefault(id);\n}\n\nIEnumerable<object> objs = new List<string> { \"a\" }; // OK – kowariancja\n// List<object> list = new List<string>();           // błąd kompilacji",
+          "lang": "csharp"
+        },
+        {
+          "h": "Kolekcje, LINQ, IEnumerable vs IQueryable: przepis czy zamówienie w kuchni",
+          "text": "Najpierw kolekcje w jednym zdaniu każda:\n\n- `List<T>` – lista z szybkim dostępem po indeksie.\n- `Dictionary<TKey,TValue>` – słownik klucz → wartość, wyszukiwanie średnio O(1), czyli w stałym czasie niezależnie od rozmiaru.\n- `HashSet<T>` – zbiór bez duplikatów z szybkim `Contains`.\n- `Queue<T>` / `Stack<T>` – kolejka (pierwszy wchodzi, pierwszy wychodzi) / stos (ostatni wchodzi, pierwszy wychodzi).\n- `ConcurrentDictionary` – słownik bezpieczny przy wielu wątkach.\n\n**LINQ** to zapytania pisane w C# (`Where`, `Select`, `OrderBy`). Kluczowa cecha: **odroczone wykonanie** (deferred execution). `Where` nie filtruje od razu – zapisuje **przepis**. Gotowanie zaczyna się dopiero przy iteracji (`foreach`) lub metodzie, która potrzebuje wyniku (`ToList`, `Count`, `First`). Jeśli przeiterujesz to samo zapytanie dwa razy, „ugotujesz” je dwa razy.\n\nTeraz najważniejsze rozróżnienie:\n\n- **IEnumerable<T>** – przepis wykonujesz **sam, w swojej kuchni** (w pamięci aplikacji). Warunek to zwykła funkcja C#.\n- **IQueryable<T>** – przepis **wysyłasz do restauracji** (bazy danych). Warunek jest zapisany jako **expression tree** (drzewo wyrażeń – kod opisany jako dane), które EF Core tłumaczy na SQL.\n\nŹle → dobrze: jeśli repozytorium zwróci `IEnumerable<User>`, a ktoś dopisze `.Where(...)`, to jak przyniesienie do domu całej lodówki restauracji tylko po to, żeby wybrać jeden jogurt. Aplikacja pobierze całą tabelę i odfiltruje ją w pamięci. Trzymaj `IQueryable` do momentu, aż zapytanie będzie kompletne, i dopiero wtedy materializuj (`ToListAsync`).",
+          "code": "// ŹLE: typ IEnumerable – Where działa w pamięci\nIEnumerable<User> all = db.Users;\nvar active = all.Where(u => u.IsActive).ToList(); // SELECT * FROM Users, filtr w C#\n\n// DOBRZE: IQueryable – całość trafia do SQL\nIQueryable<User> q = db.Users.Where(u => u.IsActive); // nic się jeszcze nie wykonało\nvar page = await q.OrderBy(u => u.Id)\n                  .Skip(20).Take(10)\n                  .ToListAsync(); // jeden SQL: WHERE + ORDER BY + OFFSET/FETCH",
+          "lang": "csharp"
+        },
+        {
+          "h": "Garbage Collector: sprzątaczka w biurze",
+          "text": "Analogia: w biurze pracuje sprzątaczka. Wyrzuca tylko te kartki, do których **nikt już nie ma dostępu** – nie leżą na żadnym biurku ani w żadnej teczce, do której ktoś sięga. **Garbage Collector** (GC) robi to samo z obiektami: usuwa te, do których nie prowadzi żadna ścieżka od **korzeni** (roots) – zmiennych lokalnych aktualnie wykonywanych metod, pól statycznych i kilku wewnętrznych uchwytów.\n\nJak to działa krok po kroku:\n\n1. Nowe obiekty trafiają do **Gen0** (generacja 0, „młode”).\n2. Gdy Gen0 się zapełni, GC sprawdza, które obiekty są jeszcze osiągalne. Martwe znikają, żywe awansują do **Gen1**, a później do **Gen2**.\n3. Gen0 sprząta się często i tanio, Gen2 rzadko i drożej. Założenie: większość obiektów umiera młodo (np. obiekty jednego żądania HTTP).\n4. Duże obiekty (od ok. 85 000 bajtów, np. duże tablice) trafiają od razu na **LOH** (Large Object Heap), który jest sprzątany razem z Gen2 i domyślnie nie jest ściskany. Do dużych buforów używa się `ArrayPool<T>`.\n\nGC sprząta tylko **pamięć**. Połączenia z bazą, pliki czy sockety to zasoby, które trzeba zamknąć **od razu**. Do tego służy `IDisposable` i `using` – na końcu bloku wywoła się `Dispose()`. **Finalizer** (`~Klasa`) to tylko siatka bezpieczeństwa: wywoła się kiedyś, nie wiadomo kiedy.\n\nTypowe „wycieki” w .NET to obiekty, które wciąż ktoś trzyma: subskrypcja zdarzenia, której nikt nie odpiął, rosnący statyczny cache, singleton trzymający obiekt o krótszym życiu. `GC.Collect()` w kodzie produkcyjnym prawie zawsze jest błędem.",
+          "code": "// ŹLE: połączenie zamknie się \"kiedyś\" (albo pula połączeń się wyczerpie)\nvar conn1 = new SqlConnection(cs);\nawait conn1.OpenAsync();\n\n// DOBRZE: Dispose na końcu zakresu, nawet przy wyjątku\nawait using var conn = new SqlConnection(cs);\nawait conn.OpenAsync();\n\n// duży bufor z puli zamiast nowej alokacji na LOH\nbyte[] buffer = ArrayPool<byte>.Shared.Rent(1_000_000);\ntry { /* praca na buforze */ }\nfinally { ArrayPool<byte>.Shared.Return(buffer); }",
+          "lang": "csharp"
+        },
+        {
+          "h": "Jak o tym mówić na rozmowie",
+          "text": "Rekruter zaczyna prosto i schodzi w głąb. Odpowiadaj w trzech krokach: **definicja jednym zdaniem → praktyczna konsekwencja → przykład z projektu**.\n\n- „struct vs class?” – sposób kopiowania, równość, koszt kopiowania dużych struktur, boxing; kiedy sam wybrałbyś struct (mała, niemutowalna wartość).\n- „Po co record?” – równość wartościowa, `with`, niemutowalność; DTO i value objects; dlaczego nie encje EF.\n- „IEnumerable vs IQueryable?” – funkcje w pamięci vs expression trees tłumaczone na SQL; przykład z przypadkowym pobraniem całej tabeli.\n- „Jak działa GC?” – korzenie, generacje, LOH, `IDisposable`, przykład wycieku przez event handler.\n\nNiuanse, które odróżniają mida od juniora: nie mów „struct zawsze jest na stosie”, tylko „to szczegół implementacji, ważna jest semantyka kopiowania”. Wspomnij o pułapce rekordu z listą, o multiple enumeration w LINQ i o tym, że `new` przy metodzie to ukrywanie, a nie polimorfizm. Jeśli nie pamiętasz dokładnej liczby (np. progu LOH), podaj rząd wielkości i wyjaśnij, dlaczego ma to znaczenie."
+        }
+      ],
+      "takeaways": [
+        "Typ wartościowy kopiuje wartość (kartka z liczbą), referencyjny kopiuje adres obiektu (kartka z adresem domu).",
+        "Boxing to zapakowanie typu wartościowego w obiekt na stercie przy rzutowaniu na object lub interfejs – kosztuje alokację.",
+        "class = tożsamość (osoba), record = wartość (banknot), struct = mała wartość kopiowana w całości.",
+        "override to prawdziwy polimorfizm (decyduje obiekt), new tylko ukrywa metodę (decyduje typ zmiennej).",
+        "Interfejs to zdolność (wiele na klasę), klasa abstrakcyjna to wspólna baza ze stanem (jedna na klasę).",
+        "IEnumerable wykonuje LINQ w pamięci, IQueryable wysyła expression tree do bazy jako SQL – trzymaj IQueryable do końca budowania zapytania.",
+        "LINQ jest odroczony: zapytanie wykonuje się przy iteracji, więc dwukrotna iteracja to dwukrotne wykonanie.",
+        "GC sprząta nieosiągalne obiekty generacjami; połączenia, pliki i sockety zamykaj przez IDisposable i using."
+      ],
+      "interview": [
+        "Czym różni się struct od class i kiedy wybrałbyś struct?",
+        "Co daje record i czy użyłbyś go jako encji w EF Core?",
+        "Jaka jest różnica między override a new przy metodach?",
+        "Czym różni się IEnumerable od IQueryable i jaki błąd wydajnościowy łatwo popełnić?",
+        "Jak działa Garbage Collector w .NET i skąd biorą się wycieki pamięci?"
+      ],
+      "exam": [
+        {
+          "id": "net-csharp-oop-e1",
+          "q": "Co wypisze ten kod?",
+          "code": "struct P { public int X; }\nvar a = new P { X = 1 };\nvar b = a;\nb.X = 5;\nConsole.WriteLine(a.X);",
+          "lang": "csharp",
+          "options": [
+            "1",
+            "5",
+            "0",
+            "Błąd kompilacji – struct nie może mieć pól publicznych"
+          ],
+          "correct": 0,
+          "why": "Przypisanie struktury kopiuje całą wartość, więc zmiana b nie wpływa na a."
+        },
+        {
+          "id": "net-csharp-oop-e2",
+          "q": "Kiedy zachodzi boxing?",
+          "options": [
+            "Gdy obiekt klasy przypisujemy do zmiennej typu bazowego",
+            "Gdy typ wartościowy przypisujemy do object lub do interfejsu, który implementuje",
+            "Gdy przekazujemy typ wartościowy przez ref",
+            "Gdy używamy List<int>"
+          ],
+          "correct": 1,
+          "why": "Boxing to opakowanie typu wartościowego w obiekt na stercie przy konwersji na object lub interfejs. Generyczna List<int> właśnie pozwala go uniknąć."
+        },
+        {
+          "id": "net-csharp-oop-e3",
+          "q": "Dwa rekordy `record Order(int Id, List<string> Items)` mają ten sam Id i listy z identycznymi elementami, ale to różne instancje List. Czy są równe (==)?",
+          "options": [
+            "Tak, rekordy porównują wszystko głęboko",
+            "Tak, bo Id jest takie samo",
+            "Nie, bo równość rekordu porównuje pola przez ich Equals, a List porównuje się referencyjnie",
+            "Nie, bo rekordy zawsze porównują się referencyjnie"
+          ],
+          "correct": 2,
+          "why": "Równość wartościowa rekordu używa EqualityComparer<T>.Default dla każdego pola; dla List<T> oznacza to porównanie referencji."
+        },
+        {
+          "id": "net-csharp-oop-e4",
+          "q": "Co wypisze kod?",
+          "code": "class A { public virtual string F() => \"A\"; public string G() => \"A\"; }\nclass B : A { public override string F() => \"B\"; public new string G() => \"B\"; }\nA x = new B();\nConsole.WriteLine(x.F() + x.G());",
+          "lang": "csharp",
+          "options": [
+            "AA",
+            "BB",
+            "AB",
+            "BA"
+          ],
+          "correct": 3,
+          "why": "F jest nadpisana (override), więc wywołuje się wersja z B. G jest ukryta przez new, więc przy zmiennej typu A wywołuje się wersja z A."
+        },
+        {
+          "id": "net-csharp-oop-e5",
+          "q": "Które stwierdzenie o interfejsach i klasach abstrakcyjnych jest prawdziwe?",
+          "options": [
+            "Klasa abstrakcyjna może mieć pola i konstruktor, a klasa może dziedziczyć tylko po jednej takiej klasie",
+            "Interfejs może mieć pola instancji od C# 8",
+            "Default interface methods mają zastąpić klasy abstrakcyjne",
+            "Klasa może dziedziczyć po wielu klasach abstrakcyjnych, ale tylko jednym interfejsie"
+          ],
+          "correct": 0,
+          "why": "Klasa abstrakcyjna ma stan i konstruktory, C# ma pojedyncze dziedziczenie klas. Interfejsy nie mają pól instancji, a default methods służą głównie ewolucji API."
+        },
+        {
+          "id": "net-csharp-oop-e6",
+          "q": "Repozytorium zwraca `IEnumerable<User>` będący wprost DbSet. Wywołujący pisze `repo.GetAll().Where(u => u.IsActive).ToList()`. Co się stanie?",
+          "options": [
+            "EF wygeneruje SQL z WHERE IsActive = 1",
+            "Zostanie pobrana cała tabela Users, a filtr wykona się w pamięci",
+            "Wystąpi wyjątek, bo nie można filtrować IEnumerable z DbSet",
+            "Zapytanie nie wykona się, bo brakuje ToListAsync"
+          ],
+          "correct": 1,
+          "why": "Statyczny typ IEnumerable sprawia, że wybierane są metody Enumerable.Where na delegatach, więc filtr działa w procesie po pobraniu wszystkich wierszy."
+        },
+        {
+          "id": "net-csharp-oop-e7",
+          "q": "Dlaczego `List<string>` nie można przypisać do `List<object>`, ale do `IEnumerable<object>` już tak?",
+          "options": [
+            "Bo List<T> jest klasą sealed",
+            "Bo string jest niemutowalny",
+            "Bo IEnumerable<out T> jest kowariantny, a List<T> jest inwariantna – inaczej dałoby się dodać do listy stringów np. liczbę",
+            "Bo generics w .NET nie istnieją w runtime"
+          ],
+          "correct": 2,
+          "why": "Kowariancja (out T) jest bezpieczna tylko dla typów, które zwracają T. List<T> przyjmuje T w Add, więc musi być inwariantna."
+        },
+        {
+          "id": "net-csharp-oop-e8",
+          "q": "Co jest prawdą o LINQ na IEnumerable?",
+          "code": "var q = numbers.Where(n => { Console.Write(\"x\"); return n > 0; });\nvar c1 = q.Count();\nvar c2 = q.Count();",
+          "lang": "csharp",
+          "options": [
+            "Lambda wykona się raz dla każdego elementu, wynik jest cache'owany",
+            "Lambda nie wykona się wcale, bo Count nie iteruje",
+            "Lambda wykona się przy tworzeniu q",
+            "Lambda wykona się dwa razy dla każdego elementu, bo zapytanie jest odroczone i iterowane dwukrotnie"
+          ],
+          "correct": 3,
+          "why": "Deferred execution: q to tylko przepis. Każde Count() iteruje źródło od nowa (multiple enumeration). Aby tego uniknąć, zmaterializuj wynik np. ToList()."
+        },
+        {
+          "id": "net-csharp-oop-e9",
+          "q": "Który scenariusz najczęściej powoduje „wyciek” pamięci w aplikacji .NET?",
+          "options": [
+            "Obiekt subskrybuje zdarzenie długo żyjącego obiektu i nigdy się nie wypina",
+            "Używanie wielu krótkotrwałych obiektów w Gen0",
+            "Brak wywołania GC.Collect() po każdym żądaniu",
+            "Używanie record zamiast class"
+          ],
+          "correct": 0,
+          "why": "Event handler trzyma referencję do subskrybenta, więc ten pozostaje osiągalny z korzenia i GC go nie zbierze. Krótkotrwałe obiekty GC sprząta tanio."
+        },
+        {
+          "id": "net-csharp-oop-e10",
+          "q": "Po co implementować IDisposable, skoro jest GC?",
+          "options": [
+            "Żeby obiekt trafił od razu do Gen2",
+            "Żeby deterministycznie zwolnić zasoby niezarządzane (połączenia, pliki), których GC nie zwalnia w przewidywalnym momencie",
+            "Żeby obiekt nie był zbierany przez GC",
+            "Bo bez IDisposable obiekt trafia na LOH"
+          ],
+          "correct": 1,
+          "why": "GC zarządza pamięcią, a nie połączeniami czy uchwytami, i działa w nieokreślonym czasie. Dispose/using zwalnia takie zasoby natychmiast po użyciu."
+        }
+      ]
+    },
+    {
+      "id": "net-async",
+      "cat": "csharp",
+      "title": "async/await od środka",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Zrozumiesz, czym naprawdę jest Task, co kompilator robi z metodą async i dlaczego await nie tworzy nowego wątku. Krok po kroku przejdziesz przez pułapki, o które pytają na każdej rozmowie .NET: deadlock przez .Result, async void, ConfigureAwait, anulowanie i zagłodzenie puli wątków.",
+      "sections": [
+        {
+          "h": "Po co async: kelner, który nie stoi przy kuchni",
+          "text": "Wyobraź sobie kelnera, który przyjmuje zamówienie, zanosi je do kuchni i **stoi tam**, aż danie będzie gotowe. Restauracja z takimi kelnerami potrzebuje jednego kelnera na stolik. Rozsądny kelner oddaje kartkę kucharzowi i idzie do innych stolików, a kuchnia dzwoni dzwonkiem, gdy danie jest gotowe.\n\nW aplikacji **wątek** (thread) to taki kelner – „pracownik”, który wykonuje kod. ASP.NET Core ma ich ograniczoną liczbę w **puli wątków** (thread pool), czyli zespole kelnerów współdzielonych przez wszystkie żądania.\n\nRozróżnij dwa rodzaje pracy:\n\n- **I/O-bound** – większość czasu czekasz na coś z zewnątrz: bazę danych, inne API, dysk. Tu async pomaga ogromnie.\n- **CPU-bound** – procesor naprawdę liczy: kompresja, przetwarzanie obrazu. Tu async sam nic nie przyspieszy, bo ktoś musi to policzyć.\n\nCo się dzieje przy `await` na zapytaniu do bazy, krok po kroku:\n\n1. Wątek wysyła zapytanie przez sieć.\n2. Zamiast czekać, wraca do puli i obsługuje inne żądania.\n3. W tym czasie **żaden wątek nie czeka** – system operacyjny sam pilnuje odpowiedzi z sieci (mechanizmy IOCP w Windows, epoll w Linuksie).\n4. Gdy baza odpowie, dowolny wolny wątek z puli dokańcza resztę metody. Ta „reszta” to **kontynuacja** (continuation).\n\nNajważniejsze zdanie lekcji: **async to nie wielowątkowość**. Async poprawia **skalowalność** – ten sam serwer obsłuży dużo więcej równoczesnych żądań – a nie szybkość pojedynczego żądania."
+        },
+        {
+          "h": "Task i maszyna stanów: zakładka w książce",
+          "text": "`Task` to **obietnica wyniku** – odpowiednik `Promise` z TypeScriptu, albo numerek z szatni: jeszcze nie masz kurtki, ale masz dowód, że ją dostaniesz. Task może być w toku, zakończony sukcesem, zakończony błędem albo anulowany. `Task<T>` dodatkowo niesie wynik typu `T`.\n\nCo robi kompilator z metodą `async`? Przepisuje ją na **maszynę stanów** (state machine) – obiekt, który pamięta, w którym miejscu metody jest i jakie ma zmienne lokalne. Jak **zakładka w książce**: przerywasz czytanie, wkładasz zakładkę, później wracasz dokładnie w to miejsce.\n\nKrok po kroku dla przykładu poniżej:\n\n1. Wywołanie `GetLengthAsync` wykonuje kod **synchronicznie**, na wątku wywołującego, aż do pierwszego `await`.\n2. Jeśli `GetStringAsync` już się zakończył (np. wynik z cache), kod leci dalej bez przerwy.\n3. Jeśli nie – maszyna zapisuje stan („zakładkę”), a metoda **zwraca wywołującemu niedokończony Task**.\n4. Po nadejściu odpowiedzi maszyna wznawia się od zakładki, zwykle na innym wątku, i wykonuje kontynuację.\n5. `return body.Length` kończy Task z wynikiem.\n\nWyjątki: błąd rzucony w metodzie async jest **zapisywany w Tasku** i rzucany ponownie dopiero przy `await`. `await` rzuca oryginalny wyjątek, a `.Result` lub `.Wait()` owijają go w `AggregateException` (zbiorczy wyjątek).",
+          "code": "public async Task<int> GetLengthAsync(string url)\n{\n    Console.WriteLine(\"1: synchronicznie, wątek wywołującego\");\n    string body = await _http.GetStringAsync(url); // tu metoda może \"wyjść\"\n    Console.WriteLine(\"2: kontynuacja, zwykle inny wątek z puli\");\n    return body.Length;\n}\n\n// wywołujący dostaje Task<int> od razu po pierwszym await\nTask<int> t = GetLengthAsync(\"https://example.com\");\nint len = await t;",
+          "lang": "csharp"
+        },
+        {
+          "h": "Deadlock przez .Result i ConfigureAwait",
+          "text": "Najpierw pojęcie: **SynchronizationContext** to „zasada, gdzie wrócić po await”. W aplikacjach okienkowych (WPF, WinForms) mówi: „wróć na wątek UI, bo tylko on może dotykać kontrolek”. **ASP.NET Core takiego kontekstu nie ma** – kontynuacja leci na dowolny wątek z puli.\n\nAnalogia deadlocka: dwie osoby w wąskich drzwiach. Każda mówi „ty pierwszy” i czeka, aż druga przejdzie. Nikt nigdy nie przejdzie.\n\nKrok po kroku (przykład „ŹLE” poniżej):\n\n1. Wątek UI wywołuje `LoadAsync()`, dochodzi do `await Task.Delay` i dostaje niedokończony Task.\n2. Wątek UI woła `.Result` i **blokuje się**, czekając na wynik.\n3. Po 100 ms kontynuacja chce się dokończyć **na wątku UI** (tak każe kontekst).\n4. Wątek UI jest zablokowany w kroku 2, więc kontynuacja nie ruszy, a Task się nie skończy. Zakleszczenie.\n\nDwa lekarstwa:\n\n- **Async all the way** – używaj `await` w całym łańcuchu wywołań, nie mieszaj kodu synchronicznego z asynchronicznym (tzw. sync-over-async). To główne rozwiązanie.\n- `ConfigureAwait(false)` – „po await nie wracaj do kontekstu, kontynuuj gdziekolwiek”. Stosuj w **bibliotekach** ogólnego użytku, bo nie wiesz, kto je wywoła. W kodzie aplikacji ASP.NET Core nie zmienia działania. W aplikacji UI nie używaj go tam, gdzie po `await` dotykasz kontrolek.\n\nNawet bez deadlocka `.Result` i `.Wait()` marnują wątek, który stoi bezczynnie przez całą operację.",
+          "code": "// ŹLE (WPF): deadlock\nprivate void Button_Click(object s, RoutedEventArgs e)\n{\n    var data = LoadAsync().Result;   // blokuje wątek UI\n}\nprivate async Task<string> LoadAsync()\n{\n    await Task.Delay(100);           // kontynuacja chce wrócić na wątek UI\n    return \"ok\";\n}\n\n// DOBRZE: async all the way (async void tylko w handlerze zdarzenia)\nprivate async void Button_Click2(object s, RoutedEventArgs e)\n{\n    var data = await LoadAsync();\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "async void, fire-and-forget i CancellationToken",
+          "text": "**async void** to metoda async, która nie zwraca Taska. Analogia: list wysłany bez adresu zwrotnego – jeśli coś pójdzie nie tak, nikt się nie dowie. Konsekwencje:\n\n- nie można jej awaitować, więc wywołujący nie wie, kiedy się skończyła,\n- wyjątek nie trafi do wywołującego, tylko „w powietrze” i zwykle **wywraca cały proces**.\n\nJedyne uzasadnione użycie: handlery zdarzeń UI (jak `Button_Click2`). Wszędzie indziej pisz `async Task`.\n\n**Fire-and-forget** („odpal i zapomnij”) w ASP.NET Core, np. `_ = SendEmailAsync()` w kontrolerze, ma podobny problem. Wyjątek przepadnie, a gdy żądanie się skończy, zależności o zasięgu żądania (np. `DbContext`) zostaną zwolnione w trakcie pracy. Pracę w tle przekaż do `BackgroundService` przez kolejkę (`Channel<T>`) albo zewnętrzny broker wiadomości.\n\n**CancellationToken** to „przycisk stop”. Analogia: zamówiłeś pizzę, ale wychodzisz – dzwonisz, żeby jej nie piec. Anulowanie jest **kooperacyjne**: wywołujący tylko sygnalizuje, a kod sam sprawdza token i przerywa pracę. W ASP.NET Core parametr `CancellationToken` w akcji jest automatycznie powiązany z rozłączeniem klienta. Zasady:\n\n1. Przekazuj token **w dół**, do każdej metody, która go przyjmuje (EF Core, HttpClient).\n2. W długich pętlach obliczeniowych wołaj `ct.ThrowIfCancellationRequested()`.\n3. Anulowanie kończy się `OperationCanceledException` – nie loguj go jako błędu.\n4. Timeout zrobisz przez połączony token i `CancelAfter`.",
+          "code": "app.MapGet(\"/reports/{id}\", async (int id, AppDb db, CancellationToken ct) =>\n{\n    // 1. token = rozłączenie klienta LUB 5 sekund, co nastąpi pierwsze\n    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);\n    cts.CancelAfter(TimeSpan.FromSeconds(5));\n\n    // 2. token przekazany w dół – EF Core przerwie zapytanie\n    var report = await db.Reports\n        .Where(r => r.Id == id)\n        .FirstOrDefaultAsync(cts.Token);\n    return report is null ? Results.NotFound() : Results.Ok(report);\n});",
+          "lang": "csharp"
+        },
+        {
+          "h": "Task.WhenAll i Task.WhenAny: kilka garnków naraz",
+          "text": "Analogia: gotujesz makaron i sos. Możesz najpierw ugotować makaron, a potem sos (suma czasów), albo postawić oba garnki naraz (czas dłuższego). Kolejne `await` w jednej metodzie to gotowanie **po kolei**. Jeśli operacje są niezależne, uruchom je razem i poczekaj na wszystkie przez `Task.WhenAll`.\n\nWażne szczegóły:\n\n- Task startuje w momencie **wywołania metody**, nie w momencie `await` – zadania w .NET są „gorące”. Dlatego w przykładzie oba wywołania ruszają od razu.\n- `await Task.WhenAll(...)` rzuca pierwszy wyjątek; wszystkie znajdziesz we właściwości `Exception` zwróconego Taska.\n- **DbContext nie jest bezpieczny wątkowo** (thread-safe) – dwa równoległe zapytania na tym samym kontekście rzucą wyjątek. Potrzebujesz osobnych kontekstów, np. z `IDbContextFactory`.\n- Przy setkach elementów nie odpalaj wszystkiego naraz – ogranicz liczbę jednoczesnych operacji przez `Parallel.ForEachAsync` z `MaxDegreeOfParallelism` albo `SemaphoreSlim` (licznik „ile osób naraz może wejść”).\n\n`Task.WhenAny` zwraca pierwsze zakończone zadanie – przydaje się do wyścigu kilku źródeł. Na prosty timeout jest `task.WaitAsync(TimeSpan)`.",
+          "code": "// ŹLE (gdy niezależne): ~300 ms + ~200 ms\nvar user = await GetUserAsync(id, ct);\nvar orders = await GetOrdersAsync(id, ct);\n\n// DOBRZE: ~300 ms – oba \"garnki\" naraz\nvar userTask = GetUserAsync(id, ct);\nvar ordersTask = GetOrdersAsync(id, ct);\nawait Task.WhenAll(userTask, ordersTask);\nvar dto = new ProfileDto(userTask.Result, ordersTask.Result); // już ukończone – OK\n\n// ograniczona równoległość: max 8 naraz\nawait Parallel.ForEachAsync(ids,\n    new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct },\n    async (id, token) => await ProcessAsync(id, token));",
+          "lang": "csharp"
+        },
+        {
+          "h": "ValueTask i IAsyncEnumerable",
+          "text": "**ValueTask<T>** to lżejsza wersja Taska. Analogia: zwykle masz kawę w termosie (wynik gotowy od ręki), tylko czasem trzeba ją zaparzyć. Nie ma sensu za każdym razem wypisywać numerka z szatni. ValueTask jest strukturą, więc gdy wynik jest od razu gotowy (np. z cache), nie alokuje obiektu Task.\n\nZasady, o które pytają:\n\n- ValueTask wolno awaitować **tylko raz**,\n- nie wolno go awaitować z kilku miejsc ani czytać `.Result` przed ukończeniem,\n- gdy potrzebujesz tych rzeczy (np. `Task.WhenAll`), wywołaj `.AsTask()`.\n\nDomyślnie zwracaj `Task`; ValueTask to optymalizacja potwierdzona pomiarem.\n\n**IAsyncEnumerable<T>** to **asynchroniczny strumień** – jak taśma w sushi barze: talerze podjeżdżają po kolei, a ty bierzesz je, kiedy przyjadą, zamiast czekać na całą kolację naraz. Produkujesz go przez `async` + `yield return`, konsumujesz przez `await foreach`. Zastosowania: stronicowane API, przetwarzanie dużych wyników z EF Core (`AsAsyncEnumerable()`), strumieniowanie odpowiedzi JSON w ASP.NET Core. Token anulowania przekazujesz atrybutem `[EnumeratorCancellation]` i metodą `WithCancellation(ct)`.",
+          "code": "public async IAsyncEnumerable<Product> GetAllAsync(\n    [EnumeratorCancellation] CancellationToken ct = default)\n{\n    int page = 1;\n    while (true)\n    {\n        var batch = await _api.GetPageAsync(page++, ct); // pobierz stronę\n        if (batch.Count == 0) yield break;               // koniec danych\n        foreach (var p in batch) yield return p;         // oddawaj po jednym\n    }\n}\n\nawait foreach (var p in GetAllAsync().WithCancellation(ct))\n    Console.WriteLine(p.Name);",
+          "lang": "csharp"
+        },
+        {
+          "h": "Thread pool starvation i jak o tym mówić na rozmowie",
+          "text": "**Thread pool starvation** (zagłodzenie puli wątków) to sytuacja, gdy wszyscy kelnerzy stoją przy kuchni. Wszystkie wątki puli są zablokowane (`.Result`, `.Wait()`, `Thread.Sleep`, synchroniczne I/O), więc nowe żądania i kontynuacje czekają w kolejce. Pula dokłada wątki powoli, więc problem narasta.\n\nObjawy: **niskie CPU**, a mimo to rosnące czasy odpowiedzi i timeouty pod obciążeniem. Diagnoza: `dotnet-counters` (długość kolejki puli, liczba wątków) i `dotnet-dump` – widać wiele wątków stojących na `Wait`. Leczenie: usunąć sync-over-async. Podbijanie `ThreadPool.SetMinThreads` to tylko plaster.\n\nKrótka lista dobrych praktyk:\n\n- sufiks `Async` w nazwach metod asynchronicznych,\n- na serwerze nie owijaj I/O w `Task.Run` – przerzucasz tylko blokadę na innego kelnera,\n- `lock` nie pozwala na `await` w środku – użyj `SemaphoreSlim.WaitAsync`,\n- `Task.Delay` zamiast `Thread.Sleep`.\n\nJak to powiedzieć na rozmowie: „async/await poprawia skalowalność operacji I/O – na czas oczekiwania wątek wraca do puli, a kompilator zamienia metodę w maszynę stanów, która wznawia się po zakończeniu operacji. Nie tworzy nowych wątków.” Potem dorzuć przykład z praktyki: deadlock przez `.Result`, zagłodzenie puli albo brak przekazanego CancellationToken. Niuans seniorski: znaczenie SynchronizationContext, ValueTask tylko po pomiarze, ograniczanie równoległości."
+        }
+      ],
+      "takeaways": [
+        "async/await to kelner, który nie stoi przy kuchni: na czas I/O wątek wraca do puli, nikt nie czeka na sieć ani dysk.",
+        "Kompilator zamienia metodę async w maszynę stanów; do pierwszego niedokończonego await kod wykonuje się synchronicznie.",
+        "Wyjątek w metodzie async jest zapisywany w Tasku i rzucany przy await; async void go gubi i może wywrócić proces.",
+        ".Result i .Wait() blokują wątek, a z SynchronizationContext prowadzą do deadlocka – idź async all the way.",
+        "ConfigureAwait(false) stosuj w bibliotekach; ASP.NET Core nie ma SynchronizationContext.",
+        "Przekazuj CancellationToken w dół – w ASP.NET Core jest powiązany z rozłączeniem klienta.",
+        "Niezależne operacje uruchamiaj razem i czekaj przez Task.WhenAll, ale nie na jednym DbContext.",
+        "ValueTask to optymalizacja dla ścieżek zwykle synchronicznych – awaitujesz go dokładnie raz."
+      ],
+      "interview": [
+        "Czy async/await tworzy nowy wątek? Co dzieje się podczas await?",
+        "Dlaczego .Result może spowodować deadlock i kiedy pomaga ConfigureAwait(false)?",
+        "Co jest złego w async void?",
+        "Jak zrównoleglić kilka niezależnych wywołań asynchronicznych i na co uważać?",
+        "Czym jest thread pool starvation i jak go zdiagnozować?"
+      ],
+      "exam": [
+        {
+          "id": "net-async-e1",
+          "q": "Co dzieje się z wątkiem w ASP.NET Core, gdy akcja wykonuje `await db.Users.ToListAsync()` i baza odpowiada przez 200 ms?",
+          "options": [
+            "Wątek wraca do thread poola i może obsługiwać inne żądania; kontynuacja ruszy po odpowiedzi bazy",
+            "Wątek czeka zablokowany, ale nie zużywa CPU",
+            "Tworzony jest nowy dedykowany wątek, który czeka na bazę",
+            "Żądanie jest przenoszone do innego procesu"
+          ],
+          "correct": 0,
+          "why": "Podczas oczekiwania na I/O żaden wątek nie jest blokowany; await rejestruje kontynuację, a wątek wraca do puli."
+        },
+        {
+          "id": "net-async-e2",
+          "q": "W jakiej kolejności wypisze się tekst?",
+          "code": "async Task Work()\n{\n    Console.Write(\"A\");\n    await Task.Delay(100);\n    Console.Write(\"C\");\n}\nvar t = Work();\nConsole.Write(\"B\");\nawait t;",
+          "lang": "csharp",
+          "options": [
+            "BAC",
+            "ABC",
+            "ACB",
+            "CAB"
+          ],
+          "correct": 1,
+          "why": "Metoda async wykonuje się synchronicznie do pierwszego await na nieukończonym zadaniu, więc najpierw A, potem wraca do wywołującego (B), a po opóźnieniu kontynuacja wypisuje C."
+        },
+        {
+          "id": "net-async-e3",
+          "q": "Dlaczego `LoadAsync().Result` w handlerze przycisku WPF może zawiesić aplikację?",
+          "options": [
+            "Bo .Result zawsze rzuca AggregateException",
+            "Bo Task.Delay nie działa w WPF",
+            "Bo wątek UI jest zablokowany na .Result, a kontynuacja po await czeka na powrót właśnie na ten wątek przez SynchronizationContext",
+            "Bo .Result tworzy za dużo wątków"
+          ],
+          "correct": 2,
+          "why": "To klasyczny deadlock: obie strony czekają na siebie. Rozwiązanie to await w całym łańcuchu (async all the way)."
+        },
+        {
+          "id": "net-async-e4",
+          "q": "Kiedy ConfigureAwait(false) ma realne znaczenie?",
+          "options": [
+            "Zawsze w akcjach kontrolerów ASP.NET Core, bo przyspiesza je dwukrotnie",
+            "Tylko przy operacjach CPU-bound",
+            "Nigdy – od .NET Core jest ignorowane",
+            "W kodzie bibliotek, które mogą być wywołane z kontekstu z SynchronizationContext (np. UI)"
+          ],
+          "correct": 3,
+          "why": "ConfigureAwait(false) zapobiega powrotowi do przechwyconego kontekstu. ASP.NET Core go nie ma, ale biblioteka może zostać użyta w aplikacji UI."
+        },
+        {
+          "id": "net-async-e5",
+          "q": "Co jest głównym problemem metody `async void SaveAsync()` wywołanej z serwisu?",
+          "options": [
+            "Wyjątku nie da się złapać ani awaitować – może zakończyć proces, a wywołujący nie wie, kiedy praca się skończyła",
+            "Kompilator nie wygeneruje maszyny stanów",
+            "Metoda wykona się zawsze synchronicznie",
+            "Nie można w niej użyć await"
+          ],
+          "correct": 0,
+          "why": "async void nie zwraca Taska, więc brak możliwości obserwacji wyniku i wyjątków. Wolno go używać tylko w handlerach zdarzeń."
+        },
+        {
+          "id": "net-async-e6",
+          "q": "Ile mniej więcej potrwa ten kod, jeśli A trwa 300 ms, a B 200 ms (i są niezależne)?",
+          "code": "var ta = A();\nvar tb = B();\nawait Task.WhenAll(ta, tb);",
+          "lang": "csharp",
+          "options": [
+            "500 ms",
+            "Ok. 300 ms",
+            "200 ms",
+            "Zależy od liczby rdzeni – na 1 rdzeniu 500 ms"
+          ],
+          "correct": 1,
+          "why": "Obie operacje wystartowały przy wywołaniu metod (Taski są gorące), więc czekamy na najdłuższą. Dla I/O liczba rdzeni nie ma znaczenia."
+        },
+        {
+          "id": "net-async-e7",
+          "q": "Programista uruchamia dwa zapytania równolegle przez Task.WhenAll na tym samym wstrzykniętym DbContext. Co się stanie?",
+          "options": [
+            "EF Core automatycznie użyje dwóch połączeń",
+            "Zapytania wykonają się sekwencyjnie bez błędu",
+            "Najpewniej wyjątek InvalidOperationException – DbContext nie obsługuje równoległych operacji",
+            "Deadlock na poziomie bazy danych"
+          ],
+          "correct": 2,
+          "why": "DbContext nie jest thread-safe i wykrywa drugą operację w trakcie trwania pierwszej. Do równoległości potrzebne są osobne instancje, np. z IDbContextFactory."
+        },
+        {
+          "id": "net-async-e8",
+          "q": "Które użycie ValueTask jest błędne?",
+          "options": [
+            "Zwrócenie ValueTask z metody, która zwykle czyta z cache",
+            "await na ValueTask jeden raz",
+            "Wywołanie .AsTask(), aby przekazać wynik do Task.WhenAll",
+            "Dwukrotny await tej samej instancji ValueTask"
+          ],
+          "correct": 3,
+          "why": "ValueTask wolno skonsumować tylko raz. Do wielokrotnego użycia lub kombinatorów trzeba go zamienić na Task przez AsTask()."
+        },
+        {
+          "id": "net-async-e9",
+          "q": "Serwis pod obciążeniem ma niskie CPU, ale czasy odpowiedzi rosną do timeoutów, a długość kolejki thread poola stale rośnie. Co jest najbardziej prawdopodobną przyczyną?",
+          "options": [
+            "Thread pool starvation przez blokujące wywołania (.Result, .Wait, synchroniczne I/O)",
+            "Za mało pamięci dla GC Gen0",
+            "Zbyt częste użycie ConfigureAwait(false)",
+            "Zbyt wiele metod z sufiksem Async"
+          ],
+          "correct": 0,
+          "why": "Zablokowane wątki nie wykonują pracy (niskie CPU), a nowe zadania czekają w kolejce. Rozwiązaniem jest usunięcie sync-over-async."
+        },
+        {
+          "id": "net-async-e10",
+          "q": "Jak poprawnie obsłużyć anulowanie żądania, gdy klient zamknie połączenie w ASP.NET Core?",
+          "options": [
+            "Sprawdzać co sekundę HttpContext.Response.HasStarted",
+            "Przyjąć CancellationToken w akcji i przekazywać go do EF Core/HttpClient; OperationCanceledException nie traktować jako błędu",
+            "Owinąć zapytanie w Task.Run",
+            "Ustawić ConfigureAwait(false) na każdym await"
+          ],
+          "correct": 1,
+          "why": "Token akcji jest powiązany z HttpContext.RequestAborted. Przekazany w dół przerywa zapytania i wywołania HTTP."
+        }
+      ]
+    },
+    {
+      "id": "net-di",
+      "cat": "aspnet",
+      "title": "Dependency Injection i lifetimes w .NET",
+      "level": 2,
+      "minutes": 14,
+      "intro": "Dowiesz się, czym jest Inversion of Control i Dependency Injection, jak działa wbudowany kontener .NET i czym różnią się Singleton, Scoped i Transient. Na rozmowach prawie zawsze pada pytanie o lifetimes i o błąd captive dependency – po tej lekcji wyjaśnisz je na przykładzie.",
+      "sections": [
+        {
+          "h": "Po co DI: gniazdko zamiast przylutowanego kabla",
+          "text": "Analogia: lampa może mieć kabel **przylutowany na stałe** do instalacji w ścianie albo **wtyczkę**, którą wkładasz do gniazdka. Z wtyczką lampę przeniesiesz do innego pokoju, podłączysz do przedłużacza albo do testera. Gniazdko to **kontrakt** (230 V, określony kształt), a nie konkretna elektrownia.\n\nW kodzie „przylutowany kabel” to `new` wewnątrz klasy:\n\n- `OrderService` sam tworzy `new SqlOrderRepository()` i `new SmtpEmailSender()`,\n- nie da się go przetestować bez prawdziwej bazy i serwera poczty,\n- zmiana implementacji wymaga edycji klasy.\n\nDwa pojęcia, które warto rozróżnić:\n\n- **Inversion of Control** (IoC, odwrócenie sterowania) – ogólna zasada: to nie twoja klasa decyduje, skąd wezmą się jej zależności i kto ją wywoła, tylko coś z zewnątrz (framework).\n- **Dependency Injection** (DI, wstrzykiwanie zależności) – konkretna technika realizacji IoC: zależności są **podawane** klasie z zewnątrz, najczęściej przez konstruktor.\n\nZyski: łatwe testy (podajesz atrapę – mock), luźne powiązania (zależysz od interfejsu), jedna konfiguracja w `Program.cs` zamiast `new` rozsianych po kodzie. To praktyczne zastosowanie litery **D** z SOLID – Dependency Inversion Principle: zależ od abstrakcji, nie od konkretów."
+        },
+        {
+          "h": "Kontener DI w .NET krok po kroku",
+          "text": "**Kontener DI** (IoC container) to „magazynier”, który wie, jak zbudować każdy obiekt i skąd wziąć jego zależności. W .NET jest wbudowany (`Microsoft.Extensions.DependencyInjection`) i używany przez ASP.NET Core, workery i większość bibliotek.\n\nJak to działa:\n\n1. **Rejestracja** – w `Program.cs` mówisz: „gdy ktoś poprosi o `IOrderRepository`, daj `SqlOrderRepository`, z takim a takim czasem życia”. Rejestracje trafiają do `IServiceCollection`.\n2. **Budowa** – `builder.Build()` tworzy `IServiceProvider`, czyli gotowy kontener.\n3. **Rozwiązywanie** (resolve) – gdy ASP.NET Core tworzy kontroler lub handler endpointu, kontener patrzy na parametry konstruktora, buduje każdą zależność (rekurencyjnie, z jej zależnościami) i przekazuje gotowe obiekty.\n4. **Zwalnianie** – obiekty implementujące `IDisposable`, które kontener utworzył, są przez niego zwalniane na końcu ich życia (np. na końcu żądania).\n\nPreferuj **constructor injection**: zależności są widoczne w sygnaturze i obowiązkowe. Unikaj wzorca **Service Locator** (wyciągania usług przez `IServiceProvider.GetService` w środku logiki) – ukrywa zależności i utrudnia testy. Wyjątkiem są miejsca infrastrukturalne, o których za chwilę.",
+          "code": "var builder = WebApplication.CreateBuilder(args);\n\nbuilder.Services.AddSingleton<IClock, SystemClock>();\nbuilder.Services.AddScoped<IOrderRepository, SqlOrderRepository>();\nbuilder.Services.AddTransient<IPriceCalculator, PriceCalculator>();\nbuilder.Services.AddDbContext<AppDb>(o => o.UseSqlServer(cs)); // DbContext = Scoped\n\nvar app = builder.Build();\n\npublic class OrderService(IOrderRepository repo, IClock clock) // wstrzyknięte\n{\n    public Task<Order?> Get(int id) => repo.FindAsync(id);\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Singleton, Scoped, Transient: lodówka, kubek, chusteczka",
+          "text": "**Lifetime** (czas życia) mówi, jak długo kontener trzyma jedną instancję i komu ją rozdaje. Analogia biurowa:\n\n- **Singleton** – **lodówka w kuchni**. Jedna na całe biuro, wszyscy z niej korzystają przez cały czas działania aplikacji. Musi być **thread-safe** (bezpieczna przy wielu wątkach naraz), bo wiele żądań używa jej jednocześnie. Przykłady: konfiguracja, cache w pamięci, `IClock`, klienci HTTP przez `IHttpClientFactory`.\n- **Scoped** – **kubek na jedno spotkanie**. W ASP.NET Core **scope** (zakres) to jedno żądanie HTTP: w obrębie żądania wszyscy dostają ten sam obiekt, następne żądanie dostaje nowy. Przykłady: `DbContext`, unit of work, informacja o bieżącym użytkowniku.\n- **Transient** – **chusteczka jednorazowa**. Nowa instancja za każdym razem, gdy ktoś o nią poprosi – nawet dwa razy w tym samym żądaniu. Przykłady: lekkie, bezstanowe obiekty pomocnicze.\n\nJak wybierać, krok po kroku:\n\n1. Czy obiekt ma stan związany z jednym żądaniem lub użytkownikiem (np. DbContext)? → **Scoped**.\n2. Czy jest bezstanowy lub ma stan współdzielony i bezpieczny wątkowo, a jego utworzenie kosztuje? → **Singleton**.\n3. Lekki i bezstanowy, bez szczególnych wymagań? → **Transient** (albo Singleton, jeśli jest naprawdę bezstanowy).\n\nUwaga na Transient z `IDisposable`: jeśli rozwiązujesz go z głównego kontenera (root), kontener trzyma referencję do końca życia aplikacji, żeby go potem zwolnić – to potencjalny wyciek pamięci."
+        },
+        {
+          "h": "Captive dependency: uwięziony kubek",
+          "text": "**Captive dependency** (uwięziona zależność) to sytuacja, gdy obiekt o **dłuższym** życiu trzyma obiekt o **krótszym** życiu. Analogia: ktoś przykleił jednorazowy kubek ze spotkania do lodówki. Kubek miał zniknąć po spotkaniu, a teraz wszyscy piją z niego przez miesiąc.\n\nKrok po kroku, co się dzieje w przykładzie „ŹLE”:\n\n1. `PriceCache` jest Singletonem, tworzony raz przy pierwszym użyciu.\n2. W konstruktorze dostaje `AppDb` (Scoped) z **pierwszego** scope'u.\n3. Ten jeden DbContext jest odtąd używany przez wszystkie żądania naraz – a DbContext nie jest thread-safe i ma rosnący change tracker. Skutki: wyjątki przy równoległych żądaniach, nieaktualne dane, rosnąca pamięć, a po zwolnieniu scope'u – `ObjectDisposedException`.\n\nReguła: zależność może mieć **taki sam albo dłuższy** czas życia niż obiekt, który jej używa. Singleton → tylko Singletony. Scoped → Singletony i Scoped. Transient → wszystko.\n\nW środowisku Development ASP.NET Core włącza **walidację scope'ów** (`ValidateScopes`) i rzuci wyjątek przy próbie wstrzyknięcia Scoped do Singletona. Warto też włączyć `ValidateOnBuild`, żeby błędy rejestracji wychodziły przy starcie, a nie przy pierwszym żądaniu.",
+          "code": "// ŹLE: singleton trzyma scoped DbContext na zawsze\npublic class PriceCache(AppDb db)            // AddSingleton<PriceCache>()\n{\n    public Task<decimal> GetAsync(int id) =>\n        db.Prices.Where(p => p.Id == id).Select(p => p.Value).FirstAsync();\n}\n\n// DOBRZE: singleton tworzy krótki scope na każdą operację\npublic class PriceCache2(IServiceScopeFactory scopes)\n{\n    public async Task<decimal> GetAsync(int id)\n    {\n        using var scope = scopes.CreateScope();\n        var db = scope.ServiceProvider.GetRequiredService<AppDb>();\n        return await db.Prices.Where(p => p.Id == id).Select(p => p.Value).FirstAsync();\n    }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "IServiceScopeFactory w BackgroundService",
+          "text": "**BackgroundService** to klasa bazowa dla zadań działających w tle przez cały czas życia aplikacji (np. przetwarzanie kolejki co 10 sekund). Rejestruje się ją przez `AddHostedService` i jest de facto **Singletonem**. Problem: w tle **nie ma żądania HTTP**, więc nie ma też automatycznego scope'u.\n\nRozwiązanie: wstrzyknij `IServiceScopeFactory` („fabrykę zakresów”) i dla każdej porcji pracy (każdej iteracji pętli, każdej wiadomości) twórz nowy scope. To jedyne miejsce, gdzie świadome wyciąganie usług z `ServiceProvider` jest w porządku – to kod infrastrukturalny, nie logika biznesowa.\n\nKrok po kroku w przykładzie:\n\n1. Pętla działa, dopóki aplikacja nie zacznie się zamykać (`stoppingToken`).\n2. Każda iteracja tworzy **nowy scope** – świeży DbContext, czysty change tracker.\n3. Na końcu bloku `using` scope jest zwalniany razem z DbContextem.\n4. `PeriodicTimer` czeka asynchronicznie do następnego „tyknięcia”, nie blokując wątku.\n\nTa sama technika przydaje się w singletonach typu cache, w handlerach wiadomości z brokera i wszędzie tam, gdzie kod działa poza żądaniem HTTP. W .NET 8+ dostępny jest też `AsyncServiceScope` (`CreateAsyncScope()`), który poprawnie wywoła `DisposeAsync` na zależnościach.",
+          "code": "public class OutboxWorker(IServiceScopeFactory scopes, ILogger<OutboxWorker> log)\n    : BackgroundService\n{\n    protected override async Task ExecuteAsync(CancellationToken stoppingToken)\n    {\n        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));\n        while (await timer.WaitForNextTickAsync(stoppingToken))\n        {\n            await using var scope = scopes.CreateAsyncScope();     // nowy scope\n            var db = scope.ServiceProvider.GetRequiredService<AppDb>();\n            var pending = await db.Outbox.Where(m => !m.Sent).Take(50)\n                                  .ToListAsync(stoppingToken);\n            log.LogInformation(\"Processing {Count} messages\", pending.Count);\n            // ... wysyłka, oznaczenie Sent = true, SaveChangesAsync\n        }\n    }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Keyed services i wiele implementacji",
+          "text": "Co, jeśli masz kilka implementacji jednego interfejsu, np. `INotifier` dla e-maila i SMS-a? Możliwości:\n\n- **Wiele rejestracji, wstrzyknięcie `IEnumerable<INotifier>`** – dostajesz wszystkie implementacje, np. aby wysłać powiadomienie każdym kanałem. Jeśli wstrzykniesz pojedynczy `INotifier`, dostaniesz **ostatnio zarejestrowany**.\n- **Keyed services** (od .NET 8) – rejestrujesz implementację pod **kluczem**, jak szuflady podpisane „email” i „sms”. Konsument wybiera szufladę atrybutem `[FromKeyedServices(\"sms\")]`.\n- **Fabryka lub strategia** – gdy wybór zależy od danych w czasie działania (np. kraj klienta), wstrzyknij wszystkie implementacje albo dedykowaną fabrykę i wybierz w kodzie.\n\nKeyed services są wygodne, gdy wybór jest **statyczny** (ten serwis zawsze używa SMS). Gdy wybór zależy od danych wejściowych, lepszy jest wzorzec strategii – inaczej logika biznesowa przecieka do konfiguracji DI.\n\nPrzydatne metody: `TryAddScoped` (zarejestruj tylko, jeśli jeszcze nikt nie zarejestrował – używane w bibliotekach) i `Replace` (podmień rejestrację, np. w testach integracyjnych).",
+          "code": "builder.Services.AddKeyedSingleton<INotifier, EmailNotifier>(\"email\");\nbuilder.Services.AddKeyedSingleton<INotifier, SmsNotifier>(\"sms\");\n\npublic class TwoFactorService([FromKeyedServices(\"sms\")] INotifier notifier)\n{\n    public Task SendCodeAsync(string phone, string code) =>\n        notifier.SendAsync(phone, $\"Kod: {code}\");\n}\n\napp.MapPost(\"/broadcast\", ([FromKeyedServices(\"email\")] INotifier email) => Results.Ok());",
+          "lang": "csharp"
+        },
+        {
+          "h": "Options pattern: konfiguracja jako typowany obiekt",
+          "text": "Zamiast wszędzie czytać `configuration[\"Smtp:Host\"]` jako stringi, wiążesz sekcję konfiguracji z klasą. To **Options pattern**. Analogia: zamiast szukać karteczek z hasłami po całym biurze, masz jedną podpisaną teczkę „SMTP” z polami do wypełnienia.\n\nTrzy interfejsy i różnice między nimi:\n\n- **IOptions<T>** – Singleton, wartość wczytana raz. Zmiany w pliku nie są widoczne do restartu.\n- **IOptionsSnapshot<T>** – Scoped, przeliczany **na każde żądanie**, więc widzi zmiany pliku. Nie wstrzykuj go do Singletona (captive dependency!).\n- **IOptionsMonitor<T>** – Singleton, który zawsze zwraca aktualną wartość (`CurrentValue`) i pozwala reagować na zmiany (`OnChange`). Dobry wybór dla singletonów i BackgroundService.\n\nŹle → dobrze: konfiguracja bez walidacji wysypie się dopiero przy pierwszym wysłaniu e-maila, o 3 w nocy. Z `ValidateDataAnnotations()` i `ValidateOnStart()` aplikacja **nie wystartuje** z błędną konfiguracją – błąd zobaczysz od razu przy wdrożeniu.\n\nSekrety (hasła, klucze API) nie powinny leżeć w `appsettings.json` w repozytorium – lokalnie używa się User Secrets, a na produkcji zmiennych środowiskowych lub Key Vault. Options pattern działa tak samo niezależnie od źródła.",
+          "code": "public class SmtpOptions\n{\n    [Required] public string Host { get; set; } = \"\";\n    [Range(1, 65535)] public int Port { get; set; } = 587;\n}\n\nbuilder.Services.AddOptions<SmtpOptions>()\n    .Bind(builder.Configuration.GetSection(\"Smtp\"))\n    .ValidateDataAnnotations()\n    .ValidateOnStart();          // błędna konfiguracja = aplikacja nie startuje\n\npublic class EmailSender(IOptionsMonitor<SmtpOptions> opts)\n{\n    public string Describe() => $\"{opts.CurrentValue.Host}:{opts.CurrentValue.Port}\";\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Jak o tym mówić na rozmowie",
+          "text": "Schemat odpowiedzi na „czym jest DI?”: jedno zdanie definicji („zależności są podawane z zewnątrz, zwykle przez konstruktor”), korzyść (testowalność, luźne powiązania), jak to robi .NET (rejestracja w `IServiceCollection`, kontener rozwiązuje konstruktory).\n\nNa pytanie o lifetimes podaj definicję i **przykład** dla każdego: Singleton – cache, Scoped – DbContext, Transient – lekki helper. Od razu dorzuć captive dependency – rekruter i tak o nią dopyta.\n\nNiuanse seniorskie, które robią wrażenie:\n\n- walidacja scope'ów i `ValidateOnBuild`, żeby błędy rejestracji wychodziły przy starcie,\n- `IServiceScopeFactory` w BackgroundService i dlaczego to nie jest antywzorzec Service Locator,\n- `IOptionsSnapshot` vs `IOptionsMonitor` i który pasuje do singletona,\n- disposable Transient rozwiązywany z root providera jako wyciek,\n- kiedy keyed services, a kiedy strategia,\n- że wbudowany kontener celowo jest prosty (brak np. interceptorów i rejestracji po konwencji), a do takich potrzeb sięga się po Scrutor lub Autofac."
+        }
+      ],
+      "takeaways": [
+        "IoC to zasada „ktoś z zewnątrz steruje”, DI to technika: zależności podawane przez konstruktor zamiast tworzone przez new.",
+        "Kontener rejestruje usługi w IServiceCollection, rozwiązuje zależności rekurencyjnie i zwalnia IDisposable na końcu ich życia.",
+        "Singleton – jedna instancja na aplikację (musi być thread-safe), Scoped – jedna na żądanie HTTP, Transient – nowa przy każdym pobraniu.",
+        "Captive dependency: dłużej żyjący obiekt trzyma krócej żyjący (np. Singleton z DbContext) – zależności mogą żyć tyle samo albo dłużej.",
+        "W singletonach i BackgroundService twórz scope przez IServiceScopeFactory dla każdej porcji pracy.",
+        "Keyed services (od .NET 8) wybierają implementację po kluczu; gdy wybór zależy od danych, użyj strategii.",
+        "Options pattern: IOptions (raz), IOptionsSnapshot (Scoped, na żądanie), IOptionsMonitor (Singleton, bieżąca wartość); waliduj przez ValidateOnStart."
+      ],
+      "interview": [
+        "Czym różni się Inversion of Control od Dependency Injection?",
+        "Omów lifetimes Singleton, Scoped i Transient z przykładami użycia.",
+        "Co to jest captive dependency i jak jej uniknąć?",
+        "Jak użyć DbContext w BackgroundService?",
+        "Czym różnią się IOptions, IOptionsSnapshot i IOptionsMonitor?"
+      ],
+      "exam": [
+        {
+          "id": "net-di-e1",
+          "q": "Która odpowiedź najlepiej opisuje relację IoC i DI?",
+          "options": [
+            "To synonimy oznaczające kontener z ASP.NET Core",
+            "DI to zasada, a IoC to jedna z technik jej realizacji",
+            "IoC to ogólna zasada odwrócenia sterowania, a DI to konkretna technika – podawanie zależności z zewnątrz",
+            "IoC dotyczy tylko testów jednostkowych"
+          ],
+          "correct": 2,
+          "why": "Inversion of Control to szersza zasada (framework steruje twoim kodem i dostarcza zależności), a Dependency Injection jest jej konkretną realizacją."
+        },
+        {
+          "id": "net-di-e2",
+          "q": "Usługa zarejestrowana jako Scoped jest wstrzykiwana do dwóch różnych klas użytych w tym samym żądaniu HTTP. Ile instancji powstanie w tym żądaniu?",
+          "options": [
+            "Dwie – po jednej dla każdej klasy",
+            "Zero – Scoped tworzy się dopiero po żądaniu",
+            "Jedna na całą aplikację",
+            "Jedna – obie klasy dostaną tę samą instancję w obrębie żądania"
+          ],
+          "correct": 3,
+          "why": "Scoped oznacza jedną instancję na scope, którym w ASP.NET Core jest żądanie HTTP. Kolejne żądanie dostanie nową."
+        },
+        {
+          "id": "net-di-e3",
+          "q": "Singleton `PriceCache` przyjmuje w konstruktorze `AppDb` (DbContext, Scoped). Jaki to problem?",
+          "options": [
+            "Captive dependency – jeden DbContext zostaje uwięziony na całe życie aplikacji i współdzielony przez wiele żądań",
+            "Żaden – kontener utworzy nowy DbContext przy każdym wywołaniu metody",
+            "Problem wydajnościowy: DbContext będzie tworzony przy każdym żądaniu",
+            "Błąd kompilacji"
+          ],
+          "correct": 0,
+          "why": "Singleton powstaje raz, więc wstrzyknięty mu DbContext też żyje wiecznie. DbContext nie jest thread-safe, a jego scope zostanie w końcu zwolniony."
+        },
+        {
+          "id": "net-di-e4",
+          "q": "Jak poprawnie użyć DbContext w BackgroundService przetwarzającym wiadomości w pętli?",
+          "options": [
+            "Wstrzyknąć AppDb do konstruktora BackgroundService",
+            "Wstrzyknąć IServiceScopeFactory i tworzyć nowy scope (i z niego DbContext) dla każdej porcji pracy",
+            "Zarejestrować DbContext jako Singleton",
+            "Utworzyć DbContext raz w StartAsync i używać do końca"
+          ],
+          "correct": 1,
+          "why": "BackgroundService jest de facto singletonem i nie ma scope'u żądania. Każda iteracja powinna mieć własny scope ze świeżym DbContextem."
+        },
+        {
+          "id": "net-di-e5",
+          "q": "Które ustawienie lifetime jest poprawne pod kątem reguły zależności?",
+          "options": [
+            "Singleton zależy od Scoped",
+            "Singleton zależy od Transient, który zależy od Scoped",
+            "Scoped zależy od Singletona",
+            "Singleton zależy od IOptionsSnapshot<T>"
+          ],
+          "correct": 2,
+          "why": "Zależność może żyć tyle samo lub dłużej niż obiekt, który jej używa. Scoped → Singleton jest w porządku; pozostałe to captive dependency (IOptionsSnapshot jest Scoped)."
+        },
+        {
+          "id": "net-di-e6",
+          "q": "Zarejestrowano `AddScoped<INotifier, EmailNotifier>()` a potem `AddScoped<INotifier, SmsNotifier>()`. Co dostanie klasa z parametrem konstruktora `INotifier`?",
+          "options": [
+            "EmailNotifier, bo był pierwszy",
+            "Wyjątek – niejednoznaczna rejestracja",
+            "Losową implementację",
+            "SmsNotifier – ostatnią rejestrację; wszystkie dostępne są przez IEnumerable<INotifier>"
+          ],
+          "correct": 3,
+          "why": "Wbudowany kontener przy pojedynczej zależności zwraca ostatnią rejestrację. Wszystkie implementacje można dostać, wstrzykując IEnumerable<INotifier>."
+        },
+        {
+          "id": "net-di-e7",
+          "q": "Która opcja pozwala w singletonie odczytywać zawsze aktualną wartość konfiguracji po zmianie pliku appsettings?",
+          "options": [
+            "IOptionsMonitor<T>.CurrentValue",
+            "IOptions<T>.Value",
+            "IOptionsSnapshot<T>.Value",
+            "Statyczne pole wczytane w Program.cs"
+          ],
+          "correct": 0,
+          "why": "IOptionsMonitor jest Singletonem i śledzi zmiany. IOptions wczytuje raz, a IOptionsSnapshot jest Scoped, więc nie nadaje się do singletona."
+        },
+        {
+          "id": "net-di-e8",
+          "q": "Po co dodaje się `.ValidateOnStart()` do rejestracji opcji?",
+          "options": [
+            "Żeby opcje przeładowywały się przy każdym żądaniu",
+            "Żeby błędna konfiguracja zatrzymała start aplikacji zamiast wysypać się przy pierwszym użyciu",
+            "Żeby zaszyfrować sekrety w appsettings.json",
+            "Żeby zarejestrować opcje jako Scoped"
+          ],
+          "correct": 1,
+          "why": "Walidacja przy starcie przesuwa wykrycie błędu konfiguracji na moment wdrożenia, a nie na przypadkowe pierwsze użycie w produkcji."
+        },
+        {
+          "id": "net-di-e9",
+          "q": "Kiedy keyed services są gorszym wyborem niż wzorzec strategii?",
+          "options": [
+            "Gdy konkretna klasa zawsze używa tej samej implementacji",
+            "Gdy implementacje są Singletonami",
+            "Gdy wybór implementacji zależy od danych w czasie działania, np. kraju klienta w zamówieniu",
+            "Gdy używamy Minimal APIs"
+          ],
+          "correct": 2,
+          "why": "Klucz w [FromKeyedServices] jest stały w kodzie. Wybór zależny od danych wejściowych lepiej zrobić strategią lub fabryką, która wybiera spośród wstrzykniętych implementacji."
+        },
+        {
+          "id": "net-di-e10",
+          "q": "Dlaczego wyciąganie usług przez `IServiceProvider.GetService` w środku logiki biznesowej uważa się za antywzorzec?",
+          "options": [
+            "Bo jest wolniejsze niż new",
+            "Bo GetService zawsze zwraca nową instancję",
+            "Bo nie działa z Scoped",
+            "Bo ukrywa zależności klasy (Service Locator), utrudniając testy i zrozumienie kodu"
+          ],
+          "correct": 3,
+          "why": "Service Locator chowa zależności poza sygnaturą konstruktora. Constructor injection czyni je jawnymi i obowiązkowymi; wyjątek to kod infrastrukturalny jak tworzenie scope'ów."
+        }
+      ]
+    },
+    {
+      "id": "net-aspnet-api",
+      "cat": "aspnet",
+      "title": "Dobre API w ASP.NET Core",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Przejdziesz drogę żądania HTTP przez ASP.NET Core: od pipeline'u middleware, przez routing i walidację, po odpowiedź z właściwym kodem HTTP i błędami w formacie ProblemDetails. Do tego elementy „produkcyjne”, o które pytają na rozmowach: wersjonowanie, paginacja, OpenAPI, logowanie strukturalne, health checks i rate limiting.",
+      "sections": [
+        {
+          "h": "Pipeline i middleware: taśma na lotnisku",
+          "text": "Analogia: pasażer na lotnisku przechodzi przez kolejne stanowiska – odprawa, kontrola bezpieczeństwa, kontrola paszportowa, bramka. Każde stanowisko może go przepuścić dalej albo zatrzymać. W drodze powrotnej (przylot) przechodzi przez część z nich w odwrotnej kolejności.\n\nW ASP.NET Core **pipeline** to taki ciąg stanowisk, a każde stanowisko to **middleware** – kawałek kodu, który dostaje `HttpContext` (żądanie + odpowiedź) i decyduje:\n\n1. zrobić coś **przed** (np. zapisać czas startu),\n2. wywołać `next()` – przekazać żądanie dalej,\n3. zrobić coś **po** (np. zalogować czas trwania),\n4. albo **nie** wywołać `next()` i od razu odpowiedzieć (tzw. short-circuit, np. 401 przy braku logowania).\n\n**Kolejność rejestracji ma znaczenie**, bo to kolejność stanowisk. Typowy porządek:\n\n- `UseExceptionHandler` – na początku, żeby łapać błędy z całej reszty,\n- `UseHttpsRedirection`,\n- `UseCors` – przed uwierzytelnianiem, żeby obsłużyć zapytania preflight,\n- `UseAuthentication` – „kim jesteś?”, potem `UseAuthorization` – „czy możesz?”,\n- `UseRateLimiter`,\n- na końcu endpointy (`MapControllers`, `MapGet`...).\n\nKlasyczny błąd: `UseAuthorization` przed `UseAuthentication` – autoryzacja nie wie jeszcze, kim jest użytkownik, więc wszystko kończy się 401.",
+          "code": "var app = builder.Build();\n\napp.UseExceptionHandler();     // 1. łapie wyjątki z dalszej części\napp.UseHttpsRedirection();\napp.UseCors(\"spa\");\napp.UseAuthentication();       // 2. kim jesteś\napp.UseAuthorization();        // 3. czy masz prawo\napp.UseRateLimiter();\n\n// własny middleware: mierzy czas żądania\napp.Use(async (ctx, next) =>\n{\n    var sw = Stopwatch.StartNew();\n    await next(ctx);                       // reszta pipeline'u\n    app.Logger.LogInformation(\"{Path} took {Ms} ms\", ctx.Request.Path, sw.ElapsedMilliseconds);\n});\n\napp.MapGroup(\"/api/orders\").MapOrders();\napp.Run();",
+          "lang": "csharp"
+        },
+        {
+          "h": "Minimal APIs vs Controllers, routing i route groups",
+          "text": "Dwa style pisania endpointów (endpoint = adres + metoda HTTP + kod, który go obsługuje):\n\n- **Controllers** – klasy dziedziczące po `ControllerBase` z atrybutami `[HttpGet]`, `[Route]`. Dużo konwencji, filtry, model binding, `[ApiController]` z automatyczną odpowiedzią 400 przy błędach walidacji. Dobrze znane w dużych, starszych projektach.\n- **Minimal APIs** – endpointy jako lambdy lub metody rejestrowane przez `MapGet`, `MapPost`. Mniej narzutu i ceremonii, lepsza wydajność, dobrze wspierają Native AOT (kompilację do natywnego pliku bez JIT). W nowych projektach coraz częściej domyślne.\n\nOba działają na tym samym routingu i tym samym pipeline. Wybór to raczej kwestia stylu i zespołu niż możliwości.\n\n**Routing** dopasowuje adres do endpointu. **Route parameters** z ograniczeniami (`{id:int}`) chronią przed złym dopasowaniem – `/orders/abc` nie trafi do endpointu oczekującego liczby i zwróci 404.\n\n**Route groups** (`MapGroup`) to „wspólny prefiks + wspólne ustawienia”: grupujesz endpointy jednego zasobu, nadajesz im prefiks `/api/orders`, tag w OpenAPI, wymóg autoryzacji. Analogia: piętro w biurowcu z jedną recepcją zamiast osobnej recepcji przy każdym pokoju.\n\n**TypedResults** zamiast `Results` daje typy zwracane, które OpenAPI potrafi opisać automatycznie (np. `Results<Ok<OrderDto>, NotFound>`).",
+          "code": "public static class OrderEndpoints\n{\n    public static RouteGroupBuilder MapOrders(this RouteGroupBuilder g)\n    {\n        g.WithTags(\"Orders\").RequireAuthorization();\n\n        g.MapGet(\"/{id:int}\", async Task<Results<Ok<OrderDto>, NotFound>> (\n            int id, IOrderService svc, CancellationToken ct) =>\n        {\n            var order = await svc.GetAsync(id, ct);\n            return order is null ? TypedResults.NotFound() : TypedResults.Ok(order);\n        });\n\n        g.MapPost(\"/\", async (CreateOrderRequest req, IOrderService svc, CancellationToken ct) =>\n        {\n            var created = await svc.CreateAsync(req, ct);\n            return TypedResults.Created($\"/api/orders/{created.Id}\", created);\n        });\n        return g;\n    }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "DTO i walidacja: formularz na poczcie",
+          "text": "**DTO** (Data Transfer Object) to prosty obiekt opisujący, co wchodzi do API i co z niego wychodzi. Analogia: formularz na poczcie. Urzędnik nie daje ci dostępu do swojego segregatora (encji w bazie), tylko formularz z kilkoma polami.\n\nDlaczego nie zwracać encji EF Core bezpośrednio:\n\n- **wyciek danych** – encja `User` ma `PasswordHash`, a serializer go wyśle,\n- **over-posting** (mass assignment) – klient wyśle w JSON pole `IsAdmin: true` i model binding je ustawi,\n- **cykle** w relacjach (Order → Customer → Orders) psują serializację,\n- każda zmiana schematu bazy staje się zmianą kontraktu API.\n\nOsobne DTO na wejście (`CreateOrderRequest`) i na wyjście (`OrderDto`) – najczęściej jako `record`. Mapowanie ręczne lub przez bibliotekę (Mapster, Mapperly).\n\n**Walidacja** sprawdza, czy dane wejściowe mają sens, zanim dotkną logiki. Opcje:\n\n1. **Data Annotations** (`[Required]`, `[Range]`, `[EmailAddress]`) – w kontrolerach z `[ApiController]` błędy automatycznie dają 400. W Minimal APIs od .NET 10 jest wbudowana walidacja włączana przez `builder.Services.AddValidation()`.\n2. **FluentValidation** – reguły w osobnej klasie, wygodne przy złożonych warunkach.\n3. **Reguły biznesowe** (np. „produkt jest dostępny”) sprawdza warstwa domeny/serwisu, nie walidator formatu.\n\nOdpowiedź z błędem walidacji to **400 Bad Request** w formacie `ValidationProblemDetails` z listą błędów per pole.",
+          "code": "// ŹLE: encja na wejściu – klient może ustawić IsAdmin, Id, CreatedAt...\napp.MapPost(\"/users\", async (User user, AppDb db) => { db.Add(user); await db.SaveChangesAsync(); });\n\n// DOBRZE: wąskie DTO + walidacja\npublic record CreateUserRequest(\n    [Required, EmailAddress] string Email,\n    [Required, StringLength(100)] string Name);\n\npublic record UserDto(int Id, string Email, string Name);\n\napp.MapPost(\"/users\", async (CreateUserRequest req, IUserService svc, CancellationToken ct) =>\n{\n    UserDto created = await svc.CreateAsync(req, ct);\n    return TypedResults.Created($\"/users/{created.Id}\", created);\n});",
+          "lang": "csharp"
+        },
+        {
+          "h": "Kody HTTP i ProblemDetails z IExceptionHandler",
+          "text": "Kod statusu HTTP to pierwsza informacja dla klienta, „co się stało”. Najważniejsze:\n\n- **200 OK** – sukces z treścią; **201 Created** – utworzono zasób (z nagłówkiem `Location`); **204 No Content** – sukces bez treści (np. DELETE).\n- **400 Bad Request** – złe dane wejściowe; **401 Unauthorized** – nie wiem, kim jesteś (brak lub zły token); **403 Forbidden** – wiem, kim jesteś, ale nie masz prawa; **404 Not Found**; **409 Conflict** – konflikt stanu (np. duplikat, zmiana równoległa); **422 Unprocessable Entity** – poprawny format, ale łamie reguły biznesowe (stosowany przez część zespołów); **429 Too Many Requests**.\n- **500** – błąd serwera, nigdy nie celowo za błąd klienta.\n\n**ProblemDetails** (RFC 9457, wcześniej 7807) to standardowy format JSON błędu: `type`, `title`, `status`, `detail`, `instance` plus własne pola. Dzięki temu frontend obsługuje wszystkie błędy jednym kodem.\n\nGlobalna obsługa błędów krok po kroku:\n\n1. `AddProblemDetails()` – włącza generowanie ProblemDetails.\n2. Własna klasa `IExceptionHandler` (od .NET 8) mapuje typy wyjątków na kody (np. `NotFoundException` → 404).\n3. `UseExceptionHandler()` na początku pipeline'u wywołuje handlery.\n4. Na produkcji **nie zwracaj stack trace** – tylko ogólny komunikat i `traceId` do korelacji z logami.",
+          "code": "public sealed class AppExceptionHandler(IProblemDetailsService pds, ILogger<AppExceptionHandler> log)\n    : IExceptionHandler\n{\n    public async ValueTask<bool> TryHandleAsync(HttpContext ctx, Exception ex, CancellationToken ct)\n    {\n        var (status, title) = ex switch\n        {\n            NotFoundException => (404, \"Resource not found\"),\n            ConflictException => (409, \"Conflict\"),\n            _ => (500, \"Unexpected error\")\n        };\n        if (status == 500) log.LogError(ex, \"Unhandled exception\");\n        ctx.Response.StatusCode = status;\n        return await pds.TryWriteAsync(new ProblemDetailsContext\n        {\n            HttpContext = ctx, Exception = ex,\n            ProblemDetails = { Status = status, Title = title }\n        });\n    }\n}\n// Program.cs: AddProblemDetails(); AddExceptionHandler<AppExceptionHandler>(); app.UseExceptionHandler();",
+          "lang": "csharp"
+        },
+        {
+          "h": "Wersjonowanie, paginacja i OpenAPI",
+          "text": "**Wersjonowanie** pozwala zmieniać API bez psucia istniejących klientów (np. starej wersji aplikacji mobilnej). Analogia: nowe wydanie książki nie unieważnia starych egzemplarzy. Sposoby: w ścieżce (`/api/v2/orders` – najprostsze i najczytelniejsze), w query stringu (`?api-version=2.0`), w nagłówku. W .NET używa się pakietu **Asp.Versioning** (nie jest wbudowany w framework). Zasada: zmiany **niekompatybilne** (usunięcie pola, zmiana typu) wymagają nowej wersji; dodanie opcjonalnego pola – nie.\n\n**Paginacja** – nigdy nie zwracaj „wszystkiego”. Dwa podejścia:\n\n- **Offset** (`?page=3&pageSize=20` → `Skip/Take`) – prosta, pozwala skoczyć na dowolną stronę, ale na dużych tabelach dalekie strony są wolne, a przy wstawianiu danych elementy „przeskakują” między stronami.\n- **Keyset / cursor** (`?after=1234&limit=20` → `WHERE Id > 1234`) – stabilna i szybka przy dużych zbiorach, ale bez skakania na stronę 57. Dobra dla nieskończonego scrolla.\n\nZawsze ustaw **maksymalny** `pageSize` i stabilne sortowanie (np. po Id).\n\n**OpenAPI** to maszynowo czytelny opis API (endpointy, modele, kody odpowiedzi). Od .NET 9 dokument generuje wbudowany pakiet `Microsoft.AspNetCore.OpenApi` (`AddOpenApi()` + `MapOpenApi()`), a interfejs do klikania dodaje się osobno (np. Scalar albo Swagger UI). Z dokumentu można wygenerować klienta TypeScript dla Angulara (np. NSwag, openapi-generator).",
+          "code": "public record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, int Total);\n\napp.MapGet(\"/api/v1/products\", async (AppDb db, int page = 1, int pageSize = 20,\n                                       CancellationToken ct = default) =>\n{\n    pageSize = Math.Clamp(pageSize, 1, 100);           // limit rozmiaru strony\n    var query = db.Products.AsNoTracking().OrderBy(p => p.Id); // stabilne sortowanie\n    var total = await query.CountAsync(ct);\n    var items = await query.Skip((page - 1) * pageSize).Take(pageSize)\n        .Select(p => new ProductDto(p.Id, p.Name, p.Price))   // projekcja do DTO\n        .ToListAsync(ct);\n    return TypedResults.Ok(new PagedResult<ProductDto>(items, page, pageSize, total));\n});\n\nbuilder.Services.AddOpenApi();   // + app.MapOpenApi(); -> /openapi/v1.json",
+          "lang": "csharp"
+        },
+        {
+          "h": "Logowanie strukturalne, health checks i rate limiting",
+          "text": "**Logowanie strukturalne** – log to nie tylko tekst, ale **zdarzenie z polami**, które da się filtrować (np. „pokaż wszystkie logi dla OrderId = 42”). Analogia: zamiast notatek w zeszycie – arkusz z kolumnami. Klucz to **message template** z nazwanymi placeholderami.\n\nŹle → dobrze: `LogInformation($\"Order {id} created\")` (interpolacja) tworzy zwykły string – tracisz pole `OrderId`, a string buduje się nawet przy wyłączonym poziomie logowania. Poprawnie: `LogInformation(\"Order {OrderId} created\", id)`. Do tego Serilog lub OpenTelemetry, korelacja przez `TraceId`, i nigdy nie loguj haseł, tokenów ani pełnych danych osobowych.\n\n**Health checks** to endpointy, przez które orkiestrator (Kubernetes, load balancer) pyta „żyjesz?”:\n\n- **liveness** – „czy proces działa?” (jeśli nie – restart),\n- **readiness** – „czy mogę przyjmować ruch?” (np. czy baza odpowiada; jeśli nie – nie kieruj ruchu).\n\nW liveness nie sprawdzaj bazy – awaria bazy restartowałaby wszystkie instancje bez sensu.\n\n**Rate limiting** – ograniczenie liczby żądań w czasie, jak bramka w metrze wpuszczająca określoną liczbę osób na minutę. Chroni przed nadużyciami i przeciążeniem. ASP.NET Core ma wbudowany middleware z algorytmami: fixed window, sliding window, token bucket, concurrency. Domyślny kod odrzucenia to 503 – warto ustawić **429** i limitować per użytkownik lub per IP.",
+          "code": "builder.Services.AddHealthChecks()\n    .AddDbContextCheck<AppDb>(tags: [\"ready\"]);\n\nbuilder.Services.AddRateLimiter(o =>\n{\n    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;\n    o.AddFixedWindowLimiter(\"api\", l => { l.PermitLimit = 100; l.Window = TimeSpan.FromMinutes(1); });\n});\n\napp.MapHealthChecks(\"/health/live\", new() { Predicate = _ => false });   // tylko \"proces żyje\"\napp.MapHealthChecks(\"/health/ready\", new() { Predicate = c => c.Tags.Contains(\"ready\") });\napp.MapGroup(\"/api\").RequireRateLimiting(\"api\");\n\nlog.LogInformation(\"Order {OrderId} created by {UserId}\", order.Id, userId); // strukturalnie",
+          "lang": "csharp"
+        },
+        {
+          "h": "Jak o tym mówić na rozmowie",
+          "text": "Pytanie „co według ciebie oznacza dobre API?” to zaproszenie do pokazania szerokiego obrazu. Odpowiedz listą, każdy punkt z jednym konkretem:\n\n1. **Kontrakt** – DTO zamiast encji, przewidywalne nazwy zasobów, poprawne metody i kody HTTP.\n2. **Błędy** – jeden format (ProblemDetails), globalny handler, brak stack trace na produkcji.\n3. **Walidacja** na wejściu, reguły biznesowe w domenie.\n4. **Ewolucja** – wersjonowanie, zmiany kompatybilne wstecz.\n5. **Wydajność** – paginacja, `AsNoTracking`, projekcje, CancellationToken.\n6. **Operacyjność** – logi strukturalne, health checks, rate limiting, OpenAPI.\n\nNiuanse seniorskie: różnica 401 vs 403 i 400 vs 422, **idempotentność** (PUT i DELETE powtórzone dają ten sam efekt; dla POST przy płatnościach stosuje się nagłówek `Idempotency-Key`), offset vs keyset pagination, kolejność middleware (`UseCors` przed auth, `UseExceptionHandler` na początku), liveness vs readiness. Wybór Minimal APIs vs Controllers uzasadniaj kontekstem zespołu, nie modą."
+        }
+      ],
+      "takeaways": [
+        "Pipeline to ciąg middleware wykonywanych w kolejności rejestracji – każdy może działać przed i po next() albo przerwać żądanie.",
+        "Kolejność ma znaczenie: UseExceptionHandler na początku, UseCors przed auth, UseAuthentication przed UseAuthorization.",
+        "Minimal APIs i Controllers działają na tym samym routingu; route groups dają wspólny prefiks i ustawienia.",
+        "Nie wystawiaj encji – osobne DTO na wejście i wyjście chronią przed wyciekiem danych i over-postingiem.",
+        "Błędy zwracaj jako ProblemDetails przez globalny IExceptionHandler, z właściwym kodem: 400, 401, 403, 404, 409, 429, 500.",
+        "Paginuj zawsze z limitem rozmiaru strony; offset jest prosty, keyset szybki i stabilny przy dużych danych.",
+        "Loguj message template z nazwanymi polami, nie interpolację; health checks dziel na liveness i readiness; rate limiting z kodem 429."
+      ],
+      "interview": [
+        "Jak działa pipeline middleware w ASP.NET Core i dlaczego kolejność ma znaczenie?",
+        "Dlaczego nie zwracać encji EF Core bezpośrednio z API?",
+        "Jak zorganizowałbyś globalną obsługę błędów w API?",
+        "Czym różni się paginacja offset od keyset?",
+        "Jaka jest różnica między 401 a 403 oraz między liveness a readiness?"
+      ],
+      "exam": [
+        {
+          "id": "net-aspnet-api-e1",
+          "q": "Wszystkie żądania do chronionych endpointów kończą się 401, mimo poprawnego tokenu. W Program.cs jest `app.UseAuthorization(); app.UseAuthentication();`. Co jest przyczyną?",
+          "options": [
+            "Brak AddProblemDetails",
+            "Odwrotna kolejność – autoryzacja wykonuje się, zanim uwierzytelnianie ustali użytkownika",
+            "Token JWT musi być w ciasteczku",
+            "Minimal APIs nie wspierają autoryzacji"
+          ],
+          "correct": 1,
+          "why": "Middleware wykonują się w kolejności rejestracji. UseAuthentication musi ustawić HttpContext.User przed UseAuthorization."
+        },
+        {
+          "id": "net-aspnet-api-e2",
+          "q": "Co robi middleware, który nie wywołuje `next()`?",
+          "options": [
+            "Powoduje wyjątek InvalidOperationException",
+            "Przekazuje żądanie do kontrolera z pominięciem routingu",
+            "Przerywa pipeline (short-circuit) i sam generuje odpowiedź",
+            "Wykonuje się ponownie w pętli"
+          ],
+          "correct": 2,
+          "why": "Middleware może zakończyć przetwarzanie, np. zwracając 401 lub odpowiedź z cache; kolejne elementy pipeline'u się wtedy nie wykonają."
+        },
+        {
+          "id": "net-aspnet-api-e3",
+          "q": "Endpoint przyjmuje encję `User` bezpośrednio z body żądania. Jakie jest główne ryzyko?",
+          "options": [
+            "Wolniejsza serializacja JSON",
+            "Brak możliwości użycia async",
+            "Endpoint nie pojawi się w OpenAPI",
+            "Over-posting – klient może ustawić pola, których nie powinien, np. IsAdmin"
+          ],
+          "correct": 3,
+          "why": "Model binding ustawi każde pole z JSON pasujące do właściwości encji. Wąskie DTO na wejściu ogranicza to, co klient może przesłać."
+        },
+        {
+          "id": "net-aspnet-api-e4",
+          "q": "Użytkownik jest poprawnie zalogowany, ale próbuje usunąć zamówienie innego użytkownika. Jaki kod zwrócić?",
+          "options": [
+            "403 Forbidden (lub 404, jeśli nie chcemy ujawniać istnienia zasobu)",
+            "401 Unauthorized",
+            "400 Bad Request",
+            "409 Conflict"
+          ],
+          "correct": 0,
+          "why": "401 oznacza brak lub nieprawidłowe uwierzytelnienie. Tu tożsamość jest znana, brakuje uprawnień – 403; czasem świadomie zwraca się 404, by nie ujawniać zasobu."
+        },
+        {
+          "id": "net-aspnet-api-e5",
+          "q": "Jaka jest rola IExceptionHandler w połączeniu z AddProblemDetails i UseExceptionHandler?",
+          "options": [
+            "Waliduje DTO przed wejściem do endpointu",
+            "Centralnie mapuje nieobsłużone wyjątki na kody HTTP i odpowiedź w formacie ProblemDetails",
+            "Loguje tylko wyjątki 4xx",
+            "Zastępuje try/catch w każdym endpoincie generowaniem stack trace dla klienta"
+          ],
+          "correct": 1,
+          "why": "IExceptionHandler (od .NET 8) pozwala w jednym miejscu zamienić wyjątki na spójne odpowiedzi ProblemDetails, bez ujawniania stack trace."
+        },
+        {
+          "id": "net-aspnet-api-e6",
+          "q": "Tabela ma 50 mln wierszy, a klienci przewijają listę w nieskończonym scrollu. Która paginacja jest najlepsza?",
+          "options": [
+            "Offset (Skip/Take) z dużym pageSize",
+            "Zwracanie wszystkiego i paginacja po stronie Angulara",
+            "Keyset/cursor (WHERE Id > lastId ORDER BY Id), stabilna i szybka przy dalekich stronach",
+            "Losowe próbkowanie wierszy"
+          ],
+          "correct": 2,
+          "why": "Offset na dalekich stronach musi pominąć ogromną liczbę wierszy, a wstawienia przesuwają elementy między stronami. Keyset korzysta z indeksu i jest stabilny."
+        },
+        {
+          "id": "net-aspnet-api-e7",
+          "q": "Który wpis logu jest poprawnym logowaniem strukturalnym?",
+          "options": [
+            "log.LogInformation($\"Order {order.Id} created\")",
+            "log.LogInformation(\"Order \" + order.Id + \" created\")",
+            "Console.WriteLine(JsonSerializer.Serialize(order))",
+            "log.LogInformation(\"Order {OrderId} created\", order.Id)"
+          ],
+          "correct": 3,
+          "why": "Message template z nazwanym placeholderem zapisuje OrderId jako osobne pole, które można filtrować; interpolacja i konkatenacja dają tylko tekst."
+        },
+        {
+          "id": "net-aspnet-api-e8",
+          "q": "Dlaczego nie warto sprawdzać dostępności bazy danych w endpoincie liveness?",
+          "options": [
+            "Bo awaria bazy spowodowałaby restart wszystkich instancji aplikacji, co nic nie naprawi – to zadanie readiness",
+            "Bo health checks nie wspierają EF Core",
+            "Bo liveness jest wywoływany tylko raz przy starcie",
+            "Bo baza danych zawsze jest dostępna w Kubernetes"
+          ],
+          "correct": 0,
+          "why": "Liveness odpowiada na pytanie „czy proces żyje” i jego porażka oznacza restart. Zależności zewnętrzne sprawdza readiness, który tylko wstrzymuje kierowanie ruchu."
+        },
+        {
+          "id": "net-aspnet-api-e9",
+          "q": "Wprowadzasz zmianę w API: usuwasz pole `discount` z odpowiedzi, a aplikacja mobilna w starej wersji wciąż go używa. Co należy zrobić?",
+          "options": [
+            "Nic – JSON ignoruje brakujące pola",
+            "Wystawić nową wersję API (np. /api/v2), utrzymując v1 dla starych klientów",
+            "Zwracać 410 Gone dla starych klientów",
+            "Zmienić kod statusu na 206"
+          ],
+          "correct": 1,
+          "why": "Usunięcie pola to zmiana niekompatybilna wstecz. Wersjonowanie pozwala ją wprowadzić bez psucia istniejących klientów."
+        },
+        {
+          "id": "net-aspnet-api-e10",
+          "q": "Co jest prawdą o wbudowanym rate limiterze w ASP.NET Core?",
+          "options": [
+            "Domyślnie zwraca 429 i limituje per IP",
+            "Działa tylko w kontrolerach, nie w Minimal APIs",
+            "Ma algorytmy fixed/sliding window, token bucket i concurrency; kod odrzucenia warto ustawić na 429",
+            "Wymaga zewnętrznego pakietu Asp.Versioning"
+          ],
+          "correct": 2,
+          "why": "Middleware rate limitingu jest wbudowany od .NET 7, domyślnie odrzuca z kodem 503, a partycjonowanie (np. per użytkownik) trzeba skonfigurować samodzielnie."
+        }
+      ]
+    },
+    {
+      "id": "net-auth",
+      "cat": "web",
+      "title": "Uwierzytelnianie i autoryzacja: JWT, OAuth2/OIDC, cookies",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Uporządkujesz pojęcia, które często się mieszają: uwierzytelnianie i autoryzację, JWT, OAuth2 i OpenID Connect, ciasteczka i CORS. Krok po kroku przejdziesz logowanie aplikacji Angular z backendem .NET – to jeden z najczęstszych tematów na rozmowach full-stack.",
+      "sections": [
+        {
+          "h": "Authn vs authz: recepcja i karta dostępu",
+          "text": "Analogia z biurowca:\n\n- **Uwierzytelnianie** (authentication, authn) – recepcja sprawdza dowód osobisty: „**kim jesteś?**”. Wynik: wiadomo, że to Jan Kowalski.\n- **Autoryzacja** (authorization, authz) – czytnik przy drzwiach sprawdza kartę: „**co ci wolno?**”. Jan może wejść na 3. piętro, ale nie do serwerowni.\n\nKolejność jest zawsze ta sama: najpierw authn, potem authz. W ASP.NET Core odpowiadają za to dwa middleware: `UseAuthentication` (ustawia `HttpContext.User`) i `UseAuthorization` (sprawdza wymagania endpointu).\n\nTe pojęcia przekładają się na kody HTTP:\n\n- **401 Unauthorized** – mimo nazwy oznacza „nie wiem, kim jesteś” (brak tokenu, token wygasły, zły podpis),\n- **403 Forbidden** – „wiem, kim jesteś, ale nie masz prawa”.\n\nW .NET zalogowany użytkownik to `ClaimsPrincipal`. **Claim** to jedno stwierdzenie o użytkowniku, np. `sub = 123`, `email = jan@firma.pl`, `role = admin`. Wszystkie mechanizmy (cookie, JWT) kończą się tym samym: zbudowaniem zestawu claimów, na podstawie których potem działa autoryzacja."
+        },
+        {
+          "h": "JWT: zalakowana koperta",
+          "text": "**JWT** (JSON Web Token) to podpisany token z informacjami o użytkowniku. Analogia: list w kopercie z **pieczęcią lakową**. Każdy może przeczytać treść (koperta jest przezroczysta), ale nikt nie zmieni jej niezauważenie, bo pieczęć pęknie.\n\nBudowa – trzy części oddzielone kropkami, każda zakodowana Base64Url:\n\n1. **Header** – algorytm podpisu, np. `RS256`, i identyfikator klucza `kid`.\n2. **Payload** – claimy: `sub` (kto), `iss` (kto wydał), `aud` (dla kogo), `exp` (do kiedy ważny), `iat`, role, scope.\n3. **Signature** – podpis nagłówka i treści kluczem wystawcy.\n\nWażne: Base64 to **kodowanie, nie szyfrowanie**. Nie wkładaj do JWT haseł ani danych wrażliwych.\n\nCo sprawdza API przy każdym żądaniu (walidacja krok po kroku):\n\n1. **Podpis** – kluczem publicznym wystawcy (RS256) pobranym z jego JWKS, albo wspólnym sekretem (HS256).\n2. **Issuer** (`iss`) – czy wydał go zaufany serwer.\n3. **Audience** (`aud`) – czy token jest przeznaczony dla **tego** API.\n4. **Czas** (`exp`, `nbf`) – z małą tolerancją `ClockSkew` (domyślnie 5 minut).\n\nZaleta JWT: API jest **bezstanowe** – nie musi pytać bazy o sesję. Wada: tokenu **nie da się łatwo unieważnić** przed `exp`. Dlatego access token żyje krótko (5–15 minut).",
+          "code": "builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)\n    .AddJwtBearer(o =>\n    {\n        o.Authority = \"https://login.example.com\";  // skąd pobrać klucze (OIDC discovery)\n        o.Audience = \"orders-api\";                   // token musi być dla tego API\n        o.TokenValidationParameters = new()\n        {\n            ValidateIssuer = true,\n            ValidateAudience = true,\n            ValidateLifetime = true,\n            ClockSkew = TimeSpan.FromSeconds(30)\n        };\n    });\n\napp.MapGet(\"/me\", (ClaimsPrincipal user) => user.FindFirstValue(\"sub\"))\n   .RequireAuthorization();",
+          "lang": "csharp"
+        },
+        {
+          "h": "Refresh tokeny: karnet i jednorazowe bilety",
+          "text": "Skoro access token żyje 10 minut, użytkownik musiałby logować się co 10 minut. Rozwiązanie: **refresh token**. Analogia: masz **karnet** na basen (refresh token, ważny długo) i za każdym razem wymieniasz go w kasie na **jednorazowy bilet** (access token, ważny krótko). Bilet pokazujesz bramce, karnet tylko kasie.\n\nPrzepływ krok po kroku:\n\n1. Po zalogowaniu klient dostaje access token (krótki) i refresh token (długi).\n2. Do API wysyła tylko access token w nagłówku `Authorization: Bearer ...`.\n3. Gdy access token wygaśnie (API zwraca 401), klient wysyła refresh token do serwera autoryzacji.\n4. Serwer sprawdza refresh token w swojej bazie i wydaje nową parę tokenów.\n\nDobre praktyki:\n\n- **Rotacja** – każdy refresh token jest jednorazowy; przy użyciu dostajesz nowy.\n- **Wykrywanie ponownego użycia** (reuse detection) – jeśli ktoś użyje starego refresh tokenu, to znak kradzieży: unieważnij całą rodzinę tokenów i wyloguj użytkownika.\n- Refresh token przechowuj po stronie serwera jako **hash** (jak hasło) i powiąż z urządzeniem/sesją, żeby dało się go odwołać przy wylogowaniu.\n- W przeglądarce **nie trzymaj tokenów w localStorage** – każdy skrypt na stronie (np. po ataku XSS – wstrzyknięciu złośliwego JavaScriptu) może je odczytać. Lepiej: ciasteczko HttpOnly albo wzorzec BFF (dalej w lekcji)."
+        },
+        {
+          "h": "OAuth2 Authorization Code + PKCE i OIDC",
+          "text": "**OAuth2** to protokół **delegowania dostępu**: aplikacja dostaje token, żeby w twoim imieniu korzystać z API, bez poznawania twojego hasła. Analogia: **karta-klucz hotelowa**. Recepcja (serwer autoryzacji) wydaje ci kartę do pokoju na 3 dni; drzwi (API) sprawdzają kartę, nie twój dowód.\n\n**OpenID Connect** (OIDC) to warstwa na OAuth2, która dodaje **logowanie** – informację, **kim** jest użytkownik. Dodaje **ID token** (JWT z danymi użytkownika dla aplikacji klienckiej), endpoint `userinfo` i adres discovery `/.well-known/openid-configuration`. Skrót: OAuth2 = „co aplikacja może”, OIDC = „kim jest użytkownik”. Access token jest dla API, ID token – dla klienta.\n\nPrzepływ **Authorization Code + PKCE** (zalecany dla SPA i aplikacji mobilnych), krok po kroku:\n\n1. Aplikacja generuje losowy `code_verifier` i liczy `code_challenge = BASE64URL(SHA256(code_verifier))`.\n2. Przekierowuje przeglądarkę do serwera autoryzacji z `code_challenge`, `client_id`, `redirect_uri`, `scope=openid profile api`, `state`.\n3. Użytkownik loguje się **na stronie serwera autoryzacji** (aplikacja nigdy nie widzi hasła).\n4. Serwer przekierowuje z powrotem z jednorazowym **authorization code**.\n5. Aplikacja wymienia code na tokeny, wysyłając oryginalny `code_verifier`. Serwer sprawdza, czy pasuje do challenge.\n\n**PKCE** (Proof Key for Code Exchange) chroni przed przechwyceniem kodu – złodziej kodu nie zna verifiera. Parametr `state` chroni przed CSRF przy przekierowaniu. Stary **Implicit flow** (tokeny wprost w URL) jest przestarzały i nie powinien być używany."
+        },
+        {
+          "h": "Cookies, HttpOnly, SameSite i BFF dla SPA",
+          "text": "**Cookie** (ciasteczko) to mała porcja danych, którą przeglądarka **automatycznie** dołącza do żądań do danej domeny. To wygoda i zagrożenie jednocześnie. Najważniejsze flagi:\n\n- **HttpOnly** – JavaScript nie może odczytać ciasteczka (`document.cookie`). Chroni przed kradzieżą przez XSS.\n- **Secure** – wysyłane tylko przez HTTPS.\n- **SameSite** – kiedy wysyłać ciasteczko przy żądaniach z innych stron. `Strict` – nigdy z innej strony; `Lax` – tylko przy zwykłej nawigacji (kliknięcie linku), domyślne w przeglądarkach; `None` – zawsze, ale wymaga `Secure`.\n\nAutomatyczne wysyłanie ciasteczek rodzi atak **CSRF** (Cross-Site Request Forgery): obca strona wysyła żądanie do twojego API, a przeglądarka dołącza ciasteczko ofiary. Obrona: SameSite plus **token antyforgery** (Angular `HttpClient` obsługuje nagłówek XSRF przez `withXsrfConfiguration`).\n\n**BFF** (Backend for Frontend) to dziś zalecany wzorzec dla SPA. Analogia: **portier**, który trzyma twoje klucze i otwiera drzwi za ciebie. Krok po kroku:\n\n1. Angular nie dostaje tokenów wcale.\n2. Logowanie OIDC (Code + PKCE) przeprowadza mały backend (BFF) po stronie serwera.\n3. BFF trzyma access i refresh tokeny u siebie, a przeglądarce daje tylko ciasteczko sesji `HttpOnly; Secure; SameSite=Strict`.\n4. Angular woła BFF (ta sama domena), BFF dokleja token i przekazuje żądanie do API (np. przez YARP – reverse proxy od Microsoftu).\n\nZysk: XSS nie ukradnie tokenów, bo w przeglądarce ich nie ma.",
+          "code": "// ŹLE: token w localStorage – dostępny dla każdego skryptu (XSS)\nlocalStorage.setItem('access_token', token);\nthis.http.get('/api/orders', { headers: { Authorization: `Bearer ${token}` } });\n\n// DOBRZE (BFF): przeglądarka ma tylko ciasteczko HttpOnly, wysyłane automatycznie\nexport const appConfig: ApplicationConfig = {\n  providers: [\n    provideHttpClient(\n      withXsrfConfiguration({ cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' })\n    ),\n  ],\n};\n// this.http.get('/bff/api/orders') – ta sama domena, cookie leci sam",
+          "lang": "typescript"
+        },
+        {
+          "h": "Policy-based authorization w ASP.NET Core",
+          "text": "Najprostsza autoryzacja to `[Authorize(Roles = \"admin\")]`. Przy rosnących wymaganiach role przestają wystarczać („może edytować, jeśli jest autorem albo moderatorem w tym dziale”). Wtedy używa się **polityk** (policies).\n\nPojęcia, każde w jednym zdaniu:\n\n- **Policy** – nazwany zestaw wymagań, np. `\"CanManageOrders\"`.\n- **Requirement** (`IAuthorizationRequirement`) – pojedynczy warunek, np. „minimalny wiek 18”.\n- **Handler** (`AuthorizationHandler<T>`) – kod, który sprawdza requirement i woła `context.Succeed`.\n- **Resource-based authorization** – decyzja zależy od konkretnego obiektu (np. czy to zamówienie należy do użytkownika); wywołujesz `IAuthorizationService.AuthorizeAsync(user, order, \"policy\")` po pobraniu zasobu.\n\nZalety: reguły w jednym miejscu, testowalne, endpointy mówią tylko „wymagam polityki X”. Dobra praktyka: ustaw **fallback policy** wymagającą zalogowania, wtedy każdy nowy endpoint jest domyślnie chroniony, a publiczne oznaczasz jawnie `AllowAnonymous`.",
+          "code": "public record OrderOwnerRequirement : IAuthorizationRequirement;\n\npublic class OrderOwnerHandler : AuthorizationHandler<OrderOwnerRequirement, Order>\n{\n    protected override Task HandleRequirementAsync(\n        AuthorizationHandlerContext ctx, OrderOwnerRequirement req, Order order)\n    {\n        if (order.OwnerId == ctx.User.FindFirstValue(\"sub\") || ctx.User.IsInRole(\"admin\"))\n            ctx.Succeed(req);\n        return Task.CompletedTask;\n    }\n}\n\nbuilder.Services.AddSingleton<IAuthorizationHandler, OrderOwnerHandler>();\nbuilder.Services.AddAuthorizationBuilder()\n    .AddPolicy(\"OrderOwner\", p => p.AddRequirements(new OrderOwnerRequirement()))\n    .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());\n\n// w endpoincie, po pobraniu zamówienia:\n// var result = await authz.AuthorizeAsync(user, order, \"OrderOwner\");\n// if (!result.Succeeded) return TypedResults.Forbid();",
+          "lang": "csharp"
+        },
+        {
+          "h": "CORS i jak o tym mówić na rozmowie",
+          "text": "**CORS** (Cross-Origin Resource Sharing) to mechanizm, przez który **serwer mówi przeglądarce**, które obce strony mogą czytać jego odpowiedzi. **Origin** to schemat + domena + port: `https://app.example.com:443`. Domyślnie przeglądarka blokuje JavaScriptowi odczyt odpowiedzi z innego originu (same-origin policy).\n\nKrok po kroku dla Angulara na `localhost:4200` i API na `localhost:5001`:\n\n1. Dla żądań „nieprostych” (np. JSON, nagłówek `Authorization`) przeglądarka wysyła najpierw **preflight** – `OPTIONS` z pytaniem „czy mogę?”.\n2. API odpowiada nagłówkami `Access-Control-Allow-Origin`, `-Methods`, `-Headers`.\n3. Jeśli origin pasuje, przeglądarka wysyła właściwe żądanie.\n\nPułapki: CORS **nie jest zabezpieczeniem serwera** – chroni użytkowników przeglądarki, a Postman czy inny serwer zignorują go całkowicie. `AllowAnyOrigin` nie łączy się z `AllowCredentials` – przy ciasteczkach musisz podać konkretne originy. W dev często prościej użyć proxy Angulara (`proxy.conf.json`) i uniknąć CORS w ogóle.\n\nNa rozmowie: zacznij od authn vs authz, potem opisz przepływ logowania w swoim projekcie (Code + PKCE, OIDC, gdzie żyją tokeny), uzasadnij wybór (BFF lub krótkie tokeny + refresh rotation) i zabezpieczenia (HttpOnly, SameSite, CSRF, CORS). Niuanse seniorskie: brak możliwości unieważnienia JWT i jak to łagodzić, walidacja `aud`, różnica access vs ID token, resource-based authorization.",
+          "code": "builder.Services.AddCors(o => o.AddPolicy(\"spa\", p => p\n    .WithOrigins(\"https://app.example.com\")   // konkretne originy, nie AllowAnyOrigin\n    .AllowAnyHeader()\n    .AllowAnyMethod()\n    .AllowCredentials()));                     // potrzebne dla ciasteczek\n\napp.UseCors(\"spa\");        // przed UseAuthentication / UseAuthorization\napp.UseAuthentication();\napp.UseAuthorization();",
+          "lang": "csharp"
+        }
+      ],
+      "takeaways": [
+        "Authn odpowiada „kim jesteś” (401 przy porażce), authz „co ci wolno” (403); w ASP.NET Core oba kończą się na ClaimsPrincipal i claimach.",
+        "JWT to podpisany, ale nie zaszyfrowany token: API waliduje podpis, iss, aud i exp; nie da się go łatwo unieważnić, więc żyje krótko.",
+        "Refresh token wymienia się na nowy access token; stosuj rotację, wykrywanie ponownego użycia i przechowuj go jako hash.",
+        "OAuth2 deleguje dostęp (access token dla API), OIDC dodaje tożsamość (ID token dla klienta).",
+        "Dla SPA i mobile używaj Authorization Code + PKCE; Implicit flow jest przestarzały.",
+        "Nie trzymaj tokenów w localStorage – BFF z ciasteczkiem HttpOnly, Secure, SameSite chroni przed kradzieżą przez XSS; przy ciasteczkach pamiętaj o CSRF.",
+        "Policy-based authorization: requirement + handler, resource-based przez IAuthorizationService, fallback policy dla domyślnej ochrony.",
+        "CORS to instrukcja dla przeglądarki, nie zabezpieczenie serwera; z AllowCredentials podawaj konkretne originy."
+      ],
+      "interview": [
+        "Czym różni się uwierzytelnianie od autoryzacji i jakie kody HTTP z tego wynikają?",
+        "Z czego składa się JWT i co musi sprawdzić API przy jego walidacji?",
+        "Opisz przepływ Authorization Code z PKCE. Czym OIDC różni się od OAuth2?",
+        "Gdzie przechowywać tokeny w aplikacji Angular i dlaczego?",
+        "Czym jest CORS i dlaczego nie chroni API przed nieautoryzowanym dostępem?"
+      ],
+      "exam": [
+        {
+          "id": "net-auth-e1",
+          "q": "API otrzymuje żądanie z wygasłym tokenem JWT. Jaki kod powinno zwrócić?",
+          "options": [
+            "403 Forbidden",
+            "400 Bad Request",
+            "419 Session Expired",
+            "401 Unauthorized"
+          ],
+          "correct": 3,
+          "why": "Wygasły token oznacza nieudane uwierzytelnienie – serwer nie wie, kim jest wywołujący. 403 dotyczy znanego użytkownika bez uprawnień."
+        },
+        {
+          "id": "net-auth-e2",
+          "q": "Które stwierdzenie o payloadzie JWT jest prawdziwe?",
+          "options": [
+            "Jest zakodowany Base64Url, więc każdy może go odczytać – nie wolno tam umieszczać danych wrażliwych",
+            "Jest zaszyfrowany kluczem prywatnym wystawcy",
+            "Można go bezpiecznie modyfikować po stronie klienta",
+            "Zawiera hasło użytkownika w postaci hasha"
+          ],
+          "correct": 0,
+          "why": "Podpis chroni integralność, nie poufność. Payload standardowego JWT (JWS) jest tylko zakodowany."
+        },
+        {
+          "id": "net-auth-e3",
+          "q": "Token JWT ma poprawny podpis i nie wygasł, ale `aud` = \"billing-api\", a twoje API to \"orders-api\". Co powinno się stać?",
+          "options": [
+            "Akceptujemy – podpis jest poprawny",
+            "Odrzucamy – token nie był wydany dla tego API (walidacja audience)",
+            "Akceptujemy, jeśli issuer jest zaufany",
+            "Odświeżamy token automatycznie"
+          ],
+          "correct": 1,
+          "why": "Walidacja audience zapobiega użyciu tokenu przeznaczonego dla innej usługi. Sam podpis i issuer nie wystarczą."
+        },
+        {
+          "id": "net-auth-e4",
+          "q": "Serwer autoryzacji otrzymuje refresh token, który został już wcześniej użyty (przy włączonej rotacji). Jaka reakcja jest zalecana?",
+          "options": [
+            "Wydać nową parę tokenów jak zwykle",
+            "Zwrócić 429 Too Many Requests",
+            "Potraktować to jako możliwą kradzież i unieważnić całą rodzinę tokenów tej sesji",
+            "Przedłużyć ważność starego access tokenu"
+          ],
+          "correct": 2,
+          "why": "Przy rotacji każdy refresh token jest jednorazowy. Ponowne użycie oznacza, że ktoś ma kopię – reuse detection unieważnia sesję."
+        },
+        {
+          "id": "net-auth-e5",
+          "q": "Co chroni PKCE w przepływie Authorization Code?",
+          "options": [
+            "Szyfruje access token",
+            "Zastępuje logowanie hasłem",
+            "Chroni ciasteczka przed XSS",
+            "Sprawia, że przechwycony authorization code jest bezużyteczny bez code_verifier znanego tylko aplikacji, która rozpoczęła logowanie"
+          ],
+          "correct": 3,
+          "why": "Serwer wymienia code na tokeny tylko po okazaniu verifiera pasującego do wcześniej wysłanego challenge."
+        },
+        {
+          "id": "net-auth-e6",
+          "q": "Czym OpenID Connect różni się od OAuth2?",
+          "options": [
+            "OIDC dodaje do OAuth2 warstwę tożsamości – ID token, userinfo i discovery",
+            "OIDC zastępuje OAuth2 i nie używa access tokenów",
+            "OIDC jest protokołem tylko dla aplikacji mobilnych",
+            "OIDC służy do szyfrowania JWT"
+          ],
+          "correct": 0,
+          "why": "OAuth2 dotyczy delegowania dostępu do API, OIDC na nim buduje uwierzytelnianie użytkownika z ID tokenem dla klienta."
+        },
+        {
+          "id": "net-auth-e7",
+          "q": "Dlaczego wzorzec BFF jest zalecany dla aplikacji SPA?",
+          "options": [
+            "Bo pozwala używać Implicit flow",
+            "Bo tokeny są trzymane po stronie serwera, a przeglądarka dostaje tylko ciasteczko HttpOnly – XSS nie może ich ukraść",
+            "Bo eliminuje potrzebę HTTPS",
+            "Bo Angular nie obsługuje nagłówka Authorization"
+          ],
+          "correct": 1,
+          "why": "BFF przeprowadza OIDC i trzyma tokeny u siebie. Ciasteczko HttpOnly nie jest dostępne dla JavaScriptu, a SameSite i antyforgery ograniczają CSRF."
+        },
+        {
+          "id": "net-auth-e8",
+          "q": "Które ustawienie ciasteczka sprawia, że JavaScript na stronie nie może go odczytać?",
+          "options": [
+            "SameSite=Strict",
+            "Secure",
+            "HttpOnly",
+            "Domain=.example.com"
+          ],
+          "correct": 2,
+          "why": "HttpOnly blokuje dostęp z document.cookie. Secure wymusza HTTPS, a SameSite steruje wysyłaniem przy żądaniach z innych stron."
+        },
+        {
+          "id": "net-auth-e9",
+          "q": "Użytkownik może edytować dokument tylko, jeśli jest jego autorem. Jak najlepiej to zaimplementować w ASP.NET Core?",
+          "options": [
+            "[Authorize(Roles = \"author\")] na endpoincie",
+            "Sprawdzać warunek w CORS",
+            "Dodać claim z listą wszystkich Id dokumentów użytkownika do JWT",
+            "Resource-based authorization: requirement + AuthorizationHandler<TReq, Document> i IAuthorizationService.AuthorizeAsync po pobraniu dokumentu"
+          ],
+          "correct": 3,
+          "why": "Decyzja zależy od konkretnego zasobu, więc rola nie wystarczy. Handler z typem zasobu jest testowalny i trzyma regułę w jednym miejscu."
+        },
+        {
+          "id": "net-auth-e10",
+          "q": "Które stwierdzenie o CORS jest prawdziwe?",
+          "options": [
+            "CORS to instrukcja dla przeglądarki; skrypt serwerowy lub Postman ominie go, więc nie zastępuje uwierzytelniania",
+            "Poprawna konfiguracja CORS blokuje wszystkie nieautoryzowane żądania do API",
+            "AllowAnyOrigin można łączyć z AllowCredentials",
+            "Preflight jest wysyłany metodą HEAD"
+          ],
+          "correct": 0,
+          "why": "Egzekwowanie CORS odbywa się w przeglądarce. Preflight to OPTIONS, a przy AllowCredentials trzeba wskazać konkretne originy."
+        }
+      ]
+    }
+  ]
+}

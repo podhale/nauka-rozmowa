@@ -1,0 +1,470 @@
+{
+ "cat": "devops",
+ "name": "Docker, CI/CD i chmura",
+ "cards": [
+  {
+   "id": "devops-m001",
+   "topic": "Azure App Service",
+   "level": 2,
+   "q": "Czym są deployment sloty w Azure App Service i jak wygląda bezpieczny deploy przez swap?",
+   "a": "Slot to osobna, działająca instancja tej samej aplikacji (np. `staging`) z własnym hostname, w tym samym App Service Plan (od tieru Standard). Deploy idzie na staging, tam robię smoke testy, a potem swap: App Service rozgrzewa instancje stagingu z ustawieniami produkcji i dopiero wtedy przełącza routing – bez cold startu i bez downtime'u. Rollback to po prostu swap z powrotem, bo poprzednia wersja czeka w slocie staging.",
+   "code": "# deploy do slotu, a potem swap staging -> production\naz webapp deploy -g rg-shop -n app-shop-api --slot staging \\\n  --src-path api.zip --type zip\naz webapp deployment slot swap -g rg-shop -n app-shop-api \\\n  --slot staging --target-slot production",
+   "lang": "bash",
+   "tip": "Kluczowe pojęcie: ustawienia „sticky” (deployment slot setting) zostają w slocie, a zwykłe app settings przechodzą razem z aplikacją przy swapie.",
+   "deep": "Podczas swapu App Service najpierw aplikuje ustawienia slotu docelowego na instancje źródłowe (co je restartuje), czeka na rozgrzanie (można wskazać ścieżkę przez `WEBSITE_SWAP_WARMUP_PING_PATH`), a dopiero potem zamienia routing – dlatego warm-up endpoint powinien dotykać bazy i cache. Connection stringi do baz środowiskowych, klucze feature flag i ustawienia monitoringu oznaczam jako sticky, inaczej po swapie produkcja może gadać z bazą stagingową. Swap with preview pozwala zatrzymać się po fazie aplikowania ustawień i sprawdzić aplikację przed przełączeniem. Sloty dzielą zasoby planu (CPU/RAM), więc obciążający test na stagingu spowalnia produkcję. Migracje bazy muszą być kompatybilne wstecz (expand/contract), bo przez chwilę obie wersje działają na tej samej bazie, a rollback swapem nie cofa schematu. Część zespołów używa też traffic routing (procent ruchu na slot) jako prostego canary."
+  },
+  {
+   "id": "devops-m002",
+   "topic": "Azure App Service",
+   "level": 1,
+   "q": "Jak App Service przekazuje konfigurację do aplikacji ASP.NET Core i co zrobić z sekretami?",
+   "a": "App settings i connection stringi z portalu/IaC trafiają do procesu jako zmienne środowiskowe, a provider zmiennych środowiskowych w ASP.NET Core nadpisuje nimi `appsettings.json`. Zagnieżdżone klucze zapisuję z podwójnym podkreśleniem (`Payments__ApiKey`), bo na Linuksie dwukropek w nazwie jest niedozwolony. Sekretów nie wpisuję wprost – używam Key Vault references (`@Microsoft.KeyVault(...)`) albo Key Vault jako źródła konfiguracji, a dostęp daje Managed Identity aplikacji.",
+   "code": "# app setting -> klucz Payments:ApiKey w IConfiguration\nPayments__ApiKey = @Microsoft.KeyVault(SecretUri=https://kv-shop.vault.azure.net/secrets/PaymentsApiKey/)\nASPNETCORE_ENVIRONMENT = Production",
+   "lang": "text",
+   "tip": "Zmiana app settings restartuje aplikację – warto o tym wiedzieć, zanim zmieni się ustawienie na produkcji w godzinach szczytu."
+  },
+  {
+   "id": "devops-m003",
+   "topic": "Azure App Service",
+   "level": 2,
+   "q": "Jak skaluje się aplikacja w App Service? Scale up vs scale out, autoscale i na co uważać.",
+   "a": "Skalowanie dotyczy App Service Plan, nie pojedynczej aplikacji: scale up to zmiana tieru/rozmiaru maszyny (więcej CPU/RAM, funkcje typu sloty czy VNet), scale out to więcej instancji, na których działają wszystkie aplikacje z planu. Scale out może być ręczny, regułami autoscale (metryki CPU/pamięć/długość kolejki, harmonogram) albo automatyczny po ruchu HTTP w nowszych tierach Premium. Żeby scale out działał, API musi być bezstanowe: sesje i cache w Redisie, pliki w Blob Storage, wyłączone ARR affinity.",
+   "tip": "Pytanie kontrolne: czemu po scale out część użytkowników nadal trafia na przeciążoną instancję? ARR affinity (cookie sticky session) jest domyślnie włączone.",
+   "deep": "Reguły autoscale trzeba projektować parami (scale out i scale in) z cooldownem, inaczej plan „flappuje”. Dla API ustawiam minimum 2–3 instancje (SLA i rozkład po strefach przy zone redundancy) i Always On, żeby aplikacja nie była wyładowywana po bezczynności. Funkcja Health check w App Service wyłącza z load balancera instancję, która nie odpowiada na endpoint zdrowia, i może ją zastąpić. Kilka aplikacji w jednym planie to oszczędność, ale też noisy neighbour – ciężka aplikacja zjada zasoby lżejszej. Limit połączeń wychodzących (SNAT) przy dużym ruchu do zewnętrznych usług rozwiązuje się reużyciem `HttpClient` (IHttpClientFactory), private endpoints albo NAT Gateway. Skalowanie bazy to osobna sprawa – 10 instancji API potrafi zabić Azure SQL za mały na tyle połączeń."
+  },
+  {
+   "id": "devops-m004",
+   "topic": "Azure Functions",
+   "level": 1,
+   "q": "Czym są triggery i bindingi w Azure Functions i jakie są plany hostingu?",
+   "a": "Trigger to zdarzenie uruchamiające funkcję – każda funkcja ma dokładnie jeden (HTTP, Timer, Service Bus, Storage Queue, Blob, Event Grid, Event Hubs, Cosmos DB). Bindingi to deklaratywne wejścia i wyjścia: np. zapis wyniku do kolejki czy Blob bez pisania kodu klienta SDK. Plany: Flex Consumption (serverless, płatność za użycie, VNet, instancje always-ready – obecnie zalecany plan serverless), klasyczny Consumption, Premium (prewarmed instancje, brak zimnego startu) i Dedicated (App Service Plan) albo Container Apps.",
+   "code": "public class OrderFunctions(ILogger<OrderFunctions> log)\n{\n    [Function(\"ProcessOrder\")]\n    [QueueOutput(\"invoices\")]                    // output binding\n    public InvoiceRequest Run(\n        [ServiceBusTrigger(\"orders\", Connection = \"ServiceBus\")] OrderPlaced order)\n    {\n        log.LogInformation(\"Order {Id}\", order.Id);\n        return new InvoiceRequest(order.Id);\n    }\n}",
+   "lang": "csharp",
+   "tip": "Timer trigger używa wyrażenia NCRONTAB z 6 polami (z sekundami), np. `0 */5 * * * *` – często mylone ze zwykłym cronem."
+  },
+  {
+   "id": "devops-m005",
+   "topic": "Azure Functions",
+   "level": 2,
+   "q": "Isolated worker model vs in-process w Azure Functions i jak radzić sobie z cold startem?",
+   "a": "W modelu isolated worker kod funkcji działa w osobnym procesie .NET niż host Functions, więc mam własny `Program.cs`, normalne DI, middleware i dowolną wspieraną wersję .NET (także .NET 10). Model in-process jest wygaszany – wsparcie kończy się 10 listopada 2026, więc nowe projekty i migracje idą na isolated. Cold start to czas uruchomienia nowej instancji po bezczynności lub przy skalowaniu; łagodzi go plan Premium lub always-ready w Flex Consumption, lekki start aplikacji i ReadyToRun.",
+   "code": "var builder = FunctionsApplication.CreateBuilder(args);\nbuilder.ConfigureFunctionsWebApplication();     // integracja z ASP.NET Core (HttpRequest/IActionResult)\nbuilder.Services.AddHttpClient();\nbuilder.Services.AddDbContext<ShopDb>(o =>\n    o.UseSqlServer(builder.Configuration.GetConnectionString(\"Db\")));\nbuilder.Build().Run();",
+   "lang": "csharp",
+   "tip": "Na rozmowie dobrze brzmi konkretna liczba: HTTP trigger ma limit ok. 230 s odpowiedzi (load balancer), więc długie operacje idą przez kolejkę lub Durable Functions.",
+   "deep": "Cold start składa się z przydzielenia instancji, startu hosta, startu workera .NET i inicjalizacji aplikacji (DI, połączenia, JIT) – na ostatnie dwa mam wpływ: unikam ciężkich inicjalizacji w konstruktorach, nie ładuję dużych konfiguracji synchronicznie, rozważam ReadyToRun. W Consumption domyślny timeout wykonania to 5 min (max 10), w Flex/Premium/Dedicated można więcej. Skalowanie w Functions jest sterowane zdarzeniami (np. długością kolejki), więc przy Service Bus warto ograniczyć współbieżność (`maxConcurrentCalls` w host.json), żeby nie zabić bazy setkami równoległych wywołań. Isolated ma lekki narzut komunikacji gRPC między hostem a workerem, ale zysk to niezależność od wersji hosta i pełna kontrola nad pipeline'em. Migracja z in-process to zmiana pakietów (`Microsoft.Azure.Functions.Worker.*`), atrybutów (`[Function]` zamiast `[FunctionName]`) i bindingów – rozszerzenia mają osobne pakiety dla isolated."
+  },
+  {
+   "id": "devops-m006",
+   "topic": "Azure Functions",
+   "level": 3,
+   "q": "Czym są Durable Functions i kiedy ich używać?",
+   "a": "Durable Functions to rozszerzenie do stanowych workflow w kodzie: funkcja orkiestratora opisuje przebieg, a pracę wykonują funkcje aktywności. Stan i historia są zapisywane w storage, więc orkiestracja przetrwa restart i może czekać godzinami lub dniami (timery, zewnętrzne zdarzenia). Typowe wzorce: chaining, fan-out/fan-in, async HTTP API ze statusem, monitor i human interaction (np. czekanie na akceptację z timeoutem).",
+   "code": "[Function(nameof(ProcessBatch))]\npublic static async Task<int> ProcessBatch(\n    [OrchestrationTrigger] TaskOrchestrationContext ctx)\n{\n    var files = await ctx.CallActivityAsync<string[]>(nameof(ListFiles));\n    var tasks = files.Select(f => ctx.CallActivityAsync<int>(nameof(ImportFile), f));\n    var counts = await Task.WhenAll(tasks);       // fan-out / fan-in\n    return counts.Sum();\n}",
+   "lang": "csharp",
+   "deep": "Orkiestrator działa na zasadzie event sourcingu i replayu: po każdym `await` funkcja jest wznawiana od początku, a wyniki zakończonych kroków są odtwarzane z historii. Dlatego kod orkiestratora musi być deterministyczny – zamiast `DateTime.UtcNow` używam `ctx.CurrentUtcDateTime`, zamiast `Guid.NewGuid()` – `ctx.NewGuid()`, zamiast `Task.Delay` – `ctx.CreateTimer`, a żadnego I/O (HTTP, baza) nie robię bezpośrednio, tylko w aktywnościach. Aktywności mają semantykę at-least-once, więc muszą być idempotentne. Długie historie (pętle tysięcy kroków) spowalniają replay – stosuje się `ContinueAsNew` albo sub-orkiestracje. Zmiana kodu orkiestratora przy działających instancjach może złamać replay, więc wersjonuje się orkiestracje (nowa nazwa) lub czeka na ich zakończenie. Alternatywy: Logic Apps (low-code), saga w MassTransit/NServiceBus albo Temporal – Durable jest dobry, gdy i tak jesteśmy na Functions."
+  },
+  {
+   "id": "devops-m007",
+   "topic": "Service Bus vs Event Grid vs Event Hubs",
+   "level": 2,
+   "q": "Service Bus, Event Grid i Event Hubs – kiedy który?",
+   "a": "Service Bus to broker wiadomości biznesowych: kolejki i topiki, pull, transakcje, sesje (kolejność), DLQ, duplicate detection – do komend i zdarzeń, których nie wolno zgubić. Event Grid to routing zdarzeń w modelu push: lekkie, dyskretne powiadomienia „coś się stało” (np. blob utworzony, zdarzenie z zasobu Azure, własne eventy) z filtrowaniem i dostarczaniem do webhooków, Functions czy kolejek. Event Hubs to streaming dużego wolumenu (telemetria, logi, clickstream) z partycjami, retencją, consumer groups i endpointem zgodnym z Kafką. W skrócie: wartościowa wiadomość → Service Bus, reakcja na zdarzenie → Event Grid, strumień danych → Event Hubs.",
+   "tip": "Często łączy się je: Event Grid powiadamia o nowym blobie, a Service Bus niesie komendę do przetworzenia.",
+   "deep": "Różnica fundamentalna jest jak broker vs log: w Service Bus odbiorca konsumuje i potwierdza wiadomość (PeekLock), a ona znika; w Event Hubs zdarzenia zostają przez okres retencji i każda consumer group czyta je swoim offsetem (checkpointy w Blob Storage), co daje replay. Event Grid nie przechowuje zdarzeń długoterminowo – ponawia dostarczenie z backoffem (domyślnie do 24 h), a potem może je dead-letterować do Blob Storage; subskrybent webhookowy musi przejść walidację subskrypcji. Skala i koszt: Event Hubs liczy throughput/processing units i partycje (liczba partycji = maksymalna równoległość w grupie), Service Bus Premium – messaging units. Event Grid ma też namespace'y z obsługą MQTT i trybu pull, ale klasyczne użycie to push. Przy pytaniu o kolejność: Service Bus sessions lub partycja w Event Hubs; Event Grid kolejności nie gwarantuje."
+  },
+  {
+   "id": "devops-m008",
+   "topic": "Entra ID",
+   "level": 3,
+   "q": "Jak zabezpieczyć API .NET i SPA w Angularze przez Entra ID (dawniej Azure AD)? Co to rejestracja aplikacji?",
+   "a": "Rejestruję dwie aplikacje w Entra ID. API: „Expose an API” z Application ID URI (np. `api://<client-id>`), scope'ami delegowanymi (np. `access_as_user`) i ewentualnie app roles. SPA: platforma Single-page application z redirect URI, bez sekretu (public client), logowanie przez authorization code flow z PKCE w MSAL Angular, który dokleja access token dla scope'u API. API waliduje token (issuer, audience, podpis) przez Microsoft.Identity.Web i autoryzuje po `scp` (scope) lub `roles`.",
+   "code": "// Program.cs API (Microsoft.Identity.Web)\nbuilder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)\n    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection(\"AzureAd\"));\nbuilder.Services.AddAuthorization(o =>\n    o.AddPolicy(\"Orders.Read\", p => p.RequireScopeOrAppPermission(\n        [\"access_as_user\"], [\"Orders.Read.All\"])));\n// Angular: MsalInterceptor + protectedResourceMap:\n// ['https://api.shop.pl/', ['api://<api-client-id>/access_as_user']]",
+   "lang": "csharp",
+   "tip": "Rozróżnij application object (definicja aplikacji w tenancie macierzystym) i service principal / enterprise application (jej instancja w konkretnym tenancie, do której przypisuje się użytkowników i role).",
+   "deep": "Scope'y (`scp`) to uprawnienia delegowane – aplikacja działa w imieniu użytkownika; app roles (`roles`) mogą być przypisane użytkownikom/grupom albo aplikacjom (daemon w client credentials prosi o `api://.../.default`). Najczęstszy błąd integracji: SPA pobiera token dla Microsoft Graph (`User.Read`) i wysyła go do własnego API – audience się nie zgadza i API zwraca 401; token Graph w ogóle nie jest przeznaczony do walidacji przez nas. Wywołanie innego API z naszego API w imieniu użytkownika to on-behalf-of flow, a nie przekazywanie tokenu dalej. Multi-tenant wymaga walidacji issuera per tenant i świadomego consentu admina. Uprawnienia i role najlepiej trzymać w grupach Entra ID, ale przy dużej liczbie grup token dostaje overage claim zamiast listy – stąd przewaga app roles. Sekretów klienta dla aplikacji serwerowych unikam na rzecz certyfikatów, managed identity lub federated credentials."
+  },
+  {
+   "id": "devops-m009",
+   "topic": "Azure dla .NET",
+   "level": 1,
+   "q": "Azure Storage: Blob vs Queue vs Table – do czego służy każdy i jak bezpiecznie udostępnić plik?",
+   "a": "Blob Storage przechowuje pliki w kontenerach (uploady, eksporty, backupy) z tierami Hot/Cool/Cold/Archive. Queue Storage to prosta, tania kolejka (wiadomości do 64 KB, at-least-once, bez pub/sub i bez gwarancji kolejności) – dobra do odciążenia prostych zadań, przy wymaganiach typu DLQ, topiki czy sesje wybieram Service Bus. Table Storage to tani key-value NoSQL z kluczem PartitionKey + RowKey. Plik udostępniam przez krótkotrwały SAS, najlepiej user delegation SAS podpisany tożsamością Entra ID, a nie kluczem konta.",
+   "code": "var svc = new BlobServiceClient(new Uri(\"https://stshop.blob.core.windows.net\"),\n    new DefaultAzureCredential());\nvar key = await svc.GetUserDelegationKeyAsync(null, DateTimeOffset.UtcNow.AddMinutes(15));\nvar blob = svc.GetBlobContainerClient(\"uploads\").GetBlobClient($\"{Guid.NewGuid()}.pdf\");\nvar sas = new BlobSasBuilder(BlobSasPermissions.Create | BlobSasPermissions.Write,\n    DateTimeOffset.UtcNow.AddMinutes(15)) { BlobContainerName = \"uploads\", BlobName = blob.Name };\nvar uploadUrl = new BlobUriBuilder(blob.Uri)\n    { Sas = sas.ToSasQueryParameters(key.Value, svc.AccountName) }.ToUri();",
+   "lang": "csharp",
+   "tip": "Duże pliki z Angulara wysyła się bezpośrednio do Blob przez SAS (z CORS na koncie storage), a nie przez API – API tylko wydaje URL i dostaje informację o zakończeniu."
+  },
+  {
+   "id": "devops-m010",
+   "topic": "Azure dla .NET",
+   "level": 2,
+   "q": "Jak łączyć się z Azure SQL z aplikacji .NET bez hasła i jak obsłużyć błędy przejściowe?",
+   "a": "Używam uwierzytelniania Entra ID: aplikacja ma Managed Identity, w bazie tworzę dla niej użytkownika (`CREATE USER [app-shop-api] FROM EXTERNAL PROVIDER`) i nadaję minimalne role, a connection string ma `Authentication=Active Directory Default` – Microsoft.Data.SqlClient sam pobiera token. W chmurze zdarzają się błędy przejściowe (failover, throttling, przeniesienie bazy), więc EF Core ma włączoną strategię retry – `UseAzureSql` (EF Core 9+) albo `EnableRetryOnFailure`.",
+   "code": "// connection string: Server=tcp:sql-shop.database.windows.net;Database=shop;\n//   Authentication=Active Directory Default;Encrypt=True\nbuilder.Services.AddDbContext<ShopDb>(o => o.UseSqlServer(\n    builder.Configuration.GetConnectionString(\"Db\"),\n    sql => sql.EnableRetryOnFailure(maxRetryCount: 5)));\n\n-- w bazie (jako admin Entra ID):\n-- CREATE USER [app-shop-api] FROM EXTERNAL PROVIDER;\n-- ALTER ROLE db_datareader ADD MEMBER [app-shop-api];",
+   "lang": "csharp",
+   "tip": "Z retry strategy jawne transakcje (`BeginTransaction`) trzeba opakować w `Database.CreateExecutionStrategy().ExecuteAsync(...)` – inaczej EF rzuci wyjątek.",
+   "deep": "Modele zakupowe: DTU (pakiet CPU/IO/pamięć, prosty) i vCore (osobno compute i storage, Azure Hybrid Benefit, tier Hyperscale do dużych baz); serverless z auto-pause jest tani dla dev/test, ale pierwsze połączenie po pauzie trwa długo lub kończy się błędem, więc w produkcji z ciągłym ruchem raczej provisioned. Elastic pool dzieli zasoby między wiele baz – typowe w multi-tenant z bazą na klienta. Retry jest bezpieczny dla odczytów i operacji idempotentnych; przy zapisie bez transakcji EF może powtórzyć INSERT, gdy commit doszedł, a odpowiedź nie – stąd klucze naturalne lub idempotency key. Pule połączeń z wielu instancji API szybko dobijają do limitu workerów/sesji tieru – przy skalowaniu API sprawdzam limit bazy. HA i DR: strefy dostępności w tierach Premium/Business Critical, geo-replikacja i failover groups z listenerem, który przenosi connection string po przełączeniu. Zapytania diagnozuje się przez Query Store i Intelligent Insights."
+  },
+  {
+   "id": "devops-m011",
+   "topic": "Azure Pipelines",
+   "level": 2,
+   "q": "Jak wygląda pipeline YAML w Azure Pipelines budujący API .NET i frontend Angular?",
+   "a": "Pipeline to hierarchia stages → jobs → steps; stage Build ma równoległe joby dla API i frontu. W API: `UseDotNet@2`, cache NuGet (`Cache@2` po hashu `packages.lock.json`), `dotnet test` z publikacją wyników, `dotnet publish` i `publish` jako artefakt pipeline'u. We froncie: Node, `npm ci`, lint, testy, `ng build` i osobny artefakt. Kolejne stage deployują te same artefakty na środowiska.",
+   "code": "trigger: { branches: { include: [main] } }\npool: { vmImage: ubuntu-latest }\nvariables: { NUGET_PACKAGES: $(Pipeline.Workspace)/.nuget/packages }\nstages:\n- stage: Build\n  jobs:\n  - job: api\n    steps:\n    - task: UseDotNet@2\n      inputs: { version: '10.0.x' }\n    - task: Cache@2\n      inputs: { key: 'nuget | \"$(Agent.OS)\" | **/packages.lock.json', path: $(NUGET_PACKAGES) }\n    - script: dotnet test -c Release --logger trx\n    - task: PublishTestResults@2\n      condition: succeededOrFailed()\n      inputs: { testResultsFormat: VSTest, testResultsFiles: '**/*.trx' }\n    - script: dotnet publish src/Api -c Release -o $(Build.ArtifactStagingDirectory)/api\n    - publish: $(Build.ArtifactStagingDirectory)/api\n      artifact: api\n  - job: web\n    steps:\n    - task: UseNode@1\n      inputs: { version: '22.x' }\n    - script: cd web && npm ci && npm run lint && npm test && npx ng build\n    - publish: web/dist/shop/browser\n      artifact: web",
+   "lang": "yaml",
+   "tip": "`condition: succeededOrFailed()` przy publikacji wyników testów – bez tego przy failujących testach nie zobaczysz raportu, który najbardziej się wtedy przydaje.",
+   "deep": "Artefakt pipeline'u (`publish`) jest przypięty do konkretnego runu, więc późniejsze stage'e deployują dokładnie to, co przeszło testy – zasada build once, deploy many; dla kontenerów artefaktem jest obraz w ACR z tagiem = `$(Build.BuildId)` lub SHA. Cache NuGet wymaga lock file'ów (`RestorePackagesWithLockFile`), inaczej klucz nie odzwierciedla zależności. Czas pipeline'u PR skracam przez równoległe joby, cache, `--no-restore`/`--no-build` w kolejnych krokach i path filters (`trigger.paths`) w monorepo. Hosted agenty Microsoftu są czyste przy każdym runie; self-hosted agent (np. w sieci firmy, z dostępem do prywatnych zasobów) trzeba utrzymywać i pilnować, by stan z poprzednich buildów nie wpływał na wynik. PR validation w Azure Repos ustawia się w branch policies (build validation), a nie triggerem w YAML."
+  },
+  {
+   "id": "devops-m012",
+   "topic": "Azure Pipelines",
+   "level": 3,
+   "q": "Azure Pipelines: deployment job, environments z approvals, variable groups, service connections i templates – jak to składa się w CD?",
+   "a": "Stage deployu używa `deployment` joba wskazującego environment (np. `prod`); approvals and checks (zatwierdzający, okno czasowe, wymagany branch) konfiguruje się na environmencie w Azure DevOps, nie w YAML. Sekrety i konfigurację środowisk trzymam w variable groups (mogą być podpięte pod Key Vault), a dostęp do Azure daje service connection – najlepiej z workload identity federation zamiast sekretu. Powtarzalne kawałki wyciągam do templates z parametrami, a `extends` template pozwala wymusić firmowy standard pipeline'u.",
+   "code": "- stage: DeployProd\n  dependsOn: Build\n  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))\n  variables: [ { group: shop-prod } ]          # variable group (np. z Key Vault)\n  jobs:\n  - deployment: api\n    environment: prod                          # approvals & checks na environment\n    strategy:\n      runOnce:\n        deploy:\n          steps:\n          - task: AzureWebApp@1\n            inputs:\n              azureSubscription: sc-shop-prod  # service connection (WIF)\n              appName: app-shop-api\n              resourceGroupName: rg-shop\n              deployToSlotOrASE: true\n              slotName: staging\n              package: $(Pipeline.Workspace)/api/**/*.zip",
+   "lang": "yaml",
+   "tip": "Deployment job automatycznie pobiera artefakty bieżącego runu do `$(Pipeline.Workspace)/<nazwa artefaktu>` i zapisuje historię wdrożeń na environmencie.",
+   "deep": "Zmienne sekretne są maskowane w logach i nie są automatycznie mapowane na zmienne środowiskowe skryptów – w kroku `script` trzeba je przekazać jawnie przez `env:`. Uprawnienia: service connection i variable group mają własne zabezpieczenia (pipeline permissions, approvals na zasobie), więc pipeline z gałęzi feature nie powinien móc użyć połączenia do produkcji – to łączy się z checkiem „branch control” na environmencie/service connection. Strategie w deployment jobie: `runOnce`, `rolling` (VM) i `canary` z hookami (preDeploy, routeTraffic, postRouteTraffic, on failure). Templates rozwiązuje się w czasie kompilacji pipeline'u, dlatego parametry `${{ }}` (compile-time) różnią się od zmiennych `$( )` (runtime) i `$[ ]` (wyrażenia runtime) – częsta pułapka przy warunkach. Classic Release pipelines są przestarzałe względem multi-stage YAML, ale w starszych projektach wciąż się z nimi spotkasz. Pipeline jako kod daje review zmian procesu w PR tak samo jak zmian aplikacji."
+  },
+  {
+   "id": "devops-m013",
+   "topic": "CI/CD",
+   "level": 2,
+   "q": "GitHub Actions w praktyce: jak przekazać build do deployu, reużywać workflow i nie dopuścić do równoległych wdrożeń?",
+   "a": "Job build publikuje wynik przez `actions/upload-artifact`, a joby deploy (z `needs:`) pobierają go `actions/download-artifact` – budujemy raz. Wspólny proces deployu wyciągam do reusable workflow (`on: workflow_call`) wywoływanego z parametrem środowiska, a matrix pozwala np. testować na kilku wersjach lub systemach. `concurrency` z grupą per środowisko pilnuje, żeby dwa deploye na to samo środowisko nie szły naraz i starszy nie nadpisał nowszego.",
+   "code": "concurrency: { group: deploy-${{ github.ref }}, cancel-in-progress: false }\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-dotnet@v4\n        with: { dotnet-version: '10.0.x' }\n      - run: dotnet publish src/Api -c Release -o out/api\n      - uses: actions/upload-artifact@v4\n        with: { name: api, path: out/api }\n  deploy-staging:\n    needs: build\n    uses: ./.github/workflows/deploy.yml     # reusable workflow (on: workflow_call)\n    with: { environment: staging, artifact: api }\n    secrets: inherit",
+   "lang": "yaml",
+   "tip": "Sekrety repozytorium nie są dostępne w workflow uruchomionych z PR z forka – to celowe zabezpieczenie, nie błąd konfiguracji."
+  },
+  {
+   "id": "devops-m014",
+   "topic": "CI/CD",
+   "level": 2,
+   "q": "Quality gates i wersjonowanie w pipeline – co powinno zablokować merge i skąd brać numer wersji?",
+   "a": "Merge do main blokują wymagane checki: build, testy jednostkowe i integracyjne, lint, analiza statyczna (SonarQube/SonarCloud z quality gate na nowym kodzie – coverage, duplikacje, bugi, security hotspots), skan zależności i obrazów. Ustawia się to w branch protection (GitHub) lub branch policies (Azure Repos) wraz z wymaganym review. Wersję wyliczam z gita – SemVer z tagów (GitVersion, MinVer, Nerdbank.GitVersioning) – i ten sam numer trafia do assembly, tagu obrazu i release notes.",
+   "code": "dotnet test -c Release --collect:\"XPlat Code Coverage\"   # coverlet -> cobertura\ngit tag v2.4.0 && git push origin v2.4.0                     # release z tagu",
+   "lang": "bash",
+   "deep": "Quality gate najlepiej liczyć na nowym kodzie (clean as you code), a nie na całym legacy – inaczej zespół albo nigdy nie przejdzie progu, albo go wyłączy. Wymagany próg coverage to narzędzie, nie cel: 80% z asercjami „nie rzuca wyjątku” nic nie daje, lepiej pilnować testów krytycznych ścieżek i mutation testing w wybranych modułach. Szybkie checki (build, unit, lint) wymagane na PR, wolniejsze (E2E, testy obciążeniowe) na main lub nocnie, żeby PR nie trwał godzinę. Wersjonowanie z tagów daje odtwarzalność: z dowolnego obrazu odczytam commit i wersję (label OCI, `/version` endpoint). Dla bibliotek NuGet SemVer ma znaczenie kontraktowe (major = breaking change), dla aplikacji webowych często wystarczy numer buildu + SHA. Conventional Commits pozwalają automatycznie wyliczać wersję i changelog (semantic-release, release-please)."
+  },
+  {
+   "id": "devops-m015",
+   "topic": "Jenkins i TeamCity",
+   "level": 1,
+   "q": "Jenkins i TeamCity – czym są i jak wypadają przy GitHub Actions / Azure Pipelines?",
+   "a": "Jenkins to open-source'owy serwer CI/CD hostowany samodzielnie: controller plus agenty, pipeline jako kod w `Jenkinsfile` (składnia declarative lub scripted w Groovy) i ogromny ekosystem pluginów. TeamCity (JetBrains) to komercyjny serwer CI (on-prem lub Cloud) z bardzo dobrym wsparciem .NET, build chains (zależności snapshot/artifact między konfiguracjami) i konfiguracją jako kod w Kotlin DSL. Koncepcje są te same co w GitHub Actions i Azure Pipelines: etapy, agenty, artefakty, sekrety, triggery – różni się utrzymanie: przy Jenkinsie i TeamCity on-prem infrastrukturę i aktualizacje utrzymuje firma.",
+   "code": "pipeline {\n  agent { docker { image 'mcr.microsoft.com/dotnet/sdk:10.0' } }\n  stages {\n    stage('Test')    { steps { sh 'dotnet test -c Release --logger trx' } }\n    stage('Publish') { steps { sh 'dotnet publish src/Api -c Release -o out' } }\n  }\n  post { always { archiveArtifacts artifacts: '**/*.trx', allowEmptyArchive: true } }\n}",
+   "lang": "text",
+   "tip": "Jeśli nie pracowałeś z Jenkinsem, powiedz to wprost i przełóż doświadczenie: „znam pipeline as code w Azure Pipelines, Jenkinsfile to te same pojęcia w innej składni”."
+  },
+  {
+   "id": "devops-m016",
+   "topic": "Git",
+   "level": 2,
+   "q": "Git Flow vs trunk-based w praktyce: jak wygląda release i hotfix w każdym z nich?",
+   "a": "W Git Flow release to gałąź `release/x.y` odcięta od `develop` (stabilizacja, tylko poprawki), po wydaniu merge do `main` z tagiem i z powrotem do `develop`. Hotfix to gałąź `hotfix/x.y.z` od `main`, merge do `main` (tag) i do `develop` – a jeśli trwa release, do gałęzi release. W trunk-based wszyscy merge'ują krótkie gałęzie do `main`, który jest zawsze wdrażalny; wydanie to tag lub deploy z main, a gdy trzeba łatać starszą wersję, tworzy się `release/x.y` z tagu i cherry-pickuje poprawkę z main (fix najpierw na main).",
+   "code": "# hotfix w Git Flow\ngit switch -c hotfix/2.3.1 main\n# ...poprawka, commit...\ngit switch main && git merge --no-ff hotfix/2.3.1 && git tag v2.3.1\ngit switch develop && git merge --no-ff hotfix/2.3.1   # lub do release/2.4, jeśli trwa\n\n# trunk-based: fix na main, potem na wspieraną wersję\ngit switch release/2.3 && git cherry-pick -x 9f8e7d6",
+   "lang": "bash",
+   "tip": "Zasada „fix first on main” w trunk-based zapobiega regresji – poprawka zrobiona tylko na gałęzi release wróci jako błąd w następnej wersji."
+  },
+  {
+   "id": "devops-m017",
+   "topic": "Helm",
+   "level": 2,
+   "q": "Czym jest Helm: chart, values, release, upgrade i rollback?",
+   "a": "Helm to menedżer pakietów dla Kubernetes. Chart to paczka szablonów manifestów (Deployment, Service, Ingress, ConfigMap) z plikiem `Chart.yaml` i domyślnymi wartościami w `values.yaml`; środowiska różnią się plikami values (`values-prod.yaml`) lub `--set`. Release to zainstalowana instancja chartu w namespace pod nazwą; każdy `helm upgrade` tworzy nową rewizję, a `helm rollback` wraca do wskazanej rewizji. W CI typowe jest `helm upgrade --install` z tagiem obrazu z buildu.",
+   "code": "helm upgrade --install api ./charts/api -n shop \\\n  -f charts/api/values-prod.yaml \\\n  --set image.tag=$GIT_SHA --atomic --wait --timeout 5m\nhelm history api -n shop        # lista rewizji\nhelm rollback api 4 -n shop     # powrót do rewizji 4",
+   "lang": "bash",
+   "tip": "Helm 3 nie ma już Tillera – historię release'ów trzyma jako Secrets w namespace release'u."
+  },
+  {
+   "id": "devops-m018",
+   "topic": "Helm",
+   "level": 3,
+   "q": "Jakie pułapki Helm spotyka się na produkcji i jak je obejść?",
+   "a": "Rollback Helm cofa manifesty, ale nie migracje bazy ani danych – schemat musi być kompatybilny wstecz. Zmiana samej ConfigMapy nie restartuje podów, więc dodaje się adnotację z checksumą konfiguracji w szablonie Deploymentu. Sekretów nie trzymam jawnie w values w repo – używam External Secrets / CSI Key Vault albo szyfrowania (SOPS). `--atomic` (z `--wait`) wycofuje nieudany upgrade zamiast zostawiać release w stanie failed.",
+   "code": "# templates/deployment.yaml\nspec:\n  template:\n    metadata:\n      annotations:\n        checksum/config: {{ include (print $.Template.BasePath \"/configmap.yaml\") . | sha256sum }}\n    spec:\n      containers:\n        - name: api\n          image: \"{{ .Values.image.repository }}:{{ .Values.image.tag }}\"",
+   "lang": "yaml",
+   "deep": "Ręczne zmiany `kubectl edit` na zasobach zarządzanych przez Helm powodują dryf – następny upgrade je nadpisze (Helm 3 robi three-way merge, ale zmiany ręczne i tak trzeba traktować jako błąd procesu). `kubectl rollout undo` na Deploymencie z release'u Helm przywraca pody, ale Helm dalej uważa, że wdrożona jest nowsza rewizja – rollback robię przez `helm rollback` albo przez GitOps (Argo CD/Flux), który odtwarza stan z gita. Release w stanie `pending-upgrade` po przerwanym pipeline blokuje kolejne upgrade'y – trzeba go ręcznie wycofać. Hooki (`pre-upgrade` Job z migracją) są wygodne, ale timeout i retry hooka trzeba przemyśleć, a migracja w hooku wykona się raz na release, nie per pod. Charty publikuje się dziś jako artefakty OCI w rejestrze (ACR/ECR) obok obrazów. Alternatywa to Kustomize (nakładki bez szablonów, wbudowany w kubectl) – mniej logiki, mniej magii; wiele zespołów łączy oba."
+  },
+  {
+   "id": "devops-m019",
+   "topic": "OpenShift",
+   "level": 2,
+   "q": "Czym OpenShift różni się od „gołego” Kubernetesa i co to oznacza dla aplikacji .NET?",
+   "a": "OpenShift to dystrybucja Kubernetesa od Red Hat z dodatkami: Routes (wystawianie usług przez router HAProxy, obok standardowego Ingress), Projects (namespace z dodatkowymi politykami), wbudowany rejestr obrazów, ImageStreams, budowanie obrazów (BuildConfig, S2I), konsola webowa i CLI `oc` (nadzbiór `kubectl`). Najbardziej odczuwalna różnica dla dewelopera to bezpieczeństwo: domyślne restrykcyjne SCC uruchamia kontener jako losowy UID bez roota, więc obraz nie może zakładać roota ani portów poniżej 1024. DeploymentConfig to starszy obiekt OpenShift – jest przestarzały, w nowych projektach używa się standardowego Deployment.",
+   "code": "# Dockerfile przyjazny OpenShift\nFROM mcr.microsoft.com/dotnet/aspnet:10.0\nWORKDIR /app\nCOPY --from=build /out .\nRUN mkdir -p /app/cache && chgrp -R 0 /app && chmod -R g=u /app\nUSER 1001\nENV ASPNETCORE_HTTP_PORTS=8080\nENTRYPOINT [\"dotnet\", \"Api.dll\"]",
+   "lang": "text",
+   "tip": "Obrazy .NET 8+ domyślnie słuchają na 8080 i mają użytkownika `app` – to ułatwia start na OpenShift, ale katalogi do zapisu nadal muszą być zapisywalne dla grupy root (GID 0).",
+   "deep": "Restricted SCC (`restricted-v2`) przydziela UID z zakresu projektu, a kontener należy do grupy 0 – stąd wzorzec `chgrp 0` + `chmod g=u` dla katalogów, do których aplikacja pisze. Prośba o SCC `anyuid` czy `privileged` dla zwykłego API to sygnał złego obrazu i administratorzy zwykle jej odmówią. Routes powstały, zanim Ingress dojrzał; dziś OpenShift tłumaczy też Ingress na Route, a TLS termination (edge, passthrough, re-encrypt) ustawia się na Route. ImageStreams pozwalają wyzwalać redeploy po pojawieniu się nowego obrazu, ale w podejściu GitOps częściej po prostu aktualizuje się tag w manifeście/Helm values. DeploymentConfig miał własne triggery i hooki, ale nie wspiera wielu funkcji Deploymentu – migracja to zwykle przepisanie na Deployment + Helm/Kustomize. Licencja i wsparcie Red Hat to częsty powód wyboru OpenShift w bankach, ubezpieczeniach i sektorze publicznym."
+  },
+  {
+   "id": "devops-m020",
+   "topic": "kubectl i debugowanie",
+   "level": 2,
+   "q": "Pod nie działa. Jak debugujesz go kubectl krok po kroku?",
+   "a": "`kubectl get pods` (status: Pending, ImagePullBackOff, CrashLoopBackOff, OOMKilled), potem `kubectl describe pod` – sekcja Events mówi, czy problemem jest scheduling (brak zasobów), pobranie obrazu, failujące probe'y czy restart z exit code. `kubectl logs` pokazuje stdout aplikacji, a `--previous` – logi poprzedniego, zcrashowanego kontenera. `kubectl exec -it ... -- sh` daje shell w działającym kontenerze, a `kubectl port-forward` pozwala wywołać API lub bazę z mojej maszyny z pominięciem Ingressu.",
+   "code": "kubectl get pods -n shop -o wide\nkubectl describe pod api-7d9c-xk2 -n shop          # Events, Last State, Exit Code\nkubectl logs api-7d9c-xk2 -n shop --previous       # logi po crashu\nkubectl logs deploy/api -n shop -f --since=10m\nkubectl exec -it api-7d9c-xk2 -n shop -- sh\nkubectl port-forward svc/api 8080:80 -n shop       # http://localhost:8080\nkubectl get events -n shop --sort-by=.lastTimestamp",
+   "lang": "bash",
+   "tip": "Exit code 137 to SIGKILL – najczęściej OOMKilled (limit pamięci); 143 to SIGTERM; 139 to segfault.",
+   "deep": "Obrazy chiseled/distroless nie mają shella, więc `exec` nie zadziała – wtedy `kubectl debug -it <pod> --image=busybox --target=api` dołącza efemeryczny kontener debugowy dzielący przestrzeń procesów. Pending z `FailedScheduling` oznacza zwykle zbyt duże requests, taints/affinity albo brak PVC; ImagePullBackOff – zły tag lub brak uprawnień do rejestru (imagePullSecrets, tożsamość klastra). CrashLoopBackOff z krótkimi logami to często brak konfiguracji (sekret, connection string) – sprawdzam `kubectl get pod -o yaml` i zmienne środowiskowe. Pod Running, ale bez ruchu: readiness probe failuje albo Service ma selektor niepasujący do labeli – `kubectl get endpoints svc/api` pokaże pustą listę. `kubectl top pod` (wymaga metrics-server) i `rollout status`/`rollout history` domykają obraz. Na produkcji uprawnienia do `exec` są zwykle ograniczone przez RBAC, więc podstawą jest dobre logowanie i observability, a kubectl to narzędzie ostatniej mili."
+  },
+  {
+   "id": "devops-m021",
+   "topic": "AWS dla .NET",
+   "level": 1,
+   "q": "Gdzie uruchomić API .NET w AWS? ECS, EKS, Lambda, Elastic Beanstalk.",
+   "a": "ECS to natywny orkiestrator kontenerów AWS: definiuję task definition (obraz z ECR, CPU/RAM, zmienne, role) i service, a uruchamiam na Fargate (serverless, bez zarządzania maszynami) lub EC2 – to odpowiednik Azure Container Apps. EKS to zarządzany Kubernetes (odpowiednik AKS). Lambda to serverless functions (odpowiednik Azure Functions) – ma managed runtime dla .NET, a całe ASP.NET Core API można w niej hostować przez adapter. Elastic Beanstalk to PaaS w stylu App Service dla prostych aplikacji.",
+   "code": "// Amazon.Lambda.AspNetCoreServer.Hosting – to samo API lokalnie i w Lambdzie\nvar builder = WebApplication.CreateBuilder(args);\nbuilder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);\nvar app = builder.Build();\napp.MapGet(\"/orders/{id}\", (int id) => Results.Ok(new { id }));\napp.Run();",
+   "lang": "csharp",
+   "tip": "Na pytanie o AWS mapuj na znane pojęcia: „ECS na Fargate to dla mnie odpowiednik Container Apps, task role to Managed Identity”."
+  },
+  {
+   "id": "devops-m022",
+   "topic": "AWS dla .NET",
+   "level": 2,
+   "q": "SQS i SNS – jak zbudować kolejkę i pub/sub w AWS i czym różnią się od Service Bus?",
+   "a": "SQS to kolejka (point-to-point, pull): standard queue daje at-least-once i kolejność best-effort, FIFO queue – kolejność w ramach `MessageGroupId` i deduplikację. Odebrana wiadomość staje się niewidoczna na czas visibility timeout; konsument musi ją jawnie usunąć (`DeleteMessage`), inaczej wróci. SNS to pub/sub: topic rozsyła wiadomość do subskrybentów, a wzorzec fan-out to SNS → wiele kolejek SQS (każdy serwis ma swoją). Odpowiednik Service Bus to więc para SQS + SNS, a Event Grid ≈ EventBridge, Event Hubs ≈ Kinesis.",
+   "code": "var resp = await sqs.ReceiveMessageAsync(new ReceiveMessageRequest\n{\n    QueueUrl = queueUrl, MaxNumberOfMessages = 10, WaitTimeSeconds = 20   // long polling\n});\nforeach (var msg in resp.Messages ?? [])\n{\n    await HandleAsync(msg.Body);                                   // idempotentnie!\n    await sqs.DeleteMessageAsync(queueUrl, msg.ReceiptHandle);\n}",
+   "lang": "csharp",
+   "deep": "Visibility timeout musi być dłuższy niż czas przetwarzania – inaczej wiadomość wróci do kolejki w trakcie i przetworzy ją druga instancja; przy długich zadaniach przedłuża się go `ChangeMessageVisibility` jak heartbeat. DLQ ustawia się przez redrive policy z `maxReceiveCount`, a po naprawie błędu można zrobić redrive z DLQ z powrotem. Long polling (`WaitTimeSeconds` do 20) zmniejsza liczbę pustych odpowiedzi i koszt, bo SQS liczy opłaty za requesty. Rozmiar wiadomości jest ograniczony (duże payloady przez S3 i wskaźnik w wiadomości). Lambda z triggerem SQS pobiera wiadomości paczkami – przy częściowym błędzie warto zwracać partial batch response, żeby nie powtarzać całej paczki. FIFO ma niższą przepustowość niż standard, a kolejność tylko w grupie – wybór `MessageGroupId` to ten sam problem co klucz partycji w Kafce czy sessions w Service Bus. MassTransit i Wolverine obsługują SQS/SNS jako transport, więc kod konsumentów może być podobny jak na Azure."
+  },
+  {
+   "id": "devops-m023",
+   "topic": "AWS dla .NET",
+   "level": 3,
+   "q": "Tożsamość, sekrety, baza i monitoring w AWS dla API .NET – IAM, Secrets Manager, RDS, CloudWatch.",
+   "a": "Aplikacja nie trzyma kluczy dostępowych – dostaje IAM role: task role w ECS, execution role Lambdy, w EKS IRSA lub Pod Identity – a AWS SDK sam pobiera tymczasowe poświadczenia z łańcucha providerów (analogicznie do DefaultAzureCredential). Sekrety trzymam w Secrets Manager (rotacja, np. haseł RDS) lub Parameter Store i ładuję je do `IConfiguration`. Baza to RDS (SQL Server, PostgreSQL) albo Aurora, a logi, metryki i alarmy to CloudWatch; tracing przez OpenTelemetry (AWS Distro for OpenTelemetry) i X-Ray.",
+   "code": "// Amazon.Extensions.Configuration.SystemsManager\nbuilder.Configuration.AddSystemsManager(\"/shop/prod/\");   // Parameter Store, prefiks ścieżki\n// AWSSDK.SecretsManager – bezpośrednio\nvar secret = await secrets.GetSecretValueAsync(\n    new GetSecretValueRequest { SecretId = \"shop/prod/db\" });",
+   "lang": "csharp",
+   "deep": "W ECS są dwie role i to klasyczne pytanie: execution role używa agent ECS do pobrania obrazu z ECR, wysyłania logów i wstrzyknięcia sekretów jako zmiennych środowiskowych w task definition; task role to tożsamość kodu aplikacji przy wywołaniach SDK. Polityki IAM piszę wg least privilege – konkretne akcje i ARN-y zasobów, a nie `*`. Sekrety wstrzyknięte jako zmienne środowiskowe są czytane przy starcie taska, więc rotacja wymaga restartu; czytanie przez SDK z cache (np. biblioteka cache Secrets Manager) pozwala ją obsłużyć w locie. RDS Proxy zmniejsza liczbę połączeń do bazy przy Lambdzie i wielu instancjach, a RDS for SQL Server bywa drogi licencyjnie – dlatego migracje do AWS często łączą się z przejściem na PostgreSQL. Koszt CloudWatch Logs rośnie z wolumenem – retencja log group i poziomy logowania to realny temat, podobnie jak w Application Insights. Multi-AZ RDS daje automatyczny failover; read replicas to skalowanie odczytów z opóźnieniem replikacji."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "devops-mq001",
+   "topic": "Azure App Service",
+   "level": 2,
+   "q": "Po swapie staging → production API produkcyjne łączy się z bazą stagingową. Connection string ustawiono jako app setting w obu slotach. Co poszło nie tak?",
+   "options": [
+    "Swap zawsze zamienia też App Service Plan, więc trzeba trzymać sloty w osobnych planach",
+    "Ustawienie nie było oznaczone jako deployment slot setting (sticky), więc przeszło razem z aplikacją do slotu produkcyjnego",
+    "Slot staging nie miał włączonego Always On, więc po swapie załadował domyślną konfigurację",
+    "Connection stringi w App Service są zawsze współdzielone przez wszystkie sloty aplikacji"
+   ],
+   "correct": 1,
+   "why": "Zwykłe app settings podróżują z aplikacją przy swapie, a sticky (deployment slot setting) zostają przypięte do slotu. Konfigurację środowiskową, jak baza, oznacza się jako sticky. Plan i Always On nie mają tu znaczenia, a ustawienia są per slot, nie współdzielone."
+  },
+  {
+   "id": "devops-mq002",
+   "topic": "Azure App Service",
+   "level": 1,
+   "q": "API na Linux App Service ma odczytać klucz `Payments:ApiKey` z `IConfiguration`, nadpisując wartość z appsettings.json. Jak nazwać app setting?",
+   "options": [
+    "`Payments.ApiKey`",
+    "`PAYMENTS_APIKEY`",
+    "`Payments__ApiKey`",
+    "`APPSETTING_Payments:ApiKey`"
+   ],
+   "correct": 2,
+   "why": "App settings trafiają do procesu jako zmienne środowiskowe, a provider zmiennych w .NET zamienia `__` na separator sekcji `:`. Na Linuksie dwukropek w nazwie zmiennej jest niedozwolony. Kropka i pojedyncze podkreślenie nie są separatorami sekcji."
+  },
+  {
+   "id": "devops-mq003",
+   "topic": "Azure Functions",
+   "level": 2,
+   "q": "Funkcja z HTTP triggerem w planie Consumption odpowiada po 6–8 s na pierwsze żądanie rano i przy nagłych skokach ruchu. Wymaganie: zawsze < 1 s. Co jest właściwym rozwiązaniem?",
+   "options": [
+    "Zwiększyć `functionTimeout` w host.json",
+    "Wrócić do modelu in-process, bo tylko isolated worker ma zimny start",
+    "Przenieść logikę do Durable Functions, które nie mają zimnego startu",
+    "Przejść na plan z rozgrzanymi instancjami: Premium albo Flex Consumption z always-ready"
+   ],
+   "correct": 3,
+   "why": "Opóźnienie to cold start nowej instancji po bezczynności lub przy skalowaniu; usuwają go prewarmed/always-ready instancje. Timeout dotyczy maksymalnego czasu wykonania, in-process też ma zimny start (i jest wygaszany), a Durable Functions działają na tych samych planach."
+  },
+  {
+   "id": "devops-mq004",
+   "topic": "Azure Functions",
+   "level": 3,
+   "q": "Co jest problemem w tym orkiestratorze Durable Functions?",
+   "code": "[Function(nameof(Approve))]\npublic static async Task Approve([OrchestrationTrigger] TaskOrchestrationContext ctx)\n{\n    var requestId = Guid.NewGuid();\n    if (DateTime.UtcNow.Hour < 12)\n        await ctx.CallActivityAsync(nameof(SendMorningMail), requestId);\n    else\n        await ctx.CallActivityAsync(nameof(SendEveningMail), requestId);\n}",
+   "lang": "csharp",
+   "options": [
+    "Kod jest niedeterministyczny: przy replayu `Guid.NewGuid()` i `DateTime.UtcNow` dadzą inne wartości – trzeba użyć `ctx.NewGuid()` i `ctx.CurrentUtcDateTime`",
+    "Orkiestrator nie może wywoływać więcej niż jednej aktywności",
+    "Aktywności muszą być wywoływane przez `Task.Run`, inaczej blokują hosta",
+    "Brakuje `ConfigureAwait(false)` po `CallActivityAsync`"
+   ],
+   "correct": 0,
+   "why": "Orkiestrator jest odtwarzany od początku (replay) po każdym kroku; jego decyzje muszą wyjść tak samo. Czas i GUID-y bierze się z kontekstu orkiestracji. Wiele aktywności to norma, a `Task.Run` i `ConfigureAwait(false)` w orkiestratorze wręcz psują jego model wątkowy."
+  },
+  {
+   "id": "devops-mq005",
+   "topic": "Service Bus vs Event Grid vs Event Hubs",
+   "level": 2,
+   "q": "Flota urządzeń IoT wysyła ok. 100 tys. pomiarów na sekundę. Dane mają czytać niezależnie: analityka w czasie rzeczywistym i archiwizacja, z możliwością ponownego odczytu ostatnich dni. Którą usługę wybrać?",
+   "options": [
+    "Service Bus Premium z topikiem i dwiema subskrypcjami",
+    "Event Hubs z dwiema consumer groups",
+    "Event Grid z dwiema subskrypcjami webhook",
+    "Queue Storage z dwiema kolejkami"
+   ],
+   "correct": 1,
+   "why": "To streaming dużego wolumenu: Event Hubs ma partycje, retencję i niezależne consumer groups z własnymi offsetami, więc daje replay. Service Bus to broker wiadomości biznesowych (usuwa po ack, bez replay), Event Grid to push dyskretnych zdarzeń, a Queue Storage nie ma pub/sub ani retencji do ponownego odczytu."
+  },
+  {
+   "id": "devops-mq006",
+   "topic": "Entra ID",
+   "level": 3,
+   "q": "Angular z MSAL wysyła do API .NET access token, a API zwraca 401. W tokenie `aud` to identyfikator Microsoft Graph, a `scp` = `User.Read`. Co jest przyczyną?",
+   "options": [
+    "API nie ma włączonego CORS dla domeny SPA",
+    "Token wygasł – MSAL nie odświeża tokenów w SPA",
+    "SPA pobiera token dla Microsoft Graph zamiast dla scope'u API (np. `api://<api-id>/access_as_user`) – trzeba poprawić `protectedResourceMap`/scopes",
+    "API musi mieć client secret, żeby walidować tokeny użytkowników"
+   ],
+   "correct": 2,
+   "why": "Token jest wystawiony dla Graph (audience Graph), więc API słusznie go odrzuca. SPA ma prosić o scope wystawiony przez rejestrację API. CORS dałby błąd w przeglądarce, a nie 401 z tokenem; MSAL odświeża tokeny; walidacja JWT nie wymaga sekretu."
+  },
+  {
+   "id": "devops-mq007",
+   "topic": "Azure dla .NET",
+   "level": 2,
+   "q": "Użytkownicy wysyłają z Angulara pliki do 2 GB przez endpoint API, który zapisuje je do Blob Storage. API ma skoki pamięci i timeouty. Jakie rozwiązanie jest najlepsze?",
+   "options": [
+    "Zwiększyć limity rozmiaru requestu w Kestrelu i timeout na load balancerze",
+    "Przekazać do SPA klucz konta storage, żeby wysyłała pliki bezpośrednio",
+    "Ustawić kontener jako publiczny z dostępem do zapisu",
+    "API wydaje krótkotrwały user delegation SAS z prawem zapisu do jednego bloba, a przeglądarka wysyła plik bezpośrednio do Blob (z CORS na koncie)"
+   ],
+   "correct": 3,
+   "why": "Bezpośredni upload z SAS odciąża API i daje ograniczony w czasie i zakresie dostęp. Większe limity tylko przesuwają problem, a klucz konta lub publiczny zapis to poważna luka bezpieczeństwa – klucz daje pełny dostęp do całego konta."
+  },
+  {
+   "id": "devops-mq008",
+   "topic": "Azure Pipelines",
+   "level": 2,
+   "q": "Variable group zawiera sekret `DbPassword`. Krok `- script: ./migrate.sh` czyta zmienną środowiskową `DBPASSWORD`, ale jest ona pusta, choć zwykłe zmienne z grupy są widoczne. Dlaczego?",
+   "options": [
+    "Zmienne sekretne nie są automatycznie mapowane na zmienne środowiskowe – trzeba je przekazać jawnie przez `env: { DBPASSWORD: $(DbPassword) }`",
+    "Sekrety są dostępne tylko w taskach `AzureCLI@2`",
+    "Variable group trzeba zadeklarować w każdym stepie osobno",
+    "Sekrety działają tylko w pipeline'ach classic, nie w YAML"
+   ],
+   "correct": 0,
+   "why": "To celowe zabezpieczenie Azure Pipelines: sekrety są maskowane i trzeba je jawnie zmapować w `env` kroku. Variable group deklaruje się na poziomie pipeline/stage/job, a sekrety działają w YAML w każdym typie kroku po zmapowaniu."
+  },
+  {
+   "id": "devops-mq009",
+   "topic": "Azure Pipelines",
+   "level": 3,
+   "q": "Gdzie standardowo konfiguruje się ręczne zatwierdzenie przed wdrożeniem na produkcję w multi-stage YAML pipeline w Azure DevOps?",
+   "options": [
+    "W YAML, dodając w stage'u sekcję `approvals:` z listą osób",
+    "Na environmencie `prod` (Approvals and checks), do którego odwołuje się deployment job",
+    "W branch policy gałęzi main",
+    "W variable group, oznaczając zmienną jako wymagającą akceptacji"
+   ],
+   "correct": 1,
+   "why": "Approvals i checks są własnością zasobu (environment, service connection), a nie pliku YAML – dzięki temu autor pipeline'u nie może ich usunąć zmianą w kodzie. YAML nie ma sekcji `approvals:`, branch policy dotyczy PR, a variable group nie ma takiej funkcji."
+  },
+  {
+   "id": "devops-mq010",
+   "topic": "CI/CD",
+   "level": 2,
+   "q": "Dwa szybkie pushe na main uruchomiły dwa workflow GitHub Actions. Deploy starszego commita skończył się później i nadpisał nowszą wersję na stagingu. Co dodać?",
+   "options": [
+    "`timeout-minutes` dla joba deploy",
+    "`needs: build` w jobie deploy",
+    "`concurrency` z grupą per środowisko (np. `deploy-staging`), żeby deploye szły kolejno",
+    "`if: github.event_name == 'push'` w jobie deploy"
+   ],
+   "correct": 2,
+   "why": "`concurrency` serializuje uruchomienia w tej samej grupie (opcjonalnie anulując oczekujące), więc dwa deploye na jedno środowisko nie wykonują się równolegle. Timeout, `needs` i warunek `if` nie rozwiązują wyścigu między osobnymi runami."
+  },
+  {
+   "id": "devops-mq011",
+   "topic": "AWS dla .NET",
+   "level": 2,
+   "q": "Worker na ECS odbiera zadania z SQS; przetwarzanie trwa ok. 2 minuty, visibility timeout kolejki to 30 s. Część zadań wykonuje się dwa lub trzy razy. Co jest przyczyną i rozwiązaniem?",
+   "options": [
+    "SQS standard nie usuwa wiadomości automatycznie – trzeba przejść na FIFO",
+    "Long polling powoduje duplikaty – ustawić `WaitTimeSeconds = 0`",
+    "Za mały `MaxNumberOfMessages` – zwiększyć do 10",
+    "Wiadomość staje się znów widoczna po 30 s i bierze ją inna instancja – wydłużyć visibility timeout ponad czas przetwarzania (lub przedłużać go w trakcie) i zachować idempotencję"
+   ],
+   "correct": 3,
+   "why": "Po upływie visibility timeout nieusunięta wiadomość wraca do kolejki. Timeout musi przekraczać czas przetwarzania albo być przedłużany `ChangeMessageVisibility`. FIFO też ma visibility timeout, long polling nie tworzy duplikatów, a rozmiar paczki nie ma tu związku."
+  },
+  {
+   "id": "devops-mq012",
+   "topic": "Git",
+   "level": 2,
+   "q": "Zespół pracuje w Git Flow. Trwa stabilizacja `release/2.4`, a na produkcji (v2.3.0) pojawił się krytyczny błąd. Jak go poprawnie załatać?",
+   "options": [
+    "Gałąź `hotfix/2.3.1` od `main`; po poprawce merge do `main` z tagiem `v2.3.1` oraz do `release/2.4` (która potem trafi do `develop`)",
+    "Poprawka na `develop`, potem cherry-pick na `main` przy następnym release",
+    "Gałąź `hotfix/2.3.1` od `release/2.4`, merge do `main`",
+    "Poprawka bezpośrednio na `release/2.4` i wydanie 2.4 przed terminem"
+   ],
+   "correct": 0,
+   "why": "Hotfix w Git Flow wychodzi z `main` (kod produkcyjny) i wraca do `main` z tagiem oraz do gałęzi rozwojowej – gdy trwa release, do gałęzi release, żeby poprawka nie zginęła. Hotfix od `release/2.4` wniósłby na produkcję niewydane zmiany, a pozostałe opcje opóźniają naprawę."
+  },
+  {
+   "id": "devops-mq013",
+   "topic": "Helm",
+   "level": 2,
+   "q": "Po `helm upgrade api` (rewizja 5) API zwraca błędy. Poprzednia rewizja 4 działała. Jak najszybciej i poprawnie wrócić?",
+   "options": [
+    "`helm uninstall api` i ponowny `helm install` ze starym tagiem",
+    "`helm rollback api 4`",
+    "`kubectl rollout undo deployment/api`",
+    "`helm upgrade api --reset-values`"
+   ],
+   "correct": 1,
+   "why": "`helm rollback` przywraca wszystkie zasoby z rewizji 4 i tworzy nową rewizję w historii. `kubectl rollout undo` cofa tylko Deployment, a Helm dalej uważa rewizję 5 za aktualną (dryf). Uninstall powoduje przestój i usuwa historię, a `--reset-values` wraca do domyślnych values chartu, nie do poprzedniej wersji."
+  },
+  {
+   "id": "devops-mq014",
+   "topic": "OpenShift",
+   "level": 2,
+   "q": "Obraz API działa w Dockerze i na AKS, ale na OpenShift pod się restartuje: „Permission denied” przy zapisie do `/app/cache` i błąd bindowania portu 80. Co jest najlepszym rozwiązaniem?",
+   "options": [
+    "Poprosić administratora o SCC `privileged` dla projektu",
+    "Dodać `USER root` w Dockerfile",
+    "Słuchać na porcie 8080, a katalogi do zapisu ustawić jako zapisywalne dla grupy root (`chgrp -R 0` + `chmod -R g=u`)",
+    "Zamienić Deployment na DeploymentConfig"
+   ],
+   "correct": 2,
+   "why": "Restrykcyjne SCC uruchamia kontener jako losowy UID bez roota z grupą 0, więc nie może bindować portów < 1024 ani pisać do katalogów należących do innego użytkownika. Obraz trzeba dostosować; podnoszenie uprawnień to obejście, którego admini nie zaakceptują, a `USER root` i tak zostanie nadpisany. DeploymentConfig nie ma z tym związku."
+  },
+  {
+   "id": "devops-mq015",
+   "topic": "kubectl i debugowanie",
+   "level": 1,
+   "q": "Pod API jest w stanie CrashLoopBackOff. `kubectl logs api-6f7b-q2x` pokazuje tylko kilka linii startu nowego kontenera. Jak zobaczyć logi z kontenera, który właśnie się wywrócił?",
+   "options": [
+    "`kubectl describe svc api`",
+    "`kubectl exec -it api-6f7b-q2x -- cat /var/log/app.log`",
+    "`kubectl get events -w`",
+    "`kubectl logs api-6f7b-q2x --previous`"
+   ],
+   "correct": 3,
+   "why": "`--previous` zwraca logi poprzedniej instancji kontenera w podzie, czyli tej, która się wywróciła. Service nie ma logów, `exec` wymaga działającego kontenera (a aplikacja w kontenerze powinna logować na stdout), a eventy pokażą restarty i exit code, ale nie wyjątek aplikacji."
+  },
+  {
+   "id": "devops-mq016",
+   "topic": "AWS dla .NET",
+   "level": 3,
+   "q": "Task ECS na Fargate: sekrety zadeklarowane w sekcji `secrets` task definition poprawnie trafiają do zmiennych środowiskowych, ale kod aplikacji wywołujący `GetSecretValueAsync` dostaje AccessDenied. Dlaczego?",
+   "options": [
+    "Wstrzyknięcie sekretów wykonuje agent ECS z uprawnieniami task execution role, a wywołania SDK z kodu używają task role, której brakuje uprawnienia `secretsmanager:GetSecretValue`",
+    "Fargate nie pozwala na wywołania Secrets Manager z kodu aplikacji",
+    "SDK wymaga access key i secret key w zmiennych środowiskowych",
+    "Secrets Manager działa tylko z Lambdą"
+   ],
+   "correct": 0,
+   "why": "ECS rozróżnia execution role (pobranie obrazu, logi, wstrzyknięcie sekretów) i task role (tożsamość aplikacji). SDK automatycznie bierze poświadczenia task role z łańcucha providerów – statyczne klucze są antywzorcem, a Fargate i ECS w pełni wspierają Secrets Manager."
+  }
+ ]
+}

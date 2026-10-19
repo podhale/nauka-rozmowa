@@ -1,0 +1,100 @@
+{
+  "cat": "arch",
+  "sheets": [
+    {
+      "topic": "DDD: strategiczne",
+      "points": [
+        "**Strategiczne** = subdomeny (core/supporting/generic), bounded contexty, ubiquitous language, context map; **taktyczne** = wzorce w kodzie.",
+        "**Ubiquitous language**: jeden język w rozmowach, testach i kodzie, ważny w obrębie jednego kontekstu; buduj przez Event Storming i słownik.",
+        "Granica kontekstu tam, gdzie słowo zmienia znaczenie (Produkt w Katalogu ≠ w Magazynie) i gdzie zmienia się właściciel reguł.",
+        "Context map: **shared kernel**, **customer-supplier**, **conformist**, **ACL**, open host service + published language, partnership, separate ways.",
+        "**ACL** = adapter implementujący port naszej domeny i tłumaczący obcy model (legacy, ERP); stosuj dla core domain.",
+        "Bounded context ≠ mikroserwis – może być modułem modularnego monolitu z własnym schematem.",
+        "Nie rób taktycznego DDD w CRUD-zie i generic subdomenach; strategiczne myślenie przydaje się prawie zawsze."
+      ],
+      "pitfalls": [
+        "Jedna klasa `Customer` dla całej firmy – wielki, sprzężony model.",
+        "„DDD” bez ekspertów domenowych i bez wspólnego języka.",
+        "Shared kernel rozrastający się do połowy systemu."
+      ],
+      "say": "Zaczynam od strategii: wspólny język z biznesem, podział na bounded contexty tam, gdzie pojęcia zmieniają znaczenie, i świadome relacje między nimi, np. ACL wobec legacy. Wzorce taktyczne stosuję tam, gdzie jest złożona logika core domain."
+    },
+    {
+      "topic": "DDD: taktyczne",
+      "points": [
+        "Building blocks: encja, **value object**, **agregat** z aggregate root, domain event, repozytorium, domain service, factory.",
+        "**Niezmiennik** = reguła zawsze prawdziwa po operacji; pilnuje jej agregat. Walidacja formatu wejścia – na brzegu.",
+        "Zasady Vernona: małe agregaty, referencje po **Id**, **jeden agregat na transakcję**, poza granicą eventual consistency.",
+        "Root = jedyny punkt wejścia: prywatne settery, `IReadOnlyCollection` + backing field, metody w języku domeny.",
+        "**Domain event** – wewnętrzny, in-process; **integration event** – publiczny kontrakt, wersjonowany, przez outbox po commicie.",
+        "**Repozytorium per agregat** (GetById, Add); zapytania dla ekranów – strona odczytu, nie repozytorium.",
+        "**Domain service**: logika obejmująca kilka agregatów lub politykę; **application service**: orkiestracja, transakcja, bez reguł."
+      ],
+      "pitfalls": [
+        "Modyfikowanie encji wewnętrznych z pominięciem roota (repozytorium dla OrderLine).",
+        "Publikowanie domain events wprost na broker jako kontraktu.",
+        "Wielkie agregaty – konflikty współbieżności i wolne ładowanie."
+      ],
+      "say": "Agregat to granica spójności: pilnuje swoich niezmienników, zmieniam jeden na transakcję, a zmiany w innych agregatach wywołuję przez domain events. Na zewnątrz kontekstu wysyłam osobne, stabilne integration events przez outbox."
+    },
+    {
+      "topic": "DDD w C#",
+      "points": [
+        "VO jako `sealed record`: równość wartościowa gratis; walidacja w konstruktorze/fabryce.",
+        "`with` omija konstruktor (kopiuje i ustawia `init`) – właściwości tylko z `get` albo walidacja w `init`.",
+        "Kolekcje w rekordzie porównywane po referencji – nadpisz Equals/GetHashCode (SequenceEqual).",
+        "Encja: równość po Id (`Entity<TId>`), brak publicznych setterów, metody domenowe.",
+        "Strongly-typed ID: `readonly record struct OrderId(Guid Value)`; `Guid.CreateVersion7()` (od .NET 9).",
+        "EF Core: `IEntityTypeConfiguration` w infrastrukturze, backing fields, owned/complex types (od EF Core 8), value converters, RowVersion jako shadow property.",
+        "Bogaty model: `order.Cancel(reason, now)` zamiast `order.Status = ...` w serwisie."
+      ],
+      "pitfalls": [
+        "Wystawienie `List<T>` zamiast `IReadOnlyCollection` – rzutowanie omija reguły.",
+        "`default` dla `record struct` VO pomija walidację.",
+        "Model anemiczny w złożonej domenie udający DDD."
+      ],
+      "code": "public readonly record struct OrderId(Guid Value);\n\npublic sealed record Money\n{\n    public decimal Amount { get; }\n    public string Currency { get; }\n    public Money(decimal amount, string currency)\n    {\n        ArgumentOutOfRangeException.ThrowIfNegative(amount);\n        (Amount, Currency) = (amount, currency);\n    }\n}",
+      "lang": "csharp",
+      "say": "Value objecty robię jako sealed recordy z walidacją w konstruktorze, uważając na `with`, encje mają strongly-typed ID i metody domenowe zamiast setterów, a mapowanie EF Core trzymam w infrastrukturze."
+    },
+    {
+      "topic": "CQRS w praktyce",
+      "points": [
+        "CQRS = osobne ścieżki komend (model domenowy, reguły, transakcje) i zapytań (DTO pod ekran).",
+        "Bez osobnej bazy: zapytania `AsNoTracking` + `Select` do DTO lub Dapper – większość korzyści za małą cenę.",
+        "Z osobną bazą: zdarzenia przez outbox → **projektory** → read model (SQL, Mongo, Elasticsearch, Redis).",
+        "Projektor: idempotentny upsert, kontrola wersji/kolejności, mierzalny lag, możliwość rebuildu.",
+        "Komenda może zwrócić id/wersję – „void” to dogmat; nie zwraca modeli do wyświetlania.",
+        "Zapytania nie zmieniają stanu (żadnego `LastViewedAt` w query handlerze).",
+        "UI: optimistic update, 202 + status/SignalR, read-your-writes po wersji; komunikat „przetwarzamy”."
+      ],
+      "pitfalls": [
+        "„CQRS wymaga MediatR/osobnych baz/event sourcingu” – nie.",
+        "Stałe opóźnienie „odczekaj 500 ms” zamiast obsługi eventual consistency.",
+        "Read model z efektami ubocznymi."
+      ],
+      "say": "CQRS to rozdzielenie modeli zapisu i odczytu; zwykle zaczynam od jednej bazy i projekcji do DTO, a osobny read model dodaję, gdy wzorce odczytu tego wymagają – wtedy świadomie obsługuję eventual consistency w UI."
+    },
+    {
+      "topic": "Event Sourcing",
+      "points": [
+        "Źródło prawdy = **append-only strumień zdarzeń per agregat**; stan = fold zdarzeń (`Apply`).",
+        "Zapis z **expected version** – optimistic concurrency; konflikt → reload i ponowienie komendy.",
+        "`Apply` bez walidacji i efektów ubocznych; reguły w metodzie komendy przed emisją zdarzenia.",
+        "**Projekcje**: inline (spójne, wolniejszy zapis) vs async (checkpoint, eventual consistency, łatwy rebuild).",
+        "**Snapshot** = optymalizacja przy długich strumieniach; wersjonowany, wyrzucalny.",
+        "**Wersjonowanie**: zmiany addytywne, nowy typ zdarzenia, **upcasting** przy odczycie; copy-and-transform w ostateczności.",
+        "Dane osobowe: crypto-shredding; mapuj nazwy typów jawnie, nie pełną nazwą klasy .NET.",
+        ".NET: **Marten** (PostgreSQL), **KurrentDB** (dawniej EventStoreDB). Nie stosuj ES w CRUD bez potrzeby historii."
+      ],
+      "pitfalls": [
+        "Maile i wywołania API w projekcjach – powtarzają się przy rebuildzie.",
+        "Zdarzenia `EntityUpdated` zamiast faktów biznesowych.",
+        "Modyfikowanie historii UPDATE-em."
+      ],
+      "code": "// zapis z kontrolą wersji (Marten)\nsession.Events.Append(orderId, expectedVersion: 7, new OrderPaid(orderId, amount));\nawait session.SaveChangesAsync(ct); // konflikt → wyjątek współbieżności",
+      "lang": "csharp",
+      "say": "W event sourcingu zapisuję zdarzenia zamiast stanu, stan odtwarzam ze strumienia z kontrolą wersji, zapytania obsługuję projekcjami, a zmiany schematu zdarzeń upcastingiem. Stosuję go tylko tam, gdzie historia ma realną wartość biznesową."
+    }
+  ]
+}

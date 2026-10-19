@@ -1,0 +1,441 @@
+{
+  "cat": "angular",
+  "name": "Angular",
+  "cards": [
+    {
+      "id": "angular-m001",
+      "topic": "NgRx Store",
+      "level": 1,
+      "q": "Z czego składa się klasyczny NgRx Store i jak płyną w nim dane?",
+      "a": "NgRx to implementacja wzorca Redux dla Angulara: cały stan globalny żyje w jednym drzewie (Store), które zmienia się wyłącznie przez wysłanie akcji (`store.dispatch`). Reducery to czyste funkcje (stan, akcja) → nowy stan, selektory wyciągają i wyliczają dane dla widoku, a effects obsługują efekty uboczne (HTTP, nawigacja) i odpowiadają kolejnymi akcjami. Przepływ jest jednokierunkowy: komponent → akcja → reducer → nowy stan → selektor → widok. Dzięki temu każda zmiana stanu jest jawna, logowalna i odtwarzalna w Redux DevTools.",
+      "code": "export const UsersPageActions = createActionGroup({\n  source: 'Users Page',\n  events: {\n    'Opened': emptyProps(),\n    'Search Changed': props<{ query: string }>(),\n  },\n});\n// komponent\nthis.store.dispatch(UsersPageActions.searchChanged({ query: 'ala' }));\nusers = this.store.selectSignal(selectFilteredUsers);",
+      "lang": "typescript",
+      "tip": "Akcje nazywaj jak zdarzenia ze źródłem (`[Users Page] Opened`), a nie jak komendy (`setUsers`) – tzw. „good action hygiene”. Rekruter lubi usłyszeć, że jedna akcja może być obsłużona przez wiele reducerów i effectów."
+    },
+    {
+      "id": "angular-m002",
+      "topic": "NgRx Store",
+      "level": 2,
+      "q": "Jak pisze się reducery w NgRx i dlaczego muszą być czyste i niemutowalne?",
+      "a": "Reducer tworzy się przez `createReducer(initialState, on(akcja, (state, props) => nowyStan))`. Musi być czystą funkcją: bez HTTP, bez `Date.now()`, bez losowości, i musi zwracać NOWY obiekt zamiast mutować stary. NgRx i selektory porównują referencje – zmutowany obiekt ma tę samą referencję, więc memoizowane selektory i OnPush nie zauważą zmiany, a time-travel w DevTools przestaje działać. W trybie dev NgRx ma runtime checks (`strictStateImmutability`, `strictActionImmutability` domyślnie włączone), które zamrażają stan i rzucają błąd przy próbie mutacji.",
+      "code": "export const usersReducer = createReducer(\n  initialState,\n  on(UsersPageActions.searchChanged, (state, { query }) => ({ ...state, query })),\n  on(UsersApiActions.loadSuccess, (state, { users }) => ({\n    ...state, users, loading: false,\n  })),\n);",
+      "lang": "typescript",
+      "tip": "Typowy follow-up: „gdzie generujesz id albo datę?” – w komponencie/effect przed dispatchem i przekazujesz w propsach akcji, nie w reducerze.",
+      "deep": "Runtime checks konfiguruje się w `provideStore(reducers, { runtimeChecks: {...} })`; `strictStateSerializability` i `strictActionSerializability` są domyślnie wyłączone, a warto je włączyć, jeśli stan ma być zapisywany (np. do localStorage) lub odtwarzany w DevTools – klasy, `Date` czy funkcje w stanie łamią serializację. Wszystkie checki działają tylko w dev mode, więc nie kosztują nic na produkcji. Przy głęboko zagnieżdżonym stanie spread robi się nieczytelny – wtedy lepiej spłaszczyć stan (normalizacja przez @ngrx/entity) niż dokładać bibliotekę do immutability. Reducer jest najłatwiejszą częścią do testowania: wywołujesz go jako funkcję z stanem i akcją i porównujesz wynik, bez TestBed."
+    },
+    {
+      "id": "angular-m003",
+      "topic": "NgRx Selectors",
+      "level": 2,
+      "q": "Jak działają selektory NgRx i na czym polega ich memoizacja?",
+      "a": "Selektor to funkcja, która ze stanu wylicza dane dla widoku. `createSelector(selA, selB, projector)` jest memoizowany: zapamiętuje ostatnie argumenty i wynik, więc jeśli selektory wejściowe zwróciły te same referencje, projector nie jest wołany ponownie i zwracany jest ten sam obiekt. Dzięki temu kosztowne filtrowanie czy sortowanie liczy się tylko przy realnej zmianie, a OnPush i sygnały nie dostają „nowej” tablicy przy każdej akcji. Selektory się komponuje – małe selektory bazowe, z nich pochodne.",
+      "code": "export const selectUsersState = createFeatureSelector<UsersState>('users');\nexport const selectUsers = createSelector(selectUsersState, s => s.users);\nexport const selectQuery = createSelector(selectUsersState, s => s.query);\nexport const selectFilteredUsers = createSelector(\n  selectUsers, selectQuery,\n  (users, q) => users.filter(u => u.name.includes(q)),\n);",
+      "lang": "typescript",
+      "tip": "Pułapka: selektor zwracający `state.users.filter(...)` bez `createSelector` tworzy nową tablicę przy każdej emisji stanu.",
+      "deep": "Memoizacja ma bufor o rozmiarze 1 (pamięta tylko ostatnie wywołanie) i porównuje argumenty referencyjnie. Selektory z parametrami (props) zostały zdeprecjonowane – zamiast nich stosuje się fabryki: `selectUserById = (id: string) => createSelector(selectEntities, e => e[id])`; każde wywołanie fabryki tworzy osobny selektor z własną pamięcią, więc warto go trzymać w polu komponentu, a nie tworzyć w szablonie. Ponieważ wszystkie selektory są wołane po każdej akcji, tani selektor bazowy + memoizowany projector to wzorzec, który skaluje się do setek selektorów. `selector.release()` czyści pamięć, a `projector` jest wystawiony do testów jednostkowych bez budowania stanu. W nowym kodzie `store.selectSignal(selector)` zwraca Signal zamiast Observable."
+    },
+    {
+      "id": "angular-m004",
+      "topic": "NgRx Store",
+      "level": 2,
+      "q": "Co daje createFeature i jak rejestruje się stan w aplikacji standalone?",
+      "a": "`createFeature({ name, reducer })` łączy nazwę feature'a z reducerem i automatycznie generuje selektory: `selectXState` dla całego slice'a oraz `selectPole` dla każdego pola stanu najwyższego poziomu. Przez `extraSelectors` można dopisać selektory pochodne z dostępem do wygenerowanych. To usuwa sporo boilerplate'u i literówek w nazwach kluczy. W aplikacji standalone root store rejestruje się przez `provideStore()` w `app.config.ts`, a stan feature'a przez `provideState(feature)` – najczęściej w `providers` lazy-loadowanej trasy, dzięki czemu reducer ładuje się razem z feature'em.",
+      "code": "export const usersFeature = createFeature({\n  name: 'users',\n  reducer: usersReducer,\n  extraSelectors: ({ selectUsers, selectQuery }) => ({\n    selectFiltered: createSelector(selectUsers, selectQuery,\n      (users, q) => users.filter(u => u.name.includes(q))),\n  }),\n});\n// routes: { path: 'users', providers: [provideState(usersFeature),\n//   provideEffects(usersEffects)], loadComponent: ... }",
+      "lang": "typescript",
+      "tip": "W kodzie z NgModules zobaczysz to samo jako `StoreModule.forRoot()` / `StoreModule.forFeature()` i `EffectsModule.forRoot/forFeature`."
+    },
+    {
+      "id": "angular-m005",
+      "topic": "NgRx Effects",
+      "level": 2,
+      "q": "Czym są effects w NgRx i jak dobierasz operator spłaszczający?",
+      "a": "Effect nasłuchuje strumienia akcji (`Actions` + `ofType`), wykonuje efekt uboczny i zwykle mapuje wynik na nową akcję (success/failure). Dzięki temu komponenty i reducery nie wiedzą nic o HTTP. Wybór operatora to decyzja o współbieżności: `switchMap` dla wyszukiwania i odczytów, gdzie liczy się tylko najnowsze żądanie; `concatMap` dla zapisów, które muszą pójść po kolei; `mergeMap` dla niezależnych operacji równoległych (np. usuwanie kilku elementów); `exhaustMap` gdy kolejne kliknięcia mają być ignorowane do końca bieżącego (logowanie, submit).",
+      "code": "export const loadUsers = createEffect(\n  (actions$ = inject(Actions), api = inject(UsersApi)) =>\n    actions$.pipe(\n      ofType(UsersPageActions.opened),\n      switchMap(() => api.getAll().pipe(\n        map(users => UsersApiActions.loadSuccess({ users })),\n        catchError(error => of(UsersApiActions.loadFailure({ error: error.message }))),\n      )),\n    ),\n  { functional: true },\n);\n// rejestracja: provideEffects(usersEffects)  // import * as usersEffects",
+      "lang": "typescript",
+      "tip": "Effect, który nie zwraca akcji (np. tylko nawigacja, toast), musi mieć `{ dispatch: false }` – inaczej NgRx wyśle z powrotem akcję, która przyszła."
+    },
+    {
+      "id": "angular-m006",
+      "topic": "NgRx Effects",
+      "level": 3,
+      "q": "Jak poprawnie obsługiwać błędy w effectach i co się dzieje, gdy błąd „wycieknie” do głównego strumienia?",
+      "a": "`catchError` musi być w wewnętrznym strumieniu (wewnątrz `switchMap`/`concatMap`), a nie na końcu głównego `pipe`. Błąd w głównym strumieniu kończy obserwowalny `actions$` danego effectu – effect przestaje reagować na kolejne akcje. W wewnętrznym strumieniu błąd zamienia się w akcję `...Failure`, a główny strumień żyje dalej. Akcja failure trafia do reducera (flaga `error`, wyłączenie `loading`) i ewentualnie do osobnego effectu pokazującego toast.",
+      "code": "// ŹLE – po pierwszym błędzie effect przestaje działać\nactions$.pipe(ofType(save), concatMap(a => api.save(a.item)),\n  map(() => saveSuccess()), catchError(e => of(saveFailure(e))));\n// DOBRZE\nactions$.pipe(ofType(save), concatMap(a => api.save(a.item).pipe(\n  map(() => saveSuccess()),\n  catchError(e => of(saveFailure({ error: e.message }))),\n)));",
+      "lang": "typescript",
+      "deep": "NgRx ma domyślny handler błędów effectów, który po nieobsłużonym błędzie ponownie subskrybuje effect (z limitem około 10 błędów), więc „wyciekły” błąd nie zawsze od razu zabija effect – ale to siatka bezpieczeństwa, nie strategia; akcja failure się nie wysyła, a stan zostaje z `loading: true`. Retry dokładam świadomie w wewnętrznym strumieniu (`retry({ count: 2, delay: 500 })`) tylko dla operacji idempotentnych – nie dla POST-a tworzącego zamówienie. W akcji failure przekazuję serializowalny opis błędu (message, status), nie cały `HttpErrorResponse`, bo psuje to serializację i DevTools. Globalne rzeczy (401 → wylogowanie) lepiej obsłużyć w interceptorze HTTP niż w każdym effectcie. Effecty testuję przez `provideMockActions` i porównanie wyemitowanych akcji, także dla ścieżki błędu."
+    },
+    {
+      "id": "angular-m007",
+      "topic": "NgRx Entity",
+      "level": 2,
+      "q": "Do czego służy @ngrx/entity i co daje createEntityAdapter?",
+      "a": "Entity adapter przechowuje kolekcję w znormalizowanej postaci: `ids` (kolejność) i `entities` (słownik id → obiekt), zamiast płaskiej tablicy. Daje gotowe, niemutujące operacje CRUD na stanie (`addOne`, `setAll`, `upsertMany`, `updateOne({ id, changes })`, `removeOne`) i selektory `selectAll`, `selectEntities`, `selectIds`, `selectTotal`. Wyszukiwanie po id to O(1) zamiast `find` po tablicy, a reducery są krótkie i bez ręcznych spreadów. Opcjonalnie `selectId` (gdy klucz nie nazywa się `id`) i `sortComparer` (utrzymuje posortowane `ids`).",
+      "code": "export const adapter = createEntityAdapter<User>({\n  sortComparer: (a, b) => a.name.localeCompare(b.name),\n});\nconst initialState = adapter.getInitialState({ loading: false });\nexport const reducer = createReducer(initialState,\n  on(UsersApiActions.loadSuccess, (s, { users }) => adapter.setAll(users, { ...s, loading: false })),\n  on(UserActions.renamed, (s, { id, name }) => adapter.updateOne({ id, changes: { name } }, s)),\n);\nconst { selectAll, selectEntities } = adapter.getSelectors();",
+      "lang": "typescript",
+      "tip": "`updateOne` dla nieistniejącego id nic nie robi; jeśli encja może nie istnieć, użyj `upsertOne`."
+    },
+    {
+      "id": "angular-m008",
+      "topic": "NgRx w praktyce",
+      "level": 2,
+      "q": "Czym jest facade pattern w NgRx i jakie ma plusy i minusy?",
+      "a": "Fasada to serwis, który ukrywa Store przed komponentami: wystawia dane (selektory jako sygnały lub Observable) i metody (`loadUsers()`, `rename(id, name)`), które pod spodem robią `dispatch`. Komponent nie zna akcji ani selektorów, więc łatwiej go testować (mock fasady), a zmiana implementacji stanu – np. migracja z Store na SignalStore – nie dotyka komponentów. Minusy: kolejna warstwa i ryzyko, że metody fasady stają się komendami (`setUsers`), co niszczy ideę akcji jako zdarzeń i utrudnia czytanie logów w DevTools.",
+      "code": "@Injectable({ providedIn: 'root' })\nexport class UsersFacade {\n  private store = inject(Store);\n  readonly users = this.store.selectSignal(usersFeature.selectFiltered);\n  readonly loading = this.store.selectSignal(usersFeature.selectLoading);\n  opened() { this.store.dispatch(UsersPageActions.opened()); }\n  search(query: string) { this.store.dispatch(UsersPageActions.searchChanged({ query })); }\n}",
+      "lang": "typescript",
+      "tip": "Dobra odpowiedź: „fasada tak, ale metody nazywam zdarzeniami (`opened`, `searchChanged`), a nie setterami”."
+    },
+    {
+      "id": "angular-m009",
+      "topic": "NgRx w praktyce",
+      "level": 1,
+      "q": "Do czego służą Redux DevTools w projekcie z NgRx?",
+      "a": "Redux DevTools to rozszerzenie przeglądarki, które po dodaniu `provideStoreDevtools()` pokazuje listę wszystkich wysłanych akcji, ich payload, stan przed i po oraz diff. Pozwala „cofać się w czasie” (time-travel), przeskakiwać akcje i eksportować/importować sesję, co bardzo ułatwia odtworzenie błędu zgłoszonego przez testera. Na produkcji wyłącza się je lub ogranicza do trybu tylko do odczytu (`logOnly`), a `maxAge` ogranicza liczbę pamiętanych akcji, żeby nie zjadać pamięci.",
+      "code": "export const appConfig: ApplicationConfig = {\n  providers: [\n    provideStore(),\n    provideEffects(),\n    provideStoreDevtools({ maxAge: 25, logOnly: !isDevMode() }),\n  ],\n};",
+      "lang": "typescript",
+      "tip": "DevTools działają też z NgRx SignalStore przez dodatki społeczności (np. ngrx-toolkit), ale to nie jest część core – warto o tym wiedzieć, a nie obiecywać."
+    },
+    {
+      "id": "angular-m010",
+      "topic": "NgRx w praktyce",
+      "level": 3,
+      "q": "Kiedy wybrać klasyczny NgRx Store, kiedy NgRx SignalStore, a kiedy zwykły serwis z sygnałami?",
+      "a": "Serwis z sygnałami wystarcza dla stanu lokalnego feature'a i małych aplikacji: zero zależności, najmniej kodu. SignalStore daje strukturę (withState/withComputed/withMethods, rxMethod, entity, własne features) bez ceremonii akcji – dobry dla średnich i dużych feature'ów, które chcą konwencji. Klasyczny Store opłaca się, gdy stan jest naprawdę globalny i współdzielony przez wiele feature'ów, wiele effectów reaguje na te same zdarzenia, potrzebny jest pełny audyt zmian (DevTools, logowanie akcji) lub gdy projekt już go ma i zespół zna wzorzec. W ofertach 2026 klasyczny NgRx nadal pojawia się często, bo duże projekty enterprise mają go od lat.",
+      "tip": "Nie mów „NgRx jest przestarzały” – rekruter z projektem na 200 akcjach to zapamięta. Lepiej: „to narzędzie na konkretny rodzaj problemu”.",
+      "deep": "Kryteria, które podaję: (1) ile miejsc reaguje na to samo zdarzenie – przy jednym konsumencie akcje+reducer+effect to czysty narzut; (2) czy potrzebny jest log zdarzeń i odtwarzanie sesji (Store wygrywa); (3) rozmiar zespołu i rotacja – sztywna konwencja Store'a pomaga przy 30 osobach, przeszkadza przy 3; (4) istniejący kod. Migracji Store → SignalStore nie robię „big bangiem”: nowe feature'y piszę w SignalStore, a w starych najpierw wprowadzam fasady, żeby komponenty nie zależały od Store'a, potem wymieniam implementację fasady feature po feature'ze. Oba rozwiązania mogą współistnieć w jednej aplikacji, a `store.selectSignal` pozwala używać selektorów w świecie sygnałów. NGXS i Akita to alternatywy – NGXS jest nadal rozwijany, Akita praktycznie porzucona, więc w nowym projekcie bym jej nie wybierał."
+    },
+    {
+      "id": "angular-m011",
+      "topic": "NgRx w praktyce",
+      "level": 2,
+      "q": "Jakie są najczęstsze błędy w projektach z klasycznym NgRx?",
+      "a": "Najczęściej widuję: (1) wszystko w Store – także stan formularzy i UI jednego komponentu, co daje masę boilerplate'u; (2) akcje-komendy wielokrotnie używane (`setLoading`) zamiast unikalnych zdarzeń ze źródłem; (3) logika biznesowa w komponentach lub effectach zamiast w reducerach/selektorach; (4) `catchError` w złym miejscu effectu; (5) selektory bez memoizacji lub tworzone w szablonie; (6) mutowanie stanu i nieserializowalne obiekty w stanie (klasy, `Date`, `HttpErrorResponse`); (7) subskrypcje w komponentach zamiast `selectSignal`/async pipe; (8) effect bez `dispatch: false`, który wpada w pętlę.",
+      "tip": "Na rozmowie dobrze działa przykład z życia: „zespół miał 40 akcji `set...` i nikt nie wiedział, co wywołuje zmianę – przepisaliśmy na zdarzenia ze źródłem”."
+    },
+    {
+      "id": "angular-m012",
+      "topic": "NgModules",
+      "level": 2,
+      "q": "Czym jest NgModule, co oznaczają declarations/imports/exports/providers i do czego służyły forRoot/forChild?",
+      "a": "NgModule to kontekst kompilacji: `declarations` to komponenty, dyrektywy i pipe'y należące do modułu (każdy może być zadeklarowany tylko w jednym), `imports` to inne moduły, których eksporty są dostępne w szablonach, `exports` to to, co moduł udostępnia dalej, `providers` rejestruje serwisy, a `bootstrap` wskazuje root komponent w AppModule. Moduły ładowane eagerly dzielą root injector, a lazy-loaded tworzą własny child injector. Konwencja `forRoot()`/`forChild()` (np. `RouterModule.forRoot(routes)`) zwraca `ModuleWithProviders`, żeby singletonowe providery rejestrować tylko raz w root, a w feature'ach importować sam moduł bez providerów.",
+      "code": "@NgModule({\n  declarations: [UserListComponent, UserCardComponent],\n  imports: [CommonModule, RouterModule.forChild(routes)],\n  exports: [UserCardComponent],\n  providers: [UserService],\n})\nexport class UsersModule {}",
+      "lang": "typescript",
+      "tip": "Od Angular 19 komponent bez flagi jest standalone, więc komponent deklarowany w NgModule musi mieć `standalone: false`.",
+      "deep": "Typowe konstrukcje, które spotkasz w legacy: SharedModule (re-eksport CommonModule, FormsModule i wspólnych komponentów), CoreModule z guardem w konstruktorze (`@Optional() @SkipSelf()` rzuca błąd przy ponownym imporcie) i feature modules ładowane przez `loadChildren: () => import(...).then(m => m.UsersModule)`. Klasyczny bug: serwis w `providers` lazy-loadowanego modułu daje drugą instancję zamiast singletonu – stąd wzięło się `providedIn: 'root'`. Duży SharedModule importowany wszędzie psuje tree-shaking i wydłuża kompilację. NgModule nie są zdeprecjonowane i nadal działają, a standalone komponent może importować moduł (np. z biblioteki trzeciej) – dlatego migracja może być stopniowa."
+    },
+    {
+      "id": "angular-m013",
+      "topic": "@Input/@Output (dekoratory)",
+      "level": 1,
+      "q": "Jak działają @Input/@Output i ngOnChanges i czym różnią się od input()/output()?",
+      "a": "`@Input()` to dekorator pola przyjmującego dane od rodzica, a `@Output()` to `EventEmitter`, przez który dziecko emituje zdarzenia (`(saved)=\"onSave($event)\"`). `ngOnChanges(changes: SimpleChanges)` wywołuje się przed `ngOnInit` i przy każdej zmianie referencji inputu ustawionego z szablonu; w `changes` są `previousValue`, `currentValue` i `firstChange`. Nowe API `input()` zwraca read-only sygnał, więc wartości pochodne liczy się przez `computed()` zamiast w `ngOnChanges`, a `output()` jest lżejsze niż `EventEmitter` i nie jest Observable. W legacy kodzie spotkasz też settery na inputach i `@Input({ required: true })`.",
+      "code": "export class PriceComponent implements OnChanges {\n  @Input({ required: true }) amount!: number;\n  @Input() currency = 'PLN';\n  @Output() selected = new EventEmitter<number>();\n  formatted = '';\n  ngOnChanges(changes: SimpleChanges) {\n    if (changes['amount'] || changes['currency']) {\n      this.formatted = `${this.amount} ${this.currency}`;\n    }\n  }\n}",
+      "lang": "typescript",
+      "tip": "Pułapka: mutacja obiektu przekazanego w @Input (np. `user.name = 'X'`) nie wywoła ngOnChanges ani odświeżenia OnPush – zmienia się tylko referencja."
+    },
+    {
+      "id": "angular-m014",
+      "topic": "Control flow",
+      "level": 1,
+      "q": "Jak wyglądają *ngIf, *ngFor i ngSwitch w starszym kodzie i czym różnią się od @if/@for/@switch?",
+      "a": "Stare dyrektywy strukturalne to zwykłe dyrektywy z CommonModule: `*ngIf=\"cond; else tpl\"` z `<ng-template>`, `*ngFor` z opcjonalną funkcją `trackBy` i `[ngSwitch]` z `*ngSwitchCase`. Gwiazdka to cukier składniowy na `<ng-template>`, a na jednym elemencie może być tylko jedna dyrektywa strukturalna (stąd `<ng-container>`). Nowy control flow jest wbudowany w kompilator: nie wymaga importów, `@for` wymusza `track`, ma `@empty`, `@else if` i jest szybszy. NgIf/NgFor/NgSwitch są zdeprecjonowane od Angular 20, a migrację robi schematic `ng generate @angular/core:control-flow`.",
+      "code": "<!-- legacy -->\n<ul *ngIf=\"users$ | async as users; else loading\">\n  <li *ngFor=\"let u of users; trackBy: trackById\">{{ u.name }}</li>\n</ul>\n<ng-template #loading>Ładowanie…</ng-template>\n<!-- nowy control flow -->\n@if (users(); as users) {\n  <ul>@for (u of users; track u.id) { <li>{{ u.name }}</li> } @empty { <li>Brak</li> }</ul>\n} @else { Ładowanie… }",
+      "lang": "typescript",
+      "tip": "Brak `trackBy` w dużych listach `*ngFor` to częsty problem wydajności w legacy – przy migracji schematic dodaje `track`, ale warto sprawdzić, czy śledzi po id, a nie po `$index`."
+    },
+    {
+      "id": "angular-m015",
+      "topic": "Change detection",
+      "level": 3,
+      "q": "Co dokładnie robi zone.js w legacy aplikacji i jak NgZone wpływa na wydajność change detection?",
+      "a": "zone.js monkey-patchuje asynchroniczne API przeglądarki (zdarzenia DOM, `setTimeout`, `setInterval`, Promise, XHR/fetch), więc Angular wie, że „coś mogło się zmienić”. Gdy kolejka mikrozadań w strefie Angulara się opróżni, `NgZone` sygnalizuje to i wywoływane jest `ApplicationRef.tick()`, które przy strategii Default sprawdza całe drzewo komponentów od góry. Dlatego częste zdarzenia (mousemove, scroll, websocket, timery bibliotek wykresów) mogą powodować setki pełnych przebiegów CD na sekundę. Rozwiązania: `ngZone.runOutsideAngular()` dla gorących pętli i powrót przez `ngZone.run()` tylko z wynikiem, OnPush w komponentach oraz `provideZoneChangeDetection({ eventCoalescing: true })`.",
+      "code": "private zone = inject(NgZone);\nngOnInit() {\n  this.zone.runOutsideAngular(() => {\n    fromEvent<MouseEvent>(this.el.nativeElement, 'mousemove').pipe(\n      throttleTime(100),\n    ).subscribe(e => this.zone.run(() => this.pos.set([e.x, e.y])));\n  });\n}",
+      "lang": "typescript",
+      "tip": "W Angular 21 nowe projekty są domyślnie zoneless, ale większość projektów komercyjnych nadal działa z zone.js – trzeba umieć wyjaśnić oba modele.",
+      "deep": "Ważne szczegóły na poziomie senior: zone.js sam nie wykrywa zmian – tylko informuje, że zakończyła się asynchroniczna praca; detekcja to porównanie bindingów w szablonach. Kod uruchomiony poza strefą (np. callback biblioteki inicjalizowanej w `runOutsideAngular` albo natywny SDK) nie odświeży widoku i wtedy pojawia się „magiczne” `cdr.detectChanges()` w kodzie legacy. `async/await` w kodzie kompilowanym do natywnego ES2017+ nie jest patchowany przez zone.js, dlatego Angular CLI z zone.js kompiluje async/await do generatorów – to jeden z kosztów zone.js obok rozmiaru bundla (~kilkadziesiąt KB) i większych stack trace'ów. Przejście na zoneless zaczynam od OnPush i sygnałów, bo komponent OnPush oparty o sygnały działa poprawnie w obu trybach."
+    },
+    {
+      "id": "angular-m016",
+      "topic": "Dependency Injection",
+      "level": 2,
+      "q": "Jak wygląda constructor injection w starszym kodzie (@Inject, @Optional, dziedziczenie) i dlaczego migruje się na inject()?",
+      "a": "W legacy zależności wstrzykuje się przez parametry konstruktora, często z modyfikatorem `private` (`constructor(private http: HttpClient)`). Tokeny inne niż klasy wymagają dekoratora `@Inject(TOKEN)`, a modyfikatory rozwiązywania to dekoratory parametrów `@Optional()`, `@Self()`, `@SkipSelf()`, `@Host()`. Problemy: przy dziedziczeniu klasa pochodna musi przyjąć wszystkie zależności bazowej i przekazać je w `super(...)`, a dekoratory parametrów zależą od metadanych TypeScript. `inject()` działa w polach klasy, nie wymaga dekoratorów, upraszcza dziedziczenie i funkcyjne guardy/interceptory; istnieje schematic `ng generate @angular/core:inject`.",
+      "code": "// legacy\nconstructor(\n  private http: HttpClient,\n  @Inject(API_URL) private apiUrl: string,\n  @Optional() private logger?: Logger,\n) {}\n// nowocześnie\nprivate http = inject(HttpClient);\nprivate apiUrl = inject(API_URL);\nprivate logger = inject(Logger, { optional: true });",
+      "lang": "typescript",
+      "tip": "Oba style działają i można je mieszać – na rozmowie warto powiedzieć, że w istniejącym kodzie trzymasz się konwencji projektu, a migrujesz schematem, nie ręcznie."
+    },
+    {
+      "id": "angular-m017",
+      "topic": "Migracja legacy Angulara",
+      "level": 3,
+      "q": "Jak migrujesz legacy aplikację Angular (np. 14) do aktualnej wersji i nowoczesnych API?",
+      "a": "Najpierw aktualizacja wersji: `ng update @angular/core@N @angular/cli@N` po jednej wersji głównej naraz, według przewodnika update.angular.dev; `ng update` uruchamia automatyczne migracje kodu, a Angular Material, NgRx i inne biblioteki aktualizuje się tą samą komendą w zgodnych wersjach. Przed każdym krokiem: zielone testy, sprawdzenie wymagań Node.js i TypeScript, osobny commit. Dopiero potem modernizacja kodu schematami: `ng generate @angular/core:standalone` (w kilku trybach), `@angular/core:control-flow`, `@angular/core:inject`, `@angular/core:signal-input-migration`, `@angular/core:output-migration`, `@angular/core:signal-queries-migration`. Schematy robią większość pracy, ale wynik trzeba przejrzeć – miejsca niekompatybilne są pomijane i raportowane.",
+      "code": "ng update @angular/core@15 @angular/cli@15   # i dalej wersja po wersji\nng update @angular/material@15 @ngrx/store@15\nng generate @angular/core:standalone\nng generate @angular/core:control-flow\nng generate @angular/core:inject\nng generate @angular/core:signal-input-migration",
+      "lang": "bash",
+      "tip": "Najczęściej blokują nie zmiany Angulara, tylko porzucone biblioteki trzecie bez wsparcia nowych wersji – pierwszy krok to ich inwentaryzacja.",
+      "deep": "Kolejność, która sprawdza się w praktyce: (1) wersje frameworka do bieżącej bez zmian w stylu kodu; (2) przejście na nowy builder `application` (esbuild), jeśli `ng update` go nie przełączył – tu wychodzą problemy z niestandardowym webpackiem i importami CommonJS; (3) standalone; (4) control flow; (5) inject/sygnały dla inputów, outputów i zapytań; (6) dopiero na końcu OnPush wszędzie i ewentualnie zoneless. Każdy etap to osobne PR-y, możliwe do zrobienia feature po feature'ze (schematy przyjmują ścieżkę). Duży skok bez ng update (ręczna zmiana package.json) to proszenie się o pominięte migracje. Ryzyko regresji ogranicza dobra warstwa testów e2e na krytycznych ścieżkach, bo testy jednostkowe często same wymagają migracji (Karma → Vitest/Jest)."
+    },
+    {
+      "id": "angular-m018",
+      "topic": "Nx monorepo",
+      "level": 2,
+      "q": "Co daje Nx w projekcie Angular i czym różni się od zwykłego workspace Angular CLI?",
+      "a": "Nx to narzędzie do monorepo nad Angular CLI: buduje graf zależności między aplikacjami i bibliotekami (`nx graph`), dzięki czemu `nx affected -t lint test build` uruchamia zadania tylko dla projektów dotkniętych zmianą. Wyniki zadań są cache'owane (lokalnie i opcjonalnie zdalnie w Nx Cloud), więc powtórny build lub test bez zmian bierze wynik z cache. Do tego generatory (`nx g @nx/angular:library`), reguła ESLint `@nx/enforce-module-boundaries` pilnująca granic przez tagi oraz wspólne wersje zależności dla całego repo (single version policy). Zwykły workspace CLI też obsługuje wiele projektów, ale bez affected, cache'u zadań i granic.",
+      "code": "nx graph                          # wizualizacja zależności\nnx affected -t lint test build    # tylko to, co zmienione względem base\nnx g @nx/angular:library --directory=libs/orders/data-access --tags=scope:orders,type:data-access",
+      "lang": "bash",
+      "tip": "Kiedy Nx się nie opłaca: jedna aplikacja, jeden mały zespół – wtedy to dodatkowa warstwa narzędzi i aktualizacji (Nx ma własne migracje `nx migrate`)."
+    },
+    {
+      "id": "angular-m019",
+      "topic": "Nx monorepo",
+      "level": 2,
+      "q": "Jakie są typy bibliotek w Nx i czym różnią się biblioteki zwykłe, buildable i publishable?",
+      "a": "Konwencja Nx dzieli biblioteki według roli: `feature` (smart komponenty i strony), `ui` (komponenty prezentacyjne), `data-access` (serwisy, stan, HTTP) i `util` (czyste funkcje), co w połączeniu z tagami pozwala zabronić np. importu `feature` z `ui`. Technicznie domyślna biblioteka nie jest budowana osobno – aplikacja kompiluje jej źródła przez aliasy ścieżek w `tsconfig.base.json`. Biblioteka `--buildable` ma własny build, co pozwala na inkrementalne budowanie i cache dużych repo. `--publishable` dodatkowo wymaga `importPath` i jest przygotowana do publikacji na npm (ng-packagr, Angular Package Format).",
+      "tip": "Nie rób wszystkiego buildable „na zapas” – w średnim repo zwykłe biblioteki plus cache Nx zwykle wystarczą, a buildable komplikuje konfigurację."
+    },
+    {
+      "id": "angular-m020",
+      "topic": "Mikrofrontendy",
+      "level": 3,
+      "q": "Jak działa Module Federation w runtime i co może pójść nie tak ze współdzielonymi zależnościami?",
+      "a": "Host ładuje w runtime remote'y: każdy remote publikuje plik wejściowy (w webpackowym Module Federation `remoteEntry.js`, w Native Federation manifest i import mapy na ES modules), a host pobiera z niego wystawione moduły, np. trasy przez `loadRemoteModule`. Kluczowa jest konfiguracja `shared`: Angular, RxJS i biblioteki ze stanem muszą być singletonami w zgodnych wersjach, inaczej w przeglądarce ładują się dwie kopie frameworka – rośnie bundle, a DI, router i strefy przestają być współdzielone. Module Federation działa z webpackiem, Native Federation z buildem esbuild (`application` builder), dlatego w nowych projektach Angular częściej wybiera się Native Federation.",
+      "code": "// federation.config.js (Native Federation, @angular-architects/native-federation)\nmodule.exports = withNativeFederation({\n  name: 'orders',\n  exposes: { './routes': './src/app/orders.routes.ts' },\n  shared: { ...shareAll({ singleton: true, strictVersion: true, requiredVersion: 'auto' }) },\n});",
+      "lang": "typescript",
+      "tip": "Kiedy nie warto: jeden zespół, wspólne wdrożenia, brak potrzeby niezależnych release'ów – wtedy monorepo z lazy loadingiem daje to samo bez kosztów runtime.",
+      "deep": "Problemy produkcyjne, o których warto opowiedzieć: rozjazd wersji Angulara między host a remote (strictVersion powoduje błąd w runtime zamiast cichych bugów – to lepiej), cache przeglądarki trzymający stary plik wejściowy remote'a (pliki wejściowe/manifest bez długiego cache, reszta z hashami), awaria jednego remote'a, która nie może położyć całego hosta (try/catch przy ładowaniu i trasa zastępcza), oraz współdzielony stan – remote'y komunikują się przez kontrakty (zdarzenia, URL, mały shared lib), a nie przez wspólny globalny store. Koszt organizacyjny jest wyższy niż techniczny: wersjonowanie kontraktów, testy integracyjne kompozycji i wspólny design system, żeby UI nie wyglądał jak pięć różnych aplikacji. Mikrofrontendy rozwiązują problem niezależnych zespołów i wdrożeń, a nie wydajności czy czasu buildu."
+    },
+    {
+      "id": "angular-m021",
+      "topic": "Design system",
+      "level": 1,
+      "q": "Do czego służy Storybook w bibliotece komponentów Angular i jak wygląda story?",
+      "a": "Storybook to izolowane środowisko do rozwijania i dokumentowania komponentów poza aplikacją: każdy stan komponentu (wariant, disabled, loading, długi tekst) to osobna story. Służy jako żywa dokumentacja design systemu dla deweloperów i designerów, miejsce do testów wizualnej regresji i dostępności (addon a11y) oraz interakcji. Story pisze się w formacie CSF: domyślny eksport `meta` z komponentem i nazwane eksporty z `args`. Komponenty prezentacyjne z czystymi inputami/outputami najłatwiej opisać storiesami – to dodatkowa motywacja do podziału smart/dumb.",
+      "code": "import type { Meta, StoryObj } from '@storybook/angular';\nconst meta: Meta<ButtonComponent> = {\n  title: 'DS/Button',\n  component: ButtonComponent,\n};\nexport default meta;\ntype Story = StoryObj<ButtonComponent>;\nexport const Primary: Story = { args: { variant: 'primary', label: 'Zapisz' } };\nexport const Disabled: Story = { args: { ...Primary.args, disabled: true } };",
+      "lang": "typescript",
+      "tip": "W Nx Storybook dodaje się generatorem do biblioteki `ui`, a stories są też dobrym źródłem do testów komponentów."
+    },
+    {
+      "id": "angular-m022",
+      "topic": "Design system",
+      "level": 2,
+      "q": "Jak zorganizować design tokens i theming w bibliotece komponentów Angular?",
+      "a": "Design tokens to nazwane decyzje projektowe (kolory, odstępy, typografia, promienie, cienie) trzymane w jednym źródle, np. w JSON z Figmy, i generowane do CSS custom properties narzędziem typu Style Dictionary. Komponenty używają tylko tokenów semantycznych (`--color-primary`, `--space-2`), nigdy surowych wartości, więc zmiana motywu (dark mode, marka klienta) to podmiana wartości zmiennych na `:root` lub atrybucie `[data-theme]`, bez przebudowy komponentów. CSS custom properties przechodzą przez ViewEncapsulation i Shadow DOM, więc działają w każdym trybie enkapsulacji. Angular Material w nowszych wersjach również opiera theming o tokeny w CSS variables.",
+      "code": ":root {\n  --color-primary: #1d4ed8;\n  --color-surface: #ffffff;\n  --radius-md: 8px;\n}\n[data-theme='dark'] {\n  --color-primary: #93c5fd;\n  --color-surface: #0f172a;\n}\n/* button.component.css */\n:host button { background: var(--color-primary); border-radius: var(--radius-md); }",
+      "lang": "text",
+      "tip": "Rozróżniaj tokeny bazowe (paleta: `blue-700`) od semantycznych (`color-primary`) – komponenty znają tylko semantyczne."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "angular-mq001",
+      "topic": "NgRx Store",
+      "level": 2,
+      "q": "Komponent z OnPush wyświetla `todos()` z `store.selectSignal(selectTodos)`. Po kliknięciu „zrób” lista się nie odświeża, a w dev mode pojawia się błąd. Co jest przyczyną?",
+      "code": "on(TodoActions.toggled, (state, { id }) => {\n  const t = state.todos.find(x => x.id === id)!;\n  t.done = !t.done;\n  return state;\n})",
+      "lang": "typescript",
+      "options": [
+        "Reducer mutuje istniejącą tablicę i obiekt, a runtime check strictStateImmutability zamroził stan",
+        "selectSignal nie działa z OnPush i trzeba użyć async pipe",
+        "Brakuje effectu, który przepisze zmianę do stanu",
+        "on() wymaga zwrócenia undefined, gdy stan się nie zmienia"
+      ],
+      "correct": 0,
+      "why": "Reducer mutuje stan (`push`/przypisanie) – w dev mode NgRx zamraża stan i rzuca TypeError przy mutacji, a nawet bez checków referencja się nie zmienia, więc memoizowane selektory i sygnał nie emitują nowej wartości. selectSignal działa z OnPush; effect nie jest potrzebny do synchronicznej zmiany; reducer zawsze zwraca stan."
+    },
+    {
+      "id": "angular-mq002",
+      "topic": "NgRx Selectors",
+      "level": 2,
+      "q": "Stan ma `{ users: User[], query: string, theme: string }`. Wysłano akcję zmieniającą tylko `theme`. Ile razy zostanie wywołany projector selektora `selectFiltered`?",
+      "code": "const selectFiltered = createSelector(selectUsers, selectQuery,\n  (users, q) => users.filter(u => u.name.includes(q)));",
+      "lang": "typescript",
+      "options": [
+        "Raz – każda akcja uruchamia wszystkie projektory",
+        "Ani razu – selectUsers i selectQuery zwróciły te same referencje, więc wynik pochodzi z memoizacji",
+        "Dwa razy – raz dla stanu przed, raz po akcji",
+        "Ani razu, ale tylko jeśli komponent ma OnPush"
+      ],
+      "correct": 1,
+      "why": "Selektory wejściowe są wywoływane, ale zwracają te same referencje (`users` i `query` się nie zmieniły), więc createSelector nie woła projectora i zwraca zapamiętany wynik. Memoizacja nie zależy od strategii change detection komponentu."
+    },
+    {
+      "id": "angular-mq003",
+      "topic": "NgRx Effects",
+      "level": 2,
+      "q": "Effect wyszukiwania reaguje na `searchChanged` i woła API. Użytkownik szybko wpisuje znaki, a lista czasem pokazuje wyniki dla starszej frazy. Jaka zmiana naprawia problem?",
+      "code": "actions$.pipe(ofType(searchChanged),\n  mergeMap(({ query }) => api.search(query).pipe(\n    map(results => searchSuccess({ results })))))",
+      "lang": "typescript",
+      "options": [
+        "Zamiana mergeMap na concatMap",
+        "Zamiana mergeMap na exhaustMap",
+        "Dodanie shareReplay(1) po wywołaniu API",
+        "Zamiana mergeMap na switchMap (opcjonalnie z debounceTime przed nim)"
+      ],
+      "correct": 3,
+      "why": "mergeMap pozwala na równoległe żądania i późniejsza odpowiedź starszej frazy nadpisuje nowszą. switchMap anuluje poprzednie żądanie przy nowej akcji. concatMap czekałby w kolejce na wszystkie stare frazy, exhaustMap zignorowałby nowe znaki, a shareReplay nie zmienia współbieżności."
+    },
+    {
+      "id": "angular-mq004",
+      "topic": "NgRx Effects",
+      "level": 3,
+      "q": "Gdzie należy umieścić catchError w tym effectcie, żeby po błędzie zapisu wysłać `saveFailure` i obsłużyć kolejne akcje `save`?",
+      "code": "save$ = createEffect(() => this.actions$.pipe(\n  ofType(save),\n  concatMap(({ item }) => this.api.save(item)),\n  map(() => saveSuccess()),\n));",
+      "lang": "typescript",
+      "options": [
+        "Na końcu głównego pipe, po concatMap",
+        "Wewnątrz concatMap, w pipe wywołania api.save(...)",
+        "Przed ofType, żeby łapać wszystkie błędy strumienia akcji",
+        "Nigdzie – NgRx sam zamieni błąd na akcję failure"
+      ],
+      "correct": 1,
+      "why": "Błąd złapany w wewnętrznym strumieniu zamienia się w akcję failure, a strumień actions$ działa dalej. catchError na końcu głównego pipe kończy subskrypcję effectu (domyślny handler może go ponownie zasubskrybować, ale akcja failure i tak nie zostanie wysłana). NgRx nie tworzy akcji failure automatycznie."
+    },
+    {
+      "id": "angular-mq005",
+      "topic": "NgRx Effects",
+      "level": 2,
+      "q": "Co się stanie po wysłaniu akcji `loginSuccess` przy takim effectcie?",
+      "code": "redirect$ = createEffect(() => this.actions$.pipe(\n  ofType(loginSuccess),\n  tap(() => this.router.navigate(['/dashboard'])),\n));",
+      "lang": "typescript",
+      "options": [
+        "Nawigacja wykona się raz i nic więcej",
+        "Błąd kompilacji – tap nie może być w effectcie",
+        "Effect wyśle z powrotem `loginSuccess`, który znów go uruchomi – nieskończona pętla",
+        "Akcja zostanie zignorowana, bo effect nie zwraca nowej akcji"
+      ],
+      "correct": 2,
+      "why": "Domyślnie effect ma `dispatch: true`, więc to, co wyemituje strumień, jest wysyłane jako akcja. tap przepuszcza tę samą akcję `loginSuccess`, która ponownie uruchamia effect. Dla effectów bez akcji wynikowej trzeba dodać `{ dispatch: false }`."
+    },
+    {
+      "id": "angular-mq006",
+      "topic": "NgRx Entity",
+      "level": 2,
+      "q": "Stan encji zawiera użytkowników o id 1 i 2. Reducer wykonuje `adapter.updateOne({ id: 3, changes: { name: 'Ola' } }, state)`. Jaki będzie wynik?",
+      "options": [
+        "Stan bez zmian – updateOne nie dodaje brakującej encji",
+        "Dodany zostanie użytkownik { id: 3, name: 'Ola' }",
+        "Rzucony zostanie błąd 'Entity not found'",
+        "Zaktualizowany zostanie ostatni użytkownik w kolekcji"
+      ],
+      "correct": 0,
+      "why": "updateOne aktualizuje tylko istniejące encje; dla brakującego id stan pozostaje bez zmian i nie ma wyjątku. Jeśli encja może nie istnieć, używa się upsertOne, który doda albo zaktualizuje encję."
+    },
+    {
+      "id": "angular-mq007",
+      "topic": "Nx monorepo",
+      "level": 2,
+      "q": "W monorepo Nx aplikacje `shop` i `admin` zależą od biblioteki `shared-util`, a `reports` nie. Zmieniono tylko plik w `shared-util`. Co uruchomi `nx affected -t test`?",
+      "options": [
+        "Testy wszystkich projektów w repo, bo zmiana dotyczy biblioteki współdzielonej",
+        "Tylko testy shared-util",
+        "Testy shared-util, shop i admin (i innych zależnych projektów), bez reports",
+        "Nic, dopóki zmiany nie zostaną zbudowane poleceniem nx build"
+      ],
+      "correct": 2,
+      "why": "affected wylicza z grafu projektów zmienione projekty i wszystkie, które od nich zależą (bezpośrednio lub pośrednio). reports nie zależy od shared-util, więc jest pomijany. Uruchamianie wszystkiego to właśnie to, czego affected pozwala uniknąć."
+    },
+    {
+      "id": "angular-mq008",
+      "topic": "NgRx Store",
+      "level": 1,
+      "q": "Feature zdefiniowano jako `createFeature({ name: 'books', reducer })`, gdzie stan ma pola `items` i `loading`. Które selektory zostaną wygenerowane automatycznie?",
+      "options": [
+        "selectBooks, selectItems, selectLoading",
+        "booksSelector, itemsSelector, loadingSelector",
+        "selectBooksState, selectItems, selectLoading",
+        "Żadne – selektory zawsze trzeba napisać przez createSelector"
+      ],
+      "correct": 2,
+      "why": "createFeature generuje selektor całego slice'a w postaci select<Name>State oraz select<Pole> dla każdego pola stanu najwyższego poziomu. Dodatkowe selektory pochodne można dopisać w extraSelectors."
+    },
+    {
+      "id": "angular-mq009",
+      "topic": "@Input/@Output (dekoratory)",
+      "level": 1,
+      "q": "Rodzic wykonuje `this.user.name = 'Ola'` na obiekcie przekazanym do dziecka przez `@Input() user`. Dziecko loguje w ngOnChanges. Co się stanie?",
+      "options": [
+        "ngOnChanges się wywoła, bo zmieniła się wartość pola obiektu",
+        "ngOnChanges się wywoła, ale z firstChange = true",
+        "Angular rzuci ExpressionChangedAfterItHasBeenCheckedError",
+        "ngOnChanges się nie wywoła – referencja obiektu się nie zmieniła"
+      ],
+      "correct": 3,
+      "why": "ngOnChanges reaguje na zmianę wartości bindingu, czyli dla obiektów – na zmianę referencji. Mutacja pola nie zmienia referencji. Rozwiązanie: przekazywać nowy obiekt ({ ...user, name }) albo przejść na niemutowalne dane i sygnały."
+    },
+    {
+      "id": "angular-mq010",
+      "topic": "Control flow",
+      "level": 1,
+      "q": "Co się stanie przy kompilacji tego szablonu w legacy komponencie?",
+      "code": "<li *ngFor=\"let u of users\" *ngIf=\"u.active\">{{ u.name }}</li>",
+      "lang": "html",
+      "options": [
+        "Lista wyświetli tylko aktywnych użytkowników",
+        "Błąd: na jednym elemencie nie można użyć dwóch dyrektyw strukturalnych",
+        "*ngIf zostanie zignorowany, a wyświetlą się wszyscy",
+        "Działa, ale *ngIf wykona się dla całej listy tylko raz"
+      ],
+      "correct": 1,
+      "why": "Każda dyrektywa ze gwiazdką rozwija się do własnego <ng-template>, więc na jednym elemencie może być tylko jedna. Poprawnie: *ngFor na <ng-container>, a *ngIf na <li> wewnątrz (albo @for z @if w nowym control flow)."
+    },
+    {
+      "id": "angular-mq011",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "Aplikacja z zone.js, komponent z domyślną strategią CD. Licznik aktualizowany jest jak poniżej. Co zobaczy użytkownik?",
+      "code": "count = 0;\nngOnInit() {\n  this.zone.runOutsideAngular(() => setInterval(() => this.count++, 1000));\n}",
+      "lang": "typescript",
+      "options": [
+        "Licznik rośnie co sekundę",
+        "Licznik zostaje na 0 do czasu, aż inne zdarzenie w strefie (np. kliknięcie) uruchomi change detection",
+        "Błąd: setInterval nie może być wywołany poza strefą",
+        "Licznik rośnie, ale tylko w trybie produkcyjnym"
+      ],
+      "correct": 1,
+      "why": "Kod w runOutsideAngular nie powiadamia Angulara o zakończeniu zadania, więc CD nie rusza. Pole zmienia się w pamięci, a widok odświeży się przy najbliższym CD wywołanym czymś innym. Poprawka: aktualizacja przez zone.run() albo użycie sygnału (signal.set planuje odświeżenie widoku)."
+    },
+    {
+      "id": "angular-mq012",
+      "topic": "Dependency Injection",
+      "level": 2,
+      "q": "Co jest nie tak w tym kodzie legacy?",
+      "code": "export abstract class BaseApi {\n  constructor(protected http: HttpClient) {}\n}\n@Injectable({ providedIn: 'root' })\nexport class OrdersApi extends BaseApi {\n  constructor(private logger: Logger) { super(); }\n}",
+      "lang": "typescript",
+      "options": [
+        "Nic – Angular sam wstrzyknie HttpClient do klasy bazowej",
+        "Trzeba dodać @Injectable do klasy bazowej, wtedy super() może być bez argumentów",
+        "Klasa pochodna musi przyjąć HttpClient w konstruktorze i przekazać go w super(http) – albo baza powinna używać inject()",
+        "Konstruktor klasy pochodnej nie może mieć parametrów"
+      ],
+      "correct": 2,
+      "why": "Przy constructor injection Angular wstrzykuje tylko parametry konstruktora klasy, którą tworzy. Jeśli pochodna deklaruje własny konstruktor, musi przyjąć zależności bazy i przekazać je do super(). TypeScript zgłosi błąd wywołania super() bez argumentu. inject() w polu klasy bazowej usuwa ten problem."
+    },
+    {
+      "id": "angular-mq013",
+      "topic": "NgModules",
+      "level": 1,
+      "q": "Komponent `UserCardComponent` został dodany do `declarations` w SharedModule oraz w UsersModule. Co się stanie?",
+      "options": [
+        "Błąd kompilacji – komponent może należeć do declarations tylko jednego modułu",
+        "Działa – Angular użyje deklaracji z modułu załadowanego jako pierwszy",
+        "Działa, ale powstaną dwie instancje serwisów komponentu",
+        "Ostrzeżenie w konsoli, aplikacja działa normalnie"
+      ],
+      "correct": 0,
+      "why": "Komponent, dyrektywa i pipe mogą być zadeklarowane w dokładnie jednym NgModule. Żeby użyć go w wielu miejscach, deklaruje się go w jednym module, eksportuje i importuje ten moduł (albo zamienia komponent na standalone)."
+    },
+    {
+      "id": "angular-mq014",
+      "topic": "Mikrofrontendy",
+      "level": 3,
+      "q": "W architekturze z federacją modułów remote `orders` nie ma `@angular/core` w `shared`, a host tak. Co jest najbardziej prawdopodobnym skutkiem?",
+      "options": [
+        "Nic – webpack/esbuild automatycznie deduplikuje Angulara",
+        "Remote nie zbuduje się, bo Angular musi być w shared",
+        "Host pobierze Angulara od remote'a i użyje jednej kopii",
+        "W przeglądarce działają dwie kopie Angulara: większy bundle i błędy runtime, bo DI, router i change detection nie są współdzielone"
+      ],
+      "correct": 3,
+      "why": "Bez konfiguracji shared remote dołącza własną kopię frameworka. Dwie instancje Angulara nie współdzielą injectorów i platformy, co daje trudne do zdiagnozowania błędy oraz dodatkowe kilkaset KB. Build przejdzie, a deduplikacja dzieje się tylko dla zależności zadeklarowanych jako shared."
+    }
+  ]
+}

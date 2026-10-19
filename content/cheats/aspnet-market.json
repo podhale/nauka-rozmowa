@@ -1,0 +1,111 @@
+{
+  "cat": "aspnet",
+  "sheets": [
+    {
+      "topic": "Legacy ASP.NET MVC/Web API",
+      "points": [
+        "MVC 5 / Web API 2 = **.NET Framework + System.Web + IIS**, tylko Windows; Core = cross-platform, Kestrel, middleware.",
+        "Global.asax (`Application_Start`, RouteConfig, FilterConfig) → `Program.cs`; HttpModules/HttpHandlers → **middleware**.",
+        "MVC 5 bez wbudowanego DI (Autofac/Unity przez `DependencyResolver`); Core ma DI, Options, logging w standardzie.",
+        "Web API 2: `ApiController`, `IHttpActionResult`/`HttpResponseMessage`, MediaTypeFormatters, OWIN self-host.",
+        "MVC 5 i Web API 2 miały **osobne pipeline'y i filtry** (`System.Web.Mvc` vs `System.Web.Http`); Core je łączy.",
+        "Core: `ControllerBase` + `[ApiController]`, `ActionResult<T>`, System.Text.Json zamiast Newtonsoft domyślnie."
+      ],
+      "pitfalls": [
+        "Założenie, że kod MVC 5 skompiluje się w Core po zmianie TargetFramework – System.Web nie istnieje.",
+        "Filtr z `System.Web.Mvc` podpięty do kontrolera Web API 2 – nie zadziała."
+      ],
+      "say": "MVC 5 i Web API 2 to dwa osobne frameworki na System.Web i IIS. ASP.NET Core połączył je w jeden, z pipeline'em middleware, wbudowanym DI i hostingiem poza Windows."
+    },
+    {
+      "topic": "Filtry MVC",
+      "points": [
+        "Kolejność: **authorization → resource → (model binding) → action → [exception] → result**.",
+        "Authorization może przerwać żądanie (401/403); resource – przed bindingiem (cache, short-circuit).",
+        "Action: `OnActionExecuting/Executed` lub `IAsyncActionFilter` – dostęp do argumentów i ModelState.",
+        "Exception: tylko wyjątki z kontrolera, bindingu, action filterów i akcji – **nie** z result filterów i wykonania wyniku.",
+        "Zakres: global → kontroler → akcja dla „przed”, odwrotnie dla „po”; `Order` zmienia kolejność.",
+        "Zależności z DI: `Filters.Add<T>()`, `[ServiceFilter(typeof(T))]` (rejestracja w DI), `[TypeFilter(typeof(T))]`.",
+        "Middleware = cały HTTP, nie zna akcji; filtr = kontekst MVC. Minimal APIs: endpoint filters."
+      ],
+      "pitfalls": [
+        "Globalna obsługa wyjątków w exception filtrze zamiast w middleware (`UseExceptionHandler` + `IExceptionHandler`).",
+        "Stan per żądanie w filtrze-atrybucie – instancja jest współdzielona między żądaniami."
+      ],
+      "code": "public class TimingFilter : IAsyncActionFilter\n{\n    public async Task OnActionExecutionAsync(ActionExecutingContext ctx, ActionExecutionDelegate next)\n    {\n        // przed akcją\n        var executed = await next();\n        // po akcji: executed.Result / executed.Exception\n    }\n}",
+      "lang": "csharp",
+      "say": "Filtry wykonują się w kolejności authorization, resource, action, exception i result. Do logiki zależnej od akcji używam filtrów, a do spraw globalnych, takich jak obsługa wyjątków, middleware."
+    },
+    {
+      "topic": "WCF i CoreWCF",
+      "points": [
+        "WCF = **ABC**: Address, Binding, Contract (`[ServiceContract]`, `[OperationContract]`, `[DataContract]`).",
+        "Bindingi: `BasicHttpBinding` (SOAP 1.1, interop), `WSHttpBinding` (WS-*), `NetTcpBinding` (binarny, .NET↔.NET).",
+        "Nowy .NET: **tylko klient WCF** (`System.ServiceModel.*` NuGet, `dotnet-svcutil`/Connected Services).",
+        "Serwer: **CoreWCF** (open source, wspierany przez Microsoft) – te same kontrakty i WSDL na ASP.NET Core.",
+        "CoreWCF nie ma wszystkiego (np. MSMQ, część WS-*) – najpierw inwentaryzacja bindingów i behaviorów.",
+        "Gdy można zmienić klientów: gRPC (następca NetTcp) albo REST."
+      ],
+      "pitfalls": [
+        "Twierdzenie, że gRPC „zastępuje” WCF dla zewnętrznych klientów SOAP – to inny protokół.",
+        "Migracja bez testów zgodności komunikatów SOAP z istniejącymi klientami."
+      ],
+      "say": "W nowym .NET mamy klienta WCF, a serwer przenoszę na CoreWCF, jeśli muszę zachować kontrakt SOAP dla partnerów. Gdy kontroluję klientów, nowe integracje robię w REST albo gRPC."
+    },
+    {
+      "topic": "IIS i hosting",
+      "points": [
+        "ASP.NET Core w IIS = **ASP.NET Core Module (ANCM)** z .NET Hosting Bundle + `web.config` generowany przy publish.",
+        "**In-process** (domyślny): aplikacja w `w3wp.exe`, serwer IISHttpServer, bez Kestrela – najszybszy.",
+        "**Out-of-process**: ANCM jako reverse proxy do Kestrela w procesie `dotnet` – potrzebne forwarded headers.",
+        "Pula aplikacji: **No Managed Code**; in-process = jedna aplikacja na pulę.",
+        "Recykling i idle timeout (20 min) zabijają cache i BackgroundService → `AlwaysRunning` + Preload.",
+        "Błędy startu: 500.30 (aplikacja nie wystartowała), 500.31/500.32 (runtime/bitowość); `stdoutLogEnabled` do diagnozy.",
+        "Konfiguracja: web.config (XDT, `ConfigurationManager`) → **appsettings.json → appsettings.{Env}.json → user secrets → env vars → CLI**."
+      ],
+      "pitfalls": [
+        "Oczekiwanie, że ASP.NET Core przeczyta `appSettings` z web.config.",
+        "Sekrety w appsettings w repozytorium."
+      ],
+      "code": "<aspNetCore processPath=\"dotnet\" arguments=\".\\MyApi.dll\"\n            hostingModel=\"inprocess\" stdoutLogEnabled=\"false\" />",
+      "lang": "text",
+      "say": "W IIS aplikację ASP.NET Core obsługuje ASP.NET Core Module – domyślnie in-process w w3wp bez Kestrela, opcjonalnie out-of-process jako proxy do Kestrela. Konfiguracja aplikacji żyje w appsettings i zmiennych środowiskowych, a web.config służy już tylko IIS."
+    },
+    {
+      "topic": "Migracja z .NET Framework",
+      "points": [
+        "Inwentaryzacja: NuGety, API bez odpowiednika (**System.Web, serwer WCF, AppDomains, Remoting, Web Forms**), Windows-only API.",
+        "Od dołu grafu: biblioteki → SDK-style csproj → **netstandard2.0** albo multi-targeting `net48;net10.0`.",
+        "netstandard2.0 działa na .NET Framework 4.6.1+ (zalecane 4.7.2+) i każdym nowym .NET; **2.1 nie działa na Framework**.",
+        "Narzędzia: .NET Upgrade Assistant (wycofywany) → **GitHub Copilot app modernization**; analizatory kompatybilności.",
+        "Duży web: **strangler fig** – nowa aplikacja ASP.NET Core + YARP `MapForwarder` do starej + **System.Web adapters**.",
+        "Testy charakteryzacyjne przed migracją: JSON (Newtonsoft vs System.Text.Json), daty, kultura, auth.",
+        "Metryka postępu: % ruchu idącego jeszcze do legacy; plan i termin wyłączenia starej aplikacji."
+      ],
+      "pitfalls": [
+        "Big bang rewrite dużej aplikacji z zamrożeniem rozwoju.",
+        "Windows Compatibility Pack traktowany jak sposób na System.Web – daje tylko Windows-only API.",
+        "Pominięcie różnic serializacji JSON – ciche łamanie kontraktu z frontendem."
+      ],
+      "code": "app.MapControllers(); // zmigrowane\napp.MapForwarder(\"/{**catch-all}\", legacyUrl)\n   .Add(b => ((RouteEndpointBuilder)b).Order = int.MaxValue);",
+      "lang": "csharp",
+      "say": "Migruję przyrostowo: biblioteki przenoszę na netstandard2.0 albo multi-targeting, a przed starą aplikacją stawiam nową w ASP.NET Core, która przez YARP przekazuje niezmigrowane ścieżki do legacy. Każdy krok jest mały i odwracalny."
+    },
+    {
+      "topic": "Blazor",
+      "points": [
+        "Blazor = UI w C#/Razor (`.razor`); konkurencja dla Angulara w zespołach czysto .NET-owych.",
+        "**Server**: logika na serwerze, SignalR circuit, szybki start; koszt: latencja, pamięć per użytkownik, sticky sessions.",
+        "**WebAssembly**: runtime .NET w przeglądarce, offline/PWA; koszt: większy download, kod klienta niezaufany.",
+        ".NET 8+ Blazor Web App: domyślnie **static SSR**, interaktywność przez `@rendermode`.",
+        "Render modes: `InteractiveServer`, `InteractiveWebAssembly`, `InteractiveAuto` (najpierw Server, potem WASM).",
+        "Static SSR: brak `@onclick`, formularze przez POST; prerendering renderuje komponent dwa razy (PersistentComponentState)."
+      ],
+      "pitfalls": [
+        "Brak `@rendermode` i zdziwienie, że zdarzenia nie działają.",
+        "Sekrety lub reguły autoryzacji w kodzie WASM."
+      ],
+      "say": "Blazor Server wykonuje UI na serwerze przez SignalR, a WebAssembly w przeglądarce. Od .NET 8 domyślnie jest static SSR, a interaktywność wybiera się per komponent render mode'em. Wybrałbym go dla wewnętrznych aplikacji zespołu .NET, a Angulara dla dużych publicznych SPA."
+    }
+  ]
+}

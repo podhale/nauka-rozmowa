@@ -1,0 +1,45 @@
+{
+  "cat": "soft",
+  "sheets": [
+    {
+      "topic": "Rozmowa po angielsku",
+      "points": [
+        "Struktura odpowiedzi taka jak po polsku (pitch, STAR) – zmienia się tylko język. **Proste zdania > ambitne zdania z przerwami**.",
+        "„Tell me about yourself”: teraźniejszość → 1 osiągnięcie z liczbą → dlaczego ta rola; 60–90 s.",
+        "Projekt: kontekst biznesowy → architektura od frontu do bazy → zespół → **Twoja rola** → jeden trade-off.",
+        "Zwroty: „I was responsible for…”, „we migrated…”, „the bottleneck was…”, „we went with X because…”, „in hindsight…”.",
+        "Czasy: „I've been working with .NET **since** 2021 / **for** five years” (Present Perfect), osiągnięcia w Past Simple.",
+        "False friends: actually ≠ aktualnie (currently), eventually ≠ ewentualnie (possibly / if needed), realize ≠ zrealizować (deliver).",
+        "Nie wiesz: „I haven't worked with that directly, but…”, „my guess would be… I'd double-check it”.",
+        "Niezrozumiałe pytanie: „Could you repeat that?”, „Do you mean X or Y?” – lepsze niż odpowiedź obok tematu."
+      ],
+      "pitfalls": [
+        "Wyuczony na pamięć tekst – brzmi sztucznie i rozsypuje się przy pierwszym pytaniu uzupełniającym.",
+        "Samo „we” – klient zatrudnia Ciebie, więc mów, co TY zrobiłeś.",
+        "Przechodzenie na polski albo cisza zamiast „Let me think for a second”."
+      ],
+      "code": "I'm a full-stack developer with four years of experience in .NET and Angular.\nI was responsible for the orders module – both the API and the UI.\nThe bottleneck was the database, so we added a read replica.\nWe went with a queue because partner APIs were unreliable.\nIn hindsight, I would add an outbox from day one.",
+      "lang": "text",
+      "say": "I'm a .NET and Angular developer. Recently I was responsible for X, and it improved Y by Z percent – I'm happy to go into the details."
+    },
+    {
+      "topic": "Outsourcing i B2B",
+      "points": [
+        "**Body leasing / staff augmentation**: pośrednik zatrudnia lub kontraktuje Cię, a pracujesz w zespole i procesach klienta.",
+        "Ponad połowa procesów .NET/Angular ma etap rozmowy z klientem – zwykle to on decyduje.",
+        "Klient chce: dopasowania do stacku, szybkiego wdrożenia, samodzielności, komunikacji (często EN), stabilności i terminu startu.",
+        "Stawkę i umowę omawiasz z **pośrednikiem**, z klientem rozmawiasz o projekcie.",
+        "Przelicznik: **168 h/mies.**, 1 MD = 8 h; 100 zł/h ≈ 800 zł/MD ≈ 16,8 tys. zł netto na fakturze.",
+        "Orientacyjnie B2B (X 2026): junior ~50–80, mid ~75–120, senior ~110–150 zł/h. UoP to kwoty brutto, B2B netto – nie porównuj wprost.",
+        "Przy tej samej stawce porównuj: płatne dni przerwy, wypowiedzenie, długość kontraktu, co po projekcie, termin płatności, tryb pracy, benefity.",
+        "Pytania do klienta: greenfield czy legacy, wersje .NET/Angular, zespół, proces i CI/CD, czemu wakat, onboarding, strefa czasowa."
+      ],
+      "pitfalls": [
+        "Traktowanie rozmowy z klientem jak formalności po „zaliczonym” pośredniku.",
+        "Negocjowanie stawki z klientem lub krytykowanie pośrednika czy poprzednich klientów.",
+        "Decyzje prawne i podatkowe na podstawie rad rekrutera – to temat dla księgowego lub prawnika."
+      ],
+      "say": "Najpierw chciałbym dobrze zrozumieć projekt i zespół u klienta. Warunki współpracy, czyli stawkę, okres wypowiedzenia i dni wolne, omówię z Państwem jako pośrednikiem."
+    }
+  ]
+}

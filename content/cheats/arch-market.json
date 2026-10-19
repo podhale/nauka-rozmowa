@@ -1,0 +1,43 @@
+{
+  "cat": "arch",
+  "sheets": [
+    {
+      "topic": "Modelowanie (C4, UML)",
+      "points": [
+        "**C4**: 1 Context (system + ludzie + systemy zewn.), 2 Container (aplikacje i bazy), 3 Component (wnętrze kontenera), 4 Code (klasy).",
+        "W praktyce rysuje się głównie **Context i Container**; do tego deployment i dynamic.",
+        "Pudełko = nazwa + typ + technologia + opis; strzałka = opis + protokół; zawsze legenda.",
+        "„Container” w C4 ≠ kontener Dockera – to osobno uruchamiana aplikacja lub magazyn danych.",
+        "**Sekwencja UML**: wywołania w czasie – flow auth, integracje, webhooki, sagi, timeouty (alt/else).",
+        "**Diagram klas**: model domenowy i kontrakty, nie cały system; diagram stanów do cyklu życia encji.",
+        "Diagrams as code: Structurizr DSL, C4-PlantUML, Mermaid – w repo, z review w PR."
+      ],
+      "pitfalls": [
+        "Diagram bez legendy i opisanych strzałek – każdy czyta go inaczej.",
+        "Mieszanie poziomów na jednym rysunku (baza danych obok klasy serwisu).",
+        "Ręcznie utrzymywany diagram klas całego systemu – dezaktualizuje się po tygodniu."
+      ],
+      "code": "sequenceDiagram\n  SPA->>API: POST /orders\n  API->>PAY: create payment\n  PAY-->>API: paymentUrl\n  PAY-)API: webhook payment.succeeded",
+      "lang": "text",
+      "say": "Architekturę pokazuję w modelu C4: kontekst dla biznesu, kontenery dla zespołu. Złożone przepływy, np. płatność z webhookiem, rozpisuję diagramem sekwencji w Mermaid trzymanym w repo."
+    },
+    {
+      "topic": "Dokumentacja techniczna",
+      "points": [
+        "**ADR** = jedna decyzja, ok. 1 strona, kontekst → decyzja → konsekwencje; niezmienny, zastępowany nowym („Superseded by”).",
+        "ADR dla decyzji **kosztownych do odwrócenia**; RFC/design doc to dłuższa propozycja przed implementacją.",
+        "**README**: co to jest, wymagania, uruchomienie lokalne, testy, konfiguracja/sekrety, linki do architektury; test „< 1 h do uruchomienia”.",
+        "**Runbook**: wdrożenie i rollback, dashboardy i alerty, procedury „alert → diagnoza → akcja”, eskalacja.",
+        "**OpenAPI** w .NET 9+: `AddOpenApi()` + `MapOpenApi()` (Microsoft.AspNetCore.OpenApi), od .NET 10 domyślnie 3.1; Swashbuckle już nie w szablonie.",
+        "Frontend generuje klienta TS z OpenAPI (NSwag, openapi-generator); w CI diff kontraktu wykrywa breaking changes.",
+        "**Docs-as-code**: Markdown + diagramy w repo, review w PR, build i linki sprawdzane w CI (DocFX, MkDocs, Compodoc)."
+      ],
+      "pitfalls": [
+        "Dokumentacja w wiki, której nikt nie aktualizuje razem z kodem.",
+        "ADR dla każdej drobnej zmiany – nikt ich potem nie czyta.",
+        "Nazywanie specyfikacji „Swaggerem” i brak typów błędów (ProblemDetails) w kontrakcie."
+      ],
+      "say": "Dokumentację trzymamy w repo obok kodu: README do uruchomienia, ADR dla ważnych decyzji, runbook dla dyżuru i OpenAPI generowany w CI, z którego frontend generuje klienta."
+    }
+  ]
+}

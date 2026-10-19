@@ -1,0 +1,254 @@
+{
+ "cat": "arch",
+ "sheets": [
+  {
+   "topic": "Architektura aplikacji",
+   "points": [
+    "**Clean Architecture**: Domain (encje, reguły) ← Application (use case'y, porty np. `IOrderRepository`) ← Infrastructure (EF Core, kolejki, API) / Presentation.",
+    "**Reguła zależności**: referencje wskazują tylko do środka; Domain nie zna EF, HTTP ani DI. Składanie w composition root (`Program.cs`).",
+    "Clean / Onion / Hexagonal to warianty tej samej idei: domena w centrum, infrastruktura na obrzeżach.",
+    "**Hexagonal (Ports & Adapters)**: porty = interfejsy; adaptery driving (HTTP, CLI, testy) i driven (baza, broker). Nie narzuca liczby warstw.",
+    "**Vertical Slice**: kod wg funkcji (`Features/Orders/PlaceOrder`: endpoint, walidator, handler, zapytanie) – zmiana dotyka jednego miejsca.",
+    "Interfejs portu w Domain/Application, implementacja w Infrastructure – dzięki temu logikę testujesz bez bazy.",
+    "Testy architektury (NetArchTest, ArchUnitNET) w CI pilnują, że Domain nie referuje Infrastructure."
+   ],
+   "pitfalls": [
+    "Clean Architecture dla prostego CRUD-a: 4 projekty, mapowania i interfejsy bez żadnej logiki – koszt bez zysku.",
+    "Vertical Slice bez dyscypliny: duplikacja reguł biznesowych między slice'ami; wspólną logikę domenową trzymaj w modelu."
+   ],
+   "say": "Trzymam domenę w centrum i odwracam zależności, żeby logika była testowalna bez infrastruktury, ale dobieram ciężar do problemu – dla prostych modułów wolę vertical slices niż pełne warstwy."
+  },
+  {
+   "topic": "CQRS",
+   "points": [
+    "**CQRS** rozdziela model zapisu (komendy przez model domenowy i walidację) od modelu odczytu (zapytania zwracające DTO pod widok).",
+    "Nie wymaga osobnych baz: najprostsza wersja to te same tabele – komendy przez EF z trackingiem, zapytania przez projekcje / `AsNoTracking` / Dapper.",
+    "Osobne read modele (zdenormalizowane, aktualizowane eventami) = **eventual consistency** – dopiero gdy odczyty tego wymagają.",
+    "CQRS ≠ event sourcing; można stosować jedno bez drugiego.",
+    "MediatR nie jest wymagany – handler można wstrzyknąć wprost (`ICommandHandler<T>`), cross-cutting przez dekoratory lub endpoint filters.",
+    "MediatR od 2025 ma model komercyjny (dual license) – to argument za prostym własnym dispatchem; warunki sprawdź na stronie projektu.",
+    "Komendy zwracają minimum (Id / Result), zapytania nie zmieniają stanu."
+   ],
+   "pitfalls": [
+    "Wprowadzanie osobnej bazy odczytu i kolejki do prostej aplikacji – złożoność i nieświeże dane bez potrzeby.",
+    "Utożsamianie CQRS z MediatR – to mechanizm dispatchu, nie wzorzec."
+   ],
+   "say": "CQRS to dla mnie przede wszystkim rozdzielenie ścieżek: zapis przez model domenowy, odczyt przez lekkie projekcje – na jednej bazie; osobne read modele dokładam dopiero, gdy wymaga tego skala lub kształt odczytów."
+  },
+  {
+   "topic": "Cache",
+   "points": [
+    "**Cache-aside**: szukaj w cache → miss → czytaj z bazy → zapisz z TTL. Przy zapisie: aktualizuj bazę, potem **usuń** klucz (nie aktualizuj).",
+    "Invalidacja: TTL (akceptujesz nieświeżość), jawne usunięcie przy zapisie, eventy w systemach rozproszonych, tagi.",
+    "**Cache stampede**: wiele requestów naraz liczy ten sam wpis po wygaśnięciu – lock per klucz, jitter TTL, odświeżanie w tle.",
+    "W .NET: `IMemoryCache` (w procesie), `IDistributedCache` (Redis), **`HybridCache`** (.NET 9+: L1+L2, ochrona przed stampede, tagi).",
+    "**Output caching** (`AddOutputCache`) cache'uje całe odpowiedzi HTTP po stronie serwera, z invalidacją po tagach.",
+    "Przy wielu instancjach `IMemoryCache` jest per instancja – różne instancje mogą zwracać różne dane.",
+    "Cache'uj dane często czytane i rzadko zmieniane; mierz hit ratio."
+   ],
+   "pitfalls": [
+    "Kolejność „usuń z cache, potem zapisz w bazie” – równoległy odczyt wstawi starą wartość na długo.",
+    "Brak limitu rozmiaru `IMemoryCache` (`SizeLimit`) lub klucze z danymi użytkownika – wyciek pamięci / wyciek danych między użytkownikami."
+   ],
+   "code": "var product = await hybridCache.GetOrCreateAsync(\n    $\"product:{id}\",\n    async ct => await db.Products.AsNoTracking().FirstAsync(p => p.Id == id, ct),\n    tags: [\"products\"], cancellationToken: ct);\n\n// po zapisie\nawait hybridCache.RemoveAsync($\"product:{id}\", ct);",
+   "lang": "csharp",
+   "say": "Domyślnie stosuję cache-aside z TTL i usuwaniem klucza po zapisie do bazy; w .NET sięgam po HybridCache, bo daje dwa poziomy cache i ochronę przed stampede."
+  },
+  {
+   "topic": "Cloud-native",
+   "points": [
+    "**12-factor**: konfiguracja w środowisku, bezstanowe procesy, backing services jako dołączane zasoby, build/release/run rozdzielone, logi jako strumień.",
+    "Connection stringi i sekrety w zmiennych środowiskowych / secret store (Key Vault), nie w repo – `IConfiguration` składa źródła warstwowo.",
+    "Bezstanowość: sesje, cache, pliki i klucze Data Protection poza procesem (Redis, blob) – wtedy skalujesz horyzontalnie.",
+    "Logi na stdout jako strumień; zbiera je platforma (np. OpenTelemetry Collector), aplikacja nie zarządza plikami.",
+    "Health checks (`AddHealthChecks`, `MapHealthChecks`) jako liveness/readiness dla Kubernetesa i load balancera.",
+    "Disposability: szybki start i graceful shutdown (obsługa `CancellationToken`, `IHostApplicationLifetime`).",
+    "**Aspire** (dawniej .NET Aspire) – orkiestracja lokalna, service discovery, domyślne OpenTelemetry i health checks."
+   ],
+   "pitfalls": [
+    "Sekrety w `appsettings.Production.json` w repozytorium.",
+    "Stan w pamięci procesu (sesja, upload na dysk lokalny) – po skalowaniu lub restarcie poda dane znikają."
+   ],
+   "say": "Aplikacja cloud-native to dla mnie bezstanowy proces z konfiguracją ze środowiska, telemetrią na zewnątrz i health checkami – wtedy platforma może ją dowolnie skalować i restartować."
+  },
+  {
+   "topic": "DDD",
+   "points": [
+    "**Encja**: tożsamość (Id) trwająca w czasie, stan się zmienia. **Value object**: bez tożsamości, niemutowalny, porównywany po wartości (`record`, w EF complex/owned type).",
+    "**Agregat**: klaster obiektów z jednym **aggregate root**, przez który idą wszystkie modyfikacje; root pilnuje niezmienników.",
+    "Zasady Vernona: małe agregaty, jedna transakcja = jeden agregat, inne agregaty po Id, między agregatami eventual consistency.",
+    "**Domain event**: fakt z przeszłości (`OrderPlaced`), zbierany w agregacie i publikowany przy zapisie (np. `SaveChangesInterceptor`).",
+    "Domain event (wewnątrz kontekstu) ≠ integration event (wersjonowany kontrakt między serwisami, przez outbox).",
+    "**Bounded context**: granica spójnego modelu i **ubiquitous language**; „Product” w katalogu ≠ w magazynie ≠ w fakturowaniu.",
+    "**Anemic model**: encje to worki na dane, logika w serwisach – niezmienniki niechronione. Bogaty model: `private set` + metody intencji (`order.Pay()`)."
+   ],
+   "pitfalls": [
+    "Modyfikacja encji wewnętrznej z pominięciem roota (`db.OrderLines.Find(id).Quantity = 50`) – root nie pilnuje reguł.",
+    "Efekty zewnętrzne (mail, HTTP) w handlerach eventów przed commitem – przy rollbacku efekt już poszedł; użyj outboxa.",
+    "Pełne DDD dla prostego CRUD-a – anemiczny model jest tam OK."
+   ],
+   "code": "public class Order {\n    private readonly List<OrderLine> _lines = [];\n    public IReadOnlyList<OrderLine> Lines => _lines;\n    public OrderStatus Status { get; private set; }\n    public void AddLine(Guid productId, int qty, Money price) {\n        if (Status != OrderStatus.Draft) throw new DomainException(\"Order closed\");\n        _lines.Add(new OrderLine(productId, qty, price));\n    }\n}\npublic record Money(decimal Amount, string Currency);",
+   "lang": "csharp",
+   "say": "W DDD najważniejsze są dla mnie bounded contexty i agregaty, które same pilnują niezmienników; między agregatami komunikuję się zdarzeniami i akceptuję eventual consistency."
+  },
+  {
+   "topic": "Komunikacja",
+   "points": [
+    "**Synchroniczna** (HTTP/gRPC): prosta, natychmiastowa odpowiedź, ale temporal coupling – awaria B blokuje A, opóźnienia się sumują.",
+    "**Asynchroniczna** (RabbitMQ, Azure Service Bus, Kafka): luźne powiązanie, buforowanie skoków; koszt to eventual consistency i trudniejszy debug.",
+    "Resiliency HTTP: `Microsoft.Extensions.Http.Resilience` (Polly) – `AddStandardResilienceHandler()`: timeout, retry, circuit breaker.",
+    "**Dual write** (SaveChanges + publish) gubi wiadomości przy awarii pomiędzy – rozwiązanie: **transactional outbox**.",
+    "Outbox: wiadomość w tabeli w tej samej transakcji, worker/CDC publikuje i oznacza – gwarancja **at-least-once**.",
+    "**Idempotentny konsument**: zapis MessageId w tej samej transakcji co efekt (inbox) lub naturalnie idempotentne operacje (upsert, „ustaw status”).",
+    "Exactly-once w praktyce = at-least-once + idempotencja.",
+    "Eventual consistency obsłuż w UX: zwróć wynik z komendy, pokaż status „przetwarzanie”."
+   ],
+   "pitfalls": [
+    "Konsument „dodaj kwotę do salda” bez deduplikacji – redelivery podwaja saldo.",
+    "Retry bez timeoutów i circuit breakera – kaskadowa awaria przy przeciążonym serwisie."
+   ],
+   "say": "Między serwisami wolę komunikację asynchroniczną przez outbox z idempotentnymi konsumentami; synchroniczne wywołania zostawiam tam, gdzie potrzebuję odpowiedzi od razu, i zawsze z timeoutem, retry i circuit breakerem."
+  },
+  {
+   "topic": "Monolit vs mikroserwisy",
+   "points": [
+    "Mikroserwisy: niezależny deployment, skalowanie i autonomia zespołów – kosztem sieci, rozproszonych transakcji, observability i DevOps.",
+    "**Modularny monolit**: jedna aplikacja, moduły wg bounded contextów, publiczne API, implementacja `internal`, osobny `DbContext` i schemat per moduł.",
+    "Moduł nie robi JOIN-ów do cudzych tabel; dane bierze przez publiczny kontrakt albo trzyma własną kopię zasilaną zdarzeniami.",
+    "Granice pilnują testy architektury (NetArchTest, ArchUnitNET) w CI.",
+    "**Rozproszony monolit**: wspólna baza, wdrażanie razem, łańcuchy synchronicznych wywołań – koszty mikroserwisów bez korzyści.",
+    "**Strangler fig**: fasada (np. YARP) przed monolitem i stopniowe przenoszenie endpointów – małe, odwracalne kroki zamiast big bang rewrite.",
+    "Dobrze wydzielony moduł łatwo później wyjąć do osobnego serwisu."
+   ],
+   "pitfalls": [
+    "Start od mikroserwisów w małym zespole bez znanych granic domeny.",
+    "Przepisywanie zarabiającego systemu od zera z jednorazowym przełączeniem."
+   ],
+   "say": "Dla większości zespołów zaczynam od modularnego monolitu z twardymi granicami modułów, a serwis wydzielam dopiero, gdy jest realny powód – niezależne skalowanie, deployment lub zespół."
+  },
+  {
+   "topic": "Observability",
+   "points": [
+    "**Observability** = zrozumienie stanu systemu z zewnątrz na podstawie telemetrii: **logi, metryki, tracing**.",
+    "Logi strukturalne: `ILogger` z szablonem (`\"Order {OrderId} placed\"`), nie interpolacją – pola są indeksowane.",
+    "Metryki: `System.Diagnostics.Metrics` (`Meter`, `Counter`, `Histogram`); patrz na RPS, błędy i latencję p95/p99, nie średnią.",
+    "Tracing rozproszony: `Activity`/`ActivitySource`, propagacja W3C `traceparent` między serwisami – widać, który serwis zjada czas.",
+    "**OpenTelemetry** to standard: jeden SDK, eksport OTLP do Jaeger/Prometheus/Grafana/Application Insights.",
+    "Korelacja: TraceId w logach łączy log z trace'em konkretnego requestu.",
+    "Alertuj na objawy (SLO: błędy, latencja), nie na każdy wyjątek."
+   ],
+   "pitfalls": [
+    "Logowanie danych osobowych / tokenów i interpolacja stringów w logach.",
+    "Wysoka kardynalność tagów metryk (UserId, pełny URL) – eksplozja serii i kosztów."
+   ],
+   "code": "builder.Services.AddOpenTelemetry()\n    .WithTracing(t => t.AddAspNetCoreInstrumentation()\n        .AddHttpClientInstrumentation().AddOtlpExporter())\n    .WithMetrics(m => m.AddAspNetCoreInstrumentation()\n        .AddRuntimeInstrumentation().AddOtlpExporter());",
+   "lang": "csharp",
+   "say": "Stawiam na OpenTelemetry: strukturalne logi skorelowane TraceId, metryki z percentylami i rozproszony tracing – dzięki temu przy problemie od razu widzę, który serwis i które zapytanie odpowiada za opóźnienie."
+  },
+  {
+   "topic": "Obsługa błędów",
+   "points": [
+    "**Wyjątki** – dla sytuacji nieoczekiwanych (brak połączenia, bug); kosztowne i niewidoczne w sygnaturze.",
+    "**Result<T>** – dla oczekiwanych porażek biznesowych (walidacja, brak środków, nie znaleziono); wywołujący musi je obsłużyć.",
+    "Mapowanie na HTTP: walidacja → 400, brak → 404, konflikt (np. email zajęty) → 409, zawsze jako **ProblemDetails** (RFC 9457).",
+    "Globalna obsługa wyjątków: `AddProblemDetails()` + `UseExceptionHandler()` + `IExceptionHandler` – 500 bez stack trace'a dla klienta.",
+    "Nie steruj przepływem wyjątkami (jak goto) – łap tam, gdzie umiesz coś zrobić.",
+    "Loguj wyjątek raz, na granicy (middleware), z kontekstem i TraceId."
+   ],
+   "pitfalls": [
+    "Puste `catch { }` lub `catch (Exception)` połykające błąd.",
+    "Zwracanie szczegółów wyjątku (stack trace, SQL) do klienta na produkcji."
+   ],
+   "code": "return result.IsSuccess\n    ? TypedResults.Created($\"/users/{result.Value.Id}\", result.Value)\n    : TypedResults.Problem(statusCode: 409, title: \"Email already taken\");",
+   "lang": "csharp",
+   "say": "Oczekiwane błędy biznesowe modeluję jako Result i mapuję na ProblemDetails z właściwym kodem, a wyjątki zostawiam na sytuacje nieoczekiwane, które łapie globalny handler."
+  },
+  {
+   "topic": "Projektowanie API",
+   "points": [
+    "Proces: **wymagania** (funkcje, skala, SLA, spójność) → **zasoby i niezmienniki** → **endpointy** → **trudne miejsca** → skalowanie.",
+    "REST: rzeczowniki, właściwe metody i kody (201 + Location, 204, 404, 409), paginacja, filtrowanie, wersjonowanie, ProblemDetails.",
+    "**Idempotency-Key** dla POST z efektem (płatności): serwer zapamiętuje wynik dla klucza, ponowienie zwraca ten sam wynik.",
+    "Współbieżność: optimistic concurrency (ETag / `If-Match` → 412) lub unikalne ograniczenia w bazie (brak podwójnej rezerwacji).",
+    "**API Gateway**: routing, TLS, auth, rate limiting – sprawy przekrojowe, bez logiki biznesowej.",
+    "**BFF**: backend dla jednego klienta (SPA, mobile) – agreguje i dopasowuje odpowiedź; tokeny OAuth na serwerze, SPA dostaje ciasteczko HttpOnly.",
+    "Dokumentacja OpenAPI: wbudowane `Microsoft.AspNetCore.OpenApi` (`AddOpenApi`, w .NET 10 OpenAPI 3.1)."
+   ],
+   "pitfalls": [
+    "Projektowanie bez pytań o skalę i wymagania – rekruter ocenia proces myślenia.",
+    "Nieidempotentne POST-y przy retry klienta – podwójne płatności/zamówienia."
+   ],
+   "say": "Zaczynam od doprecyzowania wymagań i niezmienników, potem projektuję zasoby i endpointy, a na końcu omawiam trudne miejsca: idempotencję, współbieżność, paginację i skalowanie."
+  },
+  {
+   "topic": "Skalowanie",
+   "points": [
+    "**Vertical** – mocniejsza maszyna: proste, ale z limitem i SPOF. **Horizontal** – więcej instancji za load balancerem.",
+    "Horizontal wymaga bezstanowości: sesje, cache, pliki poza procesem (Redis, blob), współdzielone klucze Data Protection, bez sticky sessions.",
+    "Baza to zwykle pierwsze wąskie gardło: indeksy i zapytania → cache → read replicas → partycjonowanie/sharding.",
+    "Pracę niesynchroniczną (maile, raporty) przenieś do kolejki i workerów.",
+    "async/await przy I/O zwalnia wątki – lepsza przepustowość jednej instancji.",
+    "**Prawo Little'a**: równoległość = przepustowość × czas obsługi (1000 RPS × 200 ms = 200 równoległych requestów).",
+    "Szukaj SPOF-ów i gorących kluczy (jeden tenant, jeden celebryta); chroń się rate limitingiem (`AddRateLimiter`)."
+   ],
+   "pitfalls": [
+    "Skalowanie aplikacji, gdy wąskim gardłem jest baza lub pula połączeń – więcej instancji tylko pogarsza sprawę.",
+    "Sync-over-async (`.Result`) – thread pool starvation pod obciążeniem."
+   ],
+   "say": "Idę wzdłuż ścieżki requestu i pytam, co pęknie przy 10× ruchu – zwykle baza, więc najpierw zapytania i indeksy, potem cache, repliki i kolejki; aplikację trzymam bezstanową, żeby skalować ją horyzontalnie."
+  },
+  {
+   "topic": "Unit of Work",
+   "points": [
+    "**Unit of Work** śledzi zmiany w ramach jednej operacji biznesowej i zapisuje je atomowo na końcu.",
+    "`DbContext` już nim jest: change tracker + `SaveChanges` w jednej transakcji.",
+    "Własne `IUnitOfWork` to zwykle cienki wrapper (`CommitAsync` → `SaveChangesAsync`) – sens głównie, by Application nie zależało od EF.",
+    "Repozytoria w jednym requeście muszą współdzielić ten sam `DbContext` (scoped) – inaczej brak atomowości.",
+    "Jeden `SaveChanges` na operację biznesową – najlepiej na końcu handlera.",
+    "Transakcja jawna (`BeginTransactionAsync`) tylko gdy potrzebujesz kilku `SaveChanges` lub raw SQL w jednej transakcji."
+   ],
+   "pitfalls": [
+    "`SaveChanges` wywoływany w każdym repozytorium – operacja przestaje być atomowa.",
+    "Repozytoria z osobnymi instancjami kontekstu (np. transient/factory) w jednym use case."
+   ],
+   "say": "W EF Core DbContext jest już Unit of Work, więc dodatkowe IUnitOfWork robię tylko jako cienką abstrakcję dla warstwy aplikacji – ważne, żeby cała operacja kończyła się jednym SaveChanges na wspólnym kontekście."
+  },
+  {
+   "topic": "Wzorce GoF",
+   "points": [
+    "**Strategy**: wymienne algorytmy za interfejsem wybierane w runtime; w DI przez `IEnumerable<IStrategy>` lub **keyed services** (.NET 8+).",
+    "**Factory Method / Abstract Factory**: tworzenie obiektu / rodziny obiektów; w .NET gdy dane znane w runtime lub krótki lifetime (`IHttpClientFactory`, `IDbContextFactory`).",
+    "**Builder**: wiele opcjonalnych parametrów, budowa etapami (`WebApplication.CreateBuilder`, `StringBuilder`, `ModelBuilder`, Test Data Builder).",
+    "**Decorator**: ten sam interfejs, owija i dokłada zachowanie (cache, logowanie, retry); middleware i `DelegatingHandler` to ta sama idea; Scrutor `Decorate`.",
+    "**Adapter**: tłumaczy obce API (SDK, legacy) na nasz interfejs (`IPaymentGateway`) – zmiana dostawcy = nowy adapter.",
+    "**Observer**: `event`, `IObservable<T>`, pub/sub; pułapka – wycieki pamięci bez `-=`.",
+    "**Mediator**: centralny pośrednik; MediatR to jego implementacja in-process z pipeline behaviors.",
+    "**Singleton** jako wzorzec (static Instance) to ukryty stan globalny – w .NET używaj `AddSingleton` (jawna zależność, testowalność, thread-safe)."
+   ],
+   "pitfalls": [
+    "Mylenie Decoratora (ten sam interfejs, dokłada zachowanie) z Adapterem (zmienia interfejs).",
+    "Singleton zależny od serwisu scoped (np. `DbContext`) – captive dependency."
+   ],
+   "code": "builder.Services.AddKeyedScoped<IDiscountStrategy, VipDiscount>(\"vip\");\nbuilder.Services.AddKeyedScoped<IDiscountStrategy, StandardDiscount>(\"standard\");\n\napp.MapGet(\"/price\", ([FromKeyedServices(\"vip\")] IDiscountStrategy s) => s.Apply(100m));",
+   "lang": "csharp",
+   "say": "Najczęściej używam Strategy, Decoratora i Adaptera – w .NET naturalnie realizuje je kontener DI, a klasyczny Singleton zastępuję lifetime'em Singleton w kontenerze."
+  },
+  {
+   "topic": "Zasady ogólne",
+   "points": [
+    "**DRY**: każda wiedza (reguła biznesowa) ma jedno źródło prawdy – nie chodzi o identyczne linijki kodu.",
+    "**KISS**: najprostsze rozwiązanie, które działa. **YAGNI**: nie buduj „na zapas”.",
+    "DRY szkodzi przy przypadkowym podobieństwie – wspólna abstrakcja obrasta flagami; lepsza drobna duplikacja niż zła abstrakcja (**rule of three**).",
+    "Duplikacja DTO między warstwami/modułami jest często celowa – izoluje kontrakty.",
+    "**Composition over inheritance**: dziedziczenie = silne powiązanie, fragile base class i eksplozja klas przy łączeniu cech.",
+    "Kompozycja (Strategy, Decorator) pozwala łączyć zachowania dowolnie, podmieniać w runtime i testować osobno.",
+    "Dziedziczenie zostaw dla prawdziwej relacji „jest” i stabilnych hierarchii."
+   ],
+   "pitfalls": [
+    "Klasy typu `LoggingRetryingEmailNotifier` – sygnał, że cechy powinny być dekoratorami.",
+    "Generyczne frameworki i pluginy „bo kiedyś się przyda” przy jednym wymaganiu (łamanie YAGNI)."
+   ],
+   "say": "Kieruję się KISS i YAGNI, DRY stosuję do wiedzy biznesowej, nie do przypadkowo podobnego kodu, a zachowania składam kompozycją zamiast budować głębokie hierarchie dziedziczenia."
+  }
+ ]
+}

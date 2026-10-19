@@ -1,0 +1,535 @@
+{
+ "cat": "aspnet",
+ "sheets": [
+  {
+   "topic": "Aspire",
+   "points": [
+    "Aspire (od v13 bez prefiksu .NET) = orkiestracja lokalnego środowiska + obserwowalność dla aplikacji rozproszonych.",
+    "**AppHost** w C# opisuje zasoby: projekty, kontenery (PostgreSQL, Redis, RabbitMQ), frontend; uruchamiasz całość jednym poleceniem (`aspire run` / `dotnet run`).",
+    "`WithReference(...)` wstrzykuje connection stringi i service discovery; `WaitFor(...)` czeka, aż zależność będzie zdrowa.",
+    "**ServiceDefaults**: OpenTelemetry (logi, trace'y, metryki), health checks, resilience dla HttpClient, service discovery.",
+    "**Dashboard**: logi strukturalne, rozproszone trace'y i metryki wszystkich zasobów w jednym miejscu.",
+    "Integracje = gotowe pakiety klienckie i hostingowe (Npgsql, Redis, Azure Service Bus...) z health checkami i telemetrią.",
+    "Model aplikacji można opublikować (np. Azure Container Apps, Kubernetes, Docker Compose), ale główna wartość to dev loop."
+   ],
+   "pitfalls": [
+    "Traktowanie Aspire jako frameworka zmieniającego sposób pisania API lub dostępu do danych – to warstwa orkiestracji, nie runtime.",
+    "Twarde connection stringi w appsettings obok AppHost – wtedy referencje Aspire są ignorowane lub nadpisywane."
+   ],
+   "code": "var builder = DistributedApplication.CreateBuilder(args);\nvar db = builder.AddPostgres(\"pg\").AddDatabase(\"shop\");\nvar cache = builder.AddRedis(\"cache\");\nbuilder.AddProject<Projects.Shop_Api>(\"api\")\n       .WithReference(db).WaitFor(db)\n       .WithReference(cache);\nbuilder.Build().Run();",
+   "lang": "csharp",
+   "say": "Aspire to AppHost w C#, który jednym poleceniem stawia API, bazę i Redisa, spina je connection stringami i service discovery, a ServiceDefaults i dashboard dają od razu OpenTelemetry, health checks i resilience."
+  },
+  {
+   "topic": "Async",
+   "points": [
+    "Parametr `CancellationToken` w akcji/handlerze jest bindowany automatycznie do `HttpContext.RequestAborted`.",
+    "Token anuluje się, gdy klient zerwie połączenie (lub zadziała request timeout) – przekazuj go do EF Core, HttpClient, I/O.",
+    "**Async all the way**: żadnego `.Result`, `.Wait()`, `GetAwaiter().GetResult()` na ścieżce requestu → thread pool starvation.",
+    "ASP.NET Core nie ma `SynchronizationContext` – klasyczny deadlock z UI nie występuje, ale blokowanie wątków nadal zabija przepustowość.",
+    "`ConfigureAwait(false)` w kodzie aplikacji ASP.NET Core nic nie daje; ma sens w bibliotekach.",
+    "`IAsyncEnumerable<T>` z endpointu jest strumieniowane do JSON bez buforowania całej kolekcji.",
+    "Nie używaj `async void` (poza event handlerami) – wyjątek wywróci proces; nie rób fire-and-forget `Task.Run` w endpoincie."
+   ],
+   "pitfalls": [
+    "Ignorowanie `CancellationToken` – baza dalej liczy zapytanie, którego wyniku nikt nie odbierze.",
+    "Mylenie `RequestAborted` z `IHostApplicationLifetime.ApplicationStopping` (to zamykanie aplikacji, nie requestu)."
+   ],
+   "code": "app.MapGet(\"/orders/{id:int}\", async (int id, AppDb db, CancellationToken ct) =>\n    await db.Orders.AsNoTracking().FirstOrDefaultAsync(o => o.Id == id, ct)\n        is { } o ? TypedResults.Ok(o) : Results.NotFound());",
+   "lang": "csharp",
+   "say": "Jestem async all the way i zawsze przekazuję CancellationToken, który ASP.NET Core binduje do RequestAborted – jak klient się rozłączy, przerywam zapytania i wywołania HTTP."
+  },
+  {
+   "topic": "Background",
+   "points": [
+    "`IHostedService`: `StartAsync`/`StopAsync` przy starcie i zatrzymaniu hosta; `BackgroundService` – nadpisujesz `ExecuteAsync(stoppingToken)`.",
+    "Hosted services są **singletonami** – serwisy scoped (DbContext) bierz przez `IServiceScopeFactory` i scope na jednostkę pracy (lub `IDbContextFactory`).",
+    "Cykliczność: `PeriodicTimer` + `while (await timer.WaitForNextTickAsync(ct))`; zawsze respektuj `stoppingToken`.",
+    "Nieobsłużony wyjątek w `ExecuteAsync` domyślnie zatrzymuje host (`BackgroundServiceExceptionBehavior.StopHost` od .NET 6) – łap i loguj w pętli.",
+    "Graceful shutdown: `HostOptions.ShutdownTimeout` (domyślnie 30 s) – po nim praca jest porzucana.",
+    "Kolejkowanie pracy z requestów: `Channel<T>` + worker; dla krytycznych zadań trwały magazyn (tabela, broker), Hangfire/Quartz.NET.",
+    "Przy wielu instancjach każda uruchamia worker – potrzebne blokady/lease albo osobny proces."
+   ],
+   "pitfalls": [
+    "DbContext wstrzyknięty w konstruktor BackgroundService – captive dependency, jeden kontekst na całe życie aplikacji.",
+    "Brak try/catch w pętli – jeden błąd zabija całą aplikację.",
+    "`Channel` w pamięci jako jedyne miejsce ważnych zleceń – giną przy restarcie/deployu."
+   ],
+   "code": "public class Cleanup(IServiceScopeFactory sf, ILogger<Cleanup> log) : BackgroundService\n{\n    protected override async Task ExecuteAsync(CancellationToken ct) {\n        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));\n        while (await timer.WaitForNextTickAsync(ct)) {\n            try { using var s = sf.CreateScope();\n                  await s.ServiceProvider.GetRequiredService<AppDb>().PurgeAsync(ct); }\n            catch (Exception ex) when (ex is not OperationCanceledException)\n            { log.LogError(ex, \"Cleanup failed\"); }\n        }\n    }\n}",
+   "lang": "csharp",
+   "say": "Zadania w tle robię na BackgroundService z PeriodicTimer, scope tworzę przez IServiceScopeFactory na każdą iterację, łapię wyjątki i respektuję stoppingToken przy shutdownie."
+  },
+  {
+   "topic": "CORS",
+   "points": [
+    "Nazwana polityka z **konkretnymi originami** (`WithOrigins(\"https://app.example.com\")`), metodami i nagłówkami.",
+    "`UseCors()` po `UseRouting` (jeśli jawne) i **przed** `UseAuthentication`/`UseAuthorization` – preflight OPTIONS nie ma tokenu.",
+    "`AllowAnyOrigin()` + `AllowCredentials()` jest zablokowane przez framework – przy cookies wymień originy.",
+    "Politykę można przypiąć per endpoint: `RequireCors(\"spa\")` / `[EnableCors(\"spa\")]`, `[DisableCors]`.",
+    "`SetPreflightMaxAge` cache'uje preflight; `WithExposedHeaders` gdy JS ma czytać np. `Location`, `X-Total-Count`.",
+    "W dev zamiast CORS: proxy Angular CLI (`proxy.conf.json`) – żądania są same-origin.",
+    "CORS chroni użytkownika w przeglądarce, nie API – curl/serwer ignoruje CORS."
+   ],
+   "pitfalls": [
+    "`SetIsOriginAllowed(_ => true)` + `AllowCredentials()` – dowolna strona czyta dane zalogowanego użytkownika.",
+    "UseCors za UseAuthorization – preflight dostaje 401 i przeglądarka blokuje żądanie."
+   ],
+   "code": "builder.Services.AddCors(o => o.AddPolicy(\"spa\", p => p\n    .WithOrigins(\"https://app.example.com\")\n    .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));\n// ...\napp.UseCors(\"spa\");\napp.UseAuthentication();\napp.UseAuthorization();",
+   "lang": "csharp",
+   "say": "CORS konfiguruję jako nazwaną politykę z jawną listą originów, włączam ją przed autoryzacją, a lokalnie dla Angulara często wystarcza proxy CLI."
+  },
+  {
+   "topic": "Caching",
+   "points": [
+    "`IMemoryCache` – per instancja, szybki; `IDistributedCache` (Redis) – współdzielony, wymaga serializacji.",
+    "**HybridCache** (`Microsoft.Extensions.Caching.Hybrid`, GA od 9.x): L1 in-memory + L2 distributed, `GetOrCreateAsync`, ochrona przed stampede, tagi.",
+    "**Cache stampede**: popularny klucz wygasa i setki requestów liczą wartość naraz – `IMemoryCache.GetOrCreateAsync` NIE ma coalescingu.",
+    "Środki: request coalescing (HybridCache), jitter TTL, odświeżanie w tle, serwowanie stale podczas przeliczania.",
+    "**Output caching** (.NET 7+, `AddOutputCache`/`CacheOutput()`): cache serwerowy, polityki, `VaryByQuery`, tagi + `EvictByTagAsync`, store w Redis.",
+    "**Response caching** opiera się na nagłówkach `Cache-Control` i respektuje klienta (no-cache go omija) – do API wybieraj output caching.",
+    "Domyślna polityka output cache: tylko 200 dla GET/HEAD, pomija żądania uwierzytelnione i odpowiedzi z `Set-Cookie`.",
+    "Spójność: cache-aside, usuwanie klucza po commit, rozsądny TTL jako siatka bezpieczeństwa."
+   ],
+   "pitfalls": [
+    "Spodziewanie się, że `.CacheOutput()` zcache'uje endpoint z `[Authorize]` – domyślnie nie (ochrona przed wyciekiem między userami).",
+    "Coalescing HybridCache działa per instancja – 10 podów to nadal do 10 wywołań fabryki."
+   ],
+   "code": "builder.Services.AddHybridCache();\n// ...\napp.MapGet(\"/products/{id}\", async (int id, HybridCache cache, AppDb db, CancellationToken ct) =>\n    await cache.GetOrCreateAsync($\"product:{id}\",\n        async t => await db.Products.FindAsync([id], t),\n        tags: [\"products\"], cancellationToken: ct));",
+   "lang": "csharp",
+   "say": "Do danych używam HybridCache – L1 w pamięci, L2 w Redis i ochrona przed cache stampede – a całe odpowiedzi API cache'uję output cachingiem z tagami do unieważniania."
+  },
+  {
+   "topic": "Controllers",
+   "points": [
+    "`[ApiController]`: automatyczne 400 z `ValidationProblemDetails` przy nieważnym ModelState – akcja się nie wykonuje.",
+    "Inferencja źródeł bindowania: typy złożone z body, parametry trasy z route, reszta z query; wymagany attribute routing.",
+    "Kody błędów (4xx) zamieniane na ProblemDetails; `InvalidModelStateResponseFactory` zmienia odpowiedź walidacji (np. na 422).",
+    "Dziedzicz po `ControllerBase` (bez widoków), atrybut stawiaj na bazowym kontrolerze lub `[assembly: ApiController]`.",
+    "Zwracaj `ActionResult<T>` – typ dla OpenAPI + możliwość `NotFound()`, `CreatedAtAction(...)`.",
+    "Filtry MVC (action, resource, exception, result) to odpowiednik endpoint filters; kontrolery są w pełni wspierane, ale nowe projekty MS kieruje w Minimal APIs.",
+    "Kontroler cienki: mapuje HTTP, logika w serwisach/handlerach."
+   ],
+   "pitfalls": [
+    "Ręczne `if (!ModelState.IsValid)` przy `[ApiController]` – martwy kod, filtr zadziałał wcześniej.",
+    "Dwa złożone parametry inferowane z body – InvalidOperationException."
+   ],
+   "code": "[ApiController, Route(\"api/orders\")]\npublic class OrdersController(IOrderService svc) : ControllerBase\n{\n    [HttpGet(\"{id:int}\")]\n    public async Task<ActionResult<OrderDto>> Get(int id, CancellationToken ct)\n        => await svc.GetAsync(id, ct) is { } o ? o : NotFound();\n}",
+   "lang": "csharp",
+   "say": "[ApiController] daje automatyczną walidację z 400 i ValidationProblemDetails, inferencję bindowania i wymusza attribute routing – kontroler trzymam cienki, a logikę w serwisach."
+  },
+  {
+   "topic": "DTO",
+   "points": [
+    "Nie wystawiaj encji EF Core: kontrakt API związany ze schematem bazy, wyciek pól, cykle w serializacji, lazy loading.",
+    "**Overposting / mass assignment**: bindowana encja pozwala klientowi ustawić `IsAdmin`, `Price`, `OwnerId`.",
+    "DTO jako `record`, osobne dla requestu i response (często per operacja: `CreateOrderRequest`, `OrderDto`).",
+    "Mapowanie: ręcznie, projekcją `Select` w EF Core (pobiera tylko potrzebne kolumny) albo source generatorem (Mapperly).",
+    "Pola nadawane przez serwer (Id, CreatedAt, TenantId, OwnerId) ustawiaj w kodzie, nigdy z inputu.",
+    "DTO to kontrakt publiczny – zmiany w nim podlegają zasadom wersjonowania (breaking changes)."
+   ],
+   "pitfalls": [
+    "`db.Update(entityZBody)` – nadpisuje wszystkie kolumny, w tym te, których klient nie powinien ruszać.",
+    "AutoMapper z konwencjami bez testów – ciche błędy mapowania i trudny debug."
+   ],
+   "code": "public record CreateOrderRequest(int ProductId, int Quantity);\npublic record OrderDto(int Id, string Product, int Quantity, decimal Total);\n\nvar dto = await db.Orders.Where(o => o.Id == id)\n    .Select(o => new OrderDto(o.Id, o.Product.Name, o.Quantity, o.Total))\n    .FirstOrDefaultAsync(ct);",
+   "lang": "csharp",
+   "say": "Encji nie wystawiam – używam DTO jako recordów osobnych dla requestu i odpowiedzi, co chroni przed overpostingiem i oddziela kontrakt API od schematu bazy."
+  },
+  {
+   "topic": "Dependency Injection",
+   "points": [
+    "**Transient** – nowa instancja przy każdym rozwiązaniu; **Scoped** – jedna na scope = request HTTP; **Singleton** – jedna na aplikację, musi być thread-safe.",
+    "`DbContext` jest scoped – wszystkie serwisy w requeście dzielą kontekst i transakcję.",
+    "**Captive dependency**: dłużej żyjący serwis trzyma krócej żyjący (singleton z DbContext).",
+    "`ValidateScopes` + `ValidateOnBuild` włączone w Development – błąd przy starcie/rozwiązaniu; na produkcji domyślnie nie.",
+    "Scoped w singletonie/BackgroundService: `IServiceScopeFactory.CreateScope()` albo `IDbContextFactory<T>`.",
+    "**Keyed services** (.NET 8+): `AddKeyedScoped<IStorage, S3>(\"s3\")` + `[FromKeyedServices(\"s3\")]`.",
+    "Wiele rejestracji jednego interfejsu: `GetService<T>` zwraca ostatnią, `IEnumerable<T>` wszystkie; `TryAdd*` nie nadpisuje.",
+    "Kontener zwalnia (Dispose) tylko instancje, które sam utworzył."
+   ],
+   "pitfalls": [
+    "Singleton zależny od scoped (DbContext, IOptionsSnapshot) – działa lokalnie inaczej niż na produkcji.",
+    "Service locator (`IServiceProvider` wstrzykiwany wszędzie) zamiast jawnych zależności."
+   ],
+   "code": "builder.Services.AddScoped<IOrderService, OrderService>();\nbuilder.Services.AddSingleton(TimeProvider.System);\nbuilder.Services.AddKeyedSingleton<IStorage, BlobStorage>(\"blob\");\n\napp.MapPost(\"/files\", ([FromKeyedServices(\"blob\")] IStorage s) => ...);",
+   "lang": "csharp",
+   "say": "Lifetime dobieram świadomie: scoped to jeden request, więc DbContext jest scoped, a w singletonach i workerach scoped serwisy pobieram przez IServiceScopeFactory, żeby uniknąć captive dependency."
+  },
+  {
+   "topic": "HTTP",
+   "points": [
+    "GET: **200** z danymi, **404** gdy brak zasobu; pusta kolekcja to 200 z `[]`.",
+    "POST tworzący: **201 Created** + nagłówek `Location` (`CreatedAtAction`, `TypedResults.Created`).",
+    "PUT/PATCH: 200 z zasobem lub **204**; DELETE: **204**.",
+    "**400** zły request/walidacja, **401** brak uwierzytelnienia, **403** brak uprawnień, **409** konflikt stanu, **422** semantyka (jeśli zespół używa), **429** rate limit.",
+    "**202 Accepted** tylko gdy praca jest kolejkowana do późniejszego przetworzenia (z linkiem do statusu) – nie dla zwykłego async/await.",
+    "**500** tylko dla nieoczekiwanych błędów; 503 przy przeciążeniu z `Retry-After`.",
+    "Błędy zawsze w formacie ProblemDetails (`application/problem+json`)."
+   ],
+   "pitfalls": [
+    "200 z `{ success: false }` – klient i monitoring nie widzą błędu.",
+    "204 zamiast 201 po utworzeniu – klient traci id i Location."
+   ],
+   "code": "app.MapPost(\"/api/orders\", async (CreateOrderRequest r, IOrderService s, CancellationToken ct) =>\n{\n    var o = await s.CreateAsync(r, ct);\n    return TypedResults.Created($\"/api/orders/{o.Id}\", o);\n});",
+   "lang": "csharp",
+   "say": "Trzymam się semantyki HTTP: 201 z Location po utworzeniu, 204 po usunięciu, 404 dla brakującego zasobu, 4xx dla błędów klienta w ProblemDetails, a 500 tylko dla nieoczekiwanych sytuacji."
+  },
+  {
+   "topic": "Health checks",
+   "points": [
+    "`AddHealthChecks()` + własne `IHealthCheck` lub gotowe pakiety (DB, Redis); `MapHealthChecks(\"/health/...\")`.",
+    "**Liveness**: czy proces żyje – BEZ zależności zewnętrznych (restart nie naprawi bazy).",
+    "**Readiness**: czy przyjmować ruch – tu baza, broker, rozgrzanie cache; przy shutdownie zwracaj not ready.",
+    "**Startup probe**: chroni wolny start (migracje, warm-up) przed zabiciem przez liveness.",
+    "Rozdzielaj tagami: `.AddCheck<DbCheck>(\"db\", tags: [\"ready\"])` + `Predicate` w `HealthCheckOptions`.",
+    "Unhealthy → **503**, Healthy/Degraded → 200 (konfigurowalne `ResultStatusCodes`).",
+    "Endpointy health często bez auth, ale nie zwracaj w nich szczegółów wrażliwych; można ograniczyć `RequireHost`."
+   ],
+   "pitfalls": [
+    "Sprawdzanie bazy w liveness – awaria bazy powoduje falę restartów zdrowych podów.",
+    "Ciężkie checki wywoływane co kilka sekund przez wiele probe'ów – sam health check obciąża zależności."
+   ],
+   "code": "builder.Services.AddHealthChecks()\n    .AddCheck(\"self\", () => HealthCheckResult.Healthy(), tags: [\"live\"])\n    .AddCheck<DbHealthCheck>(\"db\", tags: [\"ready\"]);\n\napp.MapHealthChecks(\"/health/live\", new() { Predicate = r => r.Tags.Contains(\"live\") });\napp.MapHealthChecks(\"/health/ready\", new() { Predicate = r => r.Tags.Contains(\"ready\") });",
+   "lang": "csharp",
+   "say": "Rozdzielam liveness, który sprawdza tylko proces, od readiness, który sprawdza zależności – dzięki temu awaria bazy wyłącza pod z ruchu zamiast go restartować."
+  },
+  {
+   "topic": "HttpClient",
+   "points": [
+    "`new HttpClient()` per wywołanie → gniazda w **TIME_WAIT** → socket exhaustion pod obciążeniem.",
+    "Jeden statyczny `HttpClient` bez konfiguracji → połączenia żyją wiecznie, **nie widzi zmian DNS**.",
+    "`IHttpClientFactory` pooluje i rotuje handlery co `HandlerLifetime` (domyślnie **2 min**) – rozwiązuje oba problemy.",
+    "Named clients (`AddHttpClient(\"github\", ...)`) lub **typed clients** (`AddHttpClient<PricingClient>`) z centralną konfiguracją BaseAddress, nagłówków, timeoutów.",
+    "`DelegatingHandler` do przekrojowych rzeczy: token, korelacja, logowanie (`AddHttpMessageHandler<T>()`).",
+    "Odporność: `AddStandardResilienceHandler()` (Microsoft.Extensions.Http.Resilience, Polly v8).",
+    "Bez fabryki: statyczny `HttpClient` z `SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(2) }`."
+   ],
+   "pitfalls": [
+    "Typed client wstrzyknięty do singletona – handler nigdy nie jest rotowany, stare DNS przez godziny.",
+    "Domyślny `HttpClient.Timeout` 100 s – bez własnego timeoutu wątki/połączenia wiszą na wolnym downstreamie."
+   ],
+   "code": "builder.Services.AddHttpClient<PricingClient>(c =>\n{\n    c.BaseAddress = new Uri(\"https://pricing.internal\");\n})\n.AddHttpMessageHandler<CorrelationHandler>()\n.AddStandardResilienceHandler();",
+   "lang": "csharp",
+   "say": "HttpClienty biorę z IHttpClientFactory jako typed clients – fabryka rotuje handlery, więc nie ma socket exhaustion ani starego DNS, a do tego dokładam DelegatingHandlery i standardowy resilience handler."
+  },
+  {
+   "topic": "Idempotencja",
+   "points": [
+    "Problem: klient po timeoucie nie wie, czy POST się wykonał – retry musi być bezpieczny.",
+    "Klient generuje klucz (GUID) i wysyła nagłówek **`Idempotency-Key`** (draft IETF), ten sam przy każdej powtórce.",
+    "Serwer zapisuje klucz **atomowo** (unikalny indeks: klucz + klient) w stanie `in progress` PRZED wykonaniem operacji.",
+    "Równoległy duplikat trafia na konflikt indeksu → **409** (lub czeka), zamiast wykonać operację drugi raz.",
+    "Po zakończeniu zapisz status i treść odpowiedzi; powtórka dostaje tę samą odpowiedź.",
+    "Klucz, efekt biznesowy i zapisana odpowiedź – w **jednej transakcji** tej samej bazy.",
+    "Hash body przy kluczu: ten sam klucz z innym payloadem → **422**; klucze mają TTL (np. 24 h).",
+    "GET/PUT/DELETE są idempotentne z definicji; POST i PATCH wymagają mechanizmu."
+   ],
+   "pitfalls": [
+    "Lock w pamięci procesu – nie działa między instancjami ani dla powtórek po czasie.",
+    "Sprawdzenie 'czy klucz istnieje' i zapis w dwóch krokach bez unikalnego indeksu – race condition."
+   ],
+   "say": "POST-y krytyczne zabezpieczam nagłówkiem Idempotency-Key: serwer atomowo zapisuje klucz z unikalnym indeksem, w tej samej transakcji co efekt, i przy powtórce zwraca zapisaną odpowiedź."
+  },
+  {
+   "topic": "Kestrel",
+   "points": [
+    "Kestrel = wbudowany, cross-platformowy serwer HTTP ASP.NET Core: HTTP/1.1, HTTP/2, HTTP/3 (QUIC).",
+    "Może stać bezpośrednio na brzegu, ale zwykle za reverse proxy / LB (nginx, YARP, ingress, Azure Front Door).",
+    "Proxy terminuje TLS → włącz **Forwarded Headers** (`UseForwardedHeaders`, `X-Forwarded-For/Proto`) jako jeden z pierwszych middleware.",
+    "Bez tego: zły schemat (http) w linkach i redirectach, IP proxy zamiast klienta w logach i rate limitingu per IP.",
+    "Ufaj nagłówkom tylko od znanych proxy (`KnownProxies` / zaufane sieci w `ForwardedHeadersOptions`).",
+    "Limity w `KestrelServerOptions.Limits`: `MaxRequestBodySize` (domyślnie ~30 MB), timeouty nagłówków, liczba połączeń.",
+    "Endpointy/porty: `ASPNETCORE_URLS`/`ASPNETCORE_HTTP_PORTS`, sekcja `Kestrel:Endpoints` w konfiguracji; obraz kontenera domyślnie słucha na 8080."
+   ],
+   "pitfalls": [
+    "UseHttpsRedirection za proxy bez forwarded headers – pętla przekierowań lub złe URL-e.",
+    "Ufanie `X-Forwarded-For` od każdego – klient podszywa się pod dowolne IP."
+   ],
+   "code": "builder.Services.Configure<ForwardedHeadersOptions>(o =>\n    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto);\nbuilder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 10 * 1024 * 1024);\n// ...\napp.UseForwardedHeaders();",
+   "lang": "csharp",
+   "say": "Kestrel to wbudowany serwer ASP.NET Core; za reverse proxy włączam Forwarded Headers dla zaufanych proxy, żeby aplikacja znała prawdziwy schemat i IP klienta, a limity ustawiam w KestrelServerOptions."
+  },
+  {
+   "topic": "Konfiguracja",
+   "points": [
+    "Warstwy providerów, późniejszy nadpisuje wcześniejszy: `appsettings.json` → `appsettings.{Env}.json` → User Secrets (Development) → **zmienne środowiskowe** → argumenty CLI.",
+    "Środowisko: `ASPNETCORE_ENVIRONMENT` (lub `DOTNET_ENVIRONMENT`); brak = **Production**.",
+    "Zagnieżdżenie w zmiennych środowiskowych: `__` zamiast `:` (np. `ConnectionStrings__Default`).",
+    "Odczyt: `builder.Configuration[\"A:B\"]`, `GetConnectionString(\"Default\")`, a w kodzie najlepiej Options pattern.",
+    "Sekrety nie trafiają do appsettings w repo: lokalnie User Secrets, produkcja Key Vault / sekrety orkiestratora.",
+    "Pliki JSON mają `reloadOnChange` – zmiany widzą `IOptionsSnapshot`/`IOptionsMonitor`, nie `IOptions`.",
+    "Własne źródła: Azure App Configuration, Key Vault provider (`AddAzureKeyVault`)."
+   ],
+   "pitfalls": [
+    "Zdziwienie, że wartość z appsettings.Production.json 'nie działa' – nadpisała ją zmienna środowiskowa.",
+    "Pojedynczy `_` lub `:` w nazwie zmiennej na Linuksie zamiast `__`."
+   ],
+   "say": "Konfiguracja w ASP.NET Core to warstwy providerów, gdzie późniejszy wygrywa – appsettings, plik środowiska, User Secrets, zmienne środowiskowe, CLI – a w kodzie czytam ją przez Options pattern."
+  },
+  {
+   "topic": "Logowanie",
+   "points": [
+    "Structured logging: log = zdarzenie z nazwanymi właściwościami (filtrujesz po `OrderId` w Seq/Elastic/App Insights).",
+    "**Message templates** z placeholderami (`\"Order {OrderId} paid\"`), nie interpolacja – ta spłaszcza dane i alokuje string nawet przy wyłączonym poziomie (analizator CA2254).",
+    "Wyjątek jako **pierwszy argument**: `LogError(ex, \"...\")`.",
+    "`[LoggerMessage]` source generator: szablon parsowany w kompilacji, brak boxingu i `params object[]`, wbudowane `IsEnabled`, stałe EventId – do gorących ścieżek.",
+    "Scope'y (`BeginScope`) i korelacja z OpenTelemetry (TraceId/SpanId w logach).",
+    "Serilog: sinki (Console, Seq, Elasticsearch, OTLP), `UseSerilogRequestLogging()` = jeden log na request; kod dalej używa `ILogger<T>`.",
+    "Nie loguj danych wrażliwych (hasła, tokeny, PII); od .NET 8 jest mechanizm redakcji (`Microsoft.Extensions.Compliance.Redaction`)."
+   ],
+   "pitfalls": [
+    "`logger.LogInformation($\"Order {id}\")` – traci strukturę i alokuje zawsze.",
+    "Poziom Debug/Trace włączony na produkcji – koszty i szum."
+   ],
+   "code": "public static partial class Log\n{\n    [LoggerMessage(EventId = 1001, Level = LogLevel.Information,\n        Message = \"Order {OrderId} paid by {UserId}\")]\n    public static partial void OrderPaid(this ILogger logger, int orderId, string userId);\n}\n// logger.OrderPaid(order.Id, user.Id);",
+   "lang": "csharp",
+   "say": "Loguję strukturalnie przez ILogger z message templates, nigdy interpolacją, w gorących ścieżkach używam [LoggerMessage], a jako providera zwykle Serilog lub OpenTelemetry."
+  },
+  {
+   "topic": "Middleware",
+   "points": [
+    "Pipeline = łańcuch middleware; każdy dostaje `HttpContext` i `next`: przed, `await next()`, po – albo short-circuit.",
+    "`app.Use` (z next), `app.Run` (terminalny), `app.Map`/`MapWhen` (rozgałęzienie po ścieżce/warunku).",
+    "Kolejność: ExceptionHandler → HSTS/HttpsRedirection → static files → (Routing) → **CORS** → **Authentication** → **Authorization** → RateLimiter/OutputCache → endpointy.",
+    "`UseAuthentication` przed `UseAuthorization` – inaczej User jest anonimowy i każdy `[Authorize]` daje 401.",
+    "Middleware z konwencji (konstruktor z `RequestDelegate`, `InvokeAsync`) tworzony **raz** – scoped serwisy jako parametry `InvokeAsync`.",
+    "`IMiddleware` – rejestrowany w DI z lifetime, aktywowany per request (scoped w konstruktorze OK).",
+    "Po rozpoczęciu wysyłki odpowiedzi (`Response.HasStarted`) nie zmieniaj nagłówków/statusu i nie wołaj `next`."
+   ],
+   "pitfalls": [
+    "DbContext w konstruktorze middleware z konwencji – wyjątek w Development (ValidateScopes) / captive dependency.",
+    "Exception handler dodany na końcu – nie łapie wyjątków z wcześniejszych komponentów."
+   ],
+   "code": "public class TimingMiddleware(RequestDelegate next, ILogger<TimingMiddleware> log)\n{\n    public async Task InvokeAsync(HttpContext ctx, AppDb db) // scoped tutaj\n    {\n        var sw = Stopwatch.StartNew();\n        await next(ctx);\n        log.LogInformation(\"{Path} took {Ms} ms\", ctx.Request.Path, sw.ElapsedMilliseconds);\n    }\n}\n// app.UseMiddleware<TimingMiddleware>();",
+   "lang": "csharp",
+   "say": "Middleware to łańcuch, w którym kolejność decyduje o działaniu – exception handler na początku, CORS przed auth, uwierzytelnianie przed autoryzacją – a serwisy scoped przyjmuję w InvokeAsync, nie w konstruktorze."
+  },
+  {
+   "topic": "Minimal APIs",
+   "points": [
+    "MS rekomenduje Minimal APIs dla nowych projektów: mniej ceremonii, wydajność, **Native AOT**; kontrolery nadal wspierane.",
+    "**Route groups** (`MapGroup`): wspólny prefiks, `RequireAuthorization`, filtry, tagi OpenAPI, rate limiting, cache – dziedziczone przez endpointy.",
+    "Organizacja: moduł per feature z `MapOrdersEndpoints(this IEndpointRouteBuilder)`; handlery jako metody/klasy, nie lambdy w Program.cs.",
+    "**Endpoint filters** (`IEndpointFilter`, `AddEndpointFilter`): przed/po handlerze; pierwszy dodany = najbardziej zewnętrzny.",
+    "**TypedResults** + `Results<Ok<T>, NotFound>` → metadane OpenAPI z typu, kontrola kompilatora, łatwe testy.",
+    "`[AsParameters]` grupuje parametry w obiekt; serwisy z DI wykrywane automatycznie.",
+    "Od .NET 10: wbudowana walidacja DataAnnotations (`AddValidation()`) i `TypedResults.ServerSentEvents`."
+   ],
+   "pitfalls": [
+    "Tysiące linii lambd w Program.cs zamiast modułów.",
+    "Zwracanie `IResult` z `Results.Ok` – OpenAPI nie zna typów odpowiedzi."
+   ],
+   "code": "public static class OrdersEndpoints\n{\n    public static void MapOrders(this IEndpointRouteBuilder app)\n    {\n        var g = app.MapGroup(\"/api/orders\").RequireAuthorization().WithTags(\"Orders\");\n        g.MapGet(\"/{id:int}\", Get);\n    }\n    static async Task<Results<Ok<OrderDto>, NotFound>> Get(int id, IOrderService s, CancellationToken ct)\n        => await s.GetAsync(id, ct) is { } o ? TypedResults.Ok(o) : TypedResults.NotFound();\n}",
+   "lang": "csharp",
+   "say": "W nowych projektach wybieram Minimal APIs: endpointy grupuję w route groups per feature, wspólną konfigurację i filtry dokładam na grupie, a TypedResults dają mi typowane odpowiedzi i automatyczne OpenAPI."
+  },
+  {
+   "topic": "Model binding",
+   "points": [
+    "Źródła: `[FromRoute]`, `[FromQuery]`, `[FromHeader]`, `[FromBody]` (JSON, System.Text.Json), `[FromForm]`, `[FromServices]`.",
+    "Tylko **jeden** parametr z body – body to strumień czytany raz; dwa złożone parametry → InvalidOperationException.",
+    "Z `[ApiController]`/Minimal APIs: typy złożone inferowane z body, proste z route/query.",
+    "Minimal APIs: serwisy z DI wykrywane automatycznie, `CancellationToken`, `HttpContext`, `ClaimsPrincipal` też.",
+    "`[AsParameters]` – zgrupowanie parametrów (np. paginacja, filtry) w record.",
+    "Własne typy z query: statyczne `TryParse` lub `BindAsync` na typie.",
+    "Pliki: `IFormFile` / `IFormFileCollection` (`[FromForm]`); Minimal APIs przy formularzach wymagają antiforgery lub `DisableAntiforgery()`."
+   ],
+   "pitfalls": [
+    "Dwa DTO w jednej akcji POST – połącz w jeden obiekt request.",
+    "Bindowanie encji wprost – overposting."
+   ],
+   "code": "public record PageQuery(int Page = 1, int PageSize = 20, string? Sort = null);\n\napp.MapGet(\"/api/products\", ([AsParameters] PageQuery q, IProductService s, CancellationToken ct)\n    => s.ListAsync(q, ct));",
+   "lang": "csharp",
+   "say": "Model binding bierze wartości z trasy, query, nagłówków, body i DI – z body tylko jeden parametr, więc łączę dane w jeden DTO, a parametry query grupuję przez [AsParameters]."
+  },
+  {
+   "topic": "Obsługa błędów",
+   "points": [
+    "Jeden format błędów: **ProblemDetails** (RFC 9457, zastąpił 7807), `application/problem+json`: type, title, status, detail, instance + rozszerzenia.",
+    "`AddProblemDetails()` + `UseExceptionHandler()` + `UseStatusCodePages()` → błędy i puste 4xx/5xx w tym formacie; `CustomizeProblemDetails` dodaje np. traceId.",
+    "**`IExceptionHandler`** (.NET 8+): `TryHandleAsync` zwraca true (obsłużone) / false (dalej); `AddExceptionHandler<T>()`, kolejność rejestracji.",
+    "Mapowanie: wyjątek domenowy NotFound → 404, konflikt → 409, reszta → 500 bez szczegółów.",
+    "Walidacja: `ValidationProblemDetails` ze słownikiem `errors` per pole.",
+    "Klient opiera się na statusie i stabilnym `type`/kodzie błędu, nie na treści komunikatu.",
+    "Result pattern vs wyjątki: oczekiwane porażki jako jawny wynik (`Result<T>` → TypedResults); ważna jedna spójna konwencja w projekcie."
+   ],
+   "pitfalls": [
+    "Stack trace / SQL w odpowiedzi na produkcji (DeveloperExceptionPage poza Development).",
+    "Wyjątki do sterowania przepływem w gorącej ścieżce – kosztowne i ukrywają kontrakt."
+   ],
+   "code": "public class NotFoundHandler(IProblemDetailsService pd) : IExceptionHandler\n{\n    public async ValueTask<bool> TryHandleAsync(HttpContext ctx, Exception ex, CancellationToken ct)\n    {\n        if (ex is not NotFoundException) return false;\n        ctx.Response.StatusCode = StatusCodes.Status404NotFound;\n        return await pd.TryWriteAsync(new() { HttpContext = ctx, Exception = ex });\n    }\n}\n// builder.Services.AddProblemDetails().AddExceptionHandler<NotFoundHandler>();",
+   "lang": "csharp",
+   "say": "Wszystkie błędy zwracam jako ProblemDetails z poprawnym statusem i traceId, wyjątki globalnie mapuję przez IExceptionHandler, a szczegóły techniczne zostają w logach, nie w odpowiedzi."
+  },
+  {
+   "topic": "Odporność",
+   "points": [
+    "`Microsoft.Extensions.Http.Resilience` (Polly v8): `AddStandardResilienceHandler()` = rate limiter, total timeout, retry, circuit breaker, attempt timeout.",
+    "Własny pipeline: `AddResilienceHandler(\"name\", b => b.AddRetry(...).AddTimeout(...))`.",
+    "Retry tylko dla błędów przejściowych (timeout, 503, 429 z `Retry-After`) i operacji **idempotentnych**.",
+    "**Exponential backoff + jitter**, mało prób; retry w **jednej** warstwie – N warstw × 4 próby = 4^N zapytań (retry storm).",
+    "**Circuit breaker** odcina padniętą zależność; **bulkhead** (limit współbieżności) chroni przed zjedzeniem wątków/połączeń.",
+    "Timeouty end-to-end: każda warstwa krótsza od nadrzędnej; `RequestAborted` przekazany w dół; `AddRequestTimeouts` + `WithRequestTimeout` (.NET 8+).",
+    "Fallback / degradacja: odpowiedź z cache lub okrojona funkcja zamiast błędu."
+   ],
+   "pitfalls": [
+    "Retry na POST bez klucza idempotencji – podwójne płatności.",
+    "Retry w gateway, API A i API B naraz – wykładniczy wzrost ruchu dokładnie w trakcie awarii."
+   ],
+   "code": "builder.Services.AddHttpClient<BillingClient>()\n    .AddStandardResilienceHandler(o =>\n    {\n        o.Retry.MaxRetryAttempts = 2;\n        o.AttemptTimeout.Timeout = TimeSpan.FromSeconds(2);\n        o.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(8);\n    });",
+   "lang": "csharp",
+   "say": "Wywołania wychodzące zabezpieczam standardowym resilience handlerem na Polly v8 – retry z backoffem i jitterem tylko dla błędów przejściowych, circuit breaker i spójne timeouty – i pilnuję, żeby retry był tylko w jednej warstwie."
+  },
+  {
+   "topic": "OpenAPI",
+   "points": [
+    "Od .NET 9 szablon używa wbudowanego **Microsoft.AspNetCore.OpenApi** zamiast Swashbuckle: `AddOpenApi()` + `MapOpenApi()`.",
+    "Dokument domyślnie pod `/openapi/v1.json`; w **.NET 10** domyślnie **OpenAPI 3.1**, możliwy też format YAML.",
+    "Brak wbudowanego UI – dokładasz Scalar (`MapScalarApiReference()`) lub Swagger UI; `/swagger` nie istnieje domyślnie.",
+    "Metadane: `WithSummary`, `WithDescription`, `WithTags`, `Produces<T>()`; `TypedResults`/`Results<...>` uzupełniają kody i schematy automatycznie.",
+    ".NET 10 potrafi wciągnąć komentarze XML (`///`) do dokumentu.",
+    "Transformery (document/operation/schema) do np. dodania security scheme (Bearer).",
+    "Generowanie w czasie builda (`Microsoft.Extensions.ApiDescription.Server`) → dokument jako kontrakt w repo, diff breaking changes w PR."
+   ],
+   "pitfalls": [
+    "Wystawianie dokumentu i UI publicznie na produkcji bez potrzeby – mapuj warunkowo (`if (app.Environment.IsDevelopment())`).",
+    "Zwracanie `IResult` bez `Produces` – dokument nie zna schematów odpowiedzi."
+   ],
+   "code": "builder.Services.AddOpenApi();\n// ...\nif (app.Environment.IsDevelopment())\n{\n    app.MapOpenApi();               // /openapi/v1.json\n    app.MapScalarApiReference();    // pakiet Scalar.AspNetCore\n}",
+   "lang": "csharp",
+   "say": "W .NET 9/10 używam wbudowanego Microsoft.AspNetCore.OpenApi – AddOpenApi i MapOpenApi generują dokument (w .NET 10 OpenAPI 3.1), UI dokładam osobno, np. Scalar, a TypedResults uzupełniają kody odpowiedzi."
+  },
+  {
+   "topic": "Options",
+   "points": [
+    "Options pattern: sekcja konfiguracji → silnie typowana klasa (`AddOptions<T>().BindConfiguration(\"Section\")`).",
+    "**`IOptions<T>`** – singleton, wartość liczona raz, nie widzi zmian w runtime.",
+    "**`IOptionsSnapshot<T>`** – **scoped**, przeliczany per request, widzi zmiany pliku, named options; nie wstrzykniesz do singletona.",
+    "**`IOptionsMonitor<T>`** – singleton, `CurrentValue` + `OnChange`; do singletonów i BackgroundService.",
+    "Walidacja: `ValidateDataAnnotations()`, `Validate(o => ...)`, `IValidateOptions<T>`, source generator `[OptionsValidator]` (.NET 8+).",
+    "**`ValidateOnStart()`** – fail fast przy starcie zamiast błędu przy pierwszym użyciu."
+   ],
+   "pitfalls": [
+    "`IOptionsSnapshot` w singletonie – captive dependency, wyjątek w Development.",
+    "Brak `ValidateOnStart` – brakujący klucz API wychodzi dopiero na produkcji przy pierwszym wywołaniu."
+   ],
+   "code": "public class SmtpOptions { [Required] public string Host { get; set; } = \"\"; [Range(1, 65535)] public int Port { get; set; } }\n\nbuilder.Services.AddOptions<SmtpOptions>()\n    .BindConfiguration(\"Smtp\")\n    .ValidateDataAnnotations()\n    .ValidateOnStart();",
+   "lang": "csharp",
+   "say": "Konfigurację wiążę przez Options pattern z walidacją i ValidateOnStart, w zwykłych serwisach używam IOptions, a gdy potrzebuję bieżących wartości w singletonie – IOptionsMonitor."
+  },
+  {
+   "topic": "Paginacja",
+   "points": [
+    "Zawsze stronicuj kolekcje i ogranicz `pageSize` (np. max 100).",
+    "**Offset** (`Skip/Take`): prosty, skok na stronę N, ale duży OFFSET = baza czyta i odrzuca N wierszy; wstawki przesuwają strony.",
+    "**Keyset/cursor** (`WHERE Id > @last ORDER BY Id`): korzysta z indeksu, stały koszt, stabilny – idealny do infinite scroll; brak skoku na dowolną stronę.",
+    "Sortowanie **deterministyczne** z tie-breakerem (np. `ORDER BY CreatedAt, Id`); bez `OrderBy` EF Core ostrzega, strony mogą się powtarzać.",
+    "Pola sortowania/filtrów z **whitelisty** – nigdy surowy string do SQL.",
+    "Odpowiedź: items + `nextCursor` (opaque, np. base64) lub `page/pageSize/totalCount`; `COUNT(*)` na dużych tabelach jest drogi.",
+    "Parametry przez query string, w Minimal APIs wygodnie `[AsParameters]`."
+   ],
+   "pitfalls": [
+    "`Skip/Take` bez `OrderBy` – niedeterministyczne strony.",
+    "Brak górnego limitu pageSize – klient pobiera całą tabelę."
+   ],
+   "code": "var items = await db.Orders.AsNoTracking()\n    .Where(o => o.Id > afterId)\n    .OrderBy(o => o.Id)\n    .Take(Math.Min(pageSize, 100))\n    .Select(o => new OrderDto(o.Id, o.Total))\n    .ToListAsync(ct);",
+   "lang": "csharp",
+   "say": "Kolekcje zawsze stronicuję z limitem rozmiaru i deterministycznym sortowaniem; offset wybieram dla klasycznych tabel ze stronami, a keyset dla dużych zbiorów i infinite scrolla, bo korzysta z indeksu."
+  },
+  {
+   "topic": "Performance",
+   "points": [
+    "**Async all the way** – `.Result`/`.Wait()` → **thread pool starvation**: latencja skacze, CPU niskie.",
+    "Bez synchronicznego I/O; duże dane streamuj (`IAsyncEnumerable`, `Stream`), nie ładuj w całości do pamięci.",
+    "EF Core: `AsNoTracking` do odczytów, projekcje `Select`, unikanie N+1, paginacja, `AsSplitQuery` przy wielu Include.",
+    "**Pula połączeń** (SqlClient/Npgsql domyślnie Max Pool Size = 100): długie transakcje, HTTP w transakcji, brak Dispose → timeout przy pobieraniu połączenia.",
+    "Skracaj czas trzymania połączenia zanim podniesiesz rozmiar puli; wywołania zewnętrzne poza transakcją (outbox).",
+    "Cache (HybridCache, output cache), kompresja odpowiedzi, HTTP/2–3.",
+    "Mierz zamiast zgadywać: `dotnet-counters`, `dotnet-trace`, OpenTelemetry, BenchmarkDotNet, testy obciążeniowe (k6, NBomber).",
+    "`HttpContext` nie jest thread-safe – nie trzymaj go poza requestem."
+   ],
+   "pitfalls": [
+    "Wywołanie zewnętrznego API wewnątrz otwartej transakcji – wyczerpanie puli przy niskim CPU bazy.",
+    "Optymalizacje 'na oko' bez profilowania."
+   ],
+   "say": "Pod kątem wydajności pilnuję async all the way, krótkiego trzymania połączeń do bazy, odczytów bez trackingu z projekcjami i cache tam, gdzie się opłaca – a decyzje opieram na pomiarach z dotnet-counters i OpenTelemetry."
+  },
+  {
+   "topic": "Rate limiting",
+   "points": [
+    "Wbudowany middleware (.NET 7+): `AddRateLimiter` + `UseRateLimiter`, polityki per endpoint `RequireRateLimiting(\"name\")` lub `GlobalLimiter`.",
+    "Algorytmy: **fixed window**, **sliding window**, **token bucket**, **concurrency**.",
+    "`PartitionedRateLimiter` – limit per użytkownik / API key / tenant; IP tylko jako fallback dla anonimowych (za proxy potrzebne forwarded headers).",
+    "Domyślny `RejectionStatusCode` = **503** – ustaw **429** (+ `Retry-After` w `OnRejected`).",
+    "`QueueLimit` domyślnie 0 – nadmiar odrzucany od razu.",
+    "Liczniki są **w pamięci instancji**: 4 repliki × 100/min ≈ 400/min realnie.",
+    "Limit globalny: na brzegu (API gateway, APIM, ingress, Cloudflare) albo rozproszony licznik w Redis."
+   ],
+   "pitfalls": [
+    "Zostawienie domyślnego 503 – klienci i monitoring myślą, że serwis leży.",
+    "Partycjonowanie po IP za load balancerem bez forwarded headers – wszyscy dzielą jeden limit."
+   ],
+   "code": "builder.Services.AddRateLimiter(o =>\n{\n    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;\n    o.AddPolicy(\"per-user\", ctx => RateLimitPartition.GetFixedWindowLimiter(\n        ctx.User.Identity?.Name ?? ctx.Connection.RemoteIpAddress?.ToString() ?? \"anon\",\n        _ => new FixedWindowRateLimiterOptions { PermitLimit = 100, Window = TimeSpan.FromMinutes(1) }));\n});\napp.UseRateLimiter();\napp.MapGet(\"/api/search\", Search).RequireRateLimiting(\"per-user\");",
+   "lang": "csharp",
+   "say": "Używam wbudowanego rate limitera z partycjonowaniem per użytkownik i ustawiam 429 zamiast domyślnego 503, a przy wielu instancjach twardy limit globalny robię na gatewayu albo w Redisie."
+  },
+  {
+   "topic": "Testowanie",
+   "points": [
+    "**`WebApplicationFactory<Program>`** (Microsoft.AspNetCore.Mvc.Testing) uruchamia całą aplikację w pamięci (TestServer) i daje `HttpClient`.",
+    "Testujesz prawdziwy pipeline: routing, middleware, serializację, walidację, autoryzację.",
+    "Podmiana zależności w **`ConfigureTestServices`** (wykonuje się po Program.cs, więc nadpisuje rejestracje).",
+    "Baza: **Testcontainers** (prawdziwy SQL Server/PostgreSQL) zamiast EF InMemory, który nie zachowuje się jak baza.",
+    "Od **.NET 10** `public partial class Program` generuje się automatycznie; wcześniej dopisywało się ją ręcznie.",
+    "Unit testy handlerów Minimal API: sprawdzasz typ `TypedResults` bez rzutowania.",
+    "Kontrakt: consumer-driven (Pact/PactNet) lub snapshot dokumentu OpenAPI + wykrywanie breaking changes w PR (np. oasdiff).",
+    "Auth w testach: własny `AuthenticationHandler` testowy lub generowane tokeny."
+   ],
+   "pitfalls": [
+    "EF InMemory jako 'baza' w testach integracyjnych – brak transakcji, constraintów, prawdziwego SQL.",
+    "Fake rejestrowany w Program.cs pod warunkiem 'if test' – mieszanie kodu testowego z produkcyjnym."
+   ],
+   "code": "public class OrdersTests(WebApplicationFactory<Program> f) : IClassFixture<WebApplicationFactory<Program>>\n{\n    [Fact]\n    public async Task Get_returns_404_for_missing()\n    {\n        var client = f.WithWebHostBuilder(b => b.ConfigureTestServices(s =>\n            s.AddSingleton<IEmailSender, FakeEmailSender>())).CreateClient();\n        var res = await client.GetAsync(\"/api/orders/999\");\n        Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);\n    }\n}",
+   "lang": "csharp",
+   "say": "API testuję integracyjnie przez WebApplicationFactory z prawdziwą bazą w Testcontainers, zależności zewnętrzne podmieniam w ConfigureTestServices, a kontrakt pilnuję testami kontraktowymi lub diffem OpenAPI."
+  },
+  {
+   "topic": "Walidacja",
+   "points": [
+    "**DataAnnotations** (`[Required]`, `[Range]`, `[StringLength]`, `[EmailAddress]`) – proste reguły.",
+    "Kontrolery z `[ApiController]`: automatyczne 400 + `ValidationProblemDetails` przed wykonaniem akcji.",
+    "**.NET 10**: Minimal APIs mają wbudowaną walidację DataAnnotations po `builder.Services.AddValidation()` (source generator, także recordy i zagnieżdżone typy).",
+    "**FluentValidation** przy regułach złożonych (warunkowe, zależne pola, async) – osobna, testowalna klasa.",
+    "Auto-walidacja przez `FluentValidation.AspNetCore` nie jest już rekomendowana – wołaj walidator jawnie lub w endpoint filterze.",
+    "Walidacja wejścia (kształt danych) ≠ reguły biznesowe w domenie (np. stan zamówienia → 409/422).",
+    "Odpowiedź błędu zawsze w ProblemDetails ze słownikiem `errors` per pole."
+   ],
+   "pitfalls": [
+    "Async walidacja z zapytaniem do bazy (unikalność) jako jedyna ochrona – race condition; potrzebny unikalny indeks.",
+    "Ufanie walidacji po stronie Angulara – serwer zawsze waliduje ponownie."
+   ],
+   "code": "builder.Services.AddValidation(); // .NET 10\n\npublic record CreateUser([Required, EmailAddress] string Email,\n                         [Range(18, 120)] int Age);\n\napp.MapPost(\"/users\", (CreateUser u) => TypedResults.Created($\"/users/{u.Email}\", u));",
+   "lang": "csharp",
+   "say": "Proste reguły robię DataAnnotations – w .NET 10 działa to też w Minimal APIs przez AddValidation – a złożone FluentValidation wywoływanym jawnie lub w endpoint filterze, zawsze z odpowiedzią ValidationProblemDetails."
+  },
+  {
+   "topic": "Wersjonowanie",
+   "points": [
+    "Wersjonowanie nie jest wbudowane: **Asp.Versioning.Http** (Minimal APIs) / **Asp.Versioning.Mvc** (kontrolery).",
+    "Strategie: segment URL `/api/v1/` (najczytelniejszy, łatwy cache), query `?api-version=1.0`, nagłówek, media type.",
+    "**Breaking change**: usunięcie/zmiana nazwy pola, zmiana typu/formatu, nowe wymagane pole w żądaniu, zaostrzenie walidacji, zmiana kodów statusu/semantyki, często nowa wartość enuma.",
+    "Bezpieczne: nowe opcjonalne pola w odpowiedzi (tolerant reader), nowe endpointy, nowe opcjonalne parametry.",
+    "Najpierw ewolucja (**expand–contract**: dodaj nowe, zmigruj klientów, usuń stare), nowa wersja tylko przy prawdziwym breaking change.",
+    "Deprecjacja: oznacz wersję (`api-deprecated-versions`, nagłówki `Deprecation`/`Sunset`) i podaj datę wyłączenia.",
+    "Wykrywanie w CI: diff dokumentu OpenAPI między wersjami."
+   ],
+   "pitfalls": [
+    "Nowa wersja API przy każdej zmianie – mnożenie kodu do utrzymania.",
+    "Dodanie wartości enuma 'bo to tylko dodanie' – klienci ze switch/strict deserializacją się wywracają."
+   ],
+   "code": "builder.Services.AddApiVersioning(o => o.ReportApiVersions = true);\nvar vs = app.NewApiVersionSet().HasApiVersion(new(1)).HasApiVersion(new(2)).Build();\nvar v1 = app.MapGroup(\"/api/v{version:apiVersion}/orders\").WithApiVersionSet(vs);\nv1.MapGet(\"/\", ListV1).MapToApiVersion(1);\nv1.MapGet(\"/\", ListV2).MapToApiVersion(2);",
+   "lang": "csharp",
+   "say": "Wersjonuję pakietem Asp.Versioning, zwykle w segmencie URL, ale nową wersję robię tylko przy prawdziwym breaking change – zmiany addytywne wprowadzam ewolucyjnie, a stare wersje deprecjonuję z datą wyłączenia."
+  }
+ ]
+}

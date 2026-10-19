@@ -1,0 +1,1119 @@
+{
+  "module": "ng",
+  "title": "Angular i frontend",
+  "order": 3,
+  "lessons": [
+    {
+      "id": "ng-architecture",
+      "cat": "angular",
+      "title": "Architektura aplikacji Angular",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Zobaczysz, z jakich „klocków” składa się współczesna aplikacja Angular 21 i jak się ze sobą łączą: start aplikacji, wstrzykiwanie zależności, routing, podział komponentów i folderów. Wszystko na prostych analogiach, krok po kroku. Na rozmowach to temat otwierający – po nim rekruter ocenia, czy rozumiesz framework, czy tylko go używasz.",
+      "sections": [
+        {
+          "h": "Aplikacja jak budynek",
+          "text": "Wyobraź sobie biurowiec. Są w nim **pokoje** (komponenty – kawałki ekranu z własnym HTML i logiką), **instalacje** w ścianach (serwisy – klasy z logiką i danymi, np. pobieranie zamówień) oraz **korytarze i drzwi** (router – decyduje, który „pokój” pokazać dla danego adresu URL).\n\nPokój nie buduje sobie elektrowni. Podłącza się do **gniazdka** w ścianie. W Angularze tym gniazdkiem jest **Dependency Injection (DI)** – mechanizm, który sam dostarcza komponentowi gotowe obiekty, o które poprosi.\n\nNiektóre drzwi są zamknięte na klucz – to **guardy** (strażnicy tras), które sprawdzają, czy wolno wejść, np. czy użytkownik jest zalogowany.\n\nDawniej pokoje grupowano w „piętra” zwane `NgModule`. Od Angulara 17 domyślne są **standalone components** – komponent sam wypisuje w `imports`, czego używa, bez pośrednika. W Angular 21 nowe projekty z CLI są standalone i **zoneless** (bez biblioteki Zone.js) domyślnie. `NgModule` nadal działa w starym kodzie, ale nowej architektury już się wokół niego nie projektuje."
+        },
+        {
+          "h": "Start aplikacji krok po kroku",
+          "text": "Co się dzieje, gdy otwierasz aplikację w przeglądarce:\n\n1. Przeglądarka ładuje `index.html` i plik `main.js`.\n2. `main.ts` wywołuje `bootstrapApplication(App, appConfig)` – „uruchom aplikację, zaczynając od komponentu `App`, z taką konfiguracją”.\n3. `appConfig` zawiera listę **providers** – czyli przepisów „jak zrobić obiekt X”. To jak tablica rozdzielcza całego budynku.\n4. Angular tworzy główny **injector** (magazyn, który produkuje i przechowuje obiekty z tych przepisów), renderuje `App`, a router wyświetla stronę pasującą do URL.\n\nBiblioteki Angulara dają gotowe funkcje `provide*`: `provideRouter(routes)` włącza routing, `provideHttpClient()` włącza komunikację z API. Własnych serwisów zwykle nie trzeba tu dopisywać – wystarczy `@Injectable({ providedIn: 'root' })`. Bonus: taki serwis jest **tree-shakable** – jeśli nikt go nie używa, kompilator wytnie go z paczki.",
+          "code": "// main.ts – punkt startu\nbootstrapApplication(App, appConfig);\n\n// app.config.ts – „tablica rozdzielcza”\nexport const appConfig: ApplicationConfig = {\n  providers: [\n    provideRouter(routes, withComponentInputBinding()),\n    provideHttpClient(withInterceptors([authInterceptor])),\n  ],\n};\n\n// własny serwis – sam się rejestruje w całej aplikacji\n@Injectable({ providedIn: 'root' })\nexport class OrdersApi { /* ... */ }",
+          "lang": "typescript"
+        },
+        {
+          "h": "DI: gniazdka na różnych piętrach",
+          "text": "**Injector** to magazyn obiektów. W aplikacji nie ma jednego magazynu, tylko całe **drzewo**: każdy komponent może mieć swój mały magazyn, nad nim jest rodzic, a na samej górze magazyn główny (**root**).\n\nGdy komponent prosi o serwis, Angular szuka go tak:\n\n1. Czy mam go w swoich `providers`? Jeśli tak – biorę.\n2. Nie? Pytam rodzica, potem dziadka… aż do korzenia drzewa komponentów.\n3. Dalej sprawdzam injector trasy (jeśli trasa ma `providers`), potem root.\n4. Nikt nie ma? Błąd `NullInjectorError` (chyba że poprosiłem z `{ optional: true }` – wtedy dostanę `null`).\n\nZ tego wynika, **ile instancji powstanie**:\n\n- `providedIn: 'root'` – jedna na całą aplikację (singleton).\n- `providers: [X]` w komponencie – nowa instancja dla każdego egzemplarza komponentu, znika razem z nim.\n- `providers: [X]` w definicji trasy – jedna instancja na tę gałąź routingu.\n\nZamiast klasy możesz wstrzykiwać wartość przez `InjectionToken` – „etykietę” dla rzeczy, która nie jest klasą, np. adresu API.",
+          "code": "// ŹLE – serwis ma providedIn: 'root', a mimo to dopisany tutaj\n@Component({ selector: 'app-cart', providers: [CartService] })\nexport class CartPage {\n  cart = inject(CartService); // osobna instancja! reszta aplikacji jej nie widzi\n}\n\n// DOBRZE – bierzemy wspólny singleton z root\n@Component({ selector: 'app-cart' })\nexport class CartPage {\n  cart = inject(CartService);\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "inject() – „poproszę z gniazdka”",
+          "text": "Funkcja `inject(X)` mówi: „daj mi obiekt X z najbliższego magazynu”. Działa tylko w tzw. **injection context** – czyli w momencie, gdy Angular właśnie coś tworzy i „ma otwarty magazyn”.\n\nGdzie to działa:\n\n- w inicjalizatorach pól klasy (`api = inject(Api)`) i w konstruktorze,\n- w funkcjach-guardach, interceptorach i resolverach,\n- w fabrykach providerów i `InjectionToken`.\n\nGdzie nie działa: w metodzie wywołanej później, np. po kliknięciu albo w `setTimeout`. Dostaniesz błąd `NG0203`. Rozwiązanie: pobierz zależność wcześniej, w polu klasy.\n\nDlaczego `inject()` zamiast parametrów konstruktora? Działa w zwykłych funkcjach (guardy, interceptory), upraszcza dziedziczenie i pozwala pisać małe funkcje pomocnicze, np. `injectCurrentUser()`.",
+          "code": "export const API_URL = new InjectionToken<string>('API_URL', {\n  providedIn: 'root',\n  factory: () => '/api',\n});\n\nexport class OrdersPage {\n  private readonly http = inject(HttpClient);   // OK – pole klasy\n  private readonly apiUrl = inject(API_URL);    // OK – token z wartością\n\n  // ŹLE: onRefresh() { const r = inject(Router); }  -> NG0203\n  private readonly router = inject(Router);     // DOBRZE: pobierz wcześniej\n  onRefresh() { this.router.navigate(['/orders']); }\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "Routing: drzwi, klucze i pokoje na żądanie",
+          "text": "**Lazy loading** to ładowanie kodu dopiero wtedy, gdy jest potrzebny. Jak w hotelu: nie sprzątasz wszystkich pokoi na raz, tylko ten, do którego idzie gość. Dzięki temu pierwszy ekran ładuje się szybciej.\n\n- `loadComponent` – leniwie ładuje jeden komponent.\n- `loadChildren` – leniwie ładuje całą listę tras danego obszaru (np. panel admina).\n\n**Guard** to strażnik przy drzwiach. Dziś to zwykła funkcja (`CanActivateFn`, `CanMatchFn` itd.); stare klasy z interfejsem `CanActivate` są przestarzałe. Guard odpowiada: `true` (wchodź), `false` (stój) albo `UrlTree` (idź gdzie indziej, np. na `/login`).\n\nRóżnica, o którą lubią pytać:\n\n- `canActivate` – trasa pasuje, strażnik sprawdza, czy wpuścić.\n- `canMatch` – strażnik decyduje, czy ta trasa **w ogóle pasuje**. Gdy powie „nie”, router szuka następnej trasy, a kod leniwego modułu **nawet się nie pobiera**.",
+          "code": "export const authGuard: CanActivateFn = (route, state) => {\n  const auth = inject(AuthService);\n  const router = inject(Router);\n  return auth.isLoggedIn()\n    ? true\n    : router.createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });\n};\n\nexport const routes: Routes = [\n  { path: '', loadComponent: () => import('./home/home').then(m => m.Home) },\n  { path: 'admin',\n    canMatch: [() => inject(AuthService).hasRole('admin')],\n    loadChildren: () => import('./admin/admin.routes').then(m => m.ADMIN_ROUTES) },\n  { path: 'orders/:id', canActivate: [authGuard],\n    loadComponent: () => import('./orders/order-details').then(m => m.OrderDetails) },\n  { path: '**', redirectTo: '' },\n];",
+          "lang": "typescript"
+        },
+        {
+          "h": "Kucharz i kelner: smart i dumb components",
+          "text": "W restauracji **kucharz** wie, skąd brać składniki i jak przygotować danie. **Kelner** tylko podaje talerz i przekazuje zamówienia. Komponenty dzielimy tak samo:\n\n- **Smart (container)** – „kucharz”: wstrzykuje serwisy, pobiera dane, reaguje na URL, obsługuje akcje.\n- **Dumb (presentational)** – „kelner”: dostaje dane przez `input()`, zgłasza zdarzenia przez `output()`, nie wie nic o API.\n\nZysk: dumb components testujesz bez mocków HTTP, używasz ich w wielu miejscach i świetnie działają z `OnPush` (strategią odświeżania „tylko gdy coś się zmieniło”).\n\n**Struktura folderów** – układaj według obszarów biznesowych (feature-based), nie według typów plików:\n\n- `core/` – rzeczy jednorazowe dla całej aplikacji: interceptory, guardy, layout, logowanie.\n- `shared/` – reużywalne klocki UI, pipe'y, dyrektywy; bez logiki biznesowej.\n- `features/orders/`, `features/customers/` – każdy obszar z własnymi trasami, stronami i serwisami.\n\nZasada: **feature nie importuje innego feature'a**. Wspólne rzeczy przenosisz do `shared`."
+        },
+        {
+          "h": "Jak komponenty ze sobą rozmawiają",
+          "text": "Wybór sposobu zależy od tego, kto z kim rozmawia:\n\n1. **Rodzic → dziecko**: `input()` – jak podanie kartki z danymi.\n2. **Dziecko → rodzic**: `output()` – dziecko „dzwoni dzwonkiem”, rodzic reaguje.\n3. **W obie strony**: `model()` + składnia `[(value)]` w rodzicu.\n4. **Rodzic chce wywołać coś w dziecku**: `viewChild(Child)` – w v21 to **sygnał** (reaktywna wartość), odczytujesz `this.child()`.\n5. **Daleko od siebie (np. rodzeństwo)**: wspólny serwis ze stanem – jak tablica ogłoszeń na korytarzu.\n6. **Stan, który ma przetrwać odświeżenie lub dać się wysłać linkiem**: parametry w URL.\n\nPułapka **prop drilling**: przekazywanie danych przez 4 poziomy inputów tylko po to, by dotarły na dół. Lepiej dać serwis w `providers` komponentu-kontenera i wstrzyknąć go tam, gdzie trzeba.",
+          "code": "@Component({\n  selector: 'app-order-row',\n  template: `\n    <span>{{ order().number }}</span>\n    <button (click)=\"remove.emit(order().id)\">Usuń</button>`,\n  changeDetection: ChangeDetectionStrategy.OnPush,\n})\nexport class OrderRow {            // „kelner”\n  order = input.required<Order>(); // dostaje dane\n  remove = output<number>();       // zgłasza zdarzenie\n}\n\n// rodzic („kucharz”):\n// @for (o of store.orders(); track o.id) {\n//   <app-order-row [order]=\"o\" (remove)=\"store.remove($event)\" />\n// }",
+          "lang": "typescript"
+        },
+        {
+          "h": "Na rozmowie i poziom senior",
+          "text": "Krótka odpowiedź na „jak zbudowałbyś aplikację Angular?”: standalone + `app.config.ts` z `provide*`, foldery według feature'ów, lazy loading tras, guardy funkcyjne, smart/dumb z `OnPush`, stan w serwisach z sygnałami (globalny w root, ekranowy w `providers` komponentu), interceptory funkcyjne dla tokenu i błędów.\n\nNiuanse seniorskie, które robią wrażenie:\n\n- **Wszystko w root to pułapka** – stan ekranu „przecieka” (wracasz do formularza i widzisz stare dane). Stan ekranu trzymaj w providerze komponentu lub trasy.\n- **Jeden zły import potrafi zabić lazy loading** – import z feature'a w komponencie startowym wciąga cały feature do głównej paczki. Sprawdzaj tabelę chunków po `ng build`.\n- **Guard bez efektów ubocznych** – guard odpowiada tak/nie/przekieruj; dane ładuje resolver (`ResolveFn`) albo sam komponent.\n- **Migracja** z `NgModule` może być stopniowa (schematic `ng generate @angular/core:standalone`).\n- **Skalowanie na wiele zespołów**: monorepo (Nx) z regułami granic modułów albo micro frontendy – ale to rozwiązanie problemu organizacyjnego, nie stosuje się go na zapas."
+        }
+      ],
+      "takeaways": [
+        "Nowe aplikacje Angular 21 są standalone i zoneless domyślnie; bootstrap to bootstrapApplication z ApplicationConfig i funkcjami provide*.",
+        "providedIn: 'root' daje singleton i tree-shaking; providers w komponencie tworzą nową instancję na każdy komponent, providers w trasie – instancję na gałąź routingu.",
+        "Angular szuka zależności w górę drzewa: element injectory komponentów, potem environment injectory (route, root, platform).",
+        "inject() działa tylko w injection context: inicjalizatory pól, konstruktor, fabryki, guardy i interceptory funkcyjne.",
+        "Lazy loading: loadComponent dla pojedynczego komponentu, loadChildren dla tablicy tras; guardy to funkcje CanActivateFn/CanMatchFn zwracające boolean lub UrlTree.",
+        "Smart components zarządzają danymi, dumb components komunikują się wyłącznie przez input()/output() – łatwe testy i dobre OnPush.",
+        "Struktura feature-based: core, shared, features; feature nie importuje innego feature'a."
+      ],
+      "interview": [
+        "Czym różnią się standalone components od NgModule i jak wygląda bootstrap aplikacji bez modułów?",
+        "Wyjaśnij hierarchię injectorów. Co się stanie, gdy serwis providedIn: 'root' dodasz też do providers komponentu?",
+        "Jak zaimplementujesz lazy loading i ochronę tras? Czym różni się canMatch od canActivate?",
+        "Jakie znasz sposoby komunikacji między komponentami i kiedy którego użyjesz?",
+        "Jak podzieliłbyś na foldery średniej wielkości aplikację biznesową?"
+      ],
+      "exam": [
+        {
+          "id": "ng-architecture-e1",
+          "q": "Serwis `CartService` ma `@Injectable({ providedIn: 'root' })`. Komponent `CartPage` dodatkowo ma `providers: [CartService]`. Co dostanie `CartPage` przy `inject(CartService)`?",
+          "options": [
+            "Nową instancję, osobną od tej z root injectora, żyjącą tak długo jak komponent",
+            "Tę samą instancję co reszta aplikacji, bo providedIn: 'root' ma pierwszeństwo",
+            "Błąd kompilacji – serwisu nie można zarejestrować dwa razy",
+            "Instancję z root, ale dopiero po zniszczeniu komponentu"
+          ],
+          "correct": 0,
+          "why": "Angular szuka providera od element injectora komponentu w górę. Pierwszy trafiony to providers komponentu, więc powstaje osobna instancja – częsta przyczyna „niesynchronizującego się stanu”."
+        },
+        {
+          "id": "ng-architecture-e2",
+          "q": "Czym `canMatch` różni się od `canActivate` w kontekście lazy loadingu?",
+          "options": [
+            "canMatch działa tylko dla tras bez parametrów",
+            "Gdy canMatch zwróci false, router próbuje kolejnej pasującej trasy i nie pobiera lazy chunka",
+            "canMatch uruchamia się po załadowaniu komponentu, canActivate przed",
+            "canMatch nie może zwracać UrlTree"
+          ],
+          "correct": 1,
+          "why": "canMatch decyduje, czy trasa w ogóle pasuje. Przy false router szuka dalej, a kod z loadChildren/loadComponent nie jest pobierany. canActivate działa po dopasowaniu trasy."
+        },
+        {
+          "id": "ng-architecture-e3",
+          "q": "Gdzie wywołanie `inject(Router)` rzuci błąd NG0203?",
+          "options": [
+            "W inicjalizatorze pola klasy komponentu",
+            "Wewnątrz funkcji CanActivateFn",
+            "W metodzie onClick() wywołanej po kliknięciu przycisku",
+            "W fabryce InjectionToken"
+          ],
+          "correct": 2,
+          "why": "inject() wymaga injection context – jest on dostępny przy tworzeniu klasy, w fabrykach, guardach i interceptorach funkcyjnych, ale nie w handlerze zdarzenia wywoływanym później."
+        },
+        {
+          "id": "ng-architecture-e4",
+          "q": "Która cecha `providedIn: 'root'` NIE jest prawdziwa?",
+          "options": [
+            "Daje jedną instancję na aplikację",
+            "Serwis nieużywany nigdzie może zostać usunięty z bundla (tree-shaking)",
+            "Nie trzeba dopisywać serwisu do providers w app.config.ts",
+            "Każda lazy-loadowana trasa dostaje automatycznie własną kopię serwisu"
+          ],
+          "correct": 3,
+          "why": "Root injector jest jeden dla całej aplikacji; lazy trasy korzystają z tej samej instancji. Własną kopię dostaje się dopiero przez Route.providers lub providers komponentu."
+        },
+        {
+          "id": "ng-architecture-e5",
+          "q": "Jak w Angular 21 rodzic najlepiej odczyta referencję do komponentu dziecka w szablonie?",
+          "options": [
+            "child = viewChild(ChildCmp); a potem this.child() – to sygnał",
+            "@ViewChild jest jedyną opcją, viewChild() jest experimental",
+            "Przez inject(ChildCmp) w konstruktorze rodzica",
+            "Przez output() emitujący this w ngOnInit dziecka"
+          ],
+          "correct": 0,
+          "why": "viewChild() zwraca sygnał (Signal<T | undefined>), stabilne API. inject(ChildCmp) w rodzicu nie działa – DI idzie w górę drzewa, nie w dół."
+        },
+        {
+          "id": "ng-architecture-e6",
+          "q": "Co cechuje komponent „dumb” (presentational)?",
+          "options": [
+            "Wstrzykuje HttpClient, ale nie używa routera",
+            "Dostaje dane przez input(), emituje zdarzenia przez output() i nie zna źródła danych",
+            "Zawsze używa ChangeDetectionStrategy.Default",
+            "Musi być ładowany leniwie"
+          ],
+          "correct": 1,
+          "why": "Dumb component nie wie, skąd pochodzą dane – to ułatwia testy, reużycie i świetnie współgra z OnPush."
+        },
+        {
+          "id": "ng-architecture-e7",
+          "q": "Do czego służy `withComponentInputBinding()` w `provideRouter`?",
+          "options": [
+            "Włącza lazy loading komponentów",
+            "Pozwala guardom przyjmować inputy",
+            "Mapuje parametry trasy, query params i dane resolverów na input() komponentu trasy",
+            "Wymusza OnPush dla komponentów tras"
+          ],
+          "correct": 2,
+          "why": "Dzięki temu komponent trasy może zadeklarować np. id = input<string>() i dostać parametr :id bez wstrzykiwania ActivatedRoute."
+        },
+        {
+          "id": "ng-architecture-e8",
+          "q": "Masz stan potrzebny tylko na ekranie edycji zamówienia i jego dzieciach; po wyjściu z ekranu ma zniknąć. Gdzie zarejestrować `OrderEditStore`?",
+          "options": [
+            "providedIn: 'root'",
+            "W platform injectorze",
+            "W app.config.ts",
+            "W providers komponentu-kontenera ekranu edycji"
+          ],
+          "correct": 3,
+          "why": "Provider na poziomie komponentu daje instancję związaną z cyklem życia komponentu i dostępną dla jego dzieci; root utrzymywałby stan przez całe życie aplikacji."
+        },
+        {
+          "id": "ng-architecture-e9",
+          "q": "Co powinien zwrócić guard funkcyjny, aby przekierować niezalogowanego użytkownika na /login?",
+          "options": [
+            "router.createUrlTree(['/login'])",
+            "router.navigate(['/login']) i potem true",
+            "throw new Error('unauthorized')",
+            "null"
+          ],
+          "correct": 0,
+          "why": "Zwrócenie UrlTree to zalecany sposób przekierowania – router anuluje bieżącą nawigację i rozpoczyna nową. navigate + true pozwoliłoby wejść na chronioną trasę."
+        }
+      ]
+    },
+    {
+      "id": "ng-signals",
+      "cat": "signals",
+      "title": "Signals od podstaw do eksperta",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Sygnały to dziś serce reaktywności w Angularze: na nich stoją inputy, odświeżanie widoku bez Zone.js i nowe API do ładowania danych. Zaczniemy od analogii z arkuszem kalkulacyjnym, przejdziemy przez signal, computed, effect i linkedSignal, a skończymy na pułapkach i współpracy z RxJS. To jeden z najczęstszych tematów na rozmowach o Angularze 17+.",
+      "sections": [
+        {
+          "h": "Sygnał jak komórka w Excelu",
+          "text": "Otwórz w głowie arkusz kalkulacyjny. W komórce A1 wpisujesz `10` – to **signal**, czyli wartość, którą możesz zmieniać. W B1 wpisujesz formułę `=A1*2` – to **computed**, czyli wartość wyliczana z innych. Gdy zmienisz A1 na `20`, B1 sama pokaże `40`.\n\nCo ważne: Excel nie przelicza całego arkusza. Wie, że **tylko B1 zależy od A1**. Sygnały działają tak samo.\n\nJak to działa krok po kroku:\n\n1. Angular uruchamia funkcję reaktywną (computed, effect albo szablon komponentu) i zapamiętuje: „teraz liczy się B1”.\n2. Każde odczytanie sygnału, np. `count()`, zapisuje: „B1 czyta A1”. To **śledzenie zależności**.\n3. Gdy ktoś zmieni A1, wszyscy jego czytelnicy dostają karteczkę „jesteś nieaktualny” (**dirty**).\n4. Nowa wartość jest liczona dopiero wtedy, gdy ktoś jej potrzebuje. Dlatego mówimy, że computed jest **leniwy**.\n\nSzablon komponentu też jest takim czytelnikiem. Angular wie więc, **który komponent** pokazuje zmieniony sygnał i może odświeżyć tylko jego. Na tym opiera się tryb **zoneless** (bez Zone.js), domyślny w nowych projektach v21."
+        },
+        {
+          "h": "signal i computed w praktyce",
+          "text": "`signal(wartość)` tworzy pudełko z wartością:\n\n- odczyt: `count()` (wywołujesz jak funkcję),\n- zapis: `count.set(5)` albo `count.update(c => c + 1)` (nowa wartość na podstawie starej).\n\nUwaga na najczęstszy błąd. Sygnał sprawdza, czy wartość się zmieniła, porównując ją przez `Object.is` – dla obiektów i tablic to porównanie **referencji** (adresu w pamięci), a nie zawartości. Jeśli dopiszesz element do tej samej tablicy, sygnał uzna, że nic się nie stało.\n\n`computed(() => ...)` to wartość wyliczana. Jest tylko do odczytu, liczy się przy pierwszym odczycie i **zapamiętuje wynik** (memoizacja), dopóki zależności się nie zmienią. Zależności są **dynamiczne**: jeśli w danym przebiegu `if` nie odczytał sygnału, ten sygnał nie jest zależnością.",
+          "code": "items = signal<CartItem[]>([]);\n\n// ŹLE – ta sama tablica, sygnał nie zauważy zmiany\naddBad(item: CartItem) {\n  this.items().push(item);\n}\n\n// DOBRZE – nowa tablica = nowa referencja = powiadomienie\nadd(item: CartItem) {\n  this.items.update(list => [...list, item]);\n}\n\ntotal = computed(() =>\n  this.items().reduce((sum, i) => sum + i.price * i.qty, 0));\nisEmpty = computed(() => this.items().length === 0);",
+          "lang": "typescript"
+        },
+        {
+          "h": "effect – i kiedy go NIE używać",
+          "text": "`effect(() => ...)` to funkcja, która uruchamia się sama za każdym razem, gdy zmieni się któryś z odczytanych w niej sygnałów. Służy do **efektów ubocznych**, czyli działań „na zewnątrz” Angulara: zapis do `localStorage`, logowanie, analityka, sterowanie biblioteką wykresów.\n\nCo warto wiedzieć:\n\n- tworzysz go w **injection context** (np. w konstruktorze), sam się sprząta po zniszczeniu komponentu,\n- uruchamia się **asynchronicznie** – nie zaraz po `set`, tylko gdy framework go zaplanuje,\n- przez `onCleanup` możesz posprzątać po poprzednim uruchomieniu (np. wyczyścić timer).\n\nNajczęstszy błąd to **przepisywanie sygnału do sygnału efektem**. Działa, ale wartość przez chwilę jest nieaktualna, dochodzi dodatkowy cykl i łatwo o pętlę. Prosta reguła:\n\n1. Da się wyliczyć z innych sygnałów? → `computed`.\n2. Ma być edytowalne, ale resetować się przy zmianie źródła? → `linkedSignal`.\n3. Trzeba coś zrobić poza Angularem? → dopiero wtedy `effect`.\n\nDo pobierania danych z API też nie używaj effect + subscribe – są do tego `resource`/`httpResource` albo RxJS.",
+          "code": "// ŹLE – efekt do stanu pochodnego\nfullName = signal('');\nconstructor() {\n  effect(() => this.fullName.set(`${this.first()} ${this.last()}`));\n}\n\n// DOBRZE – computed\nfullName = computed(() => `${this.first()} ${this.last()}`);\n\n// DOBRZE – efekt do świata zewnętrznego, z debounce i sprzątaniem\nconstructor() {\n  effect(onCleanup => {\n    const json = JSON.stringify(this.items());\n    const t = setTimeout(() => localStorage.setItem('cart', json), 300);\n    onCleanup(() => clearTimeout(t));\n  });\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "linkedSignal i untracked",
+          "text": "**linkedSignal** to sygnał, który ma wartość domyślną wyliczoną z innego sygnału, ale użytkownik może ją zmienić. Analogia: nawigacja w samochodzie proponuje trasę (wartość domyślna), ty możesz wybrać inną, ale gdy zmienisz cel podróży – nawigacja znów proponuje od nowa.\n\nPrzykład z życia: lista metod dostawy przychodzi z serwera, użytkownik wybiera jedną. Gdy lista się zmieni:\n\n1. jeśli wybrana metoda nadal jest na liście – zostaje,\n2. jeśli jej nie ma – wybieramy pierwszą.\n\nForma krótka: `linkedSignal(() => options()[0])`. Forma pełna ma `source` (od czego zależy) i `computation(źródło, poprzednie)`.\n\n**untracked(() => ...)** odczytuje sygnał „po cichu” – bez zapisywania zależności. Przydaje się w efekcie, który ma reagować tylko na zmianę `userId`, ale przy okazji zajrzeć do aktualnych `settings`. Nie nadużywaj – ukryte zależności to przepis na nieaktualne dane.",
+          "code": "options = input.required<Shipping[]>();\n\nselected = linkedSignal<Shipping[], Shipping | undefined>({\n  source: this.options,\n  // prev?.value to poprzednio wybrana metoda\n  computation: (opts, prev) =>\n    opts.find(o => o.id === prev?.value?.id) ?? opts[0],\n});\n\nconstructor() {\n  effect(() => {\n    const id = this.userId();                     // reaguj na to\n    const cfg = untracked(() => this.settings()); // tylko zajrzyj\n    this.analytics.track('user-changed', { id, theme: cfg.theme });\n  });\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "input(), output(), model() i most do RxJS",
+          "text": "Komunikacja komponentów też jest na sygnałach (API stabilne):\n\n- `input<T>()` / `input.required<T>()` – dane od rodzica jako sygnał **tylko do odczytu**. Zamiast `ngOnChanges` piszesz po prostu `computed` na inputach.\n- `output<T>()` – zdarzenie do rodzica, wywołujesz `emit(...)`. To nie jest Observable ani `EventEmitter`; konwersję dają `outputFromObservable` / `outputToObservable`.\n- `model<T>()` – input, który komponent może też zmienić; rodzic używa `[(value)]`.\n\nMost do RxJS (pakiet `@angular/core/rxjs-interop`):\n\n- `toSignal(obs$, { initialValue })` – zamienia strumień w sygnał; sam subskrybuje i sam się odpina przy zniszczeniu komponentu. Bez `initialValue` typ zawiera `undefined`, bo zanim przyjdą dane, coś musi być w środku.\n- `toObservable(sig)` – zamienia sygnał w strumień. Emituje „ustaloną” wartość, a nie każdy pośredni `set`.\n\nTypowy przepis: wpisywany tekst jako sygnał → `toObservable` → `debounceTime` + `switchMap` → `toSignal` do szablonu."
+        },
+        {
+          "h": "resource i httpResource (experimental)",
+          "text": "**resource** to „sygnał z danymi z serwera”. Mówisz mu: od czego zależą dane (`params`) i jak je pobrać (`loader`), a on sam pilnuje ładowania. API jest **experimental** w Angular 21 – można używać, ale może się jeszcze zmienić.\n\nCo się dzieje krok po kroku:\n\n1. `params` odczytuje sygnały (np. `id()`).\n2. Jeśli zwróci `undefined` – nic nie jest ładowane (wygodne, gdy `id` jeszcze nie znamy).\n3. Inaczej wywoływany jest `loader` (Promise) albo `stream` (Observable w `rxResource`).\n4. Gdy `id` się zmieni w trakcie – poprzednie żądanie jest **anulowane**.\n5. Szablon czyta `isLoading()`, `error()`, `hasValue()`, `value()`; jest też `reload()`.\n\n`httpResource(() => url)` to najkrótsza wersja – używa `HttpClient`, więc działają interceptory.",
+          "code": "export class ProductPage {\n  private readonly http = inject(HttpClient);\n  readonly id = input.required<string>(); // z parametru trasy\n\n  readonly product = rxResource({\n    params: () => ({ id: this.id() }),\n    stream: ({ params }) => this.http.get<Product>(`/api/products/${params.id}`),\n  });\n\n  readonly reviews = httpResource<Review[]>(() => `/api/products/${this.id()}/reviews`);\n}\n\n// szablon:\n// @if (product.isLoading()) { <app-spinner /> }\n// @else if (product.error()) { <p>Nie udało się pobrać</p> }\n// @else if (product.hasValue()) { <h1>{{ product.value().name }}</h1> }",
+          "lang": "typescript"
+        },
+        {
+          "h": "Serwis ze stanem na sygnałach",
+          "text": "Najprostszy sposób na wspólny stan: serwis jak **sejf z okienkiem**. W środku leży prywatny sygnał, na zewnątrz wystawiamy tylko „okienko do patrzenia” (`asReadonly()`) i wyliczone wartości (`computed`). Zmienić coś można tylko przez metody serwisu.\n\nDlaczego tak? Bo gdy każdy komponent może zrobić `todos.set(...)`, po tygodniu nikt nie wie, kto zepsuł stan. Gdy zmiany idą tylko przez metody – masz jedno miejsce do debugowania i logowania.",
+          "code": "@Injectable({ providedIn: 'root' })\nexport class TodoStore {\n  private readonly api = inject(TodoApi);\n  private readonly _todos = signal<Todo[]>([]);       // sejf\n  readonly todos = this._todos.asReadonly();           // okienko\n  readonly openCount = computed(() =>\n    this._todos().filter(t => !t.done).length);\n\n  async toggle(id: number) {\n    // 1. zmiana optymistyczna – UI reaguje od razu\n    this._todos.update(l => l.map(t => t.id === id ? { ...t, done: !t.done } : t));\n    try {\n      await this.api.toggle(id);                       // 2. zapis na serwerze\n    } catch {\n      this._todos.update(l => l.map(t => t.id === id ? { ...t, done: !t.done } : t)); // 3. cofnięcie\n    }\n  }\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "Pułapki i jak o tym mówić na rozmowie",
+          "text": "Lista kontrolna najczęstszych błędów:\n\n- **Mutacja zamiast nowej referencji** – `push` na tablicy z sygnału nikogo nie powiadomi.\n- **Odczyt po `await`** – śledzenie działa tylko synchronicznie; sygnał przeczytany po `await` nie jest zależnością. Odczytaj wszystko na początku.\n- **Effect do stanu pochodnego** – zamień na `computed` lub `linkedSignal`.\n- **Pętla w efekcie** – efekt czyta i zapisuje ten sam sygnał.\n- **`toSignal` w metodzie** – każde wywołanie tworzy nową subskrypcję i wymaga injection context. Wołaj go w polu klasy.\n- **Zwykła metoda w szablonie** – `{{ calc() }}` na metodzie liczy się przy każdym sprawdzeniu; `computed` liczy się tylko po zmianie.\n\nNa rozmowie: sygnał to **stan** (zawsze ma bieżącą wartość, odczyt synchroniczny), Observable to **strumień zdarzeń w czasie** (asynchroniczny, z operatorami jak `debounceTime`). Nie konkurują: sygnały do stanu i szablonu, RxJS do złożonej asynchroniczności. Seniorski niuans: model push-pull (powiadomienie w dół grafu, przeliczenie przy odczycie) eliminuje „glitche” – nie zobaczysz niespójnej mieszanki starych i nowych wartości."
+        }
+      ],
+      "takeaways": [
+        "Sygnał rejestruje czytelników podczas odczytu; zmiana oznacza ich jako dirty, a wartości computed są przeliczane leniwie przy odczycie (push-pull).",
+        "Aktualizuj stan niemutowalnie przez set/update – domyślne porównanie Object.is ignoruje tę samą referencję.",
+        "computed do stanu pochodnego, linkedSignal do stanu zapisywalnego resetowanego przy zmianie źródła, effect tylko do efektów ubocznych poza Angularem.",
+        "untracked odczytuje sygnał bez tworzenia zależności; zależności po await nie są śledzone.",
+        "input()/output()/model() są stabilne; input jest tylko do odczytu, model jest zapisywalny i wspiera [(x)].",
+        "toSignal/toObservable łączą świat sygnałów z RxJS; toSignal wywołuj w injection context, najlepiej w polu klasy.",
+        "resource/rxResource/httpResource są experimental: params + loader/stream, sygnały value/status/isLoading/error i automatyczne anulowanie poprzedniego żądania.",
+        "Wzorzec serwisu: prywatny signal, publiczne asReadonly() i computed, zmiany tylko przez metody."
+      ],
+      "interview": [
+        "Jak działa śledzenie zależności w sygnałach i dlaczego computed jest leniwy?",
+        "Kiedy użyjesz effect, a kiedy computed lub linkedSignal? Podaj przykład złego użycia effect.",
+        "Jakie są różnice między sygnałami a Observable? Kiedy wybierzesz jedno, a kiedy drugie?",
+        "Jak zbudowałbyś serwis ze stanem na sygnałach, żeby komponenty nie mogły go modyfikować bezpośrednio?",
+        "Czym jest resource/httpResource i jaki jest jego status stabilności?"
+      ],
+      "exam": [
+        {
+          "id": "ng-signals-e1",
+          "q": "Co wyświetli szablon czytający `items().length` po wykonaniu poniższego kodu (początkowo 2 elementy)?",
+          "code": "items = signal<string[]>(['a', 'b']);\n\nadd() {\n  this.items().push('c');\n  this.items.set(this.items());\n}",
+          "lang": "typescript",
+          "options": [
+            "Nadal 2 – set z tą samą referencją nie powiadamia konsumentów",
+            "3 – set zawsze wymusza odświeżenie",
+            "3 – push na tablicy sygnału jest śledzony",
+            "Błąd – sygnałów tablicowych nie można mutować"
+          ],
+          "correct": 0,
+          "why": "Domyślne porównanie Object.is uznaje tę samą referencję za brak zmiany, więc konsumenci (w tym szablon) nie są oznaczeni jako dirty. Trzeba użyć update(l => [...l, 'c'])."
+        },
+        {
+          "id": "ng-signals-e2",
+          "q": "Kiedy zostanie wykonana funkcja przekazana do `computed`, jeśli nikt nigdy nie odczyta tego computed?",
+          "options": [
+            "Od razu przy tworzeniu",
+            "Nigdy – computed jest leniwy",
+            "Przy każdym cyklu change detection",
+            "Po pierwszej zmianie dowolnego sygnału w aplikacji"
+          ],
+          "correct": 1,
+          "why": "computed liczy wartość dopiero przy odczycie i memoizuje ją do czasu zmiany zależności."
+        },
+        {
+          "id": "ng-signals-e3",
+          "q": "Masz `firstName` i `lastName` jako sygnały i potrzebujesz `fullName` do szablonu. Najlepsze rozwiązanie to:",
+          "options": [
+            "effect, który ustawia sygnał fullName",
+            "linkedSignal bez source",
+            "computed(() => `${firstName()} ${lastName()}`)",
+            "metoda getFullName() wywoływana w szablonie"
+          ],
+          "correct": 2,
+          "why": "Wartość w pełni wyliczalna z innych sygnałów to przypadek dla computed – synchronicznie aktualna, memoizowana, bez dodatkowych cykli jak przy effect."
+        },
+        {
+          "id": "ng-signals-e4",
+          "q": "Lista metod dostawy przychodzi przez input. Wybrana metoda ma być edytowalna przez użytkownika, ale resetować się do pierwszej, gdy lista się zmieni. Czego użyjesz?",
+          "options": [
+            "computed",
+            "model()",
+            "effect z set w środku",
+            "linkedSignal"
+          ],
+          "correct": 3,
+          "why": "linkedSignal to zapisywalny sygnał przeliczany przy zmianie źródła – dokładnie ten scenariusz. computed nie jest zapisywalny, effect byłby obejściem."
+        },
+        {
+          "id": "ng-signals-e5",
+          "q": "Dlaczego sygnał `b` NIE jest zależnością tego efektu?",
+          "code": "effect(async () => {\n  const x = this.a();\n  await this.api.load(x);\n  console.log(this.b());\n});",
+          "lang": "typescript",
+          "options": [
+            "Bo śledzenie zależności działa tylko synchronicznie, a b jest odczytany po await",
+            "Bo efekty śledzą tylko pierwszy odczytany sygnał",
+            "Bo console.log jest wywołaniem untracked",
+            "Jest zależnością – efekt zareaguje na zmianę b"
+          ],
+          "correct": 0,
+          "why": "Kontekst aktywnego konsumenta istnieje tylko w trakcie synchronicznego wykonania funkcji. Odczyty po await nie są rejestrowane."
+        },
+        {
+          "id": "ng-signals-e6",
+          "q": "Co jest prawdą o `output()` w Angular 21?",
+          "options": [
+            "Zwraca EventEmitter, więc można na nim wywołać pipe()",
+            "Zwraca OutputEmitterRef z metodą emit; do konwersji z/do Observable służą outputFromObservable/outputToObservable",
+            "Jest experimental i nie powinien być używany w produkcji",
+            "Wymaga dekoratora @Output() obok"
+          ],
+          "correct": 1,
+          "why": "output() jest stabilny i zwraca OutputEmitterRef, który nie jest Observable. Interop zapewniają funkcje z rxjs-interop."
+        },
+        {
+          "id": "ng-signals-e7",
+          "q": "Jaki typ ma `user` w komponencie?",
+          "code": "user = toSignal(this.http.get<User>('/api/me'));",
+          "lang": "typescript",
+          "options": [
+            "Signal<User>",
+            "Observable<User>",
+            "Signal<User | undefined>",
+            "WritableSignal<User>"
+          ],
+          "correct": 2,
+          "why": "Bez initialValue (ani requireSync) toSignal musi mieć jakąś wartość przed pierwszą emisją, więc typ obejmuje undefined."
+        },
+        {
+          "id": "ng-signals-e8",
+          "q": "Co się stanie w `resource`, gdy funkcja `params` zwróci `undefined`?",
+          "options": [
+            "loader zostanie wywołany z params = undefined",
+            "resource rzuci błąd",
+            "status zmieni się na error",
+            "loader nie zostanie wywołany – ładowanie jest wstrzymane"
+          ],
+          "correct": 3,
+          "why": "undefined w params oznacza „brak danych do załadowania” – to sposób na warunkowe zapytania, np. gdy id nie jest jeszcze znane."
+        },
+        {
+          "id": "ng-signals-e9",
+          "q": "W efekcie chcesz reagować na zmianę `userId`, ale tylko odczytać bieżące `settings` bez reagowania na ich zmiany. Jak?",
+          "options": [
+            "Odczytać settings przez untracked(() => this.settings())",
+            "Odczytać settings w computed poza efektem",
+            "Ustawić equal: () => true na settings",
+            "Nie da się – efekt zawsze śledzi wszystkie odczyty"
+          ],
+          "correct": 0,
+          "why": "untracked wykonuje funkcję bez aktywnego konsumenta, więc odczyt nie tworzy zależności. equal: () => true zablokowałby powiadomienia dla wszystkich konsumentów."
+        },
+        {
+          "id": "ng-signals-e10",
+          "q": "Jaki jest zalecany sposób wystawienia stanu z serwisu, by komponenty nie mogły go modyfikować bezpośrednio?",
+          "options": [
+            "Publiczny WritableSignal z komentarzem „nie modyfikować”",
+            "Prywatny signal + publiczne asReadonly() i computed, zmiany przez metody serwisu",
+            "Zwracanie kopii tablicy z gettera przy każdym odczycie",
+            "Effect kopiujący stan do publicznego sygnału"
+          ],
+          "correct": 1,
+          "why": "asReadonly() zwraca Signal bez set/update – enkapsulacja jak przy BehaviorSubject + asObservable(), bez kopiowania i dodatkowych efektów."
+        }
+      ]
+    },
+    {
+      "id": "ng-change-detection",
+      "cat": "angular",
+      "title": "Change detection: Zone.js, OnPush i zoneless",
+      "level": 3,
+      "minutes": 15,
+      "intro": "Change detection to mechanizm, który decyduje, kiedy Angular odświeża ekran. Zrozumiesz, jak działał klasyczny model z Zone.js, dlaczego OnPush przyspiesza aplikację, co zmienia tryb zoneless (domyślny w nowych projektach Angular 21) oraz jak @for z track i @defer pomagają w wydajności. To ulubiony temat pytań „sprawdzających głębię” na rozmowach.",
+      "sections": [
+        {
+          "h": "Po co w ogóle change detection",
+          "text": "Twój kod zmienia dane: `this.name = 'Ala'`. Przeglądarka nie wie, że trzeba to pokazać na ekranie. **Change detection (CD)** to proces, w którym Angular porównuje dane z tym, co jest w HTML, i aktualizuje DOM (drzewo elementów strony) tam, gdzie się różnią.\n\nAnalogia: kelner (Angular) chodzi po sali i sprawdza stoliki (komponenty), czy ktoś czegoś nie potrzebuje. Pytania są dwa:\n\n1. **Kiedy** kelner rusza w obchód? (co uruchamia CD)\n2. **Które stoliki** sprawdza? (całe drzewo czy tylko część)\n\nCała ta lekcja to odpowiedzi na te dwa pytania w trzech modelach: Default + Zone.js, OnPush, zoneless z sygnałami."
+        },
+        {
+          "h": "Klasyka: Zone.js i strategia Default",
+          "text": "**Zone.js** to biblioteka, która „podsłuchuje” wszystkie asynchroniczne operacje w przeglądarce: kliknięcia, `setTimeout`, odpowiedzi HTTP, Promise. Robi to przez **monkey-patching** – podmienia wbudowane funkcje przeglądarki na swoje wersje z „dzwonkiem”.\n\nCo się dzieje krok po kroku:\n\n1. Użytkownik klika przycisk.\n2. Twój handler zmienia dane.\n3. Zone.js zauważa: „zakończyło się zadanie asynchroniczne”.\n4. Angular wywołuje `ApplicationRef.tick()` – obchód **całego drzewa komponentów** od góry do dołu.\n5. W każdym komponencie przelicza wyrażenia z szablonu i aktualizuje DOM, gdzie trzeba.\n\nZaleta: wszystko „samo działa”, nawet gdy zmieniasz zwykłe pola. Wada: kelner obchodzi całą salę po każdym ruchu myszką, który ma handler. W dużej aplikacji to tysiące niepotrzebnych sprawdzeń.\n\nW trybie deweloperskim Angular robi drugi, kontrolny przebieg. Jeśli wartość zmieniła się między przebiegami, dostajesz `ExpressionChangedAfterItHasBeenCheckedError` – sygnał, że dane zmieniają się w trakcie renderowania (np. w `ngAfterViewInit`)."
+        },
+        {
+          "h": "OnPush: sprawdzaj mnie tylko, gdy trzeba",
+          "text": "`ChangeDetectionStrategy.OnPush` to tabliczka na stoliku: „nie podchodź, chyba że zawołam”. Komponent OnPush (i jego poddrzewo) jest pomijany podczas obchodu, **chyba że został oznaczony jako brudny (dirty)**.\n\nKiedy komponent OnPush zostanie sprawdzony:\n\n1. Zmieniła się **referencja** inputu (nowy obiekt, nie zmieniona właściwość starego).\n2. W jego szablonie (lub u dziecka) zaszło zdarzenie DOM obsłużone handlerem, np. `(click)`.\n3. `async` pipe dostał nową wartość (wewnętrznie woła `markForCheck()`).\n4. Zmienił się **sygnał odczytany w jego szablonie**.\n5. Ręcznie wywołano `markForCheck()`.\n\nCzego OnPush **nie** zauważy: mutacji obiektu z inputu (`user.name = 'X'`) i zmiany zwykłego pola w `setTimeout` czy w `subscribe`.\n\n`markForCheck()` oznacza komponent i wszystkich przodków jako „do sprawdzenia przy najbliższym obchodzie”. `detectChanges()` uruchamia CD **od razu i synchronicznie** dla tego komponentu i jego dzieci – rzadko potrzebne, głównie w integracjach z zewnętrznymi bibliotekami.",
+          "code": "// ŹLE – rodzic mutuje obiekt, dziecko OnPush nic nie pokaże\nthis.user.name = 'Ola';\n\n// DOBRZE – nowa referencja\nthis.user = { ...this.user, name: 'Ola' };\n\n// ŹLE – w OnPush (bez sygnałów) zmiana pola w subscribe nie odświeży widoku\nthis.api.load().subscribe(d => this.data = d);\n\n// DOBRZE (opcja 1) – async pipe w szablonie: data$ | async\ndata$ = this.api.load();\n\n// DOBRZE (opcja 2) – sygnał\ndata = toSignal(this.api.load());",
+          "lang": "typescript"
+        },
+        {
+          "h": "Sygnały i zoneless: kelner z pagerem",
+          "text": "W trybie **zoneless** Zone.js w ogóle nie ma. Kelner nie krąży po sali – dostaje **pager**: stolik sam wysyła sygnał „potrzebuję obsługi”. W Angular 21 to domyślne ustawienie nowych projektów; w starszych włączasz je przez `provideZonelessChangeDetection()` i usuwasz `zone.js` z `polyfills` w `angular.json`.\n\nCo „wciska pager” (planuje CD):\n\n- zmiana sygnału odczytanego w szablonie,\n- `markForCheck()` (więc `async` pipe też działa),\n- zdarzenie z handlerem w szablonie lub `host`,\n- `ComponentRef.setInput()`, dołączenie/odłączenie widoku.\n\nCzego już **nie ma**: automatycznego odświeżenia po `setTimeout`, po rozwiązaniu Promise ani po zmianie zwykłego pola w `subscribe`. Kod, który „działał przypadkiem” dzięki Zone.js, przestaje działać.\n\nKorzyści: mniejsza paczka (bez Zone.js), mniej niepotrzebnych obchodów, czytelne stack trace’y i lepsza współpraca z innymi bibliotekami. Przy sygnałach Angular odświeża tylko widoki, które czytają zmieniony sygnał – nawet jeśli przodkowie są OnPush.",
+          "code": "// Zoneless – ŹLE: zwykłe pole zmienione po timeout, ekran się nie odświeży\nexport class Clock {\n  time = new Date();\n  constructor() { setInterval(() => this.time = new Date(), 1000); }\n}\n\n// Zoneless – DOBRZE: sygnał sam powiadomi Angulara\nexport class Clock {\n  time = signal(new Date());\n  constructor() {\n    const id = setInterval(() => this.time.set(new Date()), 1000);\n    inject(DestroyRef).onDestroy(() => clearInterval(id));\n  }\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "Migracja na zoneless krok po kroku",
+          "text": "Jak przejść ze starej aplikacji:\n\n1. Ustaw `OnPush` we wszystkich komponentach – jeśli aplikacja działa z OnPush, prawie na pewno zadziała bez Zone.js.\n2. Zamień zwykłe pola, które zmieniają się asynchronicznie, na sygnały albo `async` pipe.\n3. Zastąp `NgZone.onStable` / `onMicrotaskEmpty` hookami `afterNextRender` / `afterEveryRender` (kod „po wyrenderowaniu”, np. pomiar elementu).\n4. Dodaj `provideZonelessChangeDetection()` i usuń `zone.js` z polyfills.\n5. W testach zamiast `fakeAsync` (wymaga Zone.js) używaj `await fixture.whenStable()`.\n\n`NgZone.runOutsideAngular` traci sens – w zoneless nic nie jest „w strefie”. Za to wszystkie optymalizacje typu „uruchom poza strefą, żeby nie odpalać CD przy `mousemove`” znikają same."
+        },
+        {
+          "h": "@for z track: nie przebudowuj listy od zera",
+          "text": "Wyobraź sobie szatnię z numerkami. Gdy przychodzi nowy gość, nie wydajesz wszystkich płaszczy i nie wieszasz ich ponownie – po numerku wiesz, który płaszcz jest czyj. `track` to taki numerek dla elementów listy.\n\nW nowej składni kontroli przepływu `track` w `@for` jest **obowiązkowy**. Dzięki niemu Angular przy zmianie tablicy:\n\n1. dopasowuje stare i nowe elementy po kluczu,\n2. przesuwa istniejące elementy DOM zamiast je niszczyć,\n3. tworzy DOM tylko dla nowych i usuwa tylko dla zniknięć.\n\n`track item.id` – najlepiej, stabilny identyfikator. `track $index` – tylko dla statycznych list; po wstawieniu elementu na początek wszystkie indeksy się przesuną i Angular zaktualizuje każdy wiersz. `track item` (referencja obiektu) – zły wybór, gdy dane przychodzą świeżo z API, bo każde pobranie to nowe obiekty i cała lista jest odtwarzana (gubiąc np. focus czy stan inputów).\n\n`@empty` wyświetla treść, gdy lista jest pusta. Dostępne są też zmienne `$index`, `$first`, `$last`, `$even`, `$odd`, `$count`.",
+          "code": "<!-- ŹLE: po każdym odświeżeniu z API cały DOM listy od nowa -->\n@for (o of orders(); track o) { <app-order-row [order]=\"o\" /> }\n\n<!-- DOBRZE: stabilny klucz -->\n@for (o of orders(); track o.id; let i = $index) {\n  <app-order-row [order]=\"o\" [position]=\"i + 1\" />\n} @empty {\n  <p>Brak zamówień</p>\n}",
+          "lang": "html"
+        },
+        {
+          "h": "@defer: ładuj później to, czego nie widać",
+          "text": "`@defer` to **lazy loading na poziomie fragmentu szablonu**. Kod komponentów w bloku jest wydzielany do osobnego pliku JS i pobierany dopiero, gdy spełni się warunek. Analogia: deser przynoszą po obiedzie, a nie razem z zupą.\n\nWyzwalacze (`on`):\n\n- `idle` (domyślny) – gdy przeglądarka nic nie robi,\n- `viewport` – gdy placeholder wjedzie na ekran (np. komentarze na dole strony),\n- `interaction` / `hover` – po kliknięciu / najechaniu,\n- `timer(2s)`, `immediate`,\n- `when warunek` – gdy wyrażenie stanie się prawdziwe.\n\nBloki pomocnicze: `@placeholder` (co widać przed ładowaniem; `minimum` chroni przed mignięciem), `@loading` (podczas pobierania; `after` i `minimum`), `@error` (gdy pobieranie się nie uda). `prefetch on idle` pozwala pobrać kod wcześniej, a pokazać później.\n\nWarunek działania: komponenty w środku muszą być standalone i **nie mogą być używane gdzie indziej w tym samym pliku poza blokiem** – inaczej trafią do głównej paczki.",
+          "code": "@defer (on viewport; prefetch on idle) {\n  <app-comments [postId]=\"post().id\" />\n} @placeholder (minimum 300ms) {\n  <div class=\"skeleton\">Komentarze…</div>\n} @loading (after 150ms; minimum 400ms) {\n  <app-spinner />\n} @error {\n  <p>Nie udało się załadować komentarzy</p>\n}",
+          "lang": "html"
+        },
+        {
+          "h": "Wydajność i rozmowa na poziomie senior",
+          "text": "Szybka lista „co zrobić, gdy aplikacja muli”:\n\n- **OnPush wszędzie** (lub zoneless + sygnały).\n- **computed lub pure pipe zamiast metod w szablonie** – metoda `{{ total() }}` na zwykłej funkcji liczy się przy każdym sprawdzeniu, computed i pipe tylko po zmianie wejścia.\n- **`track` po id** w każdej liście.\n- **Wirtualne przewijanie** (CDK `cdk-virtual-scroll-viewport`) przy tysiącach wierszy – renderuje tylko widoczne.\n- **`@defer`** dla ciężkich, niewidocznych od razu fragmentów.\n- **Angular DevTools → Profiler** – pokaże, które komponenty i jak długo są sprawdzane.\n\nJak to powiedzieć na rozmowie: „Default + Zone.js sprawdza całe drzewo po każdym zdarzeniu asynchronicznym. OnPush ogranicza sprawdzanie do komponentów oznaczonych jako dirty – przez zmianę referencji inputu, zdarzenie, async pipe, sygnał lub markForCheck. Zoneless usuwa Zone.js: CD planują tylko sygnały, markForCheck i zdarzenia z szablonu, więc kod musi jawnie informować o zmianach.”\n\nNiuans seniorski: przy sygnałach Angular potrafi odświeżyć **tylko jeden widok** w środku drzewa OnPush, przechodząc przez przodków bez sprawdzania ich szablonów. To dlatego sygnały + OnPush dają najmniejszą możliwą ilość pracy."
+        }
+      ],
+      "takeaways": [
+        "Zone.js podmienia asynchroniczne API przeglądarki i po każdym zadaniu uruchamia sprawdzenie całego drzewa komponentów (strategia Default).",
+        "OnPush sprawdza komponent tylko gdy jest dirty: nowa referencja inputu, zdarzenie w szablonie, async pipe, zmiana odczytanego sygnału lub markForCheck().",
+        "markForCheck() oznacza komponent i przodków do najbliższego sprawdzenia; detectChanges() uruchamia CD synchronicznie dla poddrzewa.",
+        "Zoneless (domyślny w nowych projektach v21) planuje CD tylko po zmianie sygnału, markForCheck, zdarzeniu z szablonu i setInput – setTimeout czy Promise już same nic nie odświeżą.",
+        "Migracja na zoneless: OnPush wszędzie, sygnały/async pipe, afterNextRender zamiast NgZone.onStable, whenStable zamiast fakeAsync.",
+        "@for wymaga track; najlepszy jest stabilny klucz (id), $index tylko dla statycznych list.",
+        "@defer wydziela fragment szablonu do osobnego chunka ładowanego według wyzwalacza (idle, viewport, interaction, hover, timer, when)."
+      ],
+      "interview": [
+        "Jak działa change detection z Zone.js i czym różni się strategia OnPush?",
+        "W jakich sytuacjach komponent OnPush zostanie odświeżony? Czym różni się markForCheck od detectChanges?",
+        "Co zmienia tryb zoneless i jak zmigrowałbyś do niego istniejącą aplikację?",
+        "Do czego służy track w @for i jakie są konsekwencje wyboru klucza?",
+        "Jak użyłbyś @defer i jakie ma wyzwalacze?"
+      ],
+      "exam": [
+        {
+          "id": "ng-change-detection-e1",
+          "q": "Rodzic wykonuje `this.user.name = 'Ola'`, a dziecko z OnPush ma `user = input<User>()`. Co zobaczy użytkownik w dziecku (bez sygnałów w środku)?",
+          "options": [
+            "Starą nazwę – referencja inputu się nie zmieniła, więc dziecko nie jest oznaczone jako dirty",
+            "Nową nazwę – OnPush śledzi właściwości obiektów",
+            "Błąd ExpressionChangedAfterItHasBeenCheckedError",
+            "Nową nazwę, ale dopiero po 1 sekundzie"
+          ],
+          "correct": 0,
+          "why": "OnPush reaguje na zmianę referencji inputu, a nie na mutację obiektu. Trzeba przekazać nowy obiekt, np. { ...user, name: 'Ola' }."
+        },
+        {
+          "id": "ng-change-detection-e2",
+          "q": "Czym różni się `markForCheck()` od `detectChanges()`?",
+          "options": [
+            "markForCheck działa tylko w zoneless, detectChanges tylko z Zone.js",
+            "markForCheck oznacza komponent i przodków do najbliższego sprawdzenia; detectChanges uruchamia CD od razu dla komponentu i jego dzieci",
+            "markForCheck odświeża całą aplikację, detectChanges tylko rodzica",
+            "Nie ma różnicy – to aliasy"
+          ],
+          "correct": 1,
+          "why": "markForCheck nie uruchamia sprawdzenia, tylko oznacza ścieżkę do korzenia jako dirty. detectChanges wykonuje sprawdzenie synchronicznie, tu i teraz."
+        },
+        {
+          "id": "ng-change-detection-e3",
+          "q": "Aplikacja zoneless. Komponent ustawia zwykłe pole `this.status = 'ok'` w callbacku `setTimeout`. Co się stanie?",
+          "options": [
+            "Widok odświeży się automatycznie, bo setTimeout jest śledzony przez Angular",
+            "Angular rzuci błąd w konsoli",
+            "Widok nie odświeży się sam – nic nie zaplanowało change detection",
+            "Widok odświeży się, jeśli komponent ma strategię Default"
+          ],
+          "correct": 2,
+          "why": "Bez Zone.js nikt nie podsłuchuje setTimeout. CD planuje m.in. zmiana sygnału, markForCheck lub zdarzenie z szablonu – zwykłe pole tego nie robi."
+        },
+        {
+          "id": "ng-change-detection-e4",
+          "q": "Który z poniższych NIE oznacza komponentu OnPush jako dirty?",
+          "options": [
+            "Kliknięcie przycisku z (click) w jego szablonie",
+            "Nowa wartość w async pipe w jego szablonie",
+            "Zmiana sygnału odczytanego w jego szablonie",
+            "Odpowiedź HTTP przypisana w subscribe do zwykłego pola"
+          ],
+          "correct": 3,
+          "why": "Przypisanie do zwykłego pola nie informuje Angulara o zmianie. Pozostałe trzy mechanizmy wewnętrznie oznaczają widok jako dirty."
+        },
+        {
+          "id": "ng-change-detection-e5",
+          "q": "Lista zamówień jest co 10 s pobierana z API (nowe obiekty). Który `track` jest najlepszy?",
+          "options": [
+            "track o.id",
+            "track o",
+            "track $index",
+            "track nie jest potrzebny w @for"
+          ],
+          "correct": 0,
+          "why": "Stabilny klucz pozwala dopasować elementy mimo nowych referencji. track o odtworzy cały DOM po każdym pobraniu, a $index źle działa przy wstawianiu/usuwaniu; track jest obowiązkowy."
+        },
+        {
+          "id": "ng-change-detection-e6",
+          "q": "Co jest wymagane, aby komponent wewnątrz `@defer` faktycznie trafił do osobnego chunka?",
+          "options": [
+            "Komponent musi mieć strategię Default",
+            "Musi być standalone i nieużywany w tym samym szablonie/pliku poza blokiem @defer",
+            "Musi być zarejestrowany w NgModule",
+            "Blok musi mieć @loading"
+          ],
+          "correct": 1,
+          "why": "Jeśli komponent jest referencjonowany poza blokiem, kompilator musi go załadować od razu i wydzielenie nie nastąpi."
+        },
+        {
+          "id": "ng-change-detection-e7",
+          "q": "Jaki jest domyślny wyzwalacz `@defer` bez podanego `on`?",
+          "options": [
+            "viewport",
+            "immediate",
+            "idle",
+            "interaction"
+          ],
+          "correct": 2,
+          "why": "Domyślnie blok jest ładowany, gdy przeglądarka jest bezczynna (on idle)."
+        },
+        {
+          "id": "ng-change-detection-e8",
+          "q": "Migrujesz testy do zoneless. Czym zastąpić `fakeAsync` + `tick()`?",
+          "options": [
+            "NgZone.run()",
+            "detectChanges() wywołanym 10 razy",
+            "runOutsideAngular()",
+            "await fixture.whenStable() (ewentualnie fake timery test runnera)"
+          ],
+          "correct": 3,
+          "why": "fakeAsync wymaga Zone.js. W zoneless czekasz na ustabilizowanie się aplikacji przez whenStable."
+        },
+        {
+          "id": "ng-change-detection-e9",
+          "q": "Skąd bierze się `ExpressionChangedAfterItHasBeenCheckedError`?",
+          "options": [
+            "W trybie dev Angular robi drugi przebieg kontrolny i wykrył, że wartość wiązania zmieniła się w trakcie renderowania",
+            "Z użycia OnPush razem z async pipe",
+            "Z braku track w @for",
+            "Z wywołania markForCheck w handlerze kliknięcia"
+          ],
+          "correct": 0,
+          "why": "Błąd pojawia się tylko w dev mode, gdy np. ngAfterViewInit zmienia dane już wyrenderowane w tym samym cyklu."
+        }
+      ]
+    },
+    {
+      "id": "ng-rxjs",
+      "cat": "tsrx",
+      "title": "RxJS dla dewelopera Angular",
+      "level": 2,
+      "minutes": 15,
+      "intro": "RxJS to biblioteka do pracy ze strumieniami zdarzeń w czasie. Angular używa jej w HttpClient, routerze i formularzach, więc nawet w erze sygnałów nie da się jej ominąć. Zrozumiesz Observable, hot/cold, Subjecty, cztery operatory spłaszczające, obsługę błędów, shareReplay i sprzątanie subskrypcji – czyli to, o co pytają praktycznie na każdej rozmowie z Angulara.",
+      "sections": [
+        {
+          "h": "Observable vs Promise: list a prenumerata",
+          "text": "**Promise** to jak list polecony: przychodzi **raz**, z jedną wartością albo z błędem. Wysyłka rusza od razu, nawet jeśli nikt nie czeka na odpowiedź, i nie da się jej cofnąć.\n\n**Observable** to jak **prenumerata gazety**: może przyjść wiele numerów (wartości) w czasie, potem koniec prenumeraty (`complete`) albo problem (`error`). Najważniejsze różnice:\n\n- Observable jest **leniwy** – nic się nie dzieje, dopóki ktoś nie zrobi `subscribe()` (dopóki nie zamówisz prenumeraty).\n- Może emitować **0, 1 lub wiele** wartości.\n- Można go **anulować** (`unsubscribe`) – np. przerwać żądanie HTTP.\n- Ma **operatory** (`map`, `filter`, `debounceTime`…) – taśmę produkcyjną, przez którą przechodzą wartości.\n\nPrzykład z Angulara: `http.get()` zwraca Observable. Bez `subscribe` (lub `async` pipe, `toSignal`) żądanie **w ogóle nie zostanie wysłane** – to bardzo częsty błąd początkujących."
+        },
+        {
+          "h": "Cold i hot: film na DVD a transmisja na żywo",
+          "text": "**Cold Observable** to film na DVD. Każdy widz (subskrybent) włącza go od początku i ogląda **własną kopię**. `http.get()` jest cold: dwie subskrypcje = **dwa żądania HTTP**.\n\n**Hot Observable** to transmisja na żywo. Źródło nadaje niezależnie od widzów; kto włączy później, ten przegapił początek. Przykłady: zdarzenia DOM (`fromEvent`), `Subject`, `router.events`.\n\nDlaczego to ważne? Bo w szablonie łatwo przypadkiem zrobić dwie subskrypcje tego samego cold Observable.",
+          "code": "// ŹLE – dwa async pipe'y = dwa żądania HTTP\n// <h1>{{ (user$ | async)?.name }}</h1>\n// <img [src]=\"(user$ | async)?.avatar\">\nuser$ = this.http.get<User>('/api/me');\n\n// DOBRZE (opcja 1) – jedna subskrypcja w szablonie\n// @if (user$ | async; as user) { <h1>{{ user.name }}</h1> <img [src]=\"user.avatar\"> }\n\n// DOBRZE (opcja 2) – sygnał, odczyt wiele razy bez nowych żądań\nuser = toSignal(this.http.get<User>('/api/me'));",
+          "lang": "typescript"
+        },
+        {
+          "h": "Subjecty: megafon z pamięcią lub bez",
+          "text": "**Subject** to jednocześnie Observable (można go subskrybować) i Observer (można do niego wołać `next()`). Jest jak **megafon**: co powiesz, słyszą wszyscy obecni. Rodzaje różnią się pamięcią:\n\n- `Subject` – bez pamięci. Kto przyszedł później, nie usłyszy wcześniejszych komunikatów.\n- `BehaviorSubject(początkowa)` – pamięta **ostatnią** wartość i od razu daje ją nowemu słuchaczowi. Zawsze ma wartość (`getValue()`). Klasyczny „stan” sprzed ery sygnałów.\n- `ReplaySubject(n)` – pamięta **n ostatnich** wartości i odtwarza je nowym słuchaczom.\n- `AsyncSubject` – wydaje tylko ostatnią wartość, i to dopiero po `complete()`.\n\nDobra praktyka: Subject trzymaj **prywatnie**, a na zewnątrz wystawiaj `asObservable()`, żeby nikt spoza serwisu nie mógł wołać `next()`. Dziś do zwykłego stanu częściej wybierzesz sygnał; Subject zostaje do zdarzeń (np. „kliknięto odśwież”) i strumieni wymagających operatorów czasu."
+        },
+        {
+          "h": "Operatory spłaszczające: cztery strategie kelnera",
+          "text": "Problem: użytkownik coś robi (wpisuje tekst, klika), a na każdą akcję chcesz wysłać żądanie HTTP. To „Observable w Observable”. Operatory **spłaszczające** decydują, co zrobić, gdy przychodzi nowa akcja, a poprzednie żądanie jeszcze trwa. Analogia: kelner i zamówienia przy stoliku.\n\n- `switchMap` – **„zmieniam zamówienie”**: anuluje poprzednie, zostaje tylko najnowsze. Do wyszukiwarki i nawigacji (liczy się tylko aktualny wynik).\n- `concatMap` – **„po kolei”**: czeka, aż poprzednie się skończy, i dopiero wtedy realizuje następne. Do zapisów, gdzie kolejność ma znaczenie.\n- `mergeMap` – **„wszystko naraz”**: realizuje wszystkie równolegle, wyniki w dowolnej kolejności. Do niezależnych operacji (np. upload kilku plików); można ograniczyć równoległość drugim argumentem.\n- `exhaustMap` – **„zajęty, nie przyjmuję”**: ignoruje nowe akcje, dopóki trwa bieżąca. Do przycisku „Zapisz” czy logowania – podwójne kliknięcie nie wyśle dwóch żądań.\n\nPytanie z rozmowy: „Co się stanie, jeśli przy zapisie formularza użyjesz `switchMap`?” – Odpowiedź: szybkie kolejne kliknięcia **anulują** wcześniejsze żądania po stronie klienta, ale serwer mógł je już przetworzyć. Do zapisów lepszy jest `concatMap` lub `exhaustMap`.",
+          "code": "// Przycisk „Zapisz” – ignoruj kliknięcia, dopóki zapis trwa\nsave$ = new Subject<OrderForm>();\n\nconstructor() {\n  this.save$.pipe(\n    exhaustMap(form => this.api.save(form)),\n    takeUntilDestroyed(),\n  ).subscribe(saved => this.toast.ok(`Zapisano ${saved.id}`));\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "Typeahead krok po kroku",
+          "text": "Klasyczne zadanie rekrutacyjne: pole wyszukiwania, które podpowiada wyniki z API. Co robi każda linijka w przykładzie poniżej:\n\n1. `toObservable(this.query)` – zamienia sygnał z tekstem w strumień.\n2. `map(q => q.trim())` – usuwa spacje z brzegów.\n3. `debounceTime(300)` – czeka, aż użytkownik przestanie pisać na 300 ms (nie wysyłamy żądania po każdej literze).\n4. `distinctUntilChanged()` – pomija, jeśli tekst się nie zmienił (np. dopisanie i skasowanie spacji).\n5. `filter(q => q.length >= 2)` – nie szukamy po jednej literze.\n6. `switchMap(...)` – nowe zapytanie anuluje poprzednie, więc stara, wolniejsza odpowiedź nie nadpisze nowszej.\n7. `catchError` **wewnątrz** `switchMap` – błąd jednego zapytania zwraca pustą listę, ale strumień wyszukiwania żyje dalej.\n8. `toSignal` – wynik jako sygnał do szablonu, z automatycznym odpięciem.",
+          "code": "export class ProductSearch {\n  private readonly api = inject(ProductsApi);\n  readonly query = signal('');\n\n  readonly results = toSignal(\n    toObservable(this.query).pipe(\n      map(q => q.trim()),\n      debounceTime(300),\n      distinctUntilChanged(),\n      filter(q => q.length >= 2),\n      switchMap(q => this.api.search(q).pipe(\n        catchError(() => of([] as Product[])),\n      )),\n    ),\n    { initialValue: [] as Product[] },\n  );\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "Błędy i shareReplay",
+          "text": "Najważniejsza zasada: **błąd kończy strumień**. Po `error` Observable już nic nie wyemituje. Dlatego:\n\n- `catchError` na **zewnątrz** `switchMap` – po pierwszym błędzie cały typeahead przestaje działać na zawsze.\n- `catchError` **wewnątrz** (na wewnętrznym żądaniu) – ginie tylko to jedno żądanie, główny strumień żyje.\n\n`catchError` musi zwrócić nowy Observable: wartość zastępczą (`of([])`), `EMPTY` (nic) albo ponownie rzucić błąd (`throwError(() => err)`). `retry({ count: 3, delay: 1000 })` ponawia subskrypcję po błędzie – przydatne przy chwilowych problemach z siecią, ale nie ponawiaj błędów 4xx (to błąd klienta, powtórka nic nie da).\n\n**shareReplay** zamienia cold w „hot z pamięcią”: wiele subskrybentów dzieli **jedno** wykonanie źródła, a spóźnieni dostają ostatnią wartość. Idealne do cache’u słowników. Używaj `shareReplay({ bufferSize: 1, refCount: true })` – z `refCount: true` źródło zostanie odpięte, gdy odejdą wszyscy subskrybenci (przy `refCount: false` źródło typu interwał żyje wiecznie).",
+          "code": "@Injectable({ providedIn: 'root' })\nexport class CountriesApi {\n  private readonly http = inject(HttpClient);\n\n  // jedno żądanie dla całej aplikacji, kolejni dostają wynik z pamięci\n  readonly countries$ = this.http.get<Country[]>('/api/countries').pipe(\n    retry({ count: 2, delay: 500 }),\n    shareReplay({ bufferSize: 1, refCount: true }),\n  );\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "Sprzątanie subskrypcji: takeUntilDestroyed",
+          "text": "Subskrypcja to jak włączony kran. Gdy komponent znika, a kran wciąż leci – masz **wyciek pamięci** i kod, który działa „w tle” dla nieistniejącego ekranu (np. wielokrotne toasty).\n\nCo trzeba sprzątać, a czego nie:\n\n- `http.get()` – kończy się sam po odpowiedzi (ale anulowanie przy wyjściu z ekranu i tak bywa przydatne).\n- `async` pipe i `toSignal` – sprzątają same.\n- `interval`, `fromEvent`, `Subject`, `valueChanges`, `router.events`, `store.select` – **nie kończą się same**, trzeba sprzątać.\n\nNowoczesny sposób to `takeUntilDestroyed()` z `@angular/core/rxjs-interop`. W injection context (pole klasy, konstruktor) wywołujesz go bez argumentów; poza nim przekazujesz `DestroyRef`. Stawiaj go **na końcu** `pipe` – operatory po nim mogłyby utrzymać subskrypcję.",
+          "code": "// ŹLE – subskrypcja żyje po zniszczeniu komponentu\nngOnInit() {\n  interval(5000).subscribe(() => this.refresh());\n}\n\n// DOBRZE – w konstruktorze (injection context)\nconstructor() {\n  interval(5000).pipe(takeUntilDestroyed()).subscribe(() => this.refresh());\n}\n\n// DOBRZE – poza injection context, z DestroyRef\nprivate readonly destroyRef = inject(DestroyRef);\nstartPolling() {\n  interval(5000).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.refresh());\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "RxJS a sygnały – i jak to powiedzieć na rozmowie",
+          "text": "Prosty podział ról:\n\n- **Sygnały** – **stan**: co jest teraz na ekranie (lista, filtr, zalogowany użytkownik). Zawsze mają wartość, odczyt jest synchroniczny.\n- **RxJS** – **zdarzenia i czas**: debounce, anulowanie, ponawianie, łączenie kilku źródeł (`combineLatest`, `merge`), WebSockety.\n\nTypowy styl w Angular 21: zdarzenia i HTTP w RxJS, a wynik zamieniony przez `toSignal` na sygnał do szablonu. Coraz częściej proste pobieranie danych to `httpResource`/`rxResource` (experimental).\n\nNa rozmowie: odpowiadając o operatorach spłaszczających, zawsze podaj **przypadek użycia** dla każdego (wyszukiwarka – switchMap, zapis – concatMap/exhaustMap, równoległe uploady – mergeMap). Niuanse seniorskie: miejsce `catchError` decyduje o przeżyciu strumienia; `shareReplay` bez `refCount` może trzymać źródło wiecznie; `takeUntilDestroyed` na końcu `pipe`; `subscribe` w `subscribe` to sygnał, że brakuje operatora spłaszczającego."
+        }
+      ],
+      "takeaways": [
+        "Observable jest leniwy, może emitować wiele wartości i da się go anulować; Promise wykonuje się od razu i daje jedną wartość.",
+        "Cold Observable (np. http.get) tworzy osobne wykonanie dla każdego subskrybenta; hot (Subject, zdarzenia DOM) nadaje wspólnie.",
+        "Subject – bez pamięci, BehaviorSubject – ostatnia wartość, ReplaySubject – n ostatnich; na zewnątrz wystawiaj asObservable().",
+        "switchMap anuluje poprzednie (wyszukiwarka), concatMap kolejkuje (zapisy w kolejności), mergeMap równolegle, exhaustMap ignoruje nowe w trakcie (przycisk Zapisz).",
+        "Błąd kończy strumień – catchError wewnątrz switchMap ratuje główny strumień; retry tylko dla błędów przejściowych.",
+        "shareReplay({ bufferSize: 1, refCount: true }) dzieli jedno wykonanie między subskrybentów i odpina źródło, gdy nikt nie słucha.",
+        "Nieskończone strumienie sprzątaj przez takeUntilDestroyed() na końcu pipe, albo używaj async pipe/toSignal.",
+        "Sygnały do stanu, RxJS do zdarzeń i czasu; most to toSignal/toObservable."
+      ],
+      "interview": [
+        "Czym różni się Observable od Promise? Co to znaczy, że Observable jest leniwy?",
+        "Wyjaśnij różnice między switchMap, mergeMap, concatMap i exhaustMap z przykładami użycia.",
+        "Jak zaimplementujesz wyszukiwarkę z podpowiedziami (typeahead) i obsługą błędów?",
+        "Jak unikasz wycieków pamięci przy subskrypcjach w Angularze?",
+        "Kiedy użyjesz RxJS, a kiedy sygnałów?"
+      ],
+      "exam": [
+        {
+          "id": "ng-rxjs-e1",
+          "q": "Co się stanie po wykonaniu tego kodu w serwisie?",
+          "code": "deleteOrder(id: number) {\n  this.http.delete(`/api/orders/${id}`);\n}",
+          "lang": "typescript",
+          "options": [
+            "Nic – żądanie nie zostanie wysłane, bo nikt nie subskrybuje Observable",
+            "Żądanie DELETE zostanie wysłane natychmiast",
+            "Żądanie zostanie wysłane przy najbliższym change detection",
+            "Angular rzuci błąd kompilacji"
+          ],
+          "correct": 0,
+          "why": "Observable z HttpClient jest cold i leniwy – żądanie wysyłane jest dopiero w momencie subskrypcji."
+        },
+        {
+          "id": "ng-rxjs-e2",
+          "q": "Przycisk „Zapisz” wysyła formularz. Użytkownik klika 3 razy szybko. Który operator zagwarantuje, że poleci tylko jedno żądanie, dopóki pierwsze trwa?",
+          "options": [
+            "switchMap",
+            "exhaustMap",
+            "mergeMap",
+            "concatMap"
+          ],
+          "correct": 1,
+          "why": "exhaustMap ignoruje nowe wartości źródła, dopóki wewnętrzny Observable się nie zakończy. concatMap wysłałby wszystkie 3 po kolei, mergeMap równolegle, switchMap anulowałby wcześniejsze."
+        },
+        {
+          "id": "ng-rxjs-e3",
+          "q": "W typeahead `catchError` umieszczono na zewnątrz `switchMap`. Co się stanie po pierwszym błędzie API?",
+          "options": [
+            "Błąd zostanie zignorowany i wyszukiwanie działa dalej",
+            "switchMap automatycznie ponowi żądanie",
+            "Główny strumień się zakończy i kolejne wpisywanie nie wywoła już wyszukiwania",
+            "Aplikacja przeładuje stronę"
+          ],
+          "correct": 2,
+          "why": "Błąd kończy strumień. catchError na zewnątrz zastępuje cały strumień wartością zastępczą i kończy go – trzeba go umieścić na wewnętrznym żądaniu."
+        },
+        {
+          "id": "ng-rxjs-e4",
+          "q": "Który Subject od razu przekaże nowemu subskrybentowi ostatnią wartość i zawsze ma wartość początkową?",
+          "options": [
+            "Subject",
+            "AsyncSubject",
+            "ReplaySubject bez argumentów",
+            "BehaviorSubject"
+          ],
+          "correct": 3,
+          "why": "BehaviorSubject wymaga wartości początkowej i przechowuje ostatnią emisję. ReplaySubject też odtwarza, ale nie ma wartości początkowej."
+        },
+        {
+          "id": "ng-rxjs-e5",
+          "q": "W szablonie użyto dwa razy `user$ | async`, gdzie `user$ = http.get(...)`. Ile żądań HTTP poleci?",
+          "options": [
+            "Dwa – http.get jest cold i każda subskrypcja to osobne wykonanie",
+            "Jedno – async pipe współdzieli subskrypcje",
+            "Jedno – HttpClient ma wbudowany cache",
+            "Zero – async pipe nie subskrybuje cold Observable"
+          ],
+          "correct": 0,
+          "why": "Każdy async pipe subskrybuje osobno, a cold Observable wykonuje źródło dla każdego subskrybenta. Rozwiązanie: jedna subskrypcja (@if ... as), toSignal lub shareReplay."
+        },
+        {
+          "id": "ng-rxjs-e6",
+          "q": "Po co w `shareReplay` ustawiać `refCount: true`?",
+          "options": [
+            "Żeby liczyć liczbę emisji",
+            "Żeby odpiąć źródło, gdy liczba subskrybentów spadnie do zera",
+            "Żeby każdy subskrybent dostał własne wykonanie źródła",
+            "Żeby wyłączyć buforowanie"
+          ],
+          "correct": 1,
+          "why": "Z refCount: true shareReplay śledzi liczbę subskrybentów i odpina źródło, gdy nikt nie słucha. Bez tego nieskończone źródło może żyć wiecznie."
+        },
+        {
+          "id": "ng-rxjs-e7",
+          "q": "Co robi `debounceTime(300)` w wyszukiwarce?",
+          "options": [
+            "Opóźnia każdą wartość o 300 ms, przepuszczając wszystkie",
+            "Przepuszcza maksymalnie jedną wartość na 300 ms, pierwszą z okna",
+            "Emituje wartość dopiero, gdy przez 300 ms nie przyszła nowa – czyli po przerwie w pisaniu",
+            "Anuluje żądania dłuższe niż 300 ms"
+          ],
+          "correct": 2,
+          "why": "debounceTime czeka na „ciszę” – każda nowa wartość resetuje licznik. Pierwszą wartość z okna przepuszcza throttleTime."
+        },
+        {
+          "id": "ng-rxjs-e8",
+          "q": "Gdzie w `pipe` należy umieścić `takeUntilDestroyed()`?",
+          "options": [
+            "Na początku, przed innymi operatorami",
+            "Zaraz po switchMap",
+            "Nie ma znaczenia",
+            "Na końcu, tuż przed subscribe"
+          ],
+          "correct": 3,
+          "why": "Operatory po takeUntilDestroyed (np. switchMap do nieskończonego źródła) mogłyby utrzymać aktywne subskrypcje po zniszczeniu komponentu."
+        },
+        {
+          "id": "ng-rxjs-e9",
+          "q": "Które źródło NIE wymaga ręcznego sprzątania subskrypcji, bo samo się kończy?",
+          "options": [
+            "http.get() – kończy się po odpowiedzi",
+            "interval(1000)",
+            "form.valueChanges",
+            "router.events"
+          ],
+          "correct": 0,
+          "why": "Observable z HttpClient emituje odpowiedź i wywołuje complete. Pozostałe są nieskończone i trzeba je sprzątać."
+        },
+        {
+          "id": "ng-rxjs-e10",
+          "q": "Zmieniasz kolejno status zamówienia: „opłacone”, potem „wysłane”. Żądania muszą dotrzeć do serwera w tej kolejności. Który operator?",
+          "options": [
+            "mergeMap",
+            "concatMap",
+            "switchMap",
+            "exhaustMap"
+          ],
+          "correct": 1,
+          "why": "concatMap czeka na zakończenie poprzedniego wewnętrznego Observable przed rozpoczęciem następnego – zachowuje kolejność i nie gubi żądań."
+        }
+      ]
+    },
+    {
+      "id": "ng-state",
+      "cat": "angular",
+      "title": "Zarządzanie stanem: serwis, NgRx, SignalStore",
+      "level": 3,
+      "minutes": 15,
+      "intro": "Stan to dane, które aplikacja pamięta: zalogowany użytkownik, koszyk, filtry, lista zamówień. Poznasz trzy popularne podejścia – serwis z sygnałami, klasyczny NgRx Store (actions, reducers, selectors, effects) i NgRx SignalStore – oraz dowiesz się, kiedy które wybrać. Pytanie „jak zarządzasz stanem i dlaczego tak?” pada na prawie każdej rozmowie mid/senior.",
+      "sections": [
+        {
+          "h": "Czym jest stan i gdzie powinien mieszkać",
+          "text": "**Stan** to wszystko, co aplikacja musi pamiętać, żeby narysować ekran. Dobra analogia to dom:\n\n- **Stan lokalny** – rzeczy w twoim pokoju: czy rozwinięty jest akordeon, co wpisano w pole, która zakładka jest aktywna. Należy do jednego komponentu – trzymaj go w `signal` w komponencie.\n- **Stan ekranu/feature'a** – rzeczy w jednym mieszkaniu: lista zamówień z filtrami i paginacją. Wspólny dla kilku komponentów jednego ekranu – serwis w `providers` komponentu-kontenera lub trasy.\n- **Stan globalny** – rzeczy na klatce schodowej, wspólne dla wszystkich: zalogowany użytkownik, uprawnienia, koszyk, ustawienia języka. Serwis w root lub globalny store.\n- **Stan w URL** – filtry i numer strony, które mają przetrwać odświeżenie i dać się wysłać linkiem.\n- **Stan serwera (cache)** – kopia danych z API. Nie jest „twój”, tylko pożyczony; trzeba myśleć o odświeżaniu.\n\nNajczęstszy błąd: **wszystko do globalnego store**. Stan formularza w globalnym store to dużo kodu i ryzyko, że po powrocie na ekran zobaczysz stare dane. Zasada: trzymaj stan **możliwie nisko** i podnoś go dopiero, gdy kilka miejsc naprawdę go potrzebuje."
+        },
+        {
+          "h": "Poziom 1: serwis z sygnałami",
+          "text": "Dla większości aplikacji to wystarczy. Wzorzec „sejf z okienkiem”:\n\n1. prywatny `signal` ze stanem,\n2. publiczne `asReadonly()` i `computed` do odczytu,\n3. metody, które jako jedyne zmieniają stan (z niemutowalnymi aktualizacjami).\n\nZalety: zero bibliotek, mało kodu, pełne typowanie, łatwe testy. Wady przy dużej skali: każdy zespół pisze trochę inaczej, brak narzędzi do podglądu historii zmian (DevTools), brak ustalonej konwencji dla efektów ubocznych.",
+          "code": "type OrdersState = { items: Order[]; loading: boolean; error: string | null };\n\n@Injectable()\nexport class OrdersStore {\n  private readonly api = inject(OrdersApi);\n  private readonly state = signal<OrdersState>({ items: [], loading: false, error: null });\n\n  readonly items = computed(() => this.state().items);\n  readonly loading = computed(() => this.state().loading);\n  readonly total = computed(() => this.items().reduce((s, o) => s + o.amount, 0));\n\n  load() {\n    this.state.update(s => ({ ...s, loading: true, error: null }));\n    this.api.getAll().subscribe({\n      next: items => this.state.update(s => ({ ...s, items, loading: false })),\n      error: () => this.state.update(s => ({ ...s, loading: false, error: 'Błąd ładowania' })),\n    });\n  }\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "Poziom 2: NgRx Store – bank z okienkami",
+          "text": "**NgRx Store** to implementacja wzorca **Redux**: jeden niemutowalny obiekt stanu dla całej aplikacji, zmieniany tylko w ściśle określony sposób. Analogia: **bank**.\n\n- **Action** – wypełniony formularz („wpłata 100 zł”). Opis tego, **co się stało**, a nie polecenie: `[Orders Page] Opened`, `[Orders API] Load Success`.\n- **Reducer** – kasjer. Czysta funkcja: bierze stary stan i akcję, zwraca **nowy** stan. Bez HTTP, bez losowości, bez mutacji.\n- **Selector** – okienko informacji: wybiera i wylicza dane ze stanu. Jest **memoizowany** – przelicza się tylko, gdy zmienią się jego wejścia.\n- **Effect** – pracownik zaplecza: nasłuchuje akcji, robi efekty uboczne (HTTP), a wynik zgłasza **nową akcją**.\n\nPrzepływ krok po kroku dla „wejdź na listę zamówień”:\n\n1. Komponent: `store.dispatch(OrdersPageActions.opened())`.\n2. Reducer ustawia `loading: true`.\n3. Effect łapie `opened`, woła API.\n4. Effect wysyła `loadSuccess({ orders })` lub `loadFailure({ error })`.\n5. Reducer zapisuje dane, `loading: false`.\n6. Komponent czyta stan przez selektor: `store.selectSignal(selectOrders)` – od razu jako sygnał."
+        },
+        {
+          "h": "NgRx w kodzie",
+          "text": "Nowoczesny NgRx jest dużo krótszy niż kiedyś. `createActionGroup` tworzy kilka akcji na raz, `createFeature` generuje selektory dla każdego pola stanu, efekty mogą być funkcjami, a rejestracja odbywa się przez `provideStore()`, `provideState()` i `provideEffects()` w konfiguracji aplikacji lub trasy.\n\nCzytaj przykład tak: akcje opisują zdarzenia, reducer reaguje na nie zmianą stanu, efekt zamienia akcję „otwarto stronę” na wywołanie API i akcję z wynikiem.",
+          "code": "export const OrdersActions = createActionGroup({ source: 'Orders', events: {\n  'Page Opened': emptyProps(),\n  'Load Success': props<{ orders: Order[] }>(),\n  'Load Failure': props<{ error: string }>(),\n}});\n\nexport const ordersFeature = createFeature({ name: 'orders', // + selectOrders, selectLoading...\n  reducer: createReducer(initialState,\n    on(OrdersActions.pageOpened, s => ({ ...s, loading: true })),\n    on(OrdersActions.loadSuccess, (s, { orders }) => ({ ...s, orders, loading: false })),\n    on(OrdersActions.loadFailure, (s, { error }) => ({ ...s, error, loading: false })),\n  ),\n});\n\nexport const loadOrders = createEffect(\n  (actions$ = inject(Actions), api = inject(OrdersApi)) => actions$.pipe(\n    ofType(OrdersActions.pageOpened),\n    switchMap(() => api.getAll().pipe(\n      map(orders => OrdersActions.loadSuccess({ orders })),\n      catchError(() => of(OrdersActions.loadFailure({ error: 'Błąd' }))))),\n  ), { functional: true });",
+          "lang": "typescript"
+        },
+        {
+          "h": "Entity: kolekcje bez ręcznego mapowania",
+          "text": "Listy rekordów w stanie (zamówienia, użytkownicy) mają zawsze te same operacje: dodaj, zaktualizuj, usuń, znajdź po id. Trzymanie ich jako tablicy oznacza ciągłe `map`/`filter` i wolne wyszukiwanie.\n\n`@ngrx/entity` przechowuje kolekcję w formie **znormalizowanej**: obiekt `entities` (słownik id → rekord) plus tablica `ids` (kolejność). Analogia: kartoteka z indeksem – nie przeglądasz wszystkich teczek, tylko sięgasz po numer.\n\n`createEntityAdapter<Order>()` daje gotowe funkcje do reducera: `setAll`, `addOne`, `upsertOne`, `updateOne({ id, changes })`, `removeOne` – oraz selektory `selectAll`, `selectEntities`, `selectTotal`. W SignalStore odpowiednikiem jest `withEntities()` z `@ngrx/signals/entities`."
+        },
+        {
+          "h": "Poziom 3: NgRx SignalStore",
+          "text": "**SignalStore** (`@ngrx/signals`) to „środek” między serwisem a pełnym NgRx: deklaratywny store oparty na sygnałach, bez akcji i reducerów, za to z ustaloną strukturą. Składasz go z klocków (**features**):\n\n- `withState({...})` – stan początkowy; każde pole staje się sygnałem.\n- `withComputed(...)` – wartości wyliczane.\n- `withMethods(...)` – metody zmieniające stan przez `patchState(store, {...})`.\n- `withHooks({ onInit, onDestroy })` – co zrobić przy tworzeniu/niszczeniu.\n- `rxMethod` (`@ngrx/signals/rxjs-interop`) – metoda przyjmująca wartość, sygnał lub Observable, z operatorami RxJS w środku.\n\nStore to klasa wstrzykiwana przez DI: z `{ providedIn: 'root' }` jest globalny, bez tego dodajesz go do `providers` komponentu – wtedy żyje razem z ekranem.",
+          "code": "export const OrdersStore = signalStore(\n  withState({ orders: [] as Order[], loading: false, filter: '' }),\n  withComputed(({ orders, filter }) => ({\n    visible: computed(() => orders().filter(o => o.customer.includes(filter()))),\n  })),\n  withMethods((store, api = inject(OrdersApi)) => ({\n    setFilter(filter: string) { patchState(store, { filter }); },\n    load: rxMethod<void>(pipe(\n      tap(() => patchState(store, { loading: true })),\n      switchMap(() => api.getAll().pipe(\n        tapResponse({\n          next: orders => patchState(store, { orders, loading: false }),\n          error: () => patchState(store, { loading: false }),\n        }))),\n    )),\n  })),\n  withHooks({ onInit: store => store.load() }),\n);",
+          "lang": "typescript"
+        },
+        {
+          "h": "Kiedy co wybrać",
+          "text": "Prosta ściąga decyzyjna:\n\n1. **Stan jednego komponentu** → `signal` w komponencie. Bez dyskusji.\n2. **Mała/średnia aplikacja, jeden zespół** → serwisy z sygnałami. Najmniej kodu, wystarczająco porządnie.\n3. **Średnia/duża aplikacja, chcesz konwencji, ale bez ceremonii** → SignalStore. Ujednolicona struktura, entity, hooki, dobra współpraca z sygnałami.\n4. **Duża aplikacja, wiele zespołów, złożone przepływy, potrzeba audytu zmian** → NgRx Store. Każda zmiana to nazwana akcja widoczna w Redux DevTools (podgląd historii, „time travel”), efekty oddzielone od UI, łatwe śledzenie „kto i dlaczego zmienił stan”.\n\nKoszt NgRx Store: dużo plików i kodu na każdą funkcję (boilerplate), wyższy próg wejścia. Nie bierz go „bo tak się robi w enterprise”, tylko gdy jego zalety rzeczywiście rozwiązują twój problem. Podejścia da się mieszać: globalny NgRx dla auth i koszyka, a SignalStore lub serwis dla pojedynczych ekranów."
+        },
+        {
+          "h": "Typowe błędy i rozmowa na poziomie senior",
+          "text": "Błędy, które warto umieć nazwać:\n\n- **Mutacja w reducerze lub patchState** – `state.items.push(x)` łamie niemutowalność; selektory i OnPush nie zauważą zmiany.\n- **HTTP w reducerze** – reducer ma być czystą funkcją; efekty uboczne idą do effects lub metod store'a.\n- **Akcje-polecenia zamiast zdarzeń** – `setLoading`, `setOrders` wysyłane z komponentu to „setter przez Redux”. Lepiej: `[Orders Page] Opened`, a reducer i efekt same wiedzą, co zrobić.\n- **Jedna akcja z wielu miejsc** – tracisz informację, skąd przyszła zmiana. Nazwa źródła w `source` ma znaczenie.\n- **Dane pochodne w stanie** – trzymanie `total` obok `items` grozi rozjazdem. Wyliczaj je selektorem lub `computed`.\n- **Wszystko globalnie** – stan ekranu zostaje po wyjściu z niego.\n\nNa rozmowie zacznij od zasady: „stan trzymam możliwie lokalnie, globalnie tylko to, co współdzielone”. Potem pokaż, że znasz koszty: serwis to prostota, SignalStore to konwencja przy małym narzucie, NgRx Store to przewidywalność, DevTools i separacja efektów kosztem boilerplate. Seniorski akcent: oddziel **stan serwera** (cache danych z API, odświeżanie, unieważnianie) od **stanu UI** – to dwa różne problemy, często rozwiązywane różnymi narzędziami."
+        }
+      ],
+      "takeaways": [
+        "Trzymaj stan możliwie lokalnie: komponent → ekran/feature → globalnie, a filtry do udostępniania w URL.",
+        "Serwis z sygnałami (prywatny signal, publiczne asReadonly/computed, metody) wystarcza dla wielu aplikacji.",
+        "NgRx Store: akcje opisują zdarzenia, reducery to czyste funkcje zwracające nowy stan, selektory są memoizowane, efekty obsługują HTTP i zwracają nowe akcje.",
+        "createActionGroup, createFeature i funkcyjne efekty znacząco skracają kod NgRx; selectSignal daje stan jako sygnał.",
+        "@ngrx/entity przechowuje kolekcje znormalizowane (ids + entities) i daje gotowe operacje adaptera.",
+        "SignalStore składa się z withState, withComputed, withMethods, withHooks; zmiany przez patchState, RxJS przez rxMethod.",
+        "NgRx Store wybieraj dla dużych, wielozespołowych aplikacji z potrzebą audytu zmian; koszt to boilerplate.",
+        "Nie trzymaj danych pochodnych w stanie, nie mutuj i nie rób efektów ubocznych w reducerze."
+      ],
+      "interview": [
+        "Jak decydujesz, czy stan powinien być lokalny, czy globalny?",
+        "Opisz przepływ danych w NgRx Store od kliknięcia do odświeżenia widoku.",
+        "Czym różni się NgRx SignalStore od klasycznego NgRx Store i od zwykłego serwisu z sygnałami?",
+        "Kiedy NgRx Store jest przesadą, a kiedy się opłaca?",
+        "Jakie błędy najczęściej widzisz w kodzie zarządzającym stanem?"
+      ],
+      "exam": [
+        {
+          "id": "ng-state-e1",
+          "q": "Gdzie najlepiej trzymać informację, czy panel z filtrami jest rozwinięty (używaną tylko w jednym komponencie)?",
+          "options": [
+            "W signal wewnątrz tego komponentu",
+            "W globalnym NgRx Store",
+            "W serwisie providedIn: 'root'",
+            "W localStorage"
+          ],
+          "correct": 0,
+          "why": "To stan lokalny jednego komponentu. Podnoszenie go wyżej dodaje kod i ryzyko przetrwania stanu po opuszczeniu ekranu."
+        },
+        {
+          "id": "ng-state-e2",
+          "q": "Co jest NIEDOZWOLONE w reducerze NgRx?",
+          "options": [
+            "Zwrócenie nowego obiektu stanu ze spreadem",
+            "Wywołanie HTTP i mutacja istniejącej tablicy w stanie",
+            "Obsługa kilku akcji jednym on()",
+            "Zwrócenie niezmienionego stanu dla akcji, która go nie dotyczy"
+          ],
+          "correct": 1,
+          "why": "Reducer musi być czystą funkcją: bez efektów ubocznych (HTTP) i bez mutacji. Pozostałe opcje są poprawne."
+        },
+        {
+          "id": "ng-state-e3",
+          "q": "Jaka jest rola efektu (effect) w NgRx Store?",
+          "options": [
+            "Wylicza dane pochodne ze stanu",
+            "Bezpośrednio modyfikuje stan po odpowiedzi z API",
+            "Nasłuchuje akcji, wykonuje efekty uboczne (np. HTTP) i zgłasza wynik nową akcją",
+            "Rejestruje feature w store"
+          ],
+          "correct": 2,
+          "why": "Efekty nie zmieniają stanu – zamieniają akcję na operację asynchroniczną i dispatchują akcję z wynikiem, którą obsłuży reducer."
+        },
+        {
+          "id": "ng-state-e4",
+          "q": "Dlaczego selektory NgRx są wydajne?",
+          "options": [
+            "Bo działają poza Angularem",
+            "Bo są wykonywane w Web Workerze",
+            "Bo kopiują stan przy każdym odczycie",
+            "Bo są memoizowane – przeliczają się tylko, gdy zmienią się ich wejścia"
+          ],
+          "correct": 3,
+          "why": "createSelector zapamiętuje ostatnie wejścia i wynik; przy tych samych referencjach zwraca poprzedni wynik bez przeliczania."
+        },
+        {
+          "id": "ng-state-e5",
+          "q": "Jak zmienić stan w NgRx SignalStore wewnątrz withMethods?",
+          "options": [
+            "patchState(store, { filter })",
+            "store.dispatch(setFilter({ filter }))",
+            "store.filter.set(filter)",
+            "store.state.filter = filter"
+          ],
+          "correct": 0,
+          "why": "SignalStore wystawia stan jako sygnały tylko do odczytu; zmiany wykonuje się przez patchState (z obiektem częściowym lub funkcją)."
+        },
+        {
+          "id": "ng-state-e6",
+          "q": "Jak @ngrx/entity przechowuje kolekcję?",
+          "options": [
+            "Jako tablicę posortowaną po id",
+            "Znormalizowanie: słownik entities (id → rekord) i tablica ids",
+            "Jako Map w localStorage",
+            "Jako osobny sygnał dla każdego rekordu"
+          ],
+          "correct": 1,
+          "why": "Forma znormalizowana daje szybkie wyszukiwanie po id i proste aktualizacje; adapter dostarcza operacje i selektory."
+        },
+        {
+          "id": "ng-state-e7",
+          "q": "Która akcja jest nazwana zgodnie z dobrą praktyką „akcja jako zdarzenie”?",
+          "options": [
+            "setLoadingTrue",
+            "updateOrdersArray",
+            "[Orders Page] Opened",
+            "callApiAndSave"
+          ],
+          "correct": 2,
+          "why": "Akcja powinna opisywać, co się stało i skąd (źródło + zdarzenie), a nie być poleceniem-setterem. O reakcji decydują reducery i efekty."
+        },
+        {
+          "id": "ng-state-e8",
+          "q": "Stan zawiera `items` i dodatkowo pole `total` aktualizowane ręcznie przy każdej zmianie. Na czym polega problem?",
+          "options": [
+            "total zajmuje za dużo pamięci",
+            "NgRx nie pozwala przechowywać liczb",
+            "Pola numeryczne psują memoizację",
+            "Dane pochodne w stanie mogą się rozjechać z items – lepiej wyliczać je selektorem/computed"
+          ],
+          "correct": 3,
+          "why": "Dane wyliczalne trzymane w stanie wymagają ręcznej synchronizacji, co prowadzi do błędów. Selektor lub computed zawsze da spójny wynik."
+        },
+        {
+          "id": "ng-state-e9",
+          "q": "W jakiej sytuacji klasyczny NgRx Store najbardziej się opłaca?",
+          "options": [
+            "Duża aplikacja rozwijana przez wiele zespołów, ze złożonymi przepływami i potrzebą śledzenia historii zmian",
+            "Mała aplikacja z trzema formularzami",
+            "Prototyp na hackathon",
+            "Komponent z jednym przełącznikiem"
+          ],
+          "correct": 0,
+          "why": "Zalety NgRx (nazwane akcje, DevTools, separacja efektów, przewidywalność) przeważają nad boilerplate dopiero przy dużej skali."
+        }
+      ]
+    },
+    {
+      "id": "ng-forms-http",
+      "cat": "angular",
+      "title": "Formularze i komunikacja z API",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Prawie każda aplikacja biznesowa to formularze, które wysyłają dane do API. Poznasz reactive i template-driven forms, typed forms, walidatory synchroniczne i asynchroniczne, eksperymentalne Signal Forms z Angular 21, a potem HttpClient, interceptory funkcyjne, obsługę błędów z retry i dodawanie tokenu autoryzacji. To praktyczna lekcja – na rozmowach często dostaniesz tu zadanie „napisz interceptor” albo „dodaj walidację”.",
+      "sections": [
+        {
+          "h": "Dwa style formularzy: dyktando i formularz urzędowy",
+          "text": "Angular ma dwa klasyczne podejścia do formularzy:\n\n- **Template-driven** – jak dyktando: piszesz HTML z `ngModel`, a Angular sam buduje pod spodem model formularza. Szybkie do prostych rzeczy (logowanie, wyszukiwarka), ale logika siedzi w szablonie i trudniej ją testować.\n- **Reactive** – jak formularz urzędowy zaprojektowany z góry: strukturę (`FormGroup`, `FormControl`, `FormArray`) tworzysz w TypeScripcie, a szablon tylko się do niej podpina przez `[formGroup]` i `formControlName`. Pełna kontrola, łatwe testy bez DOM, dynamiczne pola, `valueChanges` jako Observable.\n\nW aplikacjach biznesowych standardem są **reactive forms**. Od Angular 21 dochodzi trzecia droga – **Signal Forms** (experimental), opisane dalej.\n\nKilka pojęć, które pojawiają się wszędzie:\n\n- `value` – aktualna wartość, `status` – `VALID`, `INVALID`, `PENDING` (trwa walidacja asynchroniczna) lub `DISABLED`,\n- `touched` – użytkownik opuścił pole, `dirty` – użytkownik zmienił wartość,\n- `errors` – obiekt z błędami walidacji, np. `{ required: true }`."
+        },
+        {
+          "h": "Typed reactive forms",
+          "text": "Od Angular 14 formularze reaktywne są **typowane**: `form.value.email` ma typ `string`, a literówka w nazwie pola to błąd kompilacji.\n\nPułapka: domyślnie `FormControl<string>` ma typ `string | null`, bo `reset()` ustawia `null`. Rozwiązanie: `nonNullable` – wtedy `reset()` przywraca wartość początkową. Najwygodniej przez `inject(NonNullableFormBuilder)` lub `fb.nonNullable.group(...)`.\n\nDruga pułapka: `form.value` **pomija wyłączone (disabled) pola**, dlatego jego typ ma wszystkie pola opcjonalne. Pełną wartość, łącznie z wyłączonymi, daje `form.getRawValue()`.",
+          "code": "export class RegisterForm {\n  private readonly fb = inject(NonNullableFormBuilder);\n\n  readonly form = this.fb.group({\n    email: ['', [Validators.required, Validators.email]],\n    password: ['', [Validators.required, Validators.minLength(8)]],\n    confirm: [''],\n    newsletter: [false],\n  }, { validators: [passwordsMatch] });\n\n  submit() {\n    if (this.form.invalid) { this.form.markAllAsTouched(); return; }\n    const data = this.form.getRawValue(); // { email: string; password: string; ... }\n    this.api.register(data).subscribe();\n  }\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "Walidatory: synchroniczne, grupowe i asynchroniczne",
+          "text": "**Walidator** to funkcja, która patrzy na kontrolkę i odpowiada: `null` (wszystko OK) albo obiekt z błędami, np. `{ passwordsMismatch: true }`.\n\nTrzy rodzaje:\n\n1. **Synchroniczny na polu** – `Validators.required`, `minLength`, `pattern` albo własna funkcja `ValidatorFn`.\n2. **Na grupie (cross-field)** – gdy reguła dotyczy kilku pól, np. „hasło i powtórzenie muszą być równe”. Dodajesz go do `FormGroup`, a błąd ląduje w `form.errors`, nie w polu.\n3. **Asynchroniczny** – `AsyncValidatorFn` zwraca Observable lub Promise. Typowy przykład: „czy ten e-mail jest już zajęty?” (zapytanie do API).\n\nJak działa walidacja asynchroniczna krok po kroku:\n\n1. Najpierw wykonują się walidatory synchroniczne.\n2. Tylko gdy przejdą, startuje asynchroniczny – status zmienia się na `PENDING`.\n3. Każda nowa zmiana wartości anuluje poprzednie sprawdzenie.\n4. Aby nie pytać API po każdej literze, ustaw `updateOn: 'blur'` (walidacja po wyjściu z pola) albo dodaj opóźnienie w walidatorze.",
+          "code": "export const passwordsMatch: ValidatorFn = group => {\n  const { password, confirm } = group.value;\n  return password === confirm ? null : { passwordsMismatch: true };\n};\n\nexport function emailTaken(api: UsersApi): AsyncValidatorFn {\n  return control => timer(400).pipe(          // proste opóźnienie\n    switchMap(() => api.isEmailTaken(control.value)),\n    map(taken => (taken ? { emailTaken: true } : null)),\n    catchError(() => of(null)),               // awaria API nie blokuje formularza\n  );\n}\n\n// email: this.fb.control('', {\n//   validators: [Validators.required, Validators.email],\n//   asyncValidators: [emailTaken(inject(UsersApi))],\n//   updateOn: 'blur',\n// })",
+          "lang": "typescript"
+        },
+        {
+          "h": "Signal Forms (experimental)",
+          "text": "**Signal Forms** (`@angular/forms/signals`) to nowe, **eksperymentalne** API formularzy w Angular 21. Zamiast budować drzewo `FormGroup`/`FormControl` zaczynasz od **zwykłego sygnału z modelem danych**, a `form()` tworzy na jego podstawie drzewo pól. Wszystko – wartość, błędy, `touched` – jest sygnałem.\n\nJak to wygląda krok po kroku:\n\n1. Tworzysz `signal` z obiektem danych (np. `{ email: '', password: '' }`).\n2. Wywołujesz `form(model, schema)`, gdzie w schemacie deklarujesz reguły: `required(p.email)`, `email(p.email)`, `minLength(p.password, 8)`.\n3. W szablonie podpinasz pole dyrektywą `[formField]` (od v21.1; w v21.0 dyrektywa nazywała się `[field]`).\n4. Odczyt stanu pola: `f.email().value()`, `f.email().invalid()`, `f.email().errors()`.\n\nCo powiedzieć na rozmowie: „to kierunek rozwoju – formularze zintegrowane z sygnałami i zoneless – ale jest experimental, więc w produkcji nadal domyślnie wybieram typed reactive forms, a Signal Forms testuję w nowych, mniej krytycznych miejscach”.",
+          "code": "import { form, required, email, minLength, FormField } from '@angular/forms/signals';\n\n@Component({\n  selector: 'app-login',\n  imports: [FormField],\n  template: `\n    <input type=\"email\" [formField]=\"f.email\" />\n    @if (f.email().touched() && f.email().invalid()) { <small>Podaj poprawny e-mail</small> }\n    <input type=\"password\" [formField]=\"f.password\" />\n    <button [disabled]=\"f().invalid()\">Zaloguj</button>`,\n})\nexport class Login {\n  readonly model = signal({ email: '', password: '' });\n  readonly f = form(this.model, p => {\n    required(p.email); email(p.email);\n    required(p.password); minLength(p.password, 8);\n  });\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "HttpClient: listonosz z potwierdzeniem odbioru",
+          "text": "`HttpClient` to serwis do wysyłania żądań HTTP. Włączasz go przez `provideHttpClient()` w `app.config.ts` (z `withFetch()` korzysta z natywnego `fetch` – zalecane przy SSR, oraz z `withInterceptors([...])`).\n\nZasady, które warto znać:\n\n- Metody (`get`, `post`, `put`, `delete`) zwracają **cold Observable** – nic nie leci bez subskrypcji.\n- Typ odpowiedzi podajesz generykiem `get<Order[]>()` – to **tylko obietnica dla kompilatora**, nie walidacja. Jeśli backend zwróci coś innego, TypeScript się nie dowie.\n- Opcje: `params` (query string), `headers`, `observe: 'response'` (cała odpowiedź z nagłówkami i statusem), `context` (metadane dla interceptorów).\n- Wywołania HTTP trzymaj w **serwisach API**, nie w komponentach – łatwiej je testować i podmieniać.\n\nW testach używasz `provideHttpClientTesting()` i `HttpTestingController`, żeby sprawdzić, jakie żądanie poleciało, i odpowiedzieć sztucznymi danymi."
+        },
+        {
+          "h": "Interceptory funkcyjne i token autoryzacji",
+          "text": "**Interceptor** to bramka, przez którą przechodzi każde żądanie i każda odpowiedź. Analogia: punkt kontrolny na lotnisku, gdzie każdemu bagażowi dokleja się naklejkę. Dziś to zwykła funkcja `HttpInterceptorFn = (req, next) => ...`.\n\nCo dzieje się po kolei:\n\n1. Komponent woła `api.getOrders()`.\n2. Żądanie przechodzi przez interceptory **w kolejności z tablicy** `withInterceptors([a, b])`.\n3. Interceptor nie może zmienić żądania (`HttpRequest` jest niemutowalny), więc tworzy kopię przez `req.clone({...})`.\n4. `next(req)` przekazuje żądanie dalej; odpowiedź wraca przez interceptory **w odwrotnej kolejności**.\n\nTypowe zastosowania: dodanie tokenu, globalna obsługa błędów, spinner ładowania, logowanie czasu żądań. `HttpContextToken` pozwala oznaczyć konkretne żądanie (np. „nie dodawaj tokenu do logowania”).",
+          "code": "export const SKIP_AUTH = new HttpContextToken<boolean>(() => false);\n\nexport const authInterceptor: HttpInterceptorFn = (req, next) => {\n  const token = inject(AuthService).accessToken();     // sygnał z tokenem\n  if (!token || req.context.get(SKIP_AUTH) || !req.url.startsWith('/api')) {\n    return next(req);                                  // bez zmian\n  }\n  return next(req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }));\n};\n\n// ŹLE: req.headers.set('Authorization', ...) – zwraca NOWE nagłówki, oryginał bez zmian\n// użycie flagi: http.post('/api/login', body, { context: new HttpContext().set(SKIP_AUTH, true) })",
+          "lang": "typescript"
+        },
+        {
+          "h": "Błędy i retry",
+          "text": "Gdy coś pójdzie nie tak, dostajesz `HttpErrorResponse`. Najważniejsze pole to `status`:\n\n- `0` – brak połączenia, CORS lub przerwane żądanie (serwer w ogóle nie odpowiedział),\n- `400`/`422` – błędne dane; pokaż komunikaty walidacji przy polach formularza,\n- `401` – brak lub wygasły token; spróbuj odświeżyć token albo wyloguj,\n- `403` – brak uprawnień; komunikat, nie ponawiaj,\n- `404` – brak zasobu,\n- `5xx` – błąd serwera; można spróbować ponownie.\n\nZasada ponawiania: **ponawiaj tylko błędy przejściowe** (status 0, 503, 504) i najlepiej tylko żądania idempotentne (GET, PUT, DELETE) – ponowienie POST może utworzyć zamówienie dwa razy. `retry` z funkcją `delay` pozwala na wykładnicze opóźnienie (exponential backoff: 1 s, 2 s, 4 s…).",
+          "code": "export const errorInterceptor: HttpInterceptorFn = (req, next) => {\n  const toast = inject(ToastService);\n  const auth = inject(AuthService);\n  return next(req).pipe(\n    retry({\n      count: req.method === 'GET' ? 2 : 0,\n      delay: (err: HttpErrorResponse, attempt) =>\n        [0, 503, 504].includes(err.status) ? timer(2 ** attempt * 500) : throwError(() => err),\n    }),\n    catchError((err: HttpErrorResponse) => {\n      if (err.status === 401) auth.logout();\n      else if (err.status >= 500 || err.status === 0) toast.error('Problem z serwerem, spróbuj ponownie');\n      return throwError(() => err);   // przekaż dalej – komponent może obsłużyć 400\n    }),\n  );\n};",
+          "lang": "typescript"
+        },
+        {
+          "h": "Na rozmowie i niuanse seniorskie",
+          "text": "Krótka odpowiedź na „jak budujesz formularze i komunikację z API?”: typed reactive forms z `NonNullableFormBuilder`, walidatory polowe i grupowe, asynchroniczne z `updateOn: 'blur'`; serwisy API z `HttpClient`; interceptory funkcyjne do tokenu i globalnych błędów; `retry` tylko dla błędów przejściowych i żądań idempotentnych; Signal Forms jako experimental kierunek na przyszłość.\n\nNiuanse, które robią wrażenie:\n\n- **Odświeżanie tokenu przy 401**: wiele równoległych żądań może jednocześnie dostać 401. Interceptor powinien wywołać refresh **raz** (współdzielony Observable z `shareReplay`), a pozostałe żądania poczekać i ponowić się z nowym tokenem. Samo żądanie refresh oznacz `SKIP_AUTH`, żeby nie wpaść w pętlę.\n- **Nie trzymaj tokenu w localStorage, jeśli możesz tego uniknąć** – jest dostępny dla każdego skryptu (ryzyko XSS). Bezpieczniejsze są ciasteczka `HttpOnly` + `SameSite` ustawiane przez backend (wtedy pamiętaj o ochronie CSRF).\n- **Błędy walidacji z backendu** (np. ProblemDetails z ASP.NET Core) mapuj na `setErrors()` konkretnych kontrolek, żeby użytkownik widział je przy polach.\n- **Podwójne wysłanie formularza**: blokuj przycisk na czas zapisu albo użyj `exhaustMap`.\n- **Typ generyczny to nie walidacja** – dla danych krytycznych waliduj odpowiedź (np. schematem) na granicy aplikacji."
+        }
+      ],
+      "takeaways": [
+        "Reactive forms to standard w aplikacjach biznesowych: struktura w TypeScripcie, łatwe testy, typowanie; template-driven nadają się do prostych formularzy.",
+        "NonNullableFormBuilder usuwa null z typów i sprawia, że reset() przywraca wartości początkowe; getRawValue() zawiera także pola disabled.",
+        "Walidator zwraca null lub obiekt błędów; walidator grupowy obsługuje reguły wielu pól; asynchroniczny startuje dopiero po przejściu synchronicznych i ustawia status PENDING.",
+        "Signal Forms (@angular/forms/signals) są experimental: model w sygnale, form() ze schematem reguł, dyrektywa [formField] od v21.1.",
+        "HttpClient zwraca cold Observable; generyk typu odpowiedzi nie waliduje danych.",
+        "Interceptory funkcyjne (HttpInterceptorFn) modyfikują żądanie przez req.clone(); żądania przechodzą w kolejności z tablicy, odpowiedzi w odwrotnej.",
+        "Ponawiaj tylko błędy przejściowe (0, 503, 504) i najlepiej żądania idempotentne, z wykładniczym opóźnieniem.",
+        "Przy 401 odświeżaj token raz dla wszystkich równoległych żądań, a żądanie refresh wyłącz z interceptora tokenu."
+      ],
+      "interview": [
+        "Czym różnią się reactive forms od template-driven i które wybierasz w aplikacji biznesowej?",
+        "Jak napisać walidator sprawdzający zgodność dwóch haseł i walidator asynchroniczny sprawdzający unikalność e-maila?",
+        "Napisz interceptor dodający token JWT do żądań. Jak obsłużysz wygasły token?",
+        "Jak obsługujesz błędy HTTP i kiedy ponawiasz żądania?",
+        "Co wiesz o Signal Forms i czy użyłbyś ich w produkcji?"
+      ],
+      "exam": [
+        {
+          "id": "ng-forms-http-e1",
+          "q": "Formularz ma wyłączone (disabled) pole `id`. Jak pobrać wartość całego formularza łącznie z tym polem?",
+          "options": [
+            "form.getRawValue()",
+            "form.value",
+            "form.value z opcją includeDisabled",
+            "Nie da się – pola disabled nie mają wartości"
+          ],
+          "correct": 0,
+          "why": "form.value pomija kontrolki disabled; getRawValue() zwraca wszystkie wartości."
+        },
+        {
+          "id": "ng-forms-http-e2",
+          "q": "Po co używać `NonNullableFormBuilder`?",
+          "options": [
+            "Żeby wyłączyć walidację",
+            "Żeby typy kontrolek nie zawierały null, a reset() przywracał wartości początkowe",
+            "Żeby formularz działał bez ReactiveFormsModule",
+            "Żeby przyspieszyć change detection"
+          ],
+          "correct": 1,
+          "why": "Domyślnie reset() ustawia null, więc typ to T | null. Kontrolki nonNullable resetują się do wartości początkowej i mają czysty typ T."
+        },
+        {
+          "id": "ng-forms-http-e3",
+          "q": "Kiedy uruchomi się walidator asynchroniczny pola e-mail z `Validators.required` i `Validators.email`?",
+          "options": [
+            "Zawsze, równolegle z walidatorami synchronicznymi",
+            "Tylko przy submit formularza",
+            "Dopiero gdy walidatory synchroniczne przejdą; w trakcie status pola to PENDING",
+            "Tylko gdy pole jest dirty i ma błąd required"
+          ],
+          "correct": 2,
+          "why": "Angular uruchamia walidatory asynchroniczne tylko dla wartości poprawnych synchronicznie, co oszczędza zbędne zapytania do API."
+        },
+        {
+          "id": "ng-forms-http-e4",
+          "q": "Gdzie powinien trafić walidator „hasło i powtórzenie hasła muszą być równe”?",
+          "options": [
+            "Na kontrolce password",
+            "Na kontrolce confirm jako asyncValidator",
+            "W interceptorze HTTP",
+            "Na FormGroup zawierającym oba pola (walidator cross-field)"
+          ],
+          "correct": 3,
+          "why": "Reguła dotyczy dwóch pól, więc walidator działa na grupie i ma dostęp do obu wartości; błąd pojawia się w form.errors."
+        },
+        {
+          "id": "ng-forms-http-e5",
+          "q": "Co jest prawdą o Signal Forms w Angular 21?",
+          "options": [
+            "Są experimental; model trzymasz w sygnale, form() tworzy pola, a w szablonie (od v21.1) używasz dyrektywy [formField]",
+            "Są stabilne i zastąpiły reactive forms",
+            "Wymagają Zone.js",
+            "Używają FormGroup i FormControl pod spodem i formControlName w szablonie"
+          ],
+          "correct": 0,
+          "why": "Signal Forms to eksperymentalne API z @angular/forms/signals oparte na modelu w sygnale; reactive forms nadal są stabilnym standardem."
+        },
+        {
+          "id": "ng-forms-http-e6",
+          "q": "Dlaczego ten interceptor NIE doda nagłówka?",
+          "code": "export const authInterceptor: HttpInterceptorFn = (req, next) => {\n  req.headers.set('Authorization', `Bearer ${token}`);\n  return next(req);\n};",
+          "lang": "typescript",
+          "options": [
+            "Bo nagłówek Authorization jest zablokowany przez przeglądarkę",
+            "Bo HttpRequest i HttpHeaders są niemutowalne – set() zwraca nowy obiekt, trzeba użyć req.clone({ setHeaders })",
+            "Bo interceptor musi być klasą",
+            "Bo next(req) trzeba wywołać przed modyfikacją"
+          ],
+          "correct": 1,
+          "why": "Obiekty żądania są niemutowalne. headers.set zwraca nową kopię, która tu jest wyrzucana. Poprawnie: next(req.clone({ setHeaders: { Authorization: ... } }))."
+        },
+        {
+          "id": "ng-forms-http-e7",
+          "q": "Interceptory zarejestrowano jako `withInterceptors([a, b])`. W jakiej kolejności przez nie przejdzie odpowiedź?",
+          "options": [
+            "a, potem b",
+            "Równolegle",
+            "b, potem a",
+            "Tylko przez ostatni"
+          ],
+          "correct": 2,
+          "why": "Żądanie przechodzi w kolejności z tablicy (a → b → backend), a odpowiedź wraca odwrotnie (b → a), jak warstwy cebuli."
+        },
+        {
+          "id": "ng-forms-http-e8",
+          "q": "Które żądanie najbezpieczniej automatycznie ponowić?",
+          "options": [
+            "POST /api/orders zakończony 400",
+            "POST /api/payments zakończony 503",
+            "GET /api/orders zakończony 403",
+            "GET /api/orders zakończony statusem 503"
+          ],
+          "correct": 3,
+          "why": "503 to błąd przejściowy, a GET jest idempotentny. 400 i 403 się nie zmienią po ponowieniu, a ponowienie POST płatności grozi podwójnym obciążeniem."
+        },
+        {
+          "id": "ng-forms-http-e9",
+          "q": "Kilka równoległych żądań dostaje 401 z powodu wygasłego tokenu. Jak powinien zachować się dobry interceptor?",
+          "options": [
+            "Wywołać odświeżenie tokenu raz (współdzielone), poczekać na nie i ponowić wszystkie żądania z nowym tokenem",
+            "Dla każdego żądania osobno wywołać refresh tokenu",
+            "Zignorować błąd i zwrócić puste dane",
+            "Przeładować stronę"
+          ],
+          "correct": 0,
+          "why": "Jeden współdzielony refresh zapobiega wyścigom i wielokrotnemu unieważnianiu tokenów; żądanie refresh nie może samo przechodzić przez logikę 401, by uniknąć pętli."
+        },
+        {
+          "id": "ng-forms-http-e10",
+          "q": "Co gwarantuje zapis `http.get<Order[]>('/api/orders')`?",
+          "options": [
+            "Że odpowiedź zostanie zwalidowana jako tablica Order",
+            "Tylko typ dla kompilatora – w runtime dane nie są sprawdzane",
+            "Że żądanie zostanie wysłane natychmiast",
+            "Że błędy HTTP zostaną zamienione na pustą tablicę"
+          ],
+          "correct": 1,
+          "why": "Generyk to wyłącznie informacja dla TypeScriptu. HttpClient nie waliduje kształtu odpowiedzi, a żądanie poleci dopiero po subskrypcji."
+        }
+      ]
+    }
+  ]
+}

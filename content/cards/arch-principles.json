@@ -1,0 +1,815 @@
+{
+  "cat": "arch",
+  "name": "Architektura i wzorce",
+  "cards": [
+    {
+      "id": "arch-p001",
+      "topic": "SOLID",
+      "level": 1,
+      "q": "Wymień i omów zasady SOLID – jak odpowiesz w 2 minuty?",
+      "a": "SRP – klasa ma jeden powód do zmiany (odpowiada przed jednym aktorem). OCP – nowe zachowanie dodaję nowym kodem (np. kolejna strategia), a nie edycją przetestowanego. LSP – podtyp da się podstawić za typ bazowy bez psucia poprawności (nie rzuca NotSupportedException, nie zmienia kontraktu). ISP – klient zależy tylko od metod, których używa, więc wolę małe interfejsy rolowe od „grubych”. DIP – logika biznesowa zależy od abstrakcji (IOrderRepository), a nie od SQL czy SMTP; w .NET i Angularze realizuje to dependency injection. Wspólny cel: kod łatwy do zmiany i testowania, z ograniczonym zasięgiem każdej modyfikacji.",
+      "tip": "Na każdą literę miej jedno zdanie definicji i jeden przykład z własnego projektu. Rekruter prawie zawsze dopyta: „a kiedy SOLID szkodzi?” – odpowiedz: nadmiar interfejsów i warstw bez realnej potrzeby zmiany.",
+      "deep": "SOLID to heurystyki zarządzania zależnościami, a nie prawa – sens mają tam, gdzie kod się zmienia. Zasady się zazębiają: SRP i ISP to ta sama idea (spójność) na poziomie klasy i interfejsu; OCP zwykle osiąga się przez polimorfizm, który działa poprawnie tylko przy zachowaniu LSP; DIP umożliwia OCP, bo nową implementację można wpiąć w composition root. Koszt: każda abstrakcja to dodatkowy plik, indirection i trudniejsza nawigacja. Dobrą praktyką jest wprowadzanie abstrakcji „na drugą implementację” albo tam, gdzie jest granica I/O (baza, HTTP, czas, plik), bo tam testowalność zyskuje najwięcej. Na code review pytam: „ile miejsc zmienię, gdy przyjdzie typowa zmiana wymagań?” – to praktyczny test na SOLID."
+    },
+    {
+      "id": "arch-p002",
+      "topic": "SOLID: SRP",
+      "level": 2,
+      "q": "Jak wygląda naruszenie SRP w komponencie Angulara i jak je poprawić?",
+      "a": "Typowy „gruby” komponent sam woła HttpClient, mapuje DTO, liczy reguły biznesowe (rabaty, VAT) i renderuje widok – zmiana API, reguły i layoutu dotyka tego samego pliku, a test wymaga mockowania HTTP. Poprawka: dostęp do API w serwisie (OrdersApi), reguły w czystych funkcjach lub serwisie domenowym, a komponent tylko łączy dane ze stanem widoku (signal/toSignal) i deleguje prezentację do komponentów „dumb” z input().",
+      "code": "@Injectable({ providedIn: 'root' })\nexport class OrdersApi {\n  private http = inject(HttpClient);\n  getAll() { return this.http.get<OrderDto[]>('/api/orders'); }\n}\nexport const orderTotal = (o: OrderDto) =>\n  o.items.reduce((sum, i) => sum + i.price * i.qty, 0);\n\n@Component({\n  selector: 'app-orders',\n  template: `@for (o of orders(); track o.id) { <app-order-row [order]=\"o\" /> }`,\n})\nexport class OrdersComponent {\n  orders = toSignal(inject(OrdersApi).getAll(), { initialValue: [] });\n}",
+      "lang": "typescript",
+      "tip": "Smart/container vs presentational (dumb) components to w praktyce SRP w Angularze – warto użyć tej nazwy."
+    },
+    {
+      "id": "arch-p003",
+      "topic": "SOLID: SRP",
+      "level": 2,
+      "q": "Po czym rozpoznajesz naruszenie SRP na code review?",
+      "a": "Sygnały: nazwa z „And”, „Manager”, „Helper”, „Utils” albo nie da się jej nazwać jednym rzeczownikiem; konstruktor z 6+ zależnościami; grupy metod korzystających z rozłącznych pól (niska spójność); w jednej klasie mieszają się poziomy – SQL, reguły biznesowe i formatowanie; historia gita pokazuje, że plik zmieniają różne zespoły z różnych powodów; testy wymagają ustawienia wielu mocków, z których każdy test używa innej części.",
+      "tip": "SRP to nie „klasa robi jedną rzecz” (to zasada dla funkcji), tylko „jeden powód do zmiany” / jeden aktor. Rozróżnienie robi wrażenie.",
+      "deep": "Praktyczny test: wypisz, kto może zażądać zmiany tej klasy (księgowość, UX, zespół infrastruktury). Więcej niż jeden aktor = kandydat do podziału. Przydatna miara to LCOM (lack of cohesion of methods) – jeśli metody dzielą się na grupy korzystające z rozłącznych pól, to są dwie klasy w jednym pliku. Constructor over-injection jest najszybszym sygnałem w .NET: OrderService z 9 zależnościami najczęściej łączy przypadki użycia, które można rozdzielić na osobne handlery (np. w stylu vertical slice / CQRS). W code review nie piszę „łamie SRP”, tylko pokazuję konkretny scenariusz zmiany, który dotknie niepowiązanego kodu – to przekonuje autora."
+    },
+    {
+      "id": "arch-p004",
+      "topic": "SOLID: SRP",
+      "level": 3,
+      "q": "Kiedy stosowanie SRP zaczyna szkodzić?",
+      "a": "Gdy rozbijamy spójną logikę na wiele mikroklas „bo SRP”: jedna metoda na klasę, InvoiceValidator, InvoiceValidatorFactory, InvoiceValidatorProvider – żeby zrozumieć jeden przepływ, trzeba otworzyć 10 plików (tzw. ravioli code). Rozdzielanie ma sens wzdłuż osi zmian, które naprawdę występują; kod zmieniający się zawsze razem powinien zostać razem (wysoka spójność).",
+      "deep": "SRP jest o rozdzielaniu tego, co zmienia się z różnych powodów, ale też – co często pomijane – o trzymaniu razem tego, co zmienia się z tego samego powodu. Nadmierna fragmentacja zwiększa coupling między klasami (dużo małych klas wołających się nawzajem), wydłuża stack trace'y, utrudnia debugowanie i nawigację. Objawem przesady są interfejsy z jedną implementacją i jedną metodą dla każdego kroku, a także „anemiczne” encje i dziesiątki serwisów obsługujących jedną regułę. Zasada praktyczna: zaczynam od jednej klasy na przypadek użycia, dzielę, gdy klasa przekracza rozsądny rozmiar albo gdy pojawia się druga, niezależna oś zmian. Podział jest tani przy dobrych testach, więc nie ma potrzeby robić go „na zapas”."
+    },
+    {
+      "id": "arch-p005",
+      "topic": "SOLID: OCP",
+      "level": 2,
+      "q": "Pokaż refaktoryzację switcha po typie do rozwiązania zgodnego z OCP w .NET.",
+      "a": "Każdy przypadek switcha staje się implementacją wspólnego interfejsu (Strategy), rejestrowaną w DI. Kalkulator dostaje IEnumerable<IFeePolicy> i wybiera politykę po kluczu – dodanie nowej metody płatności to nowa klasa i jedna linia rejestracji, bez edycji kalkulatora. Alternatywnie w .NET 8+ keyed services (AddKeyedScoped + [FromKeyedServices]) lub słownik w fabryce.",
+      "code": "public interface IFeePolicy { string Type { get; } decimal Fee(decimal amount); }\n\npublic sealed class CardFee : IFeePolicy\n{\n    public string Type => \"card\";\n    public decimal Fee(decimal amount) => amount * 0.015m;\n}\n\npublic sealed class FeeCalculator(IEnumerable<IFeePolicy> policies)\n{\n    private readonly Dictionary<string, IFeePolicy> _byType = policies.ToDictionary(p => p.Type);\n    public decimal Fee(Payment p) => _byType.TryGetValue(p.Type, out var policy)\n        ? policy.Fee(p.Amount) : throw new NotSupportedException(p.Type);\n}\n// Program.cs: builder.Services.AddSingleton<IFeePolicy, CardFee>();",
+      "lang": "csharp",
+      "tip": "Dopowiedz, że jeden switch w fabryce/composition root jest akceptowalny – problemem jest ten sam switch skopiowany w wielu miejscach."
+    },
+    {
+      "id": "arch-p006",
+      "topic": "SOLID: OCP",
+      "level": 2,
+      "q": "Podaj przykłady OCP we frameworkach – w Angularze i ASP.NET Core.",
+      "a": "Angular: HTTP interceptors – dodajesz autoryzację, logowanie czy retry nową funkcją w withInterceptors([...]), bez modyfikacji HttpClient; multi providers (np. lista walidatorów lub pluginów pod jednym InjectionToken) i dyrektywy rozszerzające zachowanie istniejących elementów. ASP.NET Core: pipeline middleware, filtry MVC, IEndpointFilter w minimal API, IHostedService, własne IValidator czy IAuthorizationHandler – framework jest „zamknięty”, a my rozszerzamy go przez rejestrację nowych elementów.",
+      "code": "export const authInterceptor: HttpInterceptorFn = (req, next) => {\n  const token = inject(AuthStore).token();\n  return next(token ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : req);\n};\n\n// app.config.ts – nowe zachowanie = nowy element listy\nprovideHttpClient(withInterceptors([authInterceptor, loggingInterceptor]));",
+      "lang": "typescript"
+    },
+    {
+      "id": "arch-p007",
+      "topic": "SOLID: OCP",
+      "level": 3,
+      "q": "OCP a pragmatyzm: kiedy switch jest w porządku, a punkt rozszerzeń to przesada?",
+      "a": "OCP chroni przed zmianami, które realnie przychodzą. Jeśli zbiór przypadków jest zamknięty i stabilny (np. dni tygodnia, kilka statusów w jednym miejscu), switch expression z pattern matchingiem jest czytelniejszy niż hierarchia klas. Abstrakcję wprowadzam, gdy ten sam warunek powtarza się w kilku miejscach albo gdy nowe warianty przychodzą regularnie (kolejni dostawcy płatności, kanały powiadomień).",
+      "deep": "Bertrand Meyer pierwotnie realizował OCP przez dziedziczenie; współcześnie (Robert C. Martin) rozumiemy go jako polimorfizm za abstrakcją. Kluczowe pytanie: „zamknięty na jaką zmianę?” – nie da się być zamkniętym na wszystkie, więc wybiera się oś zmian na podstawie historii projektu. Spekulacyjne punkty rozszerzeń (plugin system dla jednego przypadku) łamią YAGNI i dokładają kosztu bez zysku. Ciekawy kontrast: dodanie nowego typu jest tanie w podejściu obiektowym, ale dodanie nowej operacji na wszystkich typach jest tanie przy switchu / pattern matchingu (expression problem). Dla zamkniętej hierarchii (np. wynik Success/NotFound/Invalid) switch po typach jest naturalny, a kompilator może ostrzec o nieobsłużonym przypadku dla enumów i wartości. Praktycznie: refaktoryzuję do Strategy przy drugim–trzecim wystąpieniu tego samego switcha (rule of three)."
+    },
+    {
+      "id": "arch-p008",
+      "topic": "SOLID: LSP",
+      "level": 2,
+      "q": "Dlaczego Square dziedziczący po Rectangle łamie LSP i jak to naprawić?",
+      "a": "Kontrakt Rectangle mówi, że ustawienie Width nie zmienia Height. Square musi utrzymać równe boki, więc zmienia oba – kod, który działa dla każdego prostokąta (ustaw 5×4, oczekuj pola 20), dla kwadratu daje 16. Matematyczne „kwadrat jest prostokątem” nie oznacza poprawnej relacji „is-a” dla mutowalnych obiektów. Poprawka: brak dziedziczenia między nimi – wspólny interfejs IShape z Area, niemutowalne rekordy (dla niemutowalnych typów problem znika).",
+      "code": "public class Square : Rectangle\n{\n    public override int Width  { get => base.Width;  set { base.Width = value; base.Height = value; } }\n    public override int Height { get => base.Height; set { base.Width = value; base.Height = value; } }\n}\nvoid Resize(Rectangle r) { r.Width = 5; r.Height = 4; Debug.Assert(r.Area == 20); } // Square: 16\n\n// poprawka\npublic interface IShape { int Area { get; } }\npublic sealed record Rectangle(int Width, int Height) : IShape { public int Area => Width * Height; }\npublic sealed record Square(int Side) : IShape { public int Area => Side * Side; }",
+      "lang": "csharp",
+      "tip": "LSP ocenia się względem zachowania oczekiwanego przez klienta (kontraktu), a nie względem taksonomii z prawdziwego świata."
+    },
+    {
+      "id": "arch-p009",
+      "topic": "SOLID: LSP",
+      "level": 3,
+      "q": "Jakie formalne reguły musi spełniać podtyp według LSP? Podaj przykład naruszenia w samym .NET.",
+      "a": "Podtyp nie może wzmacniać warunków wstępnych (przyjmować mniej), nie może osłabiać warunków końcowych (gwarantować mniej), musi zachować niezmienniki typu bazowego i nie może rzucać nowych, nieoczekiwanych wyjątków. W .NET klasycznym przykładem jest tablica implementująca IList<T>: Add rzuca NotSupportedException; podobnie ReadOnlyCollection<T>. Ratunkiem jest właściwość ICollection<T>.IsReadOnly, ale to „kontrakt w dokumentacji”, a nie w typach.",
+      "code": "IList<int> list = new int[3];\nlist.Add(1); // NotSupportedException – tablica „jest” IList<T>, ale nie spełnia kontraktu Add\n\n// lepszy kontrakt: przyjmuj tyle, ile potrzebujesz\nint Sum(IReadOnlyList<int> items) => items.Sum();",
+      "lang": "csharp",
+      "deep": "Reguły pochodzą od Barbary Liskov i Jeannette Wing (behavioral subtyping) i Bertranda Meyera (Design by Contract). Do tego dochodzi kowariancja typów zwracanych i kontrawariancja parametrów – C# pilnuje tego w generykach (out/in), ale semantyki już nie. History constraint: podtyp nie może pozwalać na zmianę stanu, której typ bazowy zabrania (mutowalny podtyp niemutowalnej bazy). Przykłady z produkcji: implementacja IRepository, która w Delete rzuca wyjątek; cache'ujący dekorator zwracający nieświeże dane tam, gdzie kontrakt obiecywał aktualne; Stream.Seek rzucający dla strumieni sieciowych (stąd CanSeek – BCL wybrał flagi zamiast podziału interfejsów). Wniosek projektowy: wolę wąskie interfejsy (IReadOnlyList<T>, IReadOnlyCollection<T>) niż flagi typu CanX – LSP i ISP idą tu w parze."
+    },
+    {
+      "id": "arch-p010",
+      "topic": "SOLID: LSP",
+      "level": 1,
+      "q": "Jak rozpoznać naruszenie LSP w code review?",
+      "a": "Sygnały: override rzucający NotSupportedException/NotImplementedException albo z pustym ciałem „bo tu nie dotyczy”; sprawdzanie typu w kodzie klienta (if (x is PremiumAccount) ...), które istnieje tylko po to, by obejść inną implementację; podklasa wymagająca dodatkowej inicjalizacji przed użyciem; metoda podtypu odrzucająca wartości akceptowane przez bazę; testy kontraktu bazowego, które nie przechodzą dla jednej z implementacji.",
+      "tip": "Dobra technika: abstrakcyjna klasa testów kontraktowych uruchamiana dla każdej implementacji interfejsu – łapie naruszenia LSP automatycznie."
+    },
+    {
+      "id": "arch-p011",
+      "topic": "SOLID: ISP",
+      "level": 2,
+      "q": "Jak poprawić interfejs, którego implementacje rzucają NotImplementedException, i jak ISP wygląda w Angularze?",
+      "a": "Rozbić „gruby” interfejs na interfejsy rolowe według potrzeb klientów (IReportReader, IReportExporter), a klasa implementuje tylko te, które naprawdę obsługuje – konsumenci zależą od wąskiego kontraktu, więc mocki w testach są proste, a zmiana jednej metody nie dotyka niepowiązanych klientów. W Angularze odpowiednikiem jest komponent przyjmujący przez input() cały obiekt domenowy (np. User z 30 polami), choć potrzebuje tylko nazwy i avatara – lepiej zdefiniować mały typ wejściowy (Pick<User, 'name' | 'avatarUrl'>), co ułatwia reużycie i testy.",
+      "code": "// zamiast: interface IReportService { Generate(); ExportPdf(); ExportExcel(); Schedule(); }\npublic interface IReportGenerator { Report Generate(ReportQuery q); }\npublic interface IReportExporter  { byte[] Export(Report r, ExportFormat f); }\n\npublic sealed class CsvOnlyExporter : IReportExporter\n{\n    public byte[] Export(Report r, ExportFormat f) => f == ExportFormat.Csv\n        ? CsvWriter.Write(r) : throw new NotSupportedException(); // patrz tip\n}",
+      "lang": "csharp",
+      "tip": "Uwaga na pułapkę: jeśli eksporter obsługuje tylko CSV, uczciwiej jest mieć ICsvExporter niż parametr formatu z wyjątkiem – inaczej przenosisz problem z ISP do LSP."
+    },
+    {
+      "id": "arch-p012",
+      "topic": "SOLID: ISP",
+      "level": 3,
+      "q": "Role interfaces vs header interfaces – czy każda klasa powinna mieć swój interfejs?",
+      "a": "Header interface to kopia publicznych metod klasy 1:1 (OrderService → IOrderService) – powstaje mechanicznie, często tylko pod mocki. Role interface opisuje to, czego potrzebuje konkretny klient (IOrderReader dla raportów). ISP promuje te drugie. Interfejs ma sens na granicach (I/O, moduły, wiele implementacji, punkt testowy); dla wewnętrznych, czystych klas bez efektów ubocznych często wystarczy klasa konkretna.",
+      "deep": "Interfejs „na wszelki wypadek” dla każdej klasy podwaja liczbę plików i nie daje izolacji – zmiana sygnatury i tak dotyka obu miejsc. Martin Fowler opisuje różnicę między role interface a header interface; ISP formalnie mówi o klientach, więc interfejs powinien być definiowany przez stronę używającą (spójne z DIP: abstrakcję posiada klient). W .NET dobre wzorce z BCL to IReadOnlyCollection<T>, IAsyncDisposable, IComparer<T> – wąskie, małe kontrakty. CQRS jest naturalnym rozszerzeniem ISP: rozdzielenie odczytów od zapisów (IOrderQueries / IOrderCommands) pozwala optymalizować je osobno. Przesada w drugą stronę: interfejs na każdą metodę, przez co klasa implementuje 12 interfejsów i rejestracja w DI robi się nieczytelna. Testy: mockowanie klas konkretnych w Moq/NSubstitute wymaga metod virtual, dlatego ludzie dodają interfejsy – lepiej testować czysty kod bez mocków, a interfejsy zostawić dla granic."
+    },
+    {
+      "id": "arch-p013",
+      "topic": "SOLID: DIP",
+      "level": 2,
+      "q": "Pokaż naruszenie DIP i poprawkę w C#. Do której warstwy należy interfejs?",
+      "a": "Naruszenie: serwis aplikacyjny sam tworzy SqlOrderRepository i SmtpClient (new w konstruktorze lub metodzie) – zależy od szczegółów, nie da się go przetestować bez bazy i podmienić infrastruktury. Poprawka: serwis zależy od IOrderRepository/INotifier przekazanych przez konstruktor, implementacje żyją w warstwie Infrastructure, a łączy je composition root (Program.cs). Kluczowe „odwrócenie”: interfejs definiuje i posiada warstwa wyższa (Application/Domain), a infrastruktura go implementuje – zależność w kodzie źródłowym wskazuje do środka, przeciwnie do przepływu wywołań.",
+      "code": "// Application/Orders/IOrderRepository.cs – abstrakcja należy do warstwy wyżej\npublic interface IOrderRepository { Task AddAsync(Order order, CancellationToken ct); }\n\n// Infrastructure/Persistence/SqlOrderRepository.cs\npublic sealed class SqlOrderRepository(AppDbContext db) : IOrderRepository\n{\n    public async Task AddAsync(Order order, CancellationToken ct)\n    { db.Orders.Add(order); await db.SaveChangesAsync(ct); }\n}\n\n// Program.cs (composition root)\nbuilder.Services.AddScoped<IOrderRepository, SqlOrderRepository>();",
+      "lang": "csharp",
+      "deep": "Samo wstrzykiwanie interfejsu nie wystarczy, jeśli interfejs leży w projekcie Infrastructure – wtedy Application i tak referencjonuje Infrastructure i DIP jest złamany na poziomie modułów. Na tym opiera się Clean/Onion/Hexagonal Architecture: porty (interfejsy) w środku, adaptery na zewnątrz. Abstrakcja powinna mówić językiem domeny (SaveOrder), a nie przeciekać szczegółami (ExecuteSql, IQueryable z EF), bo inaczej warstwa wyższa dalej zależy od technologii. Kontrowersyjny przypadek: repozytorium nad EF Core – DbContext już jest Unit of Work + repozytorium, więc część zespołów wstrzykuje DbContext bezpośrednio w handlerach i testuje integracyjnie (Testcontainers). Obie decyzje są obronne, ważne by umieć je uzasadnić."
+    },
+    {
+      "id": "arch-p014",
+      "topic": "SOLID: DIP",
+      "level": 2,
+      "q": "Jak zastosować DIP w Angularze?",
+      "a": "Komponent nie powinien zależeć od konkretnej biblioteki (Google Analytics, localStorage, konkretny endpoint), tylko od abstrakcji dostarczonej przez DI. W Angularze tokenem może być klasa abstrakcyjna (interfejsy TS znikają po kompilacji, więc nie mogą być tokenem) albo InjectionToken – dla wartości konfiguracyjnych i funkcji. Implementację wybiera się w providers (app.config.ts, trasa, komponent), a w testach podmienia przez TestBed bez dotykania komponentu.",
+      "code": "export abstract class Analytics { abstract track(event: string, data?: object): void; }\n\n@Injectable()\nexport class GaAnalytics extends Analytics {\n  track(event: string, data?: object) { /* gtag('event', event, data) */ }\n}\nexport const API_URL = new InjectionToken<string>('API_URL');\n\n// app.config.ts\nproviders: [{ provide: Analytics, useClass: GaAnalytics }, { provide: API_URL, useValue: '/api' }]\n\n// komponent / serwis\nprivate analytics = inject(Analytics);\nprivate apiUrl = inject(API_URL);",
+      "lang": "typescript",
+      "tip": "Pytanie pułapka: „czemu nie interfejs jako token?” – bo interfejsy TypeScript nie istnieją w runtime."
+    },
+    {
+      "id": "arch-p015",
+      "topic": "SOLID: DIP",
+      "level": 3,
+      "q": "Kiedy NIE wprowadzać abstrakcji tylko po to, by spełnić DIP?",
+      "a": "Nie abstrahuję stabilnych zależności i wartości: typów BCL (List<T>, string), DTO, value objectów, czystych funkcji bez efektów ubocznych czy klas domenowych. Abstrakcja jest warta kosztu na granicach zmienności i efektów ubocznych: baza, sieć, system plików, czas (TimeProvider), losowość, zewnętrzne API, kolejki. Interfejs z jedną implementacją dodany „bo DIP” to zwykle szum.",
+      "deep": "DIP mówi o zależności od rzeczy stabilnych: abstrakcje są stabilniejsze od implementacji, ale stabilne konkrety (biblioteka standardowa) są równie dobre. Koszt nadmiaru: każde przejście przez interfejs utrudnia „Go to definition”, rośnie liczba rejestracji w DI i ryzyko błędnej konfiguracji wykrytej dopiero w runtime. W .NET 8 doszła wbudowana abstrakcja TimeProvider – przykład dobrze dobranej abstrakcji na efekt uboczny (czas), zamiast własnego IDateTimeProvider. Druga skrajność: wstrzykiwanie konkretnych klas jest OK dla wewnętrznych serwisów modułu – kontener DI zarejestruje je bez interfejsu (AddScoped<PriceCalculator>()). Zasada praktyczna: interfejs dodaję, gdy (1) jest druga implementacja, (2) to granica I/O, którą chcę podmienić w testach, albo (3) to kontrakt między modułami/zespołami."
+    },
+    {
+      "id": "arch-p016",
+      "topic": "DRY, KISS, YAGNI",
+      "level": 2,
+      "q": "DRY dotyczy wiedzy, a nie tekstu kodu – co to znaczy w praktyce? Czym jest WET?",
+      "a": "Oryginalna definicja (Pragmatic Programmer): każdy element wiedzy ma jedną, jednoznaczną reprezentację w systemie. Naruszeniem jest ta sama reguła biznesowa (np. limit rabatu 30%) zaszyta w trzech miejscach, a nie dwa podobne pętle for. Dwa fragmenty identycznego kodu wyrażające różne reguły (walidacja kodu pocztowego dla PL i dla adresu faktury) mogą zostać zduplikowane, bo zmienią się niezależnie. WET („Write Everything Twice” / „We Enjoy Typing”) to żartobliwa nazwa kodu, w którym wszystko jest kopiowane.",
+      "tip": "Przykład na rozmowę: walidacja tej samej reguły na froncie (UX) i backendzie (bezpieczeństwo) jest uzasadniona – źródłem prawdy jest backend, a front może ją powielić lub pobrać z API/kontraktu (np. generowany klient z OpenAPI).",
+      "deep": "DRY obejmuje też dane i konfigurację: schemat bazy, DTO i walidacja mogą być generowane z jednego źródła (migracje EF, OpenAPI → klient TypeScript), co eliminuje rozjazdy kontraktu frontend–backend. Duplikacja między bounded contextami lub mikroserwisami jest często celowa – wspólna biblioteka modeli wiąże wdrożenia i tworzy rozproszony monolit. Testy to inna kategoria: lepiej czytelny, nieco powtarzalny test (DAMP – Descriptive And Meaningful Phrases) niż test, którego zrozumienie wymaga skakania po helperach. Narzędzia do wykrywania duplikacji (np. analiza w SonarQube) wskazują kandydatów, ale decyzję o łączeniu podejmuje się po pytaniu: „czy te dwa miejsca zmienią się zawsze razem?”"
+    },
+    {
+      "id": "arch-p017",
+      "topic": "DRY, KISS, YAGNI",
+      "level": 3,
+      "q": "Czym jest „wrong abstraction” i co robisz, gdy na nią trafisz?",
+      "a": "To wspólna abstrakcja wyciągnięta z przypadkowo podobnego kodu, która z każdym nowym wymaganiem obrasta parametrami i flagami (bool isExport, bool skipVat, string mode), aż staje się trudniejsza niż duplikacja. Sandi Metz: „duplication is far cheaper than the wrong abstraction”. Rozwiązanie: wkleić kod z powrotem do miejsc wywołania (inline), usunąć gałęzie nieużywane w danym miejscu i dopiero po zobaczeniu prawdziwego wzorca wyciągnąć nową abstrakcję.",
+      "deep": "Mechanizm powstawania: programista A wyciąga wspólną metodę; programista B dostaje nowe wymaganie „prawie takie samo” i – bo abstrakcja już istnieje i wygląda na autorytatywną – dodaje parametr zamiast ją podważyć. Po kilku iteracjach metoda ma kombinatoryczną liczbę ścieżek i każda zmiana grozi regresją u innych wywołujących. Rule of three (Don Roberts / Fowler w „Refactoring”): przy pierwszym razie piszesz, przy drugim tolerujesz duplikację, przy trzecim refaktoryzujesz – wtedy widać, co jest wspólne, a co różne. Sygnały złej abstrakcji: parametry boolowskie sterujące przepływem, if-y sprawdzające, „kto woła”, testy, które trzeba zmieniać przy każdej zmianie dowolnego klienta. Podobnie w Angularze: „uniwersalny” komponent tabeli z 25 inputami jest często gorszy niż dwa dedykowane komponenty korzystające ze wspólnych prymitywów (np. CDK table)."
+    },
+    {
+      "id": "arch-p018",
+      "topic": "DRY, KISS, YAGNI",
+      "level": 1,
+      "q": "Czym różni się KISS od YAGNI? Podaj przykłady i powiedz, kiedy zasady wchodzą sobie w drogę.",
+      "a": "KISS dotyczy sposobu rozwiązania: z dwóch działających rozwiązań wybierz prostsze (czytelna pętla zamiast sprytnego jednolinijkowego LINQ z Aggregate, proste if zamiast generycznego silnika reguł). YAGNI dotyczy zakresu: nie implementuj funkcji ani elastyczności, której dziś nikt nie potrzebuje (multi-tenant, plugin system, konfigurowalne wszystko). Konflikty: DRY pcha do abstrakcji, KISS i YAGNI do prostoty – przy wątpliwości wybieram czytelność i odkładam abstrakcję do „trzeciego razu”.",
+      "tip": "YAGNI nie zwalnia z decyzji trudnych do odwrócenia (format danych, publiczne API, bezpieczeństwo) – tam warto pomyśleć z wyprzedzeniem."
+    },
+    {
+      "id": "arch-p019",
+      "topic": "Inne zasady projektowe",
+      "level": 2,
+      "q": "Czym jest Law of Demeter i kiedy jego „naruszenie” jest w porządku?",
+      "a": "Zasada „rozmawiaj tylko z bezpośrednimi przyjaciółmi”: metoda woła metody swojego obiektu, parametrów, obiektów, które sama stworzyła, i swoich pól – nie sięga przez łańcuch do obcych obiektów (order.Customer.Address.City.ToUpper()). Taki „train wreck” wiąże kod ze strukturą wielu klas – zmiana Address psuje odległe miejsca. Poprawka: zapytać właściciela (order.ShippingCity) lub przekazać potrzebną wartość. Nie dotyczy fluent API i LINQ (każde wywołanie zwraca ten sam „rodzaj” obiektu) ani nawigacji po prostych DTO/rekordach bez zachowania.",
+      "code": "// train wreck – zależność od struktury Customer i Address\nvar city = order.Customer.Address.City;\n\n// lepiej: obiekt udostępnia to, co wie\npublic sealed class Order\n{\n    public Customer Customer { get; }\n    public string ShippingCity => Customer.ShippingAddress.City;\n}",
+      "lang": "csharp",
+      "tip": "Mechaniczne „liczenie kropek” to błąd – chodzi o zależność od wewnętrznej struktury obcych obiektów, nie o składnię."
+    },
+    {
+      "id": "arch-p020",
+      "topic": "Inne zasady projektowe",
+      "level": 2,
+      "q": "Czym jest Tell, Don't Ask i jaki ma związek z anemicznym modelem domeny?",
+      "a": "Zamiast pytać obiekt o stan i podejmować decyzję za niego (if (account.Balance >= amount) account.Balance -= amount), mówimy mu, co ma zrobić (account.Withdraw(amount)) – logika i niezmienniki zostają tam, gdzie dane. Anemiczny model (encje z samymi getterami/setterami, cała logika w serwisach) systematycznie łamie tę zasadę: reguła sprawdzana jest w wielu serwisach i łatwo ją pominąć.",
+      "code": "public sealed class Account\n{\n    public decimal Balance { get; private set; }\n    public void Withdraw(decimal amount)\n    {\n        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(amount);\n        if (Balance < amount) throw new InsufficientFundsException(Balance, amount);\n        Balance -= amount;\n    }\n}",
+      "lang": "csharp",
+      "tip": "Powiąż to z Information Expert z GRASP i z encjami bogatymi w zachowanie w DDD."
+    },
+    {
+      "id": "arch-p021",
+      "topic": "Inne zasady projektowe",
+      "level": 1,
+      "q": "Wyjaśnij high cohesion, low coupling i Separation of Concerns.",
+      "a": "Cohesion (spójność) – jak bardzo elementy modułu są ze sobą powiązane i służą jednemu celowi; chcemy wysokiej. Coupling (sprzężenie) – jak bardzo moduł zależy od szczegółów innych; chcemy niskiego, żeby zmiana jednego nie wymuszała zmian w drugim. Separation of Concerns to dzielenie systemu na części odpowiedzialne za różne aspekty: UI, logika biznesowa, dostęp do danych, a także przekrojowe (logowanie, autoryzacja) wyciągane do middleware, filtrów czy interceptorów. W Angularze: komponent (widok), serwis (stan/logika), interceptor (auth); w .NET: kontroler, serwis/handler, repozytorium.",
+      "tip": "SRP to SoC na poziomie klasy; podział na moduły „po funkcjonalnościach” (feature folders, vertical slices) zwykle daje wyższą spójność niż podział „po warstwach technicznych”."
+    },
+    {
+      "id": "arch-p022",
+      "topic": "Inne zasady projektowe",
+      "level": 1,
+      "q": "Na czym polega Fail Fast i jak go stosujesz w .NET?",
+      "a": "Błąd ma się ujawnić jak najwcześniej i jak najbliżej przyczyny, zamiast propagować złe dane dalej (null przechodzący przez trzy warstwy i wybuchający w zupełnie innym miejscu). W praktyce: guard clauses na wejściu metod publicznych, walidacja requestu na granicy API, walidacja konfiguracji przy starcie aplikacji (ValidateOnStart), nullable reference types, niezmienniki w konstruktorach encji. Fail fast nie oznacza „wyłączaj aplikację” – oznacza nie ukrywać błędu (żadnych pustych catch).",
+      "code": "public Order(CustomerId customerId, IReadOnlyList<OrderLine> lines)\n{\n    ArgumentNullException.ThrowIfNull(lines);\n    if (lines.Count == 0) throw new ArgumentException(\"Order must have lines.\", nameof(lines));\n    (CustomerId, Lines) = (customerId, lines);\n}\n\nbuilder.Services.AddOptions<SmtpOptions>()\n    .BindConfiguration(\"Smtp\").ValidateDataAnnotations().ValidateOnStart();",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-p023",
+      "topic": "Inne zasady projektowe",
+      "level": 1,
+      "q": "Co oznaczają Principle of Least Astonishment i Boy Scout Rule?",
+      "a": "Principle of Least Astonishment (POLA): kod i API mają zachowywać się tak, jak sugeruje nazwa i konwencja – GetUser nie powinien tworzyć użytkownika, właściwość nie powinna robić zapytania do bazy, metoda Async ma zwracać Task, a IsValid nie może zmieniać stanu. Boy Scout Rule: „zostaw kod czystszym, niż go zastałeś” – przy okazji zadania poprawiasz drobiazgi w dotykanym kodzie (nazwa, wydzielenie metody, usunięcie martwego kodu), co stopniowo spłaca dług techniczny bez osobnych projektów refaktoryzacji.",
+      "tip": "Boy Scout Rule ma granicę: drobne porządki tak, ale duży refaktoring w PR z funkcjonalnością utrudnia review – wtedy osobny PR."
+    },
+    {
+      "id": "arch-p024",
+      "topic": "Inne zasady projektowe",
+      "level": 3,
+      "q": "Czym jest GRASP? Omów Information Expert, Creator, Controller, Low Coupling i High Cohesion.",
+      "a": "GRASP (Craig Larman) to 9 wzorców przypisywania odpowiedzialności klasom. Information Expert – odpowiedzialność dostaje klasa, która ma potrzebne dane (Order liczy swoją sumę z pozycji). Creator – obiekt B tworzy A, jeśli B zawiera/agreguje A lub ma dane do jego inicjalizacji (Order tworzy OrderLine). Controller – pierwszy obiekt za UI przyjmujący zdarzenie systemowe i delegujący je dalej (kontroler API lub handler przypadku użycia, bez logiki biznesowej). Low Coupling i High Cohesion – kryteria oceny, które z możliwych przypisań wybrać.",
+      "deep": "Pozostałe wzorce GRASP to Polymorphism (warianty zachowania przez polimorfizm zamiast warunków – odpowiednik OCP), Pure Fabrication (klasa sztuczna, spoza domeny, np. repozytorium, żeby nie łamać spójności encji), Indirection (pośrednik zmniejszający coupling, np. mediator, adapter) i Protected Variations (osłanianie punktów zmienności stabilnym interfejsem – idea bliska OCP i DIP). Information Expert bywa w konflikcie z SoC: „ekspertem” od zapisu Order jest Order, ale nie chcemy w nim SQL – dlatego Pure Fabrication (repozytorium). Creator w praktyce realizują fabryki statyczne i metody encji agregatu (order.AddLine(...)), co pilnuje niezmienników agregatu w DDD. Controller w ASP.NET Core powinien być cienki: mapowanie HTTP ↔ komenda i delegacja do warstwy aplikacji; „fat controller” to naruszenie High Cohesion. Na rozmowie GRASP pojawia się rzadziej niż SOLID, więc wystarczy znać nazwy i umieć podać przykład."
+    },
+    {
+      "id": "arch-p025",
+      "topic": "IoC i Dependency Injection",
+      "level": 1,
+      "q": "Czym się różnią IoC, Dependency Injection i Service Locator?",
+      "a": "Inversion of Control to ogólna idea: to nie mój kod steruje przepływem i tworzeniem obiektów, tylko framework („don't call us, we'll call you”) – np. ASP.NET Core sam tworzy kontroler i woła akcję. Dependency Injection to konkretna technika IoC: obiekt dostaje zależności z zewnątrz (najczęściej przez konstruktor) zamiast je tworzyć. Service Locator to alternatywa, w której obiekt sam pobiera zależności z globalnego rejestru (provider.GetService<T>()) – zależności są ukryte, więc uznaje się go za antywzorzec w kodzie aplikacyjnym. DIP to zasada projektowa, którą DI pomaga zrealizować.",
+      "tip": "Formuła na rozmowę: DIP = zasada (co), DI = technika (jak), kontener IoC = narzędzie (czym)."
+    },
+    {
+      "id": "arch-p026",
+      "topic": "IoC i Dependency Injection",
+      "level": 2,
+      "q": "Dlaczego Service Locator jest uważany za antywzorzec i kiedy użycie IServiceProvider jest uzasadnione?",
+      "a": "Zależności są ukryte w ciele metod: z sygnatury konstruktora nie wiadomo, czego klasa potrzebuje; brak rejestracji wychodzi dopiero w runtime przy konkretnym wywołaniu; testy muszą konfigurować kontener zamiast przekazać mocki; klasa zależy od kontenera. Uzasadnione użycia to infrastruktura na granicy: fabryki tworzące obiekty dynamicznie, middleware, IServiceScopeFactory w BackgroundService (tworzenie scope'u dla serwisów scoped), integracja z bibliotekami, które nie wspierają DI.",
+      "code": "// antywzorzec\npublic class OrderService(IServiceProvider sp)\n{\n    public Task PlaceAsync(Order o) => sp.GetRequiredService<IOrderRepository>().AddAsync(o, default);\n}\n\n// uzasadnione: BackgroundService (singleton) potrzebuje scoped DbContext\npublic sealed class Cleanup(IServiceScopeFactory scopes) : BackgroundService\n{\n    protected override async Task ExecuteAsync(CancellationToken ct)\n    {\n        await using var scope = scopes.CreateAsyncScope();\n        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();\n        /* ... */\n    }\n}",
+      "lang": "csharp",
+      "deep": "Mark Seemann („Dependency Injection Principles, Practices, and Patterns”) definiuje Service Locator nie przez API, a przez rolę: to samo GetService w composition root jest w porządku, a w klasie domenowej – już nie. Ukryte zależności łamią też zasadę jawności kontraktu (POLA) i utrudniają wykrycie constructor over-injection, bo konstruktor wygląda „czysto”. ValidateOnBuild nie wykryje brakującej rejestracji pobieranej przez locator, bo kontener nie widzi tej zależności w grafie. Wariantem jest statyczny „ServiceLocator.Current” albo przechowywanie IServiceProvider w polu statycznym – dodatkowo psuje równoległe testy i scope'y. Zamiast lokatora dla dynamicznego wyboru implementacji lepiej użyć wstrzykniętej fabryki (Func<T>, własny IXFactory), IEnumerable<T> lub keyed services."
+    },
+    {
+      "id": "arch-p027",
+      "topic": "IoC i Dependency Injection",
+      "level": 2,
+      "q": "Constructor, property i method injection – czym się różnią i co wspiera kontener .NET?",
+      "a": "Constructor injection – zależności w konstruktorze: jawne, wymagane, obiekt zawsze w poprawnym stanie, można użyć readonly; domyślny wybór. Property injection – zależność ustawiana przez właściwość: dla opcjonalnych zależności z sensownym domyślnym zachowaniem; wbudowany kontener Microsoft.Extensions.DependencyInjection jej NIE wspiera (wspierają Autofac i komponenty Blazora przez [Inject]). Method injection – zależność przekazana do konkretnej metody, gdy jest potrzebna tylko tam lub zmienia się per wywołanie: [FromServices] w akcji MVC, parametry handlera minimal API, parametry InvokeAsync w middleware (tu można wstrzyknąć serwis scoped do middleware, który sam jest singletonem).",
+      "code": "app.MapPost(\"/orders\", async (CreateOrder cmd, IOrderService orders, CancellationToken ct) =>\n    Results.Ok(await orders.CreateAsync(cmd, ct)));   // method injection w minimal API\n\npublic sealed class TenantMiddleware(RequestDelegate next)\n{\n    public async Task InvokeAsync(HttpContext ctx, ITenantContext tenant) // scoped per request\n    { tenant.Resolve(ctx); await next(ctx); }\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-p028",
+      "topic": "IoC i Dependency Injection",
+      "level": 3,
+      "q": "Jak zorganizować rejestracje w kontenerze DI w .NET i jak wykrywać błędy konfiguracji wcześnie?",
+      "a": "Wszystkie rejestracje w jednym composition root (Program.cs) pogrupowane w metody rozszerzające per moduł (services.AddOrdersModule()). Przydatne mechanizmy: IEnumerable<T> do pobrania wszystkich implementacji (Strategy, pipeline), TryAdd*/TryAddEnumerable, by biblioteka nie nadpisywała rejestracji aplikacji, fabryki (sp => ...) dla złożonej konstrukcji, keyed services od .NET 8 (AddKeyedScoped + [FromKeyedServices]) zamiast ręcznych słowników. Wczesne wykrywanie: ValidateOnBuild i ValidateScopes (domyślnie włączone w Development) oraz test integracyjny, który buduje host z produkcyjną konfiguracją.",
+      "code": "builder.Services.AddKeyedScoped<INotifier, SmsNotifier>(\"sms\");\nbuilder.Services.AddKeyedScoped<INotifier, EmailNotifier>(\"email\");\n\npublic sealed class Alerts([FromKeyedServices(\"sms\")] INotifier sms) { /* ... */ }\n\nbuilder.Host.UseDefaultServiceProvider(o =>\n{\n    o.ValidateScopes = true;   // np. scoped wstrzyknięty do singletona\n    o.ValidateOnBuild = true;  // brakujące rejestracje przy starcie\n});",
+      "lang": "csharp",
+      "deep": "Wbudowany kontener jest celowo minimalny: brak property injection, interceptorów, auto-rejestracji po konwencji i dekoratorów – dla dekoracji i skanowania assembly często używa się biblioteki Scrutor albo rejestruje się dekorator ręcznie fabryką. Kolejność ma znaczenie: przy kilku rejestracjach tego samego typu GetService<T> zwraca ostatnią, a IEnumerable<T> wszystkie w kolejności rejestracji. ValidateOnBuild sprawdza tylko to, co kontener widzi w konstruktorach – nie wykryje zależności pobieranych przez locator ani otwartych generyków zamkniętych w runtime. Obiekty IDisposable tworzone przez kontener są przez niego zwalniane przy końcu scope'u; transient IDisposable rozwiązywany z root providera żyje do końca aplikacji (wyciek). W bibliotekach dobrą praktyką jest udostępnianie AddXyz(this IServiceCollection, Action<XyzOptions>) i użycie TryAdd, by aplikacja mogła podmienić implementację."
+    },
+    {
+      "id": "arch-p029",
+      "topic": "IoC i Dependency Injection",
+      "level": 2,
+      "q": "Konstruktor serwisu ma 9 zależności (constructor over-injection). Co to mówi o projekcie i co z tym zrobić?",
+      "a": "DI tylko ujawnia problem – klasa ma prawdopodobnie zbyt wiele odpowiedzialności (naruszenie SRP). Rozwiązania: podzielić serwis na mniejsze według przypadków użycia (osobny handler na komendę), wyciągnąć często używane razem zależności do fasady/serwisu agregującego, który ma własną logikę (nie tylko worek zależności), zamienić przekrojowe zależności (logowanie, metryki, retry) na dekoratory lub middleware. Nie należy „leczyć” tego przez Service Locator ani wstrzykiwanie IServiceProvider – to tylko ukrywa problem.",
+      "tip": "Facade Service (Mark Seemann) ma sens, gdy grupuje zależności wokół spójnego pojęcia domenowego; sam „parameter object” z 9 serwisami to kosmetyka."
+    },
+    {
+      "id": "arch-p030",
+      "topic": "Clean code",
+      "level": 1,
+      "q": "Jakie zasady nazewnictwa i budowy funkcji uważasz za najważniejsze w clean code?",
+      "a": "Nazwy wyrażają intencję i język domeny (overdueInvoices zamiast list2, CalculateLateFee zamiast Process), bez skrótów i kodowania typu w nazwie; klasy to rzeczowniki, metody to czasowniki, bool jako pytanie (IsActive, HasItems). Funkcje: małe, robiące jedną rzecz na jednym poziomie abstrakcji (nie mieszamy reguły biznesowej z parsowaniem stringa), 0–3 parametry, bez parametrów boolowskich sterujących przepływem (lepiej dwie metody), bez ukrytych efektów ubocznych. W .NET: konwencje PascalCase/camelCase, sufiks Async dla metod asynchronicznych, CancellationToken jako ostatni parametr.",
+      "tip": "Jeśli trudno nazwać funkcję bez „And”, prawdopodobnie robi dwie rzeczy."
+    },
+    {
+      "id": "arch-p031",
+      "topic": "Clean code",
+      "level": 1,
+      "q": "Czym są guard clauses (early return) i dlaczego poprawiają czytelność?",
+      "a": "To sprawdzenie warunków brzegowych na początku metody i natychmiastowe wyjście (return lub throw), zamiast zagnieżdżania „szczęśliwej ścieżki” w kolejnych if-ach (arrow code). Kod czyta się liniowo: najpierw przypadki odrzucone, potem główna logika na najniższym poziomie wcięcia. Zmniejsza to złożoność cyklomatyczną postrzeganą przez czytelnika i ułatwia dodawanie kolejnych warunków.",
+      "code": "// zamiast trzech zagnieżdżonych if-ów\npublic decimal Discount(Customer? c, Cart cart)\n{\n    if (c is null) return 0m;\n    if (cart.Items.Count == 0) return 0m;\n    if (!c.IsLoyal) return cart.Total * 0.02m;\n\n    return cart.Total * (c.Years >= 5 ? 0.10m : 0.05m);\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-p032",
+      "topic": "Clean code",
+      "level": 1,
+      "q": "Kiedy pisać komentarze, a kiedy je zastąpić kodem? Co z magic numbers?",
+      "a": "Komentarz ma wyjaśniać „dlaczego”, a nie „co” – kod sam mówi, co robi. Warto komentować decyzje nieoczywiste (obejście błędu biblioteki z linkiem do issue, wymaganie prawne, powód konkretnego algorytmu), publiczne API (XML docs / JSDoc) i TODO z numerem zadania. Komentarze opisujące kod zastępuję lepszą nazwą lub wydzieloną metodą; zakomentowany kod usuwam (jest w gicie). Magic numbers (0.23m, 86400, status == 3) zamieniam na nazwane stałe, enumy, konfigurację (IOptions) lub value objecty – nazwa niesie znaczenie, a zmiana jest w jednym miejscu.",
+      "code": "// źle\nif (order.Status == 3 && DateTime.UtcNow - order.CreatedAt > TimeSpan.FromSeconds(1209600)) { }\n\n// lepiej\nprivate static readonly TimeSpan ReturnWindow = TimeSpan.FromDays(14);\nif (order.Status == OrderStatus.Delivered && clock.GetUtcNow() - order.CreatedAt > ReturnWindow) { }",
+      "lang": "csharp"
+    },
+    {
+      "id": "arch-p033",
+      "topic": "Clean code",
+      "level": 2,
+      "q": "Na czym polega Command-Query Separation (CQS) i jak ma się do CQRS?",
+      "a": "Metoda jest albo komendą (zmienia stan, nic nie zwraca), albo zapytaniem (zwraca wynik, nie ma efektów ubocznych) – nigdy oboma naraz. Dzięki temu zapytania można bezpiecznie wywoływać wielokrotnie, cache'ować i używać w asercjach czy w debuggerze, a efekty uboczne są widoczne w sygnaturze. CQS (Bertrand Meyer) dotyczy metod; CQRS przenosi tę ideę na poziom architektury – osobne modele i ścieżki dla zapisu i odczytu.",
+      "code": "// narusza CQS: getter z efektem ubocznym\npublic User GetUser(int id) { var u = _repo.Find(id); u.LastAccess = DateTime.UtcNow; _repo.Save(u); return u; }\n\n// rozdzielone\npublic User? FindUser(int id) => _repo.Find(id);\npublic void MarkAccessed(int id) { /* zmiana stanu */ }",
+      "lang": "csharp",
+      "deep": "Świadome, akceptowane wyjątki: Stack.Pop/Queue.Dequeue (zwraca i usuwa – rozdzielenie byłoby niebezpieczne przy współbieżności), operacje atomowe typu Interlocked.Increment, ConcurrentDictionary.GetOrAdd, a także komendy zwracające wygenerowane Id (pragmatycznie dopuszczalne, alternatywą są Id generowane po stronie klienta, np. Guid v7). Wzorzec TryParse/TryGetValue jest zapytaniem z parametrem out – zgodny z CQS. W Angularze analogicznie: computed() i gettery w szablonie muszą być czyste (bez efektów ubocznych), bo są wywoływane wielokrotnie przez change detection; efekty należą do metod, effect() lub handlerów zdarzeń. Złamanie CQS w getterze to klasyczne źródło błędów „zmienia się, gdy najedziesz debuggerem”."
+    },
+    {
+      "id": "arch-p034",
+      "topic": "Clean code",
+      "level": 2,
+      "q": "Jakie korzyści daje immutability i jak ją stosujesz w C# i Angularze?",
+      "a": "Obiekt niemutowalny nie zmienia stanu po utworzeniu, więc jest bezpieczny wątkowo, łatwy do rozumowania (nikt go „za plecami” nie zmieni), dobry jako klucz słownika czy value object i trywialny do porównania. W C#: record z init/positional properties i wyrażeniem with, readonly struct, required, kolekcje IReadOnlyList<T>, ImmutableArray<T>, FrozenDictionary (.NET 8). W Angularze immutability jest wymagana praktycznie: signal.update musi zwrócić nową referencję tablicy/obiektu, a OnPush i computed opierają się na porównaniu referencji – mutacja w miejscu nie zostanie wykryta.",
+      "code": "public sealed record Money(decimal Amount, string Currency)\n{\n    public Money Add(Money other) => other.Currency == Currency\n        ? this with { Amount = Amount + other.Amount }\n        : throw new InvalidOperationException(\"Currency mismatch\");\n}",
+      "lang": "csharp",
+      "tip": "IReadOnlyList<T> to tylko widok tylko-do-odczytu – pod spodem lista może się zmieniać; prawdziwą niemutowalność dają ImmutableArray/ImmutableList lub kopia.",
+      "deep": "Koszt immutability to alokacje: każda zmiana tworzy nowy obiekt, co w gorących pętlach podnosi presję na GC – tam stosuje się mutowalne bufory lokalnie i wystawia niemutowalny wynik. Kolekcje Immutable* używają współdzielenia struktury (drzewa), więc pojedyncze dodanie jest O(log n), ale odczyt bywa wolniejszy niż List<T>; ImmutableArray to cienka nakładka na tablicę – szybki odczyt, kosztowna modyfikacja. FrozenDictionary/FrozenSet są drogie w budowie, za to bardzo szybkie w odczycie – idealne do konfiguracji ładowanej raz. Rekordy są niemutowalne płytko: record z List<T> nadal pozwala zmienić zawartość listy, a równość rekordu porównuje referencję listy, nie elementy. W EF Core encje zwykle są mutowalne (change tracking), więc niemutowalność stosuje się głównie w value objectach (owned types / complex types) i DTO."
+    },
+    {
+      "id": "arch-p035",
+      "topic": "Code smells i refaktoryzacja",
+      "level": 1,
+      "q": "Wymień najczęstsze code smells i powiedz krótko, co oznaczają.",
+      "a": "Long method – metoda robiąca wiele kroków na różnych poziomach abstrakcji. God class (Large class) – klasa, która wie i robi za dużo. Feature envy – metoda bardziej interesuje się danymi innej klasy niż swojej. Primitive obsession – pojęcia domenowe jako string/int/decimal (email, kwota, NIP). Data clumps – te same grupy parametrów/pól wędrujące razem (street, city, zip). Shotgun surgery – jedna zmiana wymaga drobnych edycji w wielu klasach. Switch statements – ten sam switch po typie w wielu miejscach. Do tego: duplicated code, long parameter list, dead code, speculative generality, temporary field.",
+      "tip": "Smell to sygnał do przyjrzenia się, nie automatyczny błąd – na rozmowie warto to powiedzieć wprost."
+    },
+    {
+      "id": "arch-p036",
+      "topic": "Code smells i refaktoryzacja",
+      "level": 2,
+      "q": "Primitive obsession i data clumps – jak je refaktoryzować?",
+      "a": "Primitive obsession: zamiast string email, decimal amount + string currency tworzę value object (Email, Money) z walidacją w jednym miejscu – nie da się pomylić kolejności argumentów ani przekazać niezwalidowanej wartości, a reguła (format, zaokrąglenie) jest w typie. Data clumps (te same 3–4 parametry wszędzie razem) usuwam przez Introduce Parameter Object – np. DateRange(From, To) albo Address – który z czasem przyciąga powiązane zachowanie (Contains, Overlaps).",
+      "code": "public sealed record DateRange\n{\n    public DateOnly From { get; }\n    public DateOnly To { get; }\n    public DateRange(DateOnly from, DateOnly to)\n    {\n        if (to < from) throw new ArgumentException(\"To must be >= From\");\n        (From, To) = (from, to);\n    }\n    public bool Contains(DateOnly d) => d >= From && d <= To;\n}\n// zamiast: Report(DateOnly from, DateOnly to, ...) wszędzie\npublic Report Build(DateRange period, CustomerId customer) { /* ... */ }",
+      "lang": "csharp",
+      "tip": "Value objecty dobrze mapują się w EF Core jako owned/complex types – warto wspomnieć, jeśli rozmowa idzie w DDD."
+    },
+    {
+      "id": "arch-p037",
+      "topic": "Code smells i refaktoryzacja",
+      "level": 3,
+      "q": "Feature envy, shotgun surgery i divergent change – jak je rozpoznać i jakimi refaktoryzacjami naprawić?",
+      "a": "Feature envy: metoda w serwisie sięga po pięć pól innego obiektu, żeby coś policzyć – naprawa: Move Method do klasy z danymi (Information Expert / Tell, Don't Ask). Shotgun surgery: dodanie nowego statusu wymaga zmian w 8 plikach – wiedza jest rozproszona; naprawa: Move Method/Field, zebranie odpowiedzialności w jednej klasie lub module (np. polimorficzny typ statusu). Divergent change to odwrotność: jedna klasa zmienia się z wielu niezwiązanych powodów – naprawa: Extract Class (SRP).",
+      "deep": "Shotgun surgery i divergent change to dwa objawy złego rozkładu odpowiedzialności: pierwszy oznacza zbyt niską spójność wiedzy (jedno pojęcie w wielu miejscach), drugi – zbyt wiele pojęć w jednym miejscu. Narzędziem diagnostycznym jest historia gita: pliki, które prawie zawsze zmieniają się razem w commitach (change coupling, analiza „code as a crime scene” Adama Tornhilla), wskazują na shotgun surgery; pliki z największą liczbą zmian i złożonością (hotspoty) – na god class. Feature envy bywa uzasadnione we wzorcach Strategy/Visitor, gdzie logikę świadomie trzymamy poza danymi, oraz przy anemicznych DTO na granicy API. W architekturze warstwowej shotgun surgery często wynika z podziału po warstwach technicznych – nowa właściwość wymaga zmiany encji, DTO, mappera, walidatora, kontrolera i komponentu; vertical slices i generowanie kontraktów (OpenAPI) zmniejszają ten koszt."
+    },
+    {
+      "id": "arch-p038",
+      "topic": "Code smells i refaktoryzacja",
+      "level": 2,
+      "q": "Jak przeprowadzić refaktoryzację „Replace Conditional with Polymorphism” krok po kroku?",
+      "a": "1) Upewnij się, że zachowanie jest pokryte testami (jeśli nie – dopisz testy charakteryzacyjne). 2) Wydziel ciało każdej gałęzi do osobnej metody (Extract Method). 3) Zdefiniuj interfejs/abstrakcję (Strategy) z tą operacją. 4) Przenieś każdą gałąź do osobnej klasy implementującej interfejs. 5) Zastąp switch wyborem implementacji w jednym miejscu (fabryka, słownik, DI z IEnumerable<T> lub keyed services). 6) Uruchom testy po każdym kroku i usuń stary switch. Jeśli ten sam switch był w kilku miejscach, wszystkie operacje trafiają jako metody tej samej strategii.",
+      "tip": "Gdy warianty różnią się tylko danymi (stawka, limit), zamiast hierarchii klas wystarczy tabela/słownik konfiguracji – to też usuwa switch."
+    },
+    {
+      "id": "arch-p039",
+      "topic": "Code smells i refaktoryzacja",
+      "level": 2,
+      "q": "Jak bezpiecznie refaktoryzować kod legacy bez testów?",
+      "a": "Najpierw siatka bezpieczeństwa: testy charakteryzacyjne (characterization tests), które utrwalają obecne zachowanie, nawet jeśli wydaje się błędne – również approval/snapshot testy dla złożonych wyników. Do tego potrzebne są seams (szwy) – miejsca, gdzie można podmienić zależność, np. wydzielenie interfejsu dla czasu (TimeProvider) czy bazy. Potem małe kroki: jedna refaktoryzacja na raz, automatyczne refaktoryzacje IDE (Rider/VS: Extract Method, Rename, Introduce Parameter Object), testy po każdym kroku, częste commity. Refaktoryzacja i zmiana funkcjonalności w osobnych commitach/PR-ach, żeby review było proste, a ewentualny rollback bezpieczny.",
+      "deep": "Michael Feathers („Working Effectively with Legacy Code”) definiuje legacy jako kod bez testów i opisuje techniki tworzenia seams: Extract Interface, Parameterize Constructor, Subclass and Override Method, Sprout Method/Class (nową logikę piszę w nowej, przetestowanej metodzie i tylko ją wywołuję ze starego kodu) oraz Wrap Method. Większe zmiany architektoniczne robi się wzorcem Strangler Fig – nowa implementacja przejmuje ruch stopniowo (np. przez reverse proxy YARP lub feature flagi), a stara jest wyłączana kawałek po kawałku. Feature flagi i branch by abstraction pozwalają mergować do main często zamiast trzymać długą gałąź refaktoryzacyjną. Na produkcji przydaje się porównywanie wyników starej i nowej ścieżki w trybie shadow (np. biblioteka Scientist.NET) przed przełączeniem. Biznesowi uzasadniam refaktoryzację konkretnym kosztem: czasem wdrażania zmian, liczbą błędów w module, ryzykiem."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "arch-pq001",
+      "topic": "SOLID: SRP",
+      "level": 1,
+      "q": "Która zasada SOLID jest łamana w tym komponencie?",
+      "code": "export class InvoiceListComponent {\n  private http = inject(HttpClient);\n  invoices = signal<Invoice[]>([]);\n  constructor() {\n    this.http.get<Invoice[]>('/api/invoices').subscribe(list =>\n      this.invoices.set(list.map(i => ({ ...i, gross: i.net * 1.23 }))));\n  }\n  exportCsv() { /* budowanie CSV i pobranie pliku */ }\n}",
+      "lang": "typescript",
+      "options": [
+        "LSP – komponent nie dziedziczy po klasie bazowej",
+        "ISP – komponent nie implementuje OnInit",
+        "OCP – komponent używa signal zamiast BehaviorSubject",
+        "SRP – komponent łączy dostęp do API, regułę podatkową, eksport CSV i widok"
+      ],
+      "correct": 3,
+      "why": "Komponent ma kilka niezależnych powodów do zmiany: endpoint, stawka VAT, format CSV, layout. Poprawka: serwis API, reguła w czystej funkcji/serwisie, eksport w osobnym serwisie. Brak dziedziczenia nie łamie LSP, OnInit nie jest wymagany, a wybór signal nie ma związku z OCP."
+    },
+    {
+      "id": "arch-pq002",
+      "topic": "SOLID: SRP",
+      "level": 2,
+      "q": "Klasa UserService ma metody: Register, ChangePassword, GenerateMonthlyActivityReport, ExportUsersToExcel, SendNewsletter. Zmiany zgłaszają dział bezpieczeństwa, analitycy i marketing. Jaka jest najlepsza poprawka zgodna z SRP?",
+      "options": [
+        "Zostawić klasę i dodać interfejs IUserService, żeby spełnić SRP",
+        "Podzielić według aktorów/powodów zmian: konto i hasła, raportowanie, newsletter – osobne klasy (lub handlery)",
+        "Podzielić na tyle klas, ile jest metod – każda metoda w osobnej klasie z własnym interfejsem",
+        "Przenieść wszystkie metody do statycznej klasy UserHelpers"
+      ],
+      "correct": 1,
+      "why": "SRP to „jeden powód do zmiany / jeden aktor”. Tu są trzy grupy interesariuszy, więc trzy spójne klasy. Interfejs niczego nie dzieli, mechaniczne „metoda = klasa” to nadmierna fragmentacja (ravioli code), a statyczny helper tylko ukrywa problem i psuje testowalność."
+    },
+    {
+      "id": "arch-pq003",
+      "topic": "SOLID: OCP",
+      "level": 1,
+      "q": "Którą zasadę najbardziej narusza ten kod, jeśli podobny switch jest też w ShippingCalculator i InvoicePrinter?",
+      "code": "public decimal Tax(Order o) => o.Country switch\n{\n    \"PL\" => o.Net * 0.23m,\n    \"DE\" => o.Net * 0.19m,\n    \"CZ\" => o.Net * 0.21m,\n    _ => throw new NotSupportedException(o.Country)\n};",
+      "lang": "csharp",
+      "options": [
+        "OCP – każdy nowy kraj wymaga edycji kilku istniejących switchy",
+        "LSP – switch expression nie obsługuje dziedziczenia",
+        "DIP – metoda zależy od typu decimal zamiast od abstrakcji",
+        "ISP – Order ma zbyt wiele właściwości"
+      ],
+      "correct": 0,
+      "why": "Rozszerzenie (nowy kraj) wymaga modyfikacji sprawdzonego kodu w wielu miejscach – klasyczny objaw naruszenia OCP (i shotgun surgery). Rozwiązaniem jest strategia/polityka per kraj lub dane w konfiguracji. Zależność od decimal (typ stabilny) nie łamie DIP, a pozostałe odpowiedzi nie dotyczą problemu."
+    },
+    {
+      "id": "arch-pq004",
+      "topic": "SOLID: OCP",
+      "level": 2,
+      "q": "Chcesz dodać do aplikacji Angular logowanie czasu każdego żądania HTTP. Które rozwiązanie najlepiej realizuje OCP?",
+      "options": [
+        "Dodanie pomiaru czasu w każdym serwisie wywołującym HttpClient",
+        "Stworzenie klasy dziedziczącej po HttpClient i nadpisanie metody get",
+        "Nowy HttpInterceptorFn dopisany do withInterceptors([...]) w app.config.ts",
+        "Zmiana wszystkich komponentów, by zamiast HttpClient używały fetch z pomiarem czasu"
+      ],
+      "correct": 2,
+      "why": "Interceptory to punkt rozszerzeń frameworka: nowe zachowanie dodajesz nowym kodem bez modyfikacji istniejących serwisów. Edycja każdego serwisu to shotgun surgery, dziedziczenie po HttpClient nie obejmie innych wywołań (np. post) ani kodu bibliotek, a przejście na fetch to przepisanie aplikacji."
+    },
+    {
+      "id": "arch-pq005",
+      "topic": "SOLID: OCP",
+      "level": 3,
+      "q": "W całym systemie jest dokładnie jeden switch po enumie OrderStatus (4 wartości, nie zmieniały się od 3 lat), w metodzie mapującej status na etykietę. Kolega proponuje hierarchię klas statusów z polimorficzną metodą Label(). Co odpowiesz?",
+      "options": [
+        "Zgodzić się – każdy switch po enumie łamie OCP i należy go usunąć",
+        "Na razie zostawić switch – jedno miejsce i stabilny zbiór wartości; refaktoryzować, gdy switch zacznie się powtarzać lub statusy zaczną się często zmieniać",
+        "Zamienić enum na stringi, żeby można było dodawać statusy bez kompilacji",
+        "Przenieść switch do klasy statycznej, co rozwiązuje problem OCP"
+      ],
+      "correct": 1,
+      "why": "OCP chroni przed zmianami, które realnie występują. Pojedynczy switch na stabilnym zbiorze jest czytelny, a hierarchia dodałaby kosztu bez zysku (YAGNI). Sygnałem do refaktoryzacji jest powtarzanie się warunku (rule of three) lub częste dodawanie wariantów. Stringi tracą bezpieczeństwo typów, a klasa statyczna nic nie zmienia."
+    },
+    {
+      "id": "arch-pq006",
+      "topic": "SOLID: LSP",
+      "level": 1,
+      "q": "Co wypisze ten kod i jaką zasadę ilustruje?",
+      "code": "Rectangle r = new Square();   // Square : Rectangle, settery utrzymują równe boki\nr.Width = 5;\nr.Height = 4;\nConsole.WriteLine(r.Area);",
+      "lang": "csharp",
+      "options": [
+        "20 – przykład poprawnego polimorfizmu",
+        "20 – przykład OCP, bo Square rozszerza Rectangle bez modyfikacji",
+        "16 – naruszenie LSP: Square nie zachowuje kontraktu Rectangle (niezależne boki)",
+        "Błąd kompilacji – nie można przypisać Square do zmiennej typu Rectangle"
+      ],
+      "correct": 2,
+      "why": "Ustawienie Height = 4 ustawia oba boki na 4, więc pole to 16, a klient Rectangle oczekiwał 20. Podtyp zmienia zachowanie oczekiwane przez kod bazowy – to klasyczne naruszenie LSP. Przypisanie podtypu do zmiennej bazowej kompiluje się poprawnie."
+    },
+    {
+      "id": "arch-pq007",
+      "topic": "SOLID: LSP",
+      "level": 2,
+      "q": "Która implementacja łamie LSP względem tego kontraktu?",
+      "code": "public interface IDiscountPolicy\n{\n    // Zwraca rabat w zakresie 0..amount dla każdej kwoty >= 0\n    decimal Discount(decimal amount);\n}",
+      "lang": "csharp",
+      "options": [
+        "Implementacja, która zawsze zwraca 0",
+        "Implementacja, która zwraca 10% kwoty, ale nie więcej niż 50 zł",
+        "Implementacja, która loguje każde wywołanie przed obliczeniem rabatu",
+        "Implementacja, która rzuca ArgumentException dla kwot poniżej 100 zł"
+      ],
+      "correct": 3,
+      "why": "Rzucanie wyjątku dla kwot, które kontrakt dopuszcza, to wzmocnienie warunków wstępnych – klient używający interfejsu nagle dostaje błąd. Zwracanie 0 lub rabatu z limitem mieści się w gwarancjach (0..amount), a logowanie nie zmienia obserwowalnego kontraktu."
+    },
+    {
+      "id": "arch-pq008",
+      "topic": "SOLID: LSP",
+      "level": 3,
+      "q": "Metoda przyjmuje ICollection<T> i woła na niej Add. W produkcji czasem leci NotSupportedException. Co jest najbardziej prawdopodobną przyczyną i jak to poprawić?",
+      "options": [
+        "Przekazano tablicę lub ReadOnlyCollection<T>, które implementują interfejs, ale nie wspierają Add – przyjmować typ wyrażający potrzebę (np. zwracać nową kolekcję albo przyjmować List<T>) zamiast polegać na IsReadOnly",
+        "Kolekcja jest zbyt duża i Add przekracza limit pojemności",
+        "ICollection<T> nie ma metody Add, trzeba rzutować na IList<T>",
+        "To błąd wielowątkowości, który rozwiązuje lock wokół Add"
+      ],
+      "correct": 0,
+      "why": "Tablice i ReadOnlyCollection<T> implementują ICollection<T>/IList<T>, ale Add rzuca NotSupportedException – znany przykład naruszenia LSP w BCL. Przepełnienie pojemności daje inny wyjątek, ICollection<T> ma Add, a problemy wielowątkowe nie objawiają się NotSupportedException."
+    },
+    {
+      "id": "arch-pq009",
+      "topic": "SOLID: ISP",
+      "level": 1,
+      "q": "Którą zasadę łamie ten kod?",
+      "code": "public interface IWorker { void Work(); void Eat(); void Sleep(); }\n\npublic class RobotWorker : IWorker\n{\n    public void Work() { /* ... */ }\n    public void Eat() => throw new NotImplementedException();\n    public void Sleep() => throw new NotImplementedException();\n}",
+      "lang": "csharp",
+      "options": [
+        "SRP – RobotWorker ma za mało metod",
+        "ISP – interfejs jest zbyt szeroki i zmusza implementację do metod, których nie potrzebuje",
+        "OCP – nie można dziedziczyć po RobotWorker",
+        "DIP – RobotWorker powinien być abstrakcyjny"
+      ],
+      "correct": 1,
+      "why": "„Gruby” interfejs wymusza puste lub rzucające metody. Poprawka: interfejsy rolowe (IWorkable, IFeedable) i implementowanie tylko potrzebnych. Rzucanie NotImplementedException łamie przy okazji LSP, ale źródłem problemu jest kształt interfejsu."
+    },
+    {
+      "id": "arch-pq010",
+      "topic": "SOLID: ISP",
+      "level": 2,
+      "q": "Komponent Angulara UserBadge wyświetla tylko imię i avatar, ale ma `user = input.required<User>()`, gdzie User ma 30 pól. Testy wymagają budowy pełnego obiektu, a komponentu nie da się użyć dla Author z innego modułu. Jaka poprawka jest najbliższa ISP?",
+      "options": [
+        "Zawęzić wejście do tego, czego komponent potrzebuje, np. typ { name: string; avatarUrl: string } lub osobne inputy",
+        "Dodać do User pola z Author, żeby jeden typ pasował wszędzie",
+        "Zmienić input na any, żeby przyjmował dowolny obiekt",
+        "Wstrzyknąć do komponentu UserService i pobierać użytkownika po id"
+      ],
+      "correct": 0,
+      "why": "ISP: klient (komponent) nie powinien zależeć od danych, których nie używa. Wąski kontrakt ułatwia testy i reużycie. Rozszerzanie User zwiększa coupling, any wyłącza typowanie, a pobieranie danych w prezentacyjnym komponencie dokłada odpowiedzialność i zależność od HTTP."
+    },
+    {
+      "id": "arch-pq011",
+      "topic": "SOLID: DIP",
+      "level": 1,
+      "q": "Którą zasadę SOLID narusza ten kod najbardziej?",
+      "code": "public class OrderService\n{\n    private readonly SqlOrderRepository _repo = new(\"Server=prod;Database=Shop\");\n    private readonly SmtpEmailSender _mail = new();\n\n    public void Place(Order o) { _repo.Add(o); _mail.Send(o.CustomerEmail, \"Dziękujemy\"); }\n}",
+      "lang": "csharp",
+      "options": [
+        "LSP – SqlOrderRepository nie dziedziczy po OrderService",
+        "ISP – OrderService ma tylko jedną metodę",
+        "OCP – metoda Place nie jest virtual",
+        "DIP – logika biznesowa sama tworzy konkretne implementacje infrastruktury zamiast zależeć od abstrakcji"
+      ],
+      "correct": 3,
+      "why": "Serwis wysokiego poziomu zależy od szczegółów (SQL, SMTP, connection string) i tworzy je przez new – nie da się go przetestować bez bazy ani podmienić implementacji. Poprawka: IOrderRepository i IEmailSender przez konstruktor, rejestracja w DI. Brak virtual nie łamie OCP, a pozostałe odpowiedzi nie mają związku z kodem."
+    },
+    {
+      "id": "arch-pq012",
+      "topic": "SOLID: DIP",
+      "level": 3,
+      "q": "Solution ma projekty Domain, Application i Infrastructure. Interfejs IPaymentGateway leży w Infrastructure, a Application go referencjonuje i wstrzykuje przez konstruktor. Co jest nie tak?",
+      "options": [
+        "Nic – skoro jest interfejs wstrzykiwany przez konstruktor, DIP jest spełniony",
+        "Interfejs powinien leżeć w projekcie testów, żeby dało się go mockować",
+        "Application zależy od Infrastructure na poziomie projektów – abstrakcję powinna posiadać warstwa wyższa (Application), a Infrastructure ją implementować",
+        "Należy usunąć interfejs i wstrzykiwać konkretną klasę StripeGateway"
+      ],
+      "correct": 2,
+      "why": "DIP to także kierunek zależności między modułami: kod wysokiego poziomu definiuje port, a szczegóły go implementują (Clean/Hexagonal Architecture). Jeśli interfejs leży w Infrastructure, Application i tak kompiluje się z zależnością od infrastruktury. Projekt testów nie może być zależnością produkcyjną, a konkretna klasa pogłębia problem."
+    },
+    {
+      "id": "arch-pq013",
+      "topic": "SOLID: DIP",
+      "level": 2,
+      "q": "Dlaczego w Angularze nie można użyć interfejsu TypeScript jako tokenu DI i co stosuje się zamiast niego?",
+      "options": [
+        "Interfejsy mogą być tokenami, ale tylko w standalone components",
+        "Angular nie wspiera abstrakcji w DI – trzeba wstrzykiwać konkretne klasy",
+        "Interfejs jest tokenem tylko wtedy, gdy ma dekorator @Injectable()",
+        "Interfejsy znikają po kompilacji do JavaScriptu, więc nie istnieją w runtime – używa się klasy abstrakcyjnej lub InjectionToken"
+      ],
+      "correct": 3,
+      "why": "Token DI musi być wartością dostępną w runtime. Interfejsy TS są wymazywane (type erasure), więc tokenem bywa klasa abstrakcyjna ({ provide: Logger, useClass: ConsoleLogger }) lub InjectionToken<T> – zwłaszcza dla wartości i konfiguracji. Dekorator na interfejsie nie jest możliwy, a standalone nic tu nie zmienia."
+    },
+    {
+      "id": "arch-pq014",
+      "topic": "DRY, KISS, YAGNI",
+      "level": 3,
+      "q": "Metoda BuildDocument(order, bool isInvoice, bool isProforma, bool skipVat, string? mode) została kiedyś wyciągnięta z dwóch podobnych miejsc. Dziś ma 5 wywołujących i każda zmiana psuje któregoś. Co zrobić?",
+      "options": [
+        "Dodać kolejny parametr bool dla nowego przypadku – to zgodne z DRY",
+        "Zamienić parametry bool na jeden enum flag i zostawić logikę bez zmian",
+        "Rozpoznać złą abstrakcję: wkleić kod z powrotem do wywołujących (inline), uprościć każdy wariant i dopiero potem wyciągnąć to, co faktycznie wspólne",
+        "Skopiować metodę do BuildDocument2 dla nowego przypadku i zostawić starą"
+      ],
+      "correct": 2,
+      "why": "To „wrong abstraction”: podobieństwo było przypadkowe, a parametry sterujące przepływem rosną kombinatorycznie. Duplikacja jest tańsza niż zła abstrakcja (Sandi Metz). Kolejny bool pogłębia problem, enum flag to kosmetyka, a kopia ze starą metodą zostawia problem i dodaje duplikację."
+    },
+    {
+      "id": "arch-pq015",
+      "topic": "DRY, KISS, YAGNI",
+      "level": 1,
+      "q": "Reguła „maksymalny rabat to 30%” jest zaszyta w walidatorze API, w serwisie zamówień i w procedurze SQL. Biznes zmienia limit na 25% i zmieniono tylko dwa miejsca. Którą zasadę naruszono?",
+      "options": [
+        "DRY – ta sama wiedza biznesowa ma kilka reprezentacji",
+        "KISS – reguła jest zbyt prosta",
+        "YAGNI – limit rabatu nie był potrzebny",
+        "Law of Demeter – walidator sięga do bazy"
+      ],
+      "correct": 0,
+      "why": "DRY dotyczy wiedzy: jedna reguła powinna mieć jedno źródło prawdy (stała domenowa, konfiguracja, value object). Rozjazd przy zmianie to typowy koszt naruszenia DRY. Pozostałe zasady nie opisują tego problemu."
+    },
+    {
+      "id": "arch-pq016",
+      "topic": "DRY, KISS, YAGNI",
+      "level": 2,
+      "q": "Który przykład jest NAJLEPSZYM uzasadnieniem pozostawienia duplikacji?",
+      "options": [
+        "Ta sama formuła prowizji skopiowana w trzech serwisach jednej aplikacji",
+        "Dwa mikroserwisy mają własne, podobne klasy OrderDto – wspólna biblioteka wiązałaby ich wdrożenia i wersjonowanie",
+        "Identyczny connection string wpisany w kodzie w pięciu repozytoriach",
+        "Ta sama stała z limitem rozmiaru pliku w kontrolerze i walidatorze tego samego API"
+      ],
+      "correct": 1,
+      "why": "Podobne DTO w niezależnych serwisach to „przypadkowa” duplikacja – kontrakty ewoluują osobno, a współdzielona biblioteka tworzy rozproszony monolit. Pozostałe przykłady to ta sama wiedza (formuła, konfiguracja, limit), która powinna mieć jedno źródło prawdy."
+    },
+    {
+      "id": "arch-pq017",
+      "topic": "Inne zasady projektowe",
+      "level": 2,
+      "q": "Którą zasadę narusza ta linia w serwisie wysyłki?",
+      "code": "var zip = order.Customer.Profile.Addresses.Default.PostalCode.Trim();",
+      "lang": "csharp",
+      "options": [
+        "Liskov Substitution – łańcuch wywołań zmienia typ",
+        "Command-Query Separation – Trim ma efekt uboczny",
+        "Law of Demeter – serwis sięga przez łańcuch do wewnętrznej struktury wielu obiektów",
+        "Fail Fast – brak try/catch wokół wyrażenia"
+      ],
+      "correct": 2,
+      "why": "„Train wreck” uzależnia serwis od struktury Customer, Profile i Addresses – zmiana dowolnej z nich psuje odległy kod. Lepiej poprosić właściciela o potrzebną informację (order.ShippingPostalCode) lub przekazać ją jawnie. Trim nie ma efektów ubocznych, a fail fast nie polega na try/catch."
+    },
+    {
+      "id": "arch-pq018",
+      "topic": "Inne zasady projektowe",
+      "level": 2,
+      "q": "Które rozwiązanie najlepiej realizuje Tell, Don't Ask?",
+      "code": "// obecnie w kilku serwisach:\nif (cart.Items.Count < 50 && !cart.IsLocked)\n    cart.Items.Add(new CartItem(productId, qty));",
+      "lang": "csharp",
+      "options": [
+        "Metoda cart.AddItem(productId, qty) sprawdzająca limit i blokadę wewnątrz koszyka, z prywatną kolekcją Items",
+        "Statyczna klasa CartRules.CanAdd(cart) wywoływana przed cart.Items.Add",
+        "Wystawienie publicznej właściwości MaxItems, żeby serwisy mogły same sprawdzać limit",
+        "Przeniesienie warunku do kontrolera, żeby był w jednym miejscu przy wejściu do API"
+      ],
+      "correct": 0,
+      "why": "Tell, Don't Ask: mówimy obiektowi, co ma zrobić, a on pilnuje swoich niezmienników – nikt nie może ominąć reguły, dodając element bezpośrednio do kolekcji. Statyczna klasa reguł i MaxItems dalej opierają się na „pytaniu i decydowaniu za obiekt”, a warunek w kontrolerze nie chroni innych ścieżek."
+    },
+    {
+      "id": "arch-pq019",
+      "topic": "Inne zasady projektowe",
+      "level": 2,
+      "q": "Aplikacja startuje poprawnie z literówką w sekcji konfiguracji „Smtp”, a błąd wychodzi dopiero po kilku godzinach przy pierwszym mailu. Co najlepiej realizuje zasadę Fail Fast?",
+      "options": [
+        "Owinięcie wysyłki maila w try/catch, który loguje błąd i kontynuuje",
+        "AddOptions<SmtpOptions>().BindConfiguration(\"Smtp\").ValidateDataAnnotations().ValidateOnStart()",
+        "Ustawienie domyślnych wartości dla wszystkich pól SmtpOptions",
+        "Dodanie retry z exponential backoff przy wysyłce maila"
+      ],
+      "correct": 1,
+      "why": "ValidateOnStart sprawdza opcje przy uruchomieniu hosta, więc wdrożenie z błędną konfiguracją od razu się wywróci i nie trafi na produkcję. Catch i retry ukrywają lub odwlekają błąd, a domyślne wartości maskują literówkę."
+    },
+    {
+      "id": "arch-pq020",
+      "topic": "Inne zasady projektowe",
+      "level": 1,
+      "q": "Metoda `bool IsEmailTaken(string email)` przy okazji tworzy rezerwację adresu w bazie. Którą zasadę narusza to najbardziej oczywiście?",
+      "options": [
+        "Open/Closed Principle",
+        "Boy Scout Rule",
+        "Interface Segregation Principle",
+        "Principle of Least Astonishment (oraz CQS) – nazwa sugeruje zapytanie bez efektów ubocznych"
+      ],
+      "correct": 3,
+      "why": "Nikt nie spodziewa się, że metoda o nazwie pytania zmienia stan – wywołanie jej w walidacji czy debuggerze tworzy rezerwacje. To zaskakujące zachowanie (POLA) i jednocześnie łamie Command-Query Separation. Pozostałe zasady nie dotyczą tej sytuacji."
+    },
+    {
+      "id": "arch-pq021",
+      "topic": "Inne zasady projektowe",
+      "level": 3,
+      "q": "Gdzie według GRASP (Information Expert) powinna trafić logika liczenia sumy zamówienia z pozycjami, rabatem i podatkiem?",
+      "options": [
+        "Do OrderController, bo przyjmuje żądanie systemowe (Controller)",
+        "Do statycznej klasy OrderCalculatorHelper, żeby encja była prosta",
+        "Do Order (i OrderLine dla sum pozycji) – mają dane potrzebne do obliczenia",
+        "Do OrderRepository, bo ładuje dane zamówienia"
+      ],
+      "correct": 2,
+      "why": "Information Expert przypisuje odpowiedzialność klasie, która ma informacje – Order zna pozycje i rabat, OrderLine zna cenę i ilość. Controller w GRASP tylko przyjmuje zdarzenie i deleguje, repozytorium to Pure Fabrication do persystencji, a statyczny helper prowadzi do anemicznego modelu."
+    },
+    {
+      "id": "arch-pq022",
+      "topic": "IoC i Dependency Injection",
+      "level": 1,
+      "q": "Jak nazywa się ten wzorzec i jaki jest jego główny problem?",
+      "code": "public class ReportService(IServiceProvider provider)\n{\n    public async Task RunAsync()\n    {\n        var repo = provider.GetRequiredService<IReportRepository>();\n        var mailer = provider.GetRequiredService<IMailer>();\n        /* ... */\n    }\n}",
+      "lang": "csharp",
+      "options": [
+        "Constructor injection – zalecany sposób w .NET",
+        "Method injection – zależności są przekazywane do metody",
+        "Abstract Factory – poprawne tworzenie rodzin obiektów",
+        "Service Locator – zależności są ukryte, a brak rejestracji wychodzi dopiero w runtime przy wywołaniu"
+      ],
+      "correct": 3,
+      "why": "Klasa sama pobiera zależności z kontenera, więc jej konstruktor nie mówi, czego potrzebuje; testy muszą konfigurować kontener, a ValidateOnBuild nie wykryje brakującej rejestracji. Wstrzyknięty jest tylko IServiceProvider, więc to nie jest właściwe constructor ani method injection."
+    },
+    {
+      "id": "arch-pq023",
+      "topic": "IoC i Dependency Injection",
+      "level": 2,
+      "q": "Dodajesz właściwość `public ILogger<Foo>? Logger { get; set; }` z atrybutem lub bez i rejestrujesz Foo we wbudowanym kontenerze ASP.NET Core. Co się stanie?",
+      "options": [
+        "Logger pozostanie null – Microsoft.Extensions.DependencyInjection nie wspiera property injection",
+        "Kontener ustawi Logger automatycznie, bo typ jest zarejestrowany",
+        "Kontener ustawi Logger tylko, gdy Foo jest singletonem",
+        "Aplikacja nie wystartuje, bo ValidateOnBuild wykryje nieustawioną właściwość"
+      ],
+      "correct": 0,
+      "why": "Wbudowany kontener wspiera tylko constructor injection (plus method injection w miejscach obsługiwanych przez framework, np. akcje, minimal API, InvokeAsync middleware). Property injection oferują m.in. Autofac i komponenty Blazora ([Inject]). ValidateOnBuild sprawdza konstruktory, nie właściwości."
+    },
+    {
+      "id": "arch-pq024",
+      "topic": "IoC i Dependency Injection",
+      "level": 2,
+      "q": "Middleware jest tworzony raz na całą aplikację (konwencjonalny, z RequestDelegate w konstruktorze), a potrzebuje serwisu scoped ITenantContext. Jak go poprawnie dostarczyć?",
+      "options": [
+        "Przez konstruktor middleware – kontener utworzy nową instancję per request",
+        "Jako parametr metody InvokeAsync(HttpContext ctx, ITenantContext tenant) – method injection per request",
+        "Przez statyczne pole ustawiane w Program.cs po app.Build()",
+        "Zarejestrować ITenantContext jako singleton, żeby pasował do middleware"
+      ],
+      "correct": 1,
+      "why": "Middleware konwencjonalny jest de facto singletonem, więc zależność scoped w konstruktorze byłaby captive dependency (ValidateScopes to wykryje). Parametry InvokeAsync są rozwiązywane z RequestServices przy każdym żądaniu. Statyczne pole i singleton dzieliłyby stan między requestami różnych tenantów."
+    },
+    {
+      "id": "arch-pq025",
+      "topic": "IoC i Dependency Injection",
+      "level": 3,
+      "q": "Zarejestrowano trzy implementacje INotifier (Email, Sms, Push). Konstruktor A przyjmuje INotifier, konstruktor B – IEnumerable<INotifier>. Co dostaną?",
+      "options": [
+        "A – pierwszą zarejestrowaną (Email), B – wszystkie trzy",
+        "A – ostatnią zarejestrowaną implementację (Push), B – wszystkie trzy w kolejności rejestracji",
+        "A – wyjątek o niejednoznacznej rejestracji, B – wszystkie trzy",
+        "A – Push, B – tylko implementacje zarejestrowane przez TryAddEnumerable"
+      ],
+      "correct": 1,
+      "why": "We wbudowanym kontenerze rozwiązanie pojedynczej usługi zwraca ostatnią rejestrację (stąd możliwość nadpisania), a IEnumerable<T> zwraca wszystkie w kolejności rejestracji – podstawa wzorców Strategy/pipeline. Kontener nie zgłasza niejednoznaczności, a TryAddEnumerable tylko zapobiega duplikatom tej samej implementacji."
+    },
+    {
+      "id": "arch-pq026",
+      "topic": "Clean code",
+      "level": 2,
+      "q": "Co jest głównym problemem tego kodu z perspektywy clean code?",
+      "code": "public decimal? CurrentPrice\n{\n    get\n    {\n        _price = _pricing.Fetch(_productId);  // wywołanie HTTP\n        _lastRefresh = DateTime.UtcNow;\n        return _price;\n    }\n}",
+      "lang": "csharp",
+      "options": [
+        "Brak słowa kluczowego virtual na właściwości",
+        "Typ decimal? zamiast double",
+        "Użycie DateTime.UtcNow zamiast DateTime.Now",
+        "Getter ma efekty uboczne i wykonuje I/O – łamie CQS i zasadę najmniejszego zaskoczenia; powinna to być jawna metoda asynchroniczna"
+      ],
+      "correct": 3,
+      "why": "Właściwość wygląda jak tani odczyt, a robi synchroniczne wywołanie sieciowe i zmienia stan – debugger, serializer czy logowanie wywołają ją przypadkiem. Lepiej: Task<decimal?> GetCurrentPriceAsync() i osobne odświeżanie. decimal jest właściwy dla cen, a UtcNow lepszy od Now (choć jeszcze lepszy TimeProvider)."
+    },
+    {
+      "id": "arch-pq027",
+      "topic": "Clean code",
+      "level": 1,
+      "q": "Która wersja sygnatury jest najczytelniejsza dla wywołującego?",
+      "code": "// wywołanie: SendReport(report, true, false, true);",
+      "lang": "csharp",
+      "options": [
+        "SendReport(Report r, bool a, bool b, bool c) – krótsze nazwy parametrów",
+        "SendReport(Report r, int flags) z liczbą 5 oznaczającą kombinację opcji",
+        "Osobne, nazwane metody lub obiekt opcji, np. SendReport(report, new ReportDelivery(Compress: true, Encrypt: true))",
+        "SendReport(Report r, params object[] options)"
+      ],
+      "correct": 2,
+      "why": "Ciąg true/false/true nic nie mówi w miejscu wywołania i łatwo pomylić kolejność. Obiekt opcji (lub nazwane argumenty, osobne metody) nazywa intencję. Liczba-flaga to magic number, a params object[] wyłącza typowanie."
+    },
+    {
+      "id": "arch-pq028",
+      "topic": "Clean code",
+      "level": 2,
+      "q": "Signal `items = signal<Item[]>([])` w komponencie OnPush. Kod `this.items().push(newItem)` nie odświeża widoku ani computed z sumą. Dlaczego i jak poprawić?",
+      "options": [
+        "Mutacja nie zmienia referencji, więc signal nie powiadamia konsumentów – użyć items.update(list => [...list, newItem])",
+        "push działa tylko w zone.js – w trybie zoneless trzeba wywołać detectChanges()",
+        "computed liczy się tylko raz przy tworzeniu – trzeba użyć effect()",
+        "signal przechowujący tablicę musi być zadeklarowany jako signal<ReadonlyArray<Item>>, inaczej nie działa"
+      ],
+      "correct": 0,
+      "why": "Signal porównuje wartości referencyjnie (Object.is); mutacja tablicy w miejscu nie wywołuje set, więc ani widok, ani computed nie wiedzą o zmianie. Niemutowalna aktualizacja z nową tablicą to poprawny wzorzec. detectChanges nie odświeży computed, computed przelicza się przy zmianie zależności, a ReadonlyArray to tylko typ (choć pomaga wyłapać mutacje w kompilacji)."
+    },
+    {
+      "id": "arch-pq029",
+      "topic": "Code smells i refaktoryzacja",
+      "level": 1,
+      "q": "Jak nazywa się ten smell i jaka refaktoryzacja go usuwa?",
+      "code": "public decimal ShippingCost(Customer c)\n{\n    // metoda w CheckoutService\n    if (c.Address.Country == \"PL\" && c.IsPremium && c.Orders.Count > 10) return 0m;\n    return c.Address.Country == \"PL\" ? 15m : 40m + c.Address.Zone * 5m;\n}",
+      "lang": "csharp",
+      "options": [
+        "Data clumps – Introduce Parameter Object dla Address",
+        "Shotgun surgery – Inline Class dla Customer",
+        "Primitive obsession – zamiana decimal na double",
+        "Feature envy – metoda głównie używa danych Customer; Move Method do Customer lub do polityki wysyłki korzystającej z jawnie przekazanych danych"
+      ],
+      "correct": 3,
+      "why": "Metoda „zazdrości” danych innej klasy: prawie każde wyrażenie sięga do Customer. Przeniesienie logiki do właściciela danych (lub jawne przekazanie potrzebnych wartości) zmniejsza coupling. Pozostałe smelle nie opisują tego kodu, a decimal → double byłby błędem dla kwot."
+    },
+    {
+      "id": "arch-pq030",
+      "topic": "Code smells i refaktoryzacja",
+      "level": 2,
+      "q": "Każda z metod raportów ma parametry (DateOnly from, DateOnly to, string currency, int branchId), a walidacja „from <= to” jest powtarzana w 7 miejscach. Jaki smell i jaka refaktoryzacja?",
+      "options": [
+        "Data clumps – Introduce Parameter Object (np. ReportPeriod/DateRange z walidacją w konstruktorze)",
+        "Long method – Extract Method dla walidacji w każdej metodzie",
+        "God class – podział klasy raportów na 7 klas",
+        "Switch statements – Replace Conditional with Polymorphism"
+      ],
+      "correct": 0,
+      "why": "Te same parametry zawsze wędrują razem i niosą wspólną regułę – to data clumps. Obiekt parametru daje jedno miejsce walidacji i naturalny dom dla zachowania (Contains, Days). Extract Method zostawi 7 wywołań i duplikację sygnatur, a pozostałe odpowiedzi nie trafiają w problem."
+    },
+    {
+      "id": "arch-pq031",
+      "topic": "Code smells i refaktoryzacja",
+      "level": 3,
+      "q": "Musisz zrefaktoryzować 600-liniową metodę naliczania wynagrodzeń bez testów, która działa na produkcji od 8 lat. Jaki jest najlepszy PIERWSZY krok?",
+      "options": [
+        "Przepisać metodę od zera według aktualnej dokumentacji i porównać kilka wyników ręcznie",
+        "Najpierw poprawić znalezione błędy, a potem dopisać testy do poprawionej wersji",
+        "Napisać testy charakteryzacyjne na reprezentatywnych danych (np. snapshot/approval), utrwalające obecne zachowanie, łącznie z podejrzanymi wynikami",
+        "Rozbić metodę na mniejsze ręcznie w jednym dużym PR, żeby szybko mieć czytelny kod"
+      ],
+      "correct": 2,
+      "why": "Refaktoryzacja to zmiana struktury bez zmiany zachowania – bez siatki bezpieczeństwa nie wiadomo, czy zachowanie się nie zmieniło. Testy charakteryzacyjne (Feathers) utrwalają stan obecny; błędy poprawia się osobno, świadomie. Przepisanie od zera traci ukrytą wiedzę z 8 lat, a duży ręczny PR jest ryzykowny i trudny do review."
+    }
+  ]
+}

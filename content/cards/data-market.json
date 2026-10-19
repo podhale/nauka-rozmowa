@@ -1,0 +1,181 @@
+{
+  "cat": "data",
+  "name": "EF Core i SQL",
+  "cards": [
+    {
+      "id": "data-m001",
+      "topic": "Dapper w praktyce",
+      "level": 1,
+      "q": "Jak wygląda podstawowa praca z Dapperem: Query, QueryFirstOrDefault, Execute, ExecuteScalar? Jak Dapper mapuje wyniki?",
+      "a": "Dapper to zestaw extension methods na IDbConnection. Piszę SQL ręcznie, a Dapper tworzy parametry z obiektu anonimowego i mapuje wiersze na obiekty. QueryAsync<T> zwraca wiele wierszy, QueryFirstOrDefaultAsync/QuerySingleAsync – jeden, ExecuteAsync wykonuje INSERT/UPDATE/DELETE i zwraca liczbę zmienionych wierszy, a ExecuteScalarAsync<T> – pierwszą kolumnę pierwszego wiersza (np. nowe Id). Mapowanie odbywa się po nazwie kolumny do właściwości lub parametru konstruktora, bez rozróżniania wielkości liter. Dla snake_case jest DefaultTypeMap.MatchNamesWithUnderscores, a w innych przypadkach pomagają aliasy w SQL. Gdy połączenie jest zamknięte, Dapper sam je otwiera i zamyka. Mapery są generowane raz (IL) i cache'owane, więc narzut jest minimalny.",
+      "code": "await using var conn = new SqlConnection(cs);\n\nvar orders = await conn.QueryAsync<OrderDto>(\n    \"SELECT Id, Total, CreatedAt FROM Orders WHERE CustomerId = @customerId\",\n    new { customerId });\n\nvar order = await conn.QuerySingleOrDefaultAsync<OrderDto>(\n    \"SELECT Id, Total, CreatedAt FROM Orders WHERE Id = @id\", new { id });\n\nint newId = await conn.ExecuteScalarAsync<int>(\n    \"INSERT INTO Orders (CustomerId, Total) OUTPUT INSERTED.Id VALUES (@CustomerId, @Total)\", dto);\n\nint affected = await conn.ExecuteAsync(\"DELETE FROM Orders WHERE Id = @id\", new { id });",
+      "lang": "csharp",
+      "tip": "Różnica First vs Single: Single rzuca wyjątek, gdy wierszy jest więcej niż jeden, więc dla zapytania po kluczu jasno wyraża intencję."
+    },
+    {
+      "id": "data-m002",
+      "topic": "Dapper w praktyce",
+      "level": 2,
+      "q": "Jak poprawnie parametryzować zapytania w Dapperze (listy IN, typy, DynamicParameters) i czego unikać?",
+      "a": "Wartości przekazuję zawsze jako parametry (@nazwa + obiekt anonimowy albo DTO), nigdy przez interpolację stringów, bo to otwiera drogę do SQL injection i psuje cache planów. Dla list Dapper rozwija WHERE Id IN @ids (bez nawiasów) na @ids1, @ids2, … . DynamicParameters stosuję, gdy parametry budowane są warunkowo albo potrzebuję kierunku Output/ReturnValue. Typ parametru też ma znaczenie: string domyślnie idzie jako nvarchar, więc przy kolumnie varchar warto użyć DbString { IsAnsi = true, Length = … }, żeby uniknąć niejawnej konwersji i index scanu. Dynamicznego ORDER BY czy nazwy kolumny nie da się sparametryzować – wybieram je z whitelisty.",
+      "code": "var rows = await conn.QueryAsync<Product>(\n    \"SELECT * FROM Products WHERE Id IN @ids AND Code = @code\",\n    new\n    {\n        ids = new[] { 1, 2, 3 },                         // -> (@ids1,@ids2,@ids3)\n        code = new DbString { Value = code, IsAnsi = true, Length = 20 } // varchar(20)\n    });\n\nvar sortColumn = sort switch { \"price\" => \"Price\", _ => \"Name\" }; // whitelist\nvar sql = $\"SELECT Id, Name, Price FROM Products ORDER BY {sortColumn}\";",
+      "lang": "csharp",
+      "deep": "Rozwijanie list ma limity: SQL Server przyjmuje maks. 2100 parametrów w poleceniu, a każda długość listy daje inny tekst zapytania i osobny plan w cache. Przy dużych lub zmiennych listach lepszy jest table-valued parameter (AsTableValuedParameter), OPENJSON/STRING_SPLIT z jednym parametrem albo tabela tymczasowa. Niejawna konwersja nvarchar → varchar po stronie kolumny potrafi zamienić seek w scan – widać to w planie jako CONVERT_IMPLICIT. Dapper ma globalne SqlMapper.AddTypeMap/AddTypeHandler do ustawienia domyślnych typów i mapowania własnych typów (np. DateOnly, value objecty). Dla poleceń tekstowych Dapper wysyła tylko te właściwości obiektu, których nazwy występują w SQL (dopasowanie bez rozróżniania wielkości liter), więc literówka w nazwie parametru kończy się błędem „Must declare the scalar variable”."
+    },
+    {
+      "id": "data-m003",
+      "topic": "Dapper w praktyce",
+      "level": 2,
+      "q": "Jak w Dapperze zmapować JOIN na obiekty powiązane (multi-mapping) i jak pobrać kilka zestawów wyników jednym zapytaniem?",
+      "a": "Multi-mapping to Query<T1, T2, TResult> z funkcją łączącą obiekty z jednego wiersza i parametrem splitOn, który wskazuje kolumnę, od której zaczyna się kolejny obiekt (domyślnie Id). Dla relacji 1-n wiersze się powtarzają, więc deduplikuję obiekt nadrzędny słownikiem po kluczu. QueryMultipleAsync wykonuje kilka SELECT-ów w jednym round tripie, a wyniki czytam po kolei przez ReadAsync<T>. Przydaje się to do ekranów szczegółów, np. zamówienie + pozycje + historia, albo strony wyników + łącznej liczby.",
+      "code": "var lookup = new Dictionary<int, Order>();\nawait conn.QueryAsync<Order, OrderLine, Order>(\n    @\"SELECT o.Id, o.Number, l.LineId, l.ProductId, l.Qty\n      FROM Orders o JOIN OrderLines l ON l.OrderId = o.Id\n      WHERE o.CustomerId = @customerId\",\n    (o, l) =>\n    {\n        var order = lookup.GetValueOrDefault(o.Id) ?? (lookup[o.Id] = o);\n        order.Lines.Add(l);\n        return order;\n    },\n    new { customerId }, splitOn: \"LineId\");\n\nusing var grid = await conn.QueryMultipleAsync(\n    \"SELECT * FROM Orders WHERE Id = @id; SELECT * FROM OrderLines WHERE OrderId = @id\", new { id });\nvar header = await grid.ReadSingleAsync<Order>();\nvar lines = (await grid.ReadAsync<OrderLine>()).ToList();",
+      "lang": "csharp",
+      "deep": "JOIN 1-n z multi-mappingiem powiela dane rodzica w każdym wierszu – przy szerokich rodzicach i wielu dzieciach to ten sam problem co cartesian explosion w EF. Wtedy lepsze jest QueryMultiple: rodzice w jednym zestawie, dzieci w drugim, sklejone w pamięci po kluczu. Kolejność kolumn w SELECT musi odpowiadać kolejności typów, a splitOn przyjmuje listę po przecinku dla więcej niż dwóch obiektów. Brak splitOn przy kluczach innych niż Id kończy się wyjątkiem z komunikatem o ustawieniu splitOn. Przy LEFT JOIN brak dziecka daje obiekt z wartościami null/default – trzeba to obsłużyć w funkcji mapującej. QueryMultiple trzyma otwarty reader, więc wszystkie zestawy trzeba przeczytać w kolejności, zanim użyje się połączenia do czegoś innego."
+    },
+    {
+      "id": "data-m004",
+      "topic": "Dapper w praktyce",
+      "level": 2,
+      "q": "Jak obsługujesz transakcje w Dapperze i jak wstawić wiele wierszy?",
+      "a": "Dapper nie zarządza transakcjami sam. Otwieram połączenie, wywołuję BeginTransactionAsync i przekazuję obiekt transakcji do każdego wywołania (parametr transaction). Na końcu CommitAsync, a przy wyjątku rollback (Dispose bez Commit wycofuje transakcję). ExecuteAsync z kolekcją jako parametrem wykonuje polecenie raz dla każdego elementu – to wygodne, ale to N round tripów, a nie bulk insert. Przy setkach lub tysiącach wierszy używam SqlBulkCopy, table-valued parameter albo jednego INSERT … SELECT z OPENJSON.",
+      "code": "await using var conn = new SqlConnection(cs);\nawait conn.OpenAsync(ct);\nawait using var tx = await conn.BeginTransactionAsync(ct);\n\nvar orderId = await conn.ExecuteScalarAsync<int>(\n    \"INSERT INTO Orders (CustomerId) OUTPUT INSERTED.Id VALUES (@customerId)\",\n    new { customerId }, tx);\n\nawait conn.ExecuteAsync(\n    \"INSERT INTO OrderLines (OrderId, ProductId, Qty) VALUES (@OrderId, @ProductId, @Qty)\",\n    lines.Select(l => new { OrderId = orderId, l.ProductId, l.Qty }), tx); // N poleceń\n\nawait tx.CommitAsync(ct);",
+      "lang": "csharp",
+      "tip": "Typowy błąd: zapomniany parametr transaction w jednym z wywołań. SqlClient rzuca wtedy wyjątek, bo polecenie na połączeniu z otwartą transakcją lokalną musi mieć ją przypisaną."
+    },
+    {
+      "id": "data-m005",
+      "topic": "Dapper vs EF",
+      "level": 3,
+      "q": "Jak łączysz EF Core i Dappera w jednej aplikacji, także w ramach jednej transakcji?",
+      "a": "Typowy podział: EF Core do komend (agregaty, change tracking, migracje), a Dapper do ciężkich odczytów i raportów (CQRS-light). Oba mogą działać na tym samym połączeniu: db.Database.GetDbConnection() daje DbConnection, na którym wywołuję metody Dappera. Jeśli EF ma otwartą transakcję, przekazuję ją do Dappera przez CurrentTransaction.GetDbTransaction(). W odwrotnym kierunku, gdy transakcję zaczyna ADO.NET/Dapper, EF dołączam do niej przez db.Database.UseTransaction(tx). Dzięki temu zapis encji przez EF i np. masowy UPDATE przez Dappera są atomowe.",
+      "code": "await using var tx = await db.Database.BeginTransactionAsync(ct);\n\ndb.Orders.Add(order);\nawait db.SaveChangesAsync(ct);\n\nvar conn = db.Database.GetDbConnection();\nawait conn.ExecuteAsync(\n    \"UPDATE Stock SET Qty = Qty - @qty WHERE ProductId = @productId\",\n    new { qty, productId },\n    transaction: tx.GetDbTransaction());   // ta sama transakcja\n\nawait tx.CommitAsync(ct);",
+      "lang": "csharp",
+      "deep": "Zmiany zrobione Dapperem omijają change tracker: encje już załadowane w DbContext mają nieaktualne wartości, więc po takim UPDATE nie polegam na śledzonych obiektach (albo robię Reload lub nowy kontekst). Z EnableRetryOnFailure ręczna transakcja wymaga opakowania całości w db.Database.CreateExecutionStrategy().ExecuteAsync(...), inaczej EF rzuci InvalidOperationException. Nie zamykam i nie dispose'uję połączenia pobranego z GetDbConnection – należy do kontekstu. Dla prostych przypadków nie zawsze potrzebuję Dappera: EF Core 8+ ma db.Database.SqlQuery<T> dla typów niemapowanych i ExecuteSql/ExecuteUpdate, więc Dapper zostaje tam, gdzie daje realną przewagę (multi-mapping, QueryMultiple, TVP, maksymalna kontrola i wydajność mapowania). Warto pilnować, żeby SQL w Dapperze miał testy integracyjne na prawdziwej bazie (Testcontainers), bo kompilator go nie sprawdzi i migracje EF mogą go po cichu zepsuć."
+    },
+    {
+      "id": "data-m006",
+      "topic": "Procedury składowane z .NET",
+      "level": 2,
+      "q": "Jak wywołać procedurę składowaną z EF Core i jakie są ograniczenia?",
+      "a": "Gdy procedura zwraca encje: db.Products.FromSql($\"EXEC dbo.GetProducts {categoryId}\"). Interpolacja w FromSql jest bezpieczna, bo wartości stają się parametrami. Kolumny wyniku muszą odpowiadać wszystkim właściwościom encji. Dla typów spoza modelu (DTO, raporty) używam db.Database.SqlQuery<T>(...) (EF Core 8+), a dla procedur bez wyniku – ExecuteSqlAsync, który zwraca liczbę zmienionych wierszy. Parametry OUTPUT wymagają SqlParameter z Direction = Output i wersji Raw. Ograniczenie: SQL Server nie pozwala komponować zapytań na wywołaniu procedury, więc Where/OrderBy po FromSql z EXEC trzeba wykonać po AsEnumerable(), albo przenieść filtr do parametrów procedury. EF Core 7+ potrafi też mapować insert/update/delete encji na procedury (InsertUsingStoredProcedure itd.).",
+      "code": "var products = await db.Products\n    .FromSql($\"EXEC dbo.GetProducts @CategoryId = {categoryId}\")\n    .ToListAsync(ct);\n\nvar report = await db.Database\n    .SqlQuery<SalesRow>($\"EXEC dbo.SalesReport {from}, {to}\")\n    .ToListAsync(ct);\n\nvar total = new SqlParameter(\"@Total\", SqlDbType.Int) { Direction = ParameterDirection.Output };\nawait db.Database.ExecuteSqlRawAsync(\n    \"EXEC dbo.ArchiveOrders @Before, @Total OUTPUT\",\n    [new SqlParameter(\"@Before\", before), total], ct);\nint archived = (int)total.Value;",
+      "lang": "csharp",
+      "deep": "Kiedy procedury mają sens w aplikacji .NET: logika blisko danych przy dużych wolumenach (batch, archiwizacja), istniejąca baza legacy z API opartym na procedurach, wymagania DBA dotyczące uprawnień (aplikacja ma tylko EXECUTE) albo ścisła kontrola planu. Koszty to logika rozproszona między C# i T-SQL, trudniejsze testy i wersjonowanie (procedury trzeba trzymać w migracjach albo projekcie bazy, np. SQL Database Project/DACPAC) oraz parameter sniffing, który przy procedurach jest częsty. W FromSqlRaw nigdy nie skleja się wartości ze stringiem – tylko placeholdery {0} albo SqlParameter. FromSql na encji domyślnie śledzi wyniki, więc do odczytu dodaję AsNoTracking. Procedura zwracająca kilka zestawów wyników nie jest dobrze obsługiwana przez EF – wtedy wybieram Dapper z QueryMultiple albo ADO.NET."
+    },
+    {
+      "id": "data-m007",
+      "topic": "Procedury składowane z .NET",
+      "level": 3,
+      "q": "Jak wywołać procedurę składowaną z Dappera, odczytać parametry OUTPUT i RETURN oraz przekazać listę przez table-valued parameter?",
+      "a": "Podaję nazwę procedury i commandType: CommandType.StoredProcedure, a parametry wejściowe przekazuję obiektem anonimowym. Parametry OUTPUT i wartość RETURN wymagają DynamicParameters z odpowiednim direction, a ich wartości odczytuję przez p.Get<T>(\"nazwa\") dopiero po wykonaniu polecenia (przy QueryMultiple – po przeczytaniu wszystkich zestawów). Listę przekazuję jako TVP: w bazie tworzę typ tabelaryczny (CREATE TYPE … AS TABLE), w C# buduję DataTable o tych samych kolumnach i przekazuję ją przez AsTableValuedParameter(\"dbo.NazwaTypu\"). Jeden parametr zamiast setek eliminuje limit 2100 parametrów i stabilizuje plan.",
+      "code": "var ids = new DataTable();\nids.Columns.Add(\"Id\", typeof(int));\nforeach (var id in productIds) ids.Rows.Add(id);\n\nvar p = new DynamicParameters();\np.Add(\"@CustomerId\", customerId);\np.Add(\"@ProductIds\", ids.AsTableValuedParameter(\"dbo.IntList\"));\np.Add(\"@OrderId\", dbType: DbType.Int32, direction: ParameterDirection.Output);\np.Add(\"@Result\", dbType: DbType.Int32, direction: ParameterDirection.ReturnValue);\n\nawait conn.ExecuteAsync(\"dbo.CreateOrder\", p, commandType: CommandType.StoredProcedure);\n\nint orderId = p.Get<int>(\"@OrderId\");\nint result = p.Get<int>(\"@Result\");",
+      "lang": "csharp",
+      "tip": "Na rozmowie dobrze wypada uzasadnienie TVP: jeden parametr zamiast setek, stabilny tekst zapytania i brak limitu 2100 parametrów.",
+      "deep": "Wartość RETURN w SQL Server to tylko int, zwykle kod statusu. Dane zwraca się przez OUTPUT albo zestaw wyników, a błędy przez THROW, który w .NET pojawia się jako SqlException z numerem błędu. Kolumny DataTable muszą odpowiadać typowi tabelarycznemu kolejnością i typami, bo mapowanie jest pozycyjne. Typu tabelarycznego nie da się zmienić przez ALTER – trzeba go usunąć i odtworzyć, co wymaga zrzucenia zależnych procedur, więc warto to uwzględnić w migracjach. TVP jest tylko do odczytu (READONLY) i ma słabe statystyki (stała estymacja, na nowszych wersjach poprawiona przez deferred compilation), więc przy dużych listach plan bywa słaby. Wtedy pomaga tabela tymczasowa albo OPTION (RECOMPILE). Gdy procedura ma wiele SELECT-ów, używam QueryMultipleAsync z commandType StoredProcedure. Przy długich procedurach ustawiam commandTimeout, bo domyślne 30 s SqlCommand bywa za krótkie dla jobów."
+    },
+    {
+      "id": "data-m008",
+      "topic": "SQL – JOIN",
+      "level": 1,
+      "q": "Tabela Employees(Id, Name, Salary, ManagerId). Napisz zapytanie zwracające pracowników z nazwiskiem przełożonego oraz tych, którzy zarabiają więcej niż ich przełożony.",
+      "a": "To self-join: ta sama tabela występuje dwa razy pod różnymi aliasami – e jako pracownik i m jako przełożony – połączona warunkiem m.Id = e.ManagerId. Do listy wszystkich pracowników z przełożonym używam LEFT JOIN, żeby nie zgubić prezesa (ManagerId = NULL). Do porównania pensji wystarczy INNER JOIN z warunkiem e.Salary > m.Salary, bo pracownik bez przełożonego nie ma z kim się porównać. Na rozmowie warto dodać, że do całej hierarchii (wszyscy podwładni na dowolnym poziomie) self-join nie wystarczy i potrzebne jest rekurencyjne CTE.",
+      "code": "-- pracownik + przełożony (także prezes)\nSELECT e.Name AS Employee, m.Name AS Manager\nFROM Employees e\nLEFT JOIN Employees m ON m.Id = e.ManagerId;\n\n-- zarabiają więcej niż przełożony\nSELECT e.Name, e.Salary, m.Name AS Manager, m.Salary AS ManagerSalary\nFROM Employees e\nJOIN Employees m ON m.Id = e.ManagerId\nWHERE e.Salary > m.Salary;",
+      "lang": "sql",
+      "tip": "Częsty błąd na live codingu: odwrócony warunek e.Id = m.ManagerId. Łączy on pracownika z jego podwładnymi, a nie z przełożonym."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "data-mq001",
+      "topic": "Dapper w praktyce",
+      "level": 2,
+      "q": "Ten kod rzuca ArgumentException przy mapowaniu. Dlaczego?",
+      "code": "const string sql = @\"\n  SELECT o.Id, o.Total, c.CustomerId, c.Name\n  FROM Orders o JOIN Customers c ON c.CustomerId = o.CustomerId\";\n\nvar orders = await conn.QueryAsync<Order, Customer, Order>(sql,\n    (o, c) => { o.Customer = c; return o; });",
+      "lang": "csharp",
+      "options": [
+        "Multi-mapping wymaga, żeby oba typy miały właściwość Id",
+        "QueryAsync nie obsługuje JOIN – trzeba użyć QueryMultipleAsync",
+        "Dapper domyślnie dzieli wiersz na kolumnie Id, a tu obiekt Customer zaczyna się od kolumny CustomerId – trzeba podać splitOn: \"CustomerId\"",
+        "Funkcja mapująca musi zwracać Customer, bo jest ostatnim typem generycznym przed wynikiem"
+      ],
+      "correct": 2,
+      "why": "Multi-mapping dzieli kolumny wiersza między typy według splitOn (domyślnie „Id”). Druga encja zaczyna się tu od CustomerId, więc Dapper nie znajduje punktu podziału i prosi o ustawienie splitOn. Typy nie muszą mieć właściwości Id, JOIN jest właśnie typowym przypadkiem multi-mappingu, a typem wyniku jest ostatni parametr generyczny (Order)."
+    },
+    {
+      "id": "data-mq002",
+      "topic": "Dapper w praktyce",
+      "level": 2,
+      "q": "Lista ma 5000 elementów. Co robi ten kod?",
+      "code": "await conn.ExecuteAsync(\n    \"INSERT INTO Events (Type, Payload) VALUES (@Type, @Payload)\",\n    events); // List<EventDto>",
+      "lang": "csharp",
+      "options": [
+        "Wykonuje INSERT osobno dla każdego elementu – 5000 poleceń (round tripów), co przy dużych wolumenach jest wolne; do masowego wstawiania lepszy jest SqlBulkCopy albo TVP",
+        "Wykonuje jeden bulk insert przez SqlBulkCopy pod spodem",
+        "Rzuca wyjątek, bo parametr musi być pojedynczym obiektem",
+        "Buduje jedno polecenie INSERT z 5000 wierszami w VALUES"
+      ],
+      "correct": 0,
+      "why": "Gdy parametrem jest IEnumerable obiektów, Dapper wykonuje polecenie raz dla każdego elementu. Jest to wygodne i poprawne, ale nie jest bulk insertem. Bez jawnej transakcji każdy INSERT jest też osobną transakcją. Dla tysięcy wierszy SqlBulkCopy, table-valued parameter albo INSERT … SELECT z OPENJSON są o rzędy wielkości szybsze."
+    },
+    {
+      "id": "data-mq003",
+      "topic": "Procedury składowane z .NET",
+      "level": 2,
+      "q": "Ten kod EF Core kończy się błędem SQL na SQL Server. Jak go poprawić?",
+      "code": "var cheap = await db.Products\n    .FromSql($\"EXEC dbo.GetProducts {categoryId}\")\n    .Where(p => p.Price < 100)\n    .OrderBy(p => p.Name)\n    .ToListAsync();",
+      "lang": "csharp",
+      "options": [
+        "Zamienić FromSql na FromSqlRaw – interpolacja nie działa z EXEC",
+        "Dodać AsNoTracking() przed Where",
+        "Zamienić ToListAsync na ToList – procedury nie działają asynchronicznie",
+        "SQL Server nie pozwala komponować zapytania na wywołaniu procedury – trzeba wywołać AsAsyncEnumerable()/AsEnumerable() zaraz po FromSql i filtrować w pamięci albo przenieść filtr do parametrów procedury"
+      ],
+      "correct": 3,
+      "why": "EF próbuje opakować SQL z FromSql w podzapytanie (SELECT … FROM (EXEC …) WHERE …), czego SQL Server nie obsługuje. Po EXEC trzeba przejść na przetwarzanie po stronie klienta (AsEnumerable/AsAsyncEnumerable) albo przenieść filtrowanie i sortowanie do procedury. Interpolacja w FromSql jest bezpieczna i działa z EXEC (wartości są parametryzowane), AsNoTracking nie zmienia generowanego SQL, a async działa normalnie."
+    },
+    {
+      "id": "data-mq004",
+      "topic": "Procedury składowane z .NET",
+      "level": 2,
+      "q": "Procedura dbo.CreateCustomer ma parametr @NewId INT OUTPUT. Jak poprawnie odczytać jego wartość w Dapperze?",
+      "options": [
+        "Wartość @NewId to wynik ExecuteAsync",
+        "Dodać parametr przez DynamicParameters z direction: ParameterDirection.Output, wykonać ExecuteAsync z commandType: CommandType.StoredProcedure, a potem odczytać p.Get<int>(\"@NewId\")",
+        "Użyć ExecuteScalarAsync<int> – zwraca wartość pierwszego parametru OUTPUT",
+        "Dapper nie obsługuje parametrów OUTPUT – trzeba przejść na czyste ADO.NET"
+      ],
+      "correct": 1,
+      "why": "ExecuteAsync zwraca liczbę zmienionych wierszy, a ExecuteScalarAsync – pierwszą kolumnę pierwszego wiersza zestawu wyników, nie parametr OUTPUT. Dapper obsługuje OUTPUT i RETURN przez DynamicParameters z odpowiednim ParameterDirection, a wartość jest dostępna przez Get<T> po wykonaniu polecenia."
+    },
+    {
+      "id": "data-mq005",
+      "topic": "Dapper vs EF",
+      "level": 3,
+      "q": "Ten kod rzuca InvalidOperationException przy wywołaniu Dappera. Dlaczego?",
+      "code": "await using var tx = await db.Database.BeginTransactionAsync();\ndb.Orders.Add(order);\nawait db.SaveChangesAsync();\n\nvar conn = db.Database.GetDbConnection();\nawait conn.ExecuteAsync(\"UPDATE Stock SET Qty = Qty - 1 WHERE ProductId = @id\", new { id });\n\nawait tx.CommitAsync();",
+      "lang": "csharp",
+      "options": [
+        "GetDbConnection zwraca zamknięte połączenie, a Dapper nie potrafi go otworzyć",
+        "Dapper i EF Core nie mogą używać tego samego połączenia",
+        "Najpierw trzeba wywołać tx.CommitAsync(), dopiero potem można użyć Dappera",
+        "Połączenie ma otwartą transakcję lokalną, a polecenie Dappera jej nie dostało – trzeba przekazać transaction: tx.GetDbTransaction()"
+      ],
+      "correct": 3,
+      "why": "SqlClient wymaga, żeby polecenie na połączeniu z oczekującą transakcją lokalną miało ją przypisaną (komunikat: „ExecuteNonQuery requires the command to have a transaction…”). Przekazanie tx.GetDbTransaction() sprawia, że UPDATE wykona się w tej samej transakcji co SaveChanges. Połączenie jest już otwarte przez transakcję EF, współdzielenie połączenia jest poprawne, a commit przed UPDATE zniszczyłby atomowość."
+    },
+    {
+      "id": "data-mq006",
+      "topic": "SQL – JOIN",
+      "level": 1,
+      "q": "Tabela Employees(Id, Name, Salary, ManagerId). Które zapytanie zwróci pracowników zarabiających więcej niż ich bezpośredni przełożony?",
+      "options": [
+        "SELECT e.Name FROM Employees e JOIN Employees m ON m.Id = e.ManagerId WHERE e.Salary > m.Salary",
+        "SELECT e.Name FROM Employees e JOIN Employees m ON e.Id = m.ManagerId WHERE e.Salary > m.Salary",
+        "SELECT Name FROM Employees WHERE Salary > (SELECT MAX(Salary) FROM Employees WHERE ManagerId IS NOT NULL)",
+        "SELECT e.Name FROM Employees e GROUP BY e.ManagerId HAVING e.Salary > MAX(e.Salary)"
+      ],
+      "correct": 0,
+      "why": "Self-join łączy wiersz pracownika (e) z wierszem jego przełożonego (m) przez m.Id = e.ManagerId, a potem porównuje pensje. Warunek e.Id = m.ManagerId odwraca relację: wtedy e jest przełożonym, a zapytanie zwraca szefów zarabiających więcej niż ich podwładni. Podzapytanie z MAX porównuje z globalnym maksimum, a nie z własnym przełożonym. Wariant z GROUP BY jest niepoprawny składniowo (e.Name i e.Salary poza agregatem)."
+    }
+  ]
+}

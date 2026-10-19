@@ -1,0 +1,244 @@
+{
+  "cat": "soft",
+  "name": "Rozmowa HR i soft skills",
+  "cards": [
+    {
+      "id": "soft-m001",
+      "topic": "Rozmowa po angielsku",
+      "level": 1,
+      "q": "„Tell me about yourself” – jak zbudować tę odpowiedź po angielsku na rozmowie na stanowisko .NET/Angular?",
+      "a": "Struktura jak po polsku, ale prostszymi zdaniami: teraźniejszość (rola, stack, domena) → 1 konkretne osiągnięcie z liczbą → dlaczego szukasz i czemu ta rola. 60–90 sekund, krótkie zdania, czasy: Present Simple dla obecnej pracy, Past Simple dla osiągnięć, Present Perfect dla doświadczenia („I've been working with…”). Lepiej mówić prosto i płynnie niż ambitnie i z przerwami.\n\nPrzykład (B2): „I'm a full-stack developer with about four years of experience, mostly .NET on the back end and Angular on the front end. At the moment I work for a software house on a platform for logistics companies. I build REST APIs in ASP.NET Core with EF Core and SQL Server, and I'm responsible for a few Angular modules. Recently I led the migration of our customer portal to standalone components and signals, which made the code simpler and cut the build time by about thirty percent. Now I'm looking for a project where I can be closer to architecture decisions, and this role looks like a great fit.”",
+      "tip": "Przygotuj i powiedz to na głos kilka razy (najlepiej nagraj się). Nie ucz się słowo w słowo – zapamiętaj 4–5 „kotwic” (rola, stack, osiągnięcie, liczba, powód). Rekruter ocenia płynność i zrozumiałość, nie akcent."
+    },
+    {
+      "id": "soft-m002",
+      "topic": "Rozmowa po angielsku",
+      "level": 3,
+      "q": "„Describe your current project and its architecture” – jak opowiedzieć o projekcie po angielsku?",
+      "a": "Kolejność: kontekst biznesowy (co robi system, dla kogo, skala) → architektura od klienta do bazy (front, API, baza, integracje, hosting) → zespół i proces → Twoja rola → jeden problem lub trade-off, o który można dopytać. Mów warstwami, jakbyś rysował diagram, i używaj liczb.\n\nPrzykład (B2): „It's a B2B platform for managing deliveries, used by about two hundred companies. The back end is a modular monolith in ASP.NET Core on .NET 8, with EF Core and SQL Server, and we use Azure Service Bus for integrations with external carriers. The front end is an Angular app with standalone components and signals. It's all deployed to Azure. The team is six developers, one QA and a product owner, and we work in two-week sprints. I'm mainly responsible for the orders module – both the API and the Angular screens – and I review most of the front-end pull requests. One thing we're working on now is reporting: heavy reports run on the main database, so we're moving them to a read replica.”",
+      "deep": "Na rozmowie seniorskiej to pytanie jest wstępem do 20 minut pytań uzupełniających: „Why a modular monolith and not microservices?”, „How do you handle failures in the Service Bus integration?”, „What would you change if traffic grew ten times?”. Przygotuj więc 2–3 decyzje z uzasadnieniem i jedną rzecz, którą zrobiłbyś inaczej. Dobrze działa zdanie „Let me draw it” i szkic na wirtualnej tablicy – to porządkuje wypowiedź i daje chwilę do namysłu. Odróżniaj „we” (decyzje zespołu) od „I” (Twój wkład), bo klient zatrudnia Ciebie. Nie zdradzaj danych objętych NDA – mów o domenie ogólnie („a large insurance company”) i opisuj rozwiązania, nie dane. Zwroty do trade-offów: „We went with X because…”, „The downside was…”, „In hindsight, I would…”.",
+      "tip": "Typowy błąd: wyliczanie technologii („C#, Angular, Docker, Azure…”) bez powiązań. Rozmówca chce zobaczyć, że rozumiesz, jak części ze sobą współpracują i dlaczego tak je zbudowano."
+    },
+    {
+      "id": "soft-m003",
+      "topic": "Rozmowa po angielsku",
+      "level": 2,
+      "q": "„What was the most challenging bug you've solved?” – jak odpowiedzieć po angielsku?",
+      "a": "STAR w wersji technicznej: objaw (co widzieli użytkownicy) → jak diagnozowałeś (logi, metryki, hipotezy, reprodukcja) → przyczyna źródłowa → poprawka → co zmieniliście, żeby się nie powtórzyło. Najważniejsza część to proces diagnozy, nie sama poprawka.\n\nPrzykład (B2): „In our order API we had random timeouts – a few times a day, only in production. The logs didn't show any exceptions, so I added more detailed tracing in Application Insights and noticed that the slow requests were always waiting for a database connection. It turned out the connection pool was exhausted, because one background job kept a DbContext open for several minutes while it called an external API. I moved the external call outside the database scope and added a timeout. The timeouts disappeared, and we added an alert on connection pool usage, so we'd catch similar problems earlier.”",
+      "tip": "Przydatne zwroty: „I couldn't reproduce it locally”, „I narrowed it down to…”, „It turned out that…”, „The root cause was…”, „To prevent it from happening again, we…”."
+    },
+    {
+      "id": "soft-m004",
+      "topic": "Rozmowa po angielsku",
+      "level": 2,
+      "q": "„How do you handle disagreements in the team?” – jak odpowiedzieć po angielsku?",
+      "a": "Pokaż trzy rzeczy: rozmawiasz o problemie, nie o ludziach; opierasz się na danych (pomiar, prototyp, wymagania); gdy decyzja zapadnie inaczej, niż chciałeś, akceptujesz ją („disagree and commit”). Najlepiej na konkretnym, krótkim przykładzie.\n\nPrzykład (B2): „I try to keep it about the problem, not about people. Recently a colleague wanted to add caching to almost every endpoint, and I thought it was too early. Instead of arguing in the pull request comments, we had a short call, and I suggested we measure first. The metrics showed that only two endpoints were really slow, so we added caching just there. And if the team decides differently than I'd like, that's fine – I share my concerns clearly once, and then I commit to the decision.”",
+      "tip": "Zwroty: „I see your point, but…”, „Could we look at the data first?”, „What if we tried X as a quick experiment?”, „Let's agree on the criteria first”. Unikaj „I'm always right in the end” i historii, w których druga strona wychodzi na głupca."
+    },
+    {
+      "id": "soft-m005",
+      "topic": "Rozmowa po angielsku",
+      "level": 1,
+      "q": "„Why are you leaving your current job?” – jak odpowiedzieć po angielsku, żeby zabrzmiało dobrze?",
+      "a": "Mów o tym, do czego dążysz (pull), a nie od czego uciekasz (push). Zacznij od docenienia obecnej pracy, podaj 1–2 rzeczowe powody (rozwój, rodzaj projektu, technologia, skala) i połącz je z ofertą. Bez krytyki szefa i firmy – nawet jeśli jest uzasadniona.\n\nPrzykład (B2): „I've learned a lot in my current company, and I'm grateful for that. But the project is now mostly in maintenance mode, and I'd like to work on a product that's actively developed, with more architecture and cloud work. That's one of the reasons your offer caught my attention – you mentioned you're building new modules on .NET 10 and Azure.”",
+      "tip": "Gdy powodem są pieniądze, można to powiedzieć spokojnie: „I'd also like my salary to reflect my current skills” – ale nie jako jedyny powód. „Why are you looking for a new job?” to to samo pytanie w innej formie."
+    },
+    {
+      "id": "soft-m006",
+      "topic": "Rozmowa po angielsku",
+      "level": 1,
+      "q": "Jakich angielskich zwrotów używać, opowiadając o projekcie i swojej roli?",
+      "a": "Opłaca się mieć gotowy zestaw zwrotów, bo pod stresem brakuje słów, a nie wiedzy. Najważniejsze grupy: odpowiedzialność („I was responsible for…”, „I was in charge of…”, „I owned the… module”), zmiany („we migrated…”, „we introduced…”, „I refactored…”), problemy („the bottleneck was…”, „the main issue was…”), wynik („it reduced… from X to Y”), decyzje („we decided to go with X because…”, „the trade-off was…”). Mów „I” o swoim wkładzie, a „we” o decyzjach zespołu.",
+      "code": "I was responsible for the payments integration.\nI worked closely with the product owner and QA.\nWe migrated the app from .NET Framework 4.8 to .NET 8.\nWe rolled out the new checkout behind a feature flag.\nThe bottleneck was the database – one query took 4 seconds.\nI brought the response time down from 2 s to 300 ms.\nWe decided to go with SQL Server because the team knew it well.\nThe trade-off was a slower first release.\nI set up the CI/CD pipeline in Azure DevOps.\nI covered the module with unit tests.",
+      "lang": "text",
+      "tip": "Wymowa słów, które często psują pierwsze wrażenie: cache /kæʃ/ jak „kesz” (nie „kaszę”), queue /kjuː/ jak „kju”, Azure /ˈæʒər/, SQL jako „es-kju-el” albo „sequel” – obie formy są w porządku."
+    },
+    {
+      "id": "soft-m007",
+      "topic": "Rozmowa po angielsku",
+      "level": 1,
+      "q": "Jak po angielsku przyznać, że czegoś nie wiesz, albo poprosić o powtórzenie pytania?",
+      "a": "Tak jak po polsku: szczerze, ale bez kończenia na „I don't know”. Powiedz, co wiesz z pokrewnego obszaru, jak byś to sprawdził, i oznacz przypuszczenie jako przypuszczenie. Prośba o powtórzenie czy doprecyzowanie pytania to normalna rzecz – lepsza niż odpowiedź na inne pytanie niż zadane.",
+      "code": "I haven't worked with that directly, but here's how I understand it…\nI'm not a hundred percent sure, but my guess would be… I'd double-check it in the docs.\nI don't know the details of X, but I know how Y works, which is similar.\nCould you repeat the question, please?\nSorry, I didn't catch the last part.\nJust to make sure I understand – do you mean X or Y?\nLet me think about it for a second.",
+      "lang": "text",
+      "tip": "Krótkie „Let me think for a second” kupuje czas lepiej niż cisza albo „eeee”. Jeśli rekruter mówi za szybko, poproś grzecznie: „Could you speak a bit more slowly?” – nikt tego nie odbierze źle."
+    },
+    {
+      "id": "soft-m008",
+      "topic": "Rozmowa po angielsku",
+      "level": 2,
+      "q": "Jakie błędy w angielskim najczęściej popełniają polscy programiści na rozmowach?",
+      "a": "Najczęściej są to false friends i kalki z polskiego. „Actually” znaczy „właściwie / tak naprawdę”, a nie „aktualnie” (to „currently”). „Eventually” znaczy „w końcu / ostatecznie”, a nie „ewentualnie” (to „possibly”, „if needed”). „Realize” to „uświadomić sobie”, a „zrealizować projekt” to „deliver / complete a project”. „Control” to „sterować / nadzorować”, a „sprawdzić” to „check / verify”. Druga grupa to czasy: „I work here since 2022” → „I've been working here since 2022”; „I have 5 years experience” → „I have five years of experience”. Kolokacje: „write tests” (nie „make tests”), „in production” (nie „on the production”), „set up a meeting” (nie „make a meeting”).",
+      "tip": "Nie musisz mówić bezbłędnie – B2 oznacza swobodną komunikację. Jeden błąd typu „eventually” może jednak zmienić sens zdania („eventually we will add caching” brzmi jak deklaracja, a nie jak opcja), więc te kilka słów warto opanować."
+    },
+    {
+      "id": "soft-m009",
+      "topic": "Rozmowa po angielsku",
+      "level": 3,
+      "q": "„Tell me about a technical decision you made. What would you do differently?” – jak mówić po angielsku o trade-offach?",
+      "a": "Schemat: problem i ograniczenia → rozważane opcje → wybór i uzasadnienie → koszty decyzji → co wiesz dziś (hindsight). Pytanie sprawdza dojrzałość: czy widzisz wady własnych decyzji i czy potrafisz o nich mówić bez obrony.\n\nPrzykład (B2): „We needed to send order updates to about thirty external partners. We considered calling their APIs directly from the order service, or publishing events to Azure Service Bus and having a separate integration worker. We went with the queue, because partner APIs were often slow or down, and we didn't want that to affect checkout. The downside was more moving parts and eventual consistency – partners sometimes got updates a few seconds later. In hindsight, I would add a transactional outbox from day one; we added it later, after we lost a few messages during a deployment.”",
+      "deep": "Zwroty, które brzmią dojrzale: „Given the constraints we had at the time…”, „It was a trade-off between X and Y”, „It worked well for our scale, but it wouldn't if…”, „Looking back, I'd…”, „The lesson for me was…”. Hedging (łagodzenie) jest naturalny w angielskim: „I'd probably…”, „It might be worth…” – zbyt kategoryczne „This is the only right way” brzmi po angielsku ostrzej niż po polsku. Rozmówca często dopyta „How did you convince the team?” albo „How did you measure it?”, więc miej liczby (czasy odpowiedzi, liczba incydentów, koszt). Nie wybieraj historii, w której decyzja nie miała żadnej wady – brzmi to jak brak refleksji. Dobra puenta łączy lekcję z tym, jak pracujesz dziś (np. „now I always ask how we'll handle a failed delivery before we pick a pattern”).",
+      "tip": "Ta sama historia może posłużyć do pytań „Tell me about a mistake”, „a decision you're proud of” i „a time you had to convince others” – zmieniasz tylko akcent."
+    },
+    {
+      "id": "soft-m010",
+      "topic": "Outsourcing i B2B",
+      "level": 2,
+      "q": "Czym rozmowa z klientem w modelu body leasing (outsourcing specjalistów) różni się od rozmowy w software housie?",
+      "a": "W body leasingu (staff augmentation) firma outsourcingowa rekrutuje Cię pod konkretnego klienta. Pracujesz w jego zespole, według jego procesów i narzędzi, a firma jest stroną umowy i zwykle rozlicza Twoje godziny. Proces ma więc dwa filtry: pośrednik (HR, czasem weryfikacja techniczna) i klient – a to klient podejmuje decyzję. Klient szuka osoby, która od razu wpasuje się w stack i zespół oraz szybko zacznie dowozić. Ocenia konkretne dopasowanie do wymagań, komunikację (często po angielsku), samodzielność i ryzyko szybkiego odejścia. Software house zatrudnia Cię do siebie i zwykle ocenia ogólny potencjał, bo możesz przechodzić między projektami.",
+      "deep": "Według analizy ofert ponad połowa procesów .NET/Angular w Polsce ma etap „rozmowa z klientem lub managerem”, bo dużą część ogłoszeń publikują firmy outsourcingowe. Rozmowa z klientem bywa krótsza (30–60 min) i mniej szkolna: zamiast definicji pada „we have a legacy WCF service and want to move to ASP.NET Core – how would you approach it?”. Klient często nie zna Twojej stawki (ustala ją pośrednik z dopisaną marżą) i nie jest właściwą osobą do negocjacji – rozmowę o pieniądzach prowadzisz z pośrednikiem. Zapytaj pośrednika przed spotkaniem: kto będzie na rozmowie (tech lead, manager, architekt), w jakim języku, czego dotyczyły poprzednie rozmowy i dlaczego zwolniło się miejsce. Pamiętaj, że klient może zakończyć współpracę szybciej niż pracodawca przy etacie, więc stabilność projektu warto sprawdzić.",
+      "tip": "Pośrednik jest po Twojej stronie – zarabia, jeśli klient Cię wybierze. Proś go o informacje o kliencie i o feedback po rozmowie."
+    },
+    {
+      "id": "soft-m011",
+      "topic": "Outsourcing i B2B",
+      "level": 3,
+      "q": "Co klient chce usłyszeć na rozmowie w modelu outsourcingowym i jak się do niej przygotować?",
+      "a": "Klient płaci za każdą godzinę od pierwszego dnia, więc chce zmniejszyć ryzyko. Chce usłyszeć, że: (1) robiłeś dokładnie takie rzeczy jak w jego projekcie – opowiadaj historiami dopasowanymi do wymagań z ogłoszenia; (2) szybko się wdrożysz („I'm used to joining existing codebases”); (3) będziesz samodzielny i będziesz sygnalizował problemy (blokery, ryzyka, opóźnienia) zanim ktoś zapyta; (4) dogadasz się z zespołem, także po angielsku i w innej strefie czasowej; (5) zostaniesz na dłużej i wiesz, kiedy możesz zacząć.",
+      "deep": "Przygotowanie: przejdź ogłoszenie punkt po punkcie i dla każdego wymagania miej jeden konkretny przykład z liczbą. Dowiedz się, co robi klient (branża, produkt) i przygotuj 2–3 pytania o projekt – to sygnał zaangażowania. Bądź gotowy na pytania sytuacyjne: „We have flaky tests and slow releases – what would you do in the first month?” – dobra odpowiedź zaczyna się od słuchania i mierzenia, a nie od rewolucji. Jeśli nie masz jakiejś technologii z listy, powiedz to wprost i pokaż najbliższą analogię („I haven't used RabbitMQ, but I've built consumers with Azure Service Bus, including retries and dead-lettering”). Nie negocjuj stawki z klientem i nie krytykuj pośrednika ani poprzednich klientów. Ważne są też podstawy pracy zdalnej: dobry mikrofon, włączona kamera, punktualność, przygotowane środowisko do ewentualnego live codingu.",
+      "tip": "Częsty błąd: traktowanie rozmowy z klientem jak formalności, „bo pośrednik już mnie sprawdził”. To zwykle etap decydujący."
+    },
+    {
+      "id": "soft-m012",
+      "topic": "Outsourcing i B2B",
+      "level": 2,
+      "q": "Kontrakt B2B w outsourcingu – na co ogólnie zwrócić uwagę (bez wchodzenia w prawo i podatki)?",
+      "a": "Najpierw zrozum model rozliczenia: zwykle płacisz za przepracowane godziny lub dni (MD, man-day) potwierdzone timesheetem. Bez dodatkowych zapisów urlop, choroba i dni bez projektu są niepłatne. Zapytaj o warunki, które różnią oferty o tej samej stawce: płatne dni przerwy (jeśli są), okres wypowiedzenia z obu stron, czas trwania kontraktu i co dzieje się po zakończeniu projektu u klienta (nowy projekt czy koniec współpracy), termin płatności faktur, sprzęt, benefity (opieka medyczna, sport), wymagana obecność w biurze. Umowa może zawierać klauzule poufności, zakazu konkurencji lub bezpośredniej współpracy z klientem – przeczytaj je przed podpisaniem. Kwestie prawne i podatkowe (forma działalności, składki, ryczałt itp.) konsultuj z księgowym lub prawnikiem, a nie na rozmowie.",
+      "tip": "Na rozmowie wystarczy pokazać, że znasz te pytania i porównujesz oferty uczciwie, a nie tylko po stawce. Porady podatkowe od rekrutera albo z forum to nie jest podstawa decyzji."
+    },
+    {
+      "id": "soft-m013",
+      "topic": "Outsourcing i B2B",
+      "level": 2,
+      "q": "Stawka godzinowa, dzienna (MD) czy miesięczna – jak je przeliczać i porównywać?",
+      "a": "Przelicznik rynkowy to ok. 168 h w miesiącu (21 dni × 8 h) i 1 MD = 8 h. Stawka 100 zł/h ≈ 800 zł/MD ≈ 16,8 tys. zł netto miesięcznie na fakturze, ale przed Twoimi kosztami i składkami. Przy rozliczeniu godzinowym zarabiasz tylko za przepracowany czas, więc licz rocznie: przy ok. 4 tygodniach niepłatnego urlopu masz realnie ok. 11 przepracowanych miesięcy. Orientacyjne stawki B2B z ofert .NET/Angular (październik 2026): junior ~50–80 zł/h, mid ~75–120 zł/h, senior ~110–150 zł/h (~19–25 tys. zł miesięcznie). Kwoty UoP podaje się brutto, a B2B netto na fakturze – nie porównuj ich bezpośrednio.",
+      "code": "Stawka   Miesiąc (168 h)   MD (8 h)\n 80 zł/h  ≈ 13 440 zł      640 zł\n100 zł/h  ≈ 16 800 zł      800 zł\n120 zł/h  ≈ 20 160 zł      960 zł\n140 zł/h  ≈ 23 520 zł    1 120 zł\n\nRocznie: stawka × 8 h × liczba faktycznie przepracowanych dni",
+      "lang": "text",
+      "tip": "Część ofert podaje stawkę w USD lub EUR za godzinę (np. 13–21 USD/h na juniora) – wtedy dochodzi ryzyko kursowe. Pytając o oczekiwania, zawsze doprecyzuj jednostkę: „zł netto na godzinę, B2B”."
+    },
+    {
+      "id": "soft-m014",
+      "topic": "Outsourcing i B2B",
+      "level": 1,
+      "q": "Jakie pytania warto zadać o projekt przy rekrutacji do klienta przez firmę outsourcingową?",
+      "a": "Pytania techniczne i zespołowe zadawaj klientowi, a formalne pośrednikowi. Klientowi: czy to nowy produkt, czy utrzymanie lub legacy (i jakie wersje: .NET Framework czy .NET 8/10, który Angular), jak wygląda zespół i kto jest product ownerem, jak wygląda proces (sprinty, code review, CI/CD, testy), czemu powstało to miejsce (nowa rola czy zastępstwo), jak wygląda onboarding i jakie są oczekiwania na pierwsze 3 miesiące, strefa czasowa i godziny pracy, czy jest dyżur on-call. Pośrednikowi: długość kontraktu i szanse na przedłużenie, tryb pracy (zdalnie, hybrydowo – ile dni w biurze), sprzęt i dostępy, okres wypowiedzenia, model rozliczenia i termin startu.",
+      "code": "What does the first month look like for a new developer?\nIs it a new product or mostly maintenance?\nWhich versions of .NET and Angular are you on?\nHow big is the team, and who sets the priorities?\nHow do you deploy to production, and how often?\nWhy is this position open – is it a new role?\nWhat would make you say after three months that it was a good hire?",
+      "lang": "text",
+      "tip": "Pytanie „Why is this position open?” bywa najbardziej odkrywcze: „zespół rośnie” to inna sytuacja niż „trzy osoby odeszły w kwartał”."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "soft-mq001",
+      "topic": "Rozmowa po angielsku",
+      "level": 1,
+      "q": "Które zdanie jest poprawne, gdy chcesz powiedzieć, że pracujesz z .NET od 2021 roku i nadal to robisz?",
+      "options": [
+        "„I am working with .NET since 2021.”",
+        "„I work with .NET from 2021.”",
+        "„I've been working with .NET since 2021.”",
+        "„I worked with .NET since 2021.”"
+      ],
+      "correct": 2,
+      "why": "Dla czynności, która zaczęła się w przeszłości i trwa nadal, z „since”/„for” używa się Present Perfect (Continuous). A i B to kalki z polskiego („pracuję od…”), D (Past Simple) sugeruje, że już nie pracujesz, i nie łączy się z „since”."
+    },
+    {
+      "id": "soft-mq002",
+      "topic": "Rozmowa po angielsku",
+      "level": 2,
+      "q": "Chcesz powiedzieć klientowi: „Ewentualnie możemy dodać cache, jeśli wydajność okaże się problemem”. Które zdanie oddaje ten sens?",
+      "options": [
+        "„Eventually we will add a cache if performance becomes a problem.”",
+        "„Actually we can add a cache if performance becomes a problem.”",
+        "„We will realize a cache if performance becomes a problem.”",
+        "„We could possibly add a cache later, if performance becomes a problem.”"
+      ],
+      "correct": 3,
+      "why": "„Could possibly” z warunkiem „if…” wyraża opcję. „Eventually” to „w końcu, ostatecznie”, więc A brzmi jak zapowiedź, że cache na pewno powstanie. „Actually” to „właściwie / tak naprawdę”, a nie „ewentualnie”. „Realize” znaczy „uświadomić sobie”, a nie „zrealizować / zaimplementować”."
+    },
+    {
+      "id": "soft-mq003",
+      "topic": "Rozmowa po angielsku",
+      "level": 1,
+      "q": "Rozmowa techniczna po angielsku. Pada pytanie o gRPC streaming, z którym nie pracowałeś. Która odpowiedź jest najlepsza?",
+      "options": [
+        "„I haven't used gRPC streaming in a project, but I know gRPC runs on HTTP/2 and uses Protobuf contracts. I'd expect streaming to use HTTP/2 streams – I'd verify the details in the docs. I can tell you how we did real-time updates with SignalR.”",
+        "„I don't know.”",
+        "„gRPC streaming is basically the same as REST, just faster.”",
+        "Chwila ciszy, a potem przejście po polsku: „Mogę odpowiedzieć po polsku?”"
+      ],
+      "correct": 0,
+      "why": "A uczciwie mówi, czego nie robiłeś, pokazuje wiedzę pokrewną, oznacza przypuszczenie i proponuje temat, w którym jesteś mocny. B kończy temat bez sygnału o sposobie myślenia. C to pewne siebie zmyślanie, które rekruter łatwo wychwyci. D pokazuje, że angielski nie wytrzymuje presji – a rozmowa w tym języku sama w sobie jest testem."
+    },
+    {
+      "id": "soft-mq004",
+      "topic": "Rozmowa po angielsku",
+      "level": 2,
+      "q": "Na początku rozmowy z klientem z Niemiec pada: „Tell me about yourself”. Który start jest najlepszy?",
+      "options": [
+        "„I was born in Kraków, I finished my studies in 2019, then I did an internship, then…”",
+        "„I'm a full-stack developer with five years of experience in .NET and Angular. For the last two years I've been building an insurance claims platform, and recently I led the migration of its API from .NET Framework to .NET 8.”",
+        "„As you can see in my CV, I know C#, .NET, Angular, TypeScript, RxJS, SQL, Docker, Azure, Git and Jira.”",
+        "„What would you like to know?”"
+      ],
+      "correct": 1,
+      "why": "B zaczyna od teraźniejszości: rola, staż, stack i konkretne osiągnięcie – to daje rozmówcy haczyki do pytań. A to chronologiczny życiorys, C to lista słów kluczowych bez kontekstu (klient ma CV przed sobą), D oddaje inicjatywę i wygląda na brak przygotowania."
+    },
+    {
+      "id": "soft-mq005",
+      "topic": "Outsourcing i B2B",
+      "level": 2,
+      "q": "Rozmowa z tech leadem klienta w body leasingu. Pod koniec pyta: „Do you have any questions for us?”. Co najlepiej zrobić?",
+      "options": [
+        "Zapytać o stawkę godzinową i czy da się ją podnieść po trzech miesiącach.",
+        "Powiedzieć, że wszystko jest jasne, bo pośrednik już opisał projekt.",
+        "Zapytać, ile dni urlopu przysługuje na B2B u klienta.",
+        "Zapytać, jak wygląda pierwszy miesiąc nowej osoby w zespole i co po trzech miesiącach uznaliby za sukces."
+      ],
+      "correct": 3,
+      "why": "D pokazuje zaangażowanie i nastawienie na wyniki, a przy okazji daje Ci informacje o onboardingu i oczekiwaniach. Stawkę (A) i warunki umowy (C) ustalasz z pośrednikiem, który jest stroną kontraktu – klient często w ogóle nie zna Twojej stawki. B marnuje okazję do pokazania zainteresowania i sprawdzenia projektu."
+    },
+    {
+      "id": "soft-mq006",
+      "topic": "Outsourcing i B2B",
+      "level": 1,
+      "q": "Oferta B2B: 120 zł netto/h, przelicznik rynkowy 168 h w miesiącu. Ile to mniej więcej miesięcznie na fakturze (netto, przed kosztami i składkami)?",
+      "options": [
+        "ok. 16 800 zł",
+        "ok. 20 160 zł",
+        "ok. 24 000 zł",
+        "ok. 19 200 zł"
+      ],
+      "correct": 1,
+      "why": "120 × 168 = 20 160 zł. 16 800 zł odpowiada stawce 100 zł/h. 19 200 zł to 160 h (zaniżony przelicznik), a 24 000 zł to 200 h. Pamiętaj, że przy rozliczeniu godzinowym miesiąc z urlopem lub chorobą daje odpowiednio mniej."
+    },
+    {
+      "id": "soft-mq007",
+      "topic": "Outsourcing i B2B",
+      "level": 2,
+      "q": "Masz już za sobą rozmowę HR i techniczną w firmie outsourcingowej. Jutro rozmowa z klientem. Co ten etap zwykle sprawdza najbardziej?",
+      "options": [
+        "Dopasowanie do konkretnego projektu i zespołu: doświadczenie z ich stackiem, komunikację (często po angielsku), samodzielność i to, czy szybko zaczniesz dowozić.",
+        "Głównie formalności, bo decyzję podjął już pośrednik.",
+        "Ogólną wiedzę teoretyczną z całego .NET, niezależnie od projektu.",
+        "Głównie negocjację stawki z klientem."
+      ],
+      "correct": 0,
+      "why": "W body leasingu klient płaci za Twój czas od pierwszego dnia i decyduje, czy Cię przyjmie – ocenia dopasowanie do swojego projektu i ryzyko. B to częsty i kosztowny błąd: rozmowa z klientem zwykle jest etapem decydującym. C bardziej pasuje do pierwszej weryfikacji technicznej. D – stawkę ustala się z pośrednikiem."
+    },
+    {
+      "id": "soft-mq008",
+      "topic": "Outsourcing i B2B",
+      "level": 2,
+      "q": "Który zestaw informacji najlepiej pomaga porównać dwie oferty B2B o tej samej stawce godzinowej?",
+      "options": [
+        "Nazwa klienta i liczba lat jego obecności na rynku.",
+        "Wyłącznie stawka i wymagana technologia.",
+        "Płatne dni przerwy (czy są), okres wypowiedzenia, czas trwania kontraktu i co po zakończeniu projektu, termin płatności faktur, tryb pracy i benefity.",
+        "Która firma oferuje wyższą stawkę po roku – ustnie, bez zapisu w umowie."
+      ],
+      "correct": 2,
+      "why": "Przy tej samej stawce o realnym dochodzie i stabilności decydują warunki: niepłatny urlop zmniejsza roczny przychód, krótkie wypowiedzenie i kontrakt związany z jednym projektem zwiększają ryzyko przerwy. A i B pomijają te różnice. D to obietnica bez pokrycia w umowie. Szczegóły prawne i podatkowe najlepiej skonsultować z księgowym."
+    }
+  ]
+}

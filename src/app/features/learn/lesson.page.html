@@ -1,0 +1,66 @@
+@if (lesson(); as l) {
+  <div class="readbar" aria-hidden="true"><span [style.width.%]="readPct()"></span></div>
+  <article class="view lesson">
+    <div class="backbar">
+      <a class="btn ghost" style="min-height:40px;padding:8px 12px" routerLink="/nauka">← Nauka</a>
+      <span class="eyebrow">{{ module()?.title }}</span>
+    </div>
+
+    <header class="stack" style="gap:10px">
+      <div class="tags"><app-cat-tag [cat]="l.cat" /><app-level [level]="l.level" /><span class="tag">· {{ l.minutes }} min czytania</span>
+        @if (progress()?.read) { <span class="pill ok">przeczytane</span> }
+        @if (best() !== null) { <span class="pill" [class.ok]="best()! >= 80" [class.mid]="best()! < 80">egzamin {{ best() }}%</span> }
+      </div>
+      <h1 class="lesson-h1">{{ l.title }}</h1>
+      <p class="lead" [innerHTML]="l.intro | rich"></p>
+      <app-speak [text]="plainText()" lang="pl-PL" label="Czytaj na głos" [rate]="1" />
+    </header>
+
+    @for (s of l.sections; track $index) {
+      <section class="lesson-sec">
+        <h2>{{ s.h }}</h2>
+        <div class="prose" [innerHTML]="s.text | markdown"></div>
+        <app-code [code]="s.code" [lang]="s.lang" />
+      </section>
+    }
+
+    <section class="card takeaways">
+      <h2>Najważniejsze do zapamiętania</h2>
+      <ul>@for (t of l.takeaways; track $index) { <li [innerHTML]="t | rich"></li> }</ul>
+    </section>
+
+    @if (l.interview.length) {
+      <section class="stack">
+        <h2>O to mogą zapytać na rozmowie</h2>
+        <ul class="interview">@for (q of l.interview; track $index) { <li [innerHTML]="q | rich"></li> }</ul>
+        <p class="muted" style="font-size:.88rem">Spróbuj odpowiedzieć na głos, zanim przejdziesz do egzaminu.</p>
+      </section>
+    }
+
+    <section class="card stack exam-cta">
+      <h2>Egzamin z lekcji</h2>
+      <p class="muted">{{ l.exam.length }} pytań z tej lekcji. Zaliczenie od 80%.
+        @if (best() !== null) { Twój najlepszy wynik: <b>{{ best() }}%</b>. }</p>
+      <div class="actions">
+        <button class="btn primary" (click)="exam()">Rozwiąż egzamin</button>
+        @if (!progress()?.read) { <button class="btn" (click)="markRead()">Oznacz jako przeczytane</button> }
+        @else { <a class="btn" routerLink="/fiszki" (click)="0">Fiszki z obszaru</a> }
+      </div>
+    </section>
+
+    @if (ai.available()) {
+      <section class="card stack">
+        <h3>Coś niejasne? Dopytaj</h3>
+        <app-ask-claude [context]="askContext()" placeholder="np. czym to się różni od…?" />
+      </section>
+    }
+
+    <nav class="row lesson-nav">
+      @if (neighbours().prev; as p) { <a class="btn ghost" [routerLink]="['/nauka', p.id]">← {{ p.title }}</a> }
+      <span style="flex:1"></span>
+      @if (neighbours().next; as n) { <a class="btn ghost" [routerLink]="['/nauka', n.id]">{{ n.title }} →</a> }
+    </nav>
+  </article>
+} @else {
+  <div class="empty"><h3>Nie ma takiej lekcji</h3><a class="btn" routerLink="/nauka">Wróć do listy</a></div>
+}

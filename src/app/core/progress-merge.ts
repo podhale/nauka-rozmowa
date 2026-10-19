@@ -4,6 +4,7 @@ export const emptyProgress = (): ProgressState => ({
   v: 1,
   cards: {},
   quiz: {},
+  lessons: {},
   hist: [],
   days: {},
   newDay: { d: '', n: 0 },
@@ -27,8 +28,8 @@ export function mergeProgress(a: ProgressState, b: ProgressState): ProgressState
   const R = Math.max(a.resetAt || 0, b.resetAt || 0);
   out.resetAt = R;
 
-  for (const k of ['cards', 'quiz'] as const) {
-    const merged: Record<string, { t: number }> = { ...a[k] };
+  for (const k of ['cards', 'quiz', 'lessons'] as const) {
+    const merged: Record<string, { t: number }> = { ...(a[k] ?? {}) };
     for (const [id, v] of Object.entries(b[k] || {})) if (!merged[id] || (v.t || 0) > (merged[id].t || 0)) merged[id] = v;
     for (const [id, v] of Object.entries(merged)) if ((v.t || 0) <= R) delete merged[id];
     (out as unknown as Record<string, unknown>)[k] = merged;

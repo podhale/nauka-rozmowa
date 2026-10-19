@@ -1,0 +1,192 @@
+{
+ "cat": "devops",
+ "sheets": [
+  {
+   "topic": "Azure App Service",
+   "points": [
+    "Skaluje się **App Service Plan**: scale up = większy tier/maszyna, scale out = więcej instancji dla wszystkich aplikacji w planie.",
+    "**Deployment slots** (od Standard): deploy na `staging`, smoke testy, **swap** z rozgrzaniem – zero downtime, rollback = swap z powrotem.",
+    "Ustawienia **sticky** (deployment slot setting) zostają w slocie; zwykłe app settings przechodzą z aplikacją przy swapie.",
+    "App settings = zmienne środowiskowe, nadpisują `appsettings.json`; zagnieżdżenie przez `__` (Linux nie pozwala na `:`).",
+    "Sekrety: **Key Vault references** `@Microsoft.KeyVault(SecretUri=...)` + Managed Identity aplikacji.",
+    "Autoscale: reguły metryk/harmonogramu parami (out + in) z cooldownem; min. 2–3 instancje, **Always On**, Health check.",
+    "API bezstanowe: wyłącz **ARR affinity**, sesje/cache w Redisie, pliki w Blob."
+   ],
+   "pitfalls": [
+    "Connection string do bazy nieoznaczony jako sticky – po swapie produkcja gada z bazą stagingową.",
+    "Rollback swapem nie cofa migracji bazy – schemat musi być kompatybilny wstecz.",
+    "Zmiana app settings restartuje aplikację."
+   ],
+   "code": "az webapp deployment slot swap -g rg-shop -n app-shop-api \\\n  --slot staging --target-slot production",
+   "lang": "bash",
+   "say": "Wdrażam na slot staging, sprawdzam i robię swap z rozgrzaniem, więc produkcja nie ma przestoju, a rollback to swap z powrotem. Konfigurację środowiskową oznaczam jako sticky, sekrety biorę z Key Vault przez Managed Identity, a skaluję plan w poziomie przy bezstanowym API."
+  },
+  {
+   "topic": "Azure Functions",
+   "points": [
+    "Funkcja = **jeden trigger** (HTTP, Timer, Service Bus, Queue, Blob, Event Grid, Event Hubs, Cosmos DB) + opcjonalne **bindingi** wejścia/wyjścia.",
+    "**Isolated worker model**: osobny proces, własny `Program.cs`, DI, middleware, dowolny .NET; **in-process** – wsparcie do 10.11.2026.",
+    "Plany: **Flex Consumption** (zalecany serverless, always-ready, VNet), Consumption, **Premium** (prewarmed, bez cold startu), Dedicated, Container Apps.",
+    "**Cold start**: nowa instancja po bezczynności/przy skalowaniu – Premium/always-ready, lekki start, ReadyToRun.",
+    "HTTP trigger: odpowiedź do ~**230 s**; Consumption timeout 5 min (max 10) – długie zadania przez kolejkę lub Durable.",
+    "**Durable Functions**: orkiestrator + aktywności, stan w storage, wzorce chaining, fan-out/fan-in, async HTTP, human interaction.",
+    "Orkiestrator **deterministyczny** (replay): `ctx.CurrentUtcDateTime`, `ctx.NewGuid()`, `ctx.CreateTimer`, I/O tylko w aktywnościach.",
+    "Timer: NCRONTAB z 6 polami (sekundy), np. `0 */5 * * * *`."
+   ],
+   "pitfalls": [
+    "`DateTime.UtcNow`/`Guid.NewGuid()`/HTTP bezpośrednio w orkiestratorze.",
+    "Brak limitu współbieżności przy Service Bus triggerze – setki równoległych wywołań zabijają bazę.",
+    "Nieidempotentne aktywności i funkcje – trigger to at-least-once."
+   ],
+   "code": "var builder = FunctionsApplication.CreateBuilder(args);\nbuilder.ConfigureFunctionsWebApplication();\nbuilder.Build().Run();\n\n[Function(\"Nightly\")]\npublic void Run([TimerTrigger(\"0 0 2 * * *\")] TimerInfo t) { /* ... */ }",
+   "lang": "csharp",
+   "say": "Functions używam do zadań event-driven: kolejki, timery, webhooki – w modelu isolated worker. Gdy liczy się latencja, wybieram plan z rozgrzanymi instancjami, a dłuższe workflow robię w Durable Functions, pamiętając o deterministycznym orkiestratorze."
+  },
+  {
+   "topic": "Service Bus vs Event Grid vs Event Hubs",
+   "points": [
+    "**Service Bus**: broker wiadomości biznesowych, pull + ack (PeekLock), kolejki/topiki, sesje, DLQ, duplicate detection, transakcje.",
+    "**Event Grid**: push dyskretnych zdarzeń („blob utworzony”), filtrowanie, retry z backoffem (do 24 h), dead-letter do Blob.",
+    "**Event Hubs**: streaming dużego wolumenu, partycje, retencja, **consumer groups** z offsetami (checkpoint w Blob), endpoint Kafka, Capture.",
+    "Reguła: wartościowa komenda/zdarzenie → Service Bus; reakcja na zdarzenie → Event Grid; telemetria/strumień → Event Hubs.",
+    "Kolejność: Service Bus **sessions** lub partycja w Event Hubs; Event Grid kolejności nie gwarantuje.",
+    "Replay tylko w Event Hubs (log); Service Bus usuwa wiadomość po ack."
+   ],
+   "pitfalls": [
+    "Event Grid do komend wymagających transakcji i DLQ per konsument.",
+    "Service Bus do telemetrii setek tysięcy zdarzeń na sekundę zamiast Event Hubs."
+   ],
+   "say": "Service Bus wybieram dla wiadomości, których nie wolno zgubić, Event Grid do reagowania na zdarzenia, a Event Hubs do strumieni danych z retencją i replay. Często łączę je w jednym przepływie."
+  },
+  {
+   "topic": "Entra ID",
+   "points": [
+    "**Entra ID** = dawne Azure AD (zmiana nazwy w 2023); rejestracja aplikacji daje client ID i tenant ID.",
+    "**Application object** (definicja) vs **service principal / enterprise app** (instancja w tenancie, przypisania ról).",
+    "API: **Expose an API** – Application ID URI `api://<client-id>`, scope'y delegowane (`scp`), **app roles** (`roles`).",
+    "SPA: platforma *Single-page application*, redirect URI, **authorization code + PKCE**, bez sekretu (public client), MSAL Angular.",
+    "`MsalInterceptor` + `protectedResourceMap` dokleja token dla scope'u API do żądań na dany URL.",
+    "API: `AddMicrosoftIdentityWebApi` (Microsoft.Identity.Web) – walidacja issuer, audience, podpisu; polityki po scope/roli.",
+    "Daemon/serwis: client credentials z `api://.../.default`; API → inne API w imieniu użytkownika: **on-behalf-of**."
+   ],
+   "pitfalls": [
+    "Token dla Microsoft Graph (`User.Read`) wysłany do własnego API – zły `aud`, 401.",
+    "Client secret w SPA – SPA jest public clientem, sekretu nie da się w niej ukryć.",
+    "Przekazywanie tokenu użytkownika dalej zamiast OBO."
+   ],
+   "code": "builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)\n    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection(\"AzureAd\"));",
+   "lang": "csharp",
+   "say": "Rejestruję osobno API z wystawionymi scope'ami i SPA jako public client z PKCE. Angular przez MSAL pobiera token dla scope'u API, a API waliduje go Microsoft.Identity.Web i autoryzuje po scope'ach lub app roles."
+  },
+  {
+   "topic": "Azure Pipelines",
+   "points": [
+    "Hierarchia: **stages → jobs → steps**; joby w stage'u mogą iść równolegle, stage'e łączy `dependsOn` + `condition`.",
+    "Build: `UseDotNet@2`, `Cache@2` (klucz z `packages.lock.json`), `dotnet test --logger trx` + `PublishTestResults@2`, `publish` artefaktu.",
+    "**Deployment job** + `environment:` – historia wdrożeń, automatyczne pobranie artefaktów do `$(Pipeline.Workspace)`.",
+    "**Approvals and checks** konfiguruje się na environmencie/service connection, nie w YAML.",
+    "**Variable groups** (mogą być z Key Vault), **service connections** (najlepiej workload identity federation).",
+    "Sekrety nie trafiają same do `env` skryptu – mapuj jawnie `env: { X: $(Secret) }`.",
+    "**Templates** z parametrami (`${{ }}` compile-time) i `extends` dla firmowego standardu; `$( )` to runtime.",
+    "PR validation w Azure Repos: **branch policies** (build validation)."
+   ],
+   "pitfalls": [
+    "Budowanie od nowa na każde środowisko zamiast deployu tego samego artefaktu.",
+    "Brak `condition: succeededOrFailed()` przy publikacji wyników testów.",
+    "Mylenie `${{ }}` i `$( )` w warunkach."
+   ],
+   "code": "- deployment: api\n  environment: prod\n  strategy:\n    runOnce:\n      deploy:\n        steps:\n        - task: AzureWebApp@1\n          inputs: { azureSubscription: sc-prod, appName: app-shop-api,\n                    package: $(Pipeline.Workspace)/api/**/*.zip }",
+   "lang": "yaml",
+   "say": "W Azure Pipelines mam multi-stage YAML: stage Build z testami i artefaktami, potem deployment joby na environmenty z approvals. Sekrety idą z variable groups podpiętych pod Key Vault, a do Azure łączę się service connection z federacją tożsamości."
+  },
+  {
+   "topic": "Jenkins i TeamCity",
+   "points": [
+    "**Jenkins**: open source, self-hosted, controller + agenty, `Jenkinsfile` (declarative/scripted, Groovy), ogrom pluginów.",
+    "**TeamCity** (JetBrains): mocne wsparcie .NET, **build chains** (snapshot/artifact dependencies), konfiguracja jako **Kotlin DSL**, on-prem lub Cloud.",
+    "Te same pojęcia co w GitHub Actions/Azure Pipelines: etapy, agenty, artefakty, sekrety, triggery, raporty testów.",
+    "Koszt: utrzymanie serwera, aktualizacje i bezpieczeństwo pluginów po stronie firmy.",
+    "Jenkins: `agent { docker { image ... } }` daje powtarzalne środowisko buildu; `post { always { ... } }` wykonuje się niezależnie od wyniku (raporty, sprzątanie)."
+   ],
+   "pitfalls": [
+    "„Plugin hell” w Jenkinsie – nieaktualizowane pluginy to typowa dziura bezpieczeństwa.",
+    "Konfiguracja klikana w UI zamiast pipeline as code – brak review i historii."
+   ],
+   "say": "Z Jenkinsem i TeamCity pracuje się tymi samymi pojęciami co w Azure Pipelines: pipeline jako kod, etapy, agenty i artefakty. Różnica to głównie składnia i to, że serwer utrzymuje firma."
+  },
+  {
+   "topic": "Helm",
+   "points": [
+    "**Chart** = szablony manifestów + `Chart.yaml` + `values.yaml`; środowiska przez `-f values-prod.yaml` i `--set`.",
+    "**Release** = instancja chartu w namespace; każdy upgrade to nowa **rewizja** (`helm history`).",
+    "CI: `helm upgrade --install api ./chart --set image.tag=$SHA --atomic --wait`.",
+    "`helm rollback api <rev>` przywraca manifesty – **nie** cofa migracji bazy.",
+    "Helm 3: bez Tillera, historia jako Secrets w namespace; charty jako artefakty **OCI** w rejestrze.",
+    "Restart po zmianie ConfigMapy: adnotacja `checksum/config` z `sha256sum` szablonu.",
+    "Sekrety poza values w repo: External Secrets, CSI Key Vault, SOPS; alternatywa/uzupełnienie: **Kustomize**."
+   ],
+   "pitfalls": [
+    "`kubectl rollout undo`/`kubectl edit` na zasobach Helm – dryf względem release'u.",
+    "Release zablokowany w `pending-upgrade` po przerwanym pipeline.",
+    "Hasła w `values.yaml` w repo."
+   ],
+   "code": "helm upgrade --install api ./charts/api -n shop \\\n  -f values-prod.yaml --set image.tag=$GIT_SHA --atomic --wait\nhelm rollback api 4 -n shop",
+   "lang": "bash",
+   "say": "Aplikację na Kubernetes pakuję w chart Helm, środowiska różnią się plikami values, a pipeline robi upgrade --install z tagiem obrazu i --atomic. Rollback robię przez helm rollback, pamiętając, że baza musi być kompatybilna wstecz."
+  },
+  {
+   "topic": "OpenShift",
+   "points": [
+    "**OpenShift** = Kubernetes od Red Hat + Routes, Projects, wbudowany rejestr, ImageStreams, BuildConfig/S2I, konsola, CLI `oc`.",
+    "**Route** (router HAProxy) wystawia usługę na zewnątrz; TLS: edge, passthrough, re-encrypt; Ingress też działa.",
+    "**Restricted SCC**: losowy UID bez roota, grupa 0 – brak portów < 1024 i zapisu do katalogów innych użytkowników.",
+    "Obraz: port **8080**, `chgrp -R 0` + `chmod -R g=u` dla katalogów zapisu, `USER` nie-root.",
+    "**DeploymentConfig** jest przestarzały – w nowych projektach standardowy **Deployment** (+ Helm/Kustomize).",
+    "Obrazy .NET 8+ domyślnie: port 8080 i użytkownik `app` – dobry punkt wyjścia."
+   ],
+   "pitfalls": [
+    "Proszenie o SCC `anyuid`/`privileged` dla zwykłego API zamiast poprawienia obrazu.",
+    "Zakładanie, że kontener działa jako konkretny UID (np. 1000) – OpenShift przydziela inny."
+   ],
+   "say": "OpenShift to Kubernetes z dodatkami Red Hat, ale dla mnie jako dewelopera najważniejsze jest restrykcyjne SCC: obraz musi działać jako losowy użytkownik bez roota, na porcie 8080, z katalogami zapisywalnymi dla grupy root. Używam standardowego Deployment, a ruch wystawiam przez Route."
+  },
+  {
+   "topic": "kubectl i debugowanie",
+   "points": [
+    "Kolejność: `get pods` → `describe pod` (Events, Last State, Exit Code) → `logs` → `exec` → `port-forward`.",
+    "`kubectl logs <pod> --previous` – logi zcrashowanego kontenera; `-c` dla konkretnego kontenera; `deploy/api -f`.",
+    "Statusy: **Pending** (scheduling), **ImagePullBackOff** (tag/uprawnienia), **CrashLoopBackOff** (aplikacja pada), **OOMKilled**.",
+    "Exit codes: **137** SIGKILL (zwykle OOM), **143** SIGTERM, **139** segfault.",
+    "`kubectl port-forward svc/api 8080:80` – dostęp do serwisu z lokalnej maszyny z pominięciem Ingressu.",
+    "Brak shella (chiseled): `kubectl debug -it <pod> --image=busybox --target=api`.",
+    "Brak ruchu: `kubectl get endpoints svc/api` – pusto = readiness failuje lub selektor nie pasuje do labeli."
+   ],
+   "pitfalls": [
+    "Szukanie logów w plikach wewnątrz kontenera zamiast na stdout.",
+    "Restart poda „na ślepo” bez przeczytania Events i `--previous`."
+   ],
+   "code": "kubectl describe pod api-7d9c-xk2 -n shop\nkubectl logs api-7d9c-xk2 -n shop --previous\nkubectl port-forward svc/api 8080:80 -n shop",
+   "lang": "bash",
+   "say": "Debuguję od describe i eventów, bo one mówią, czy to scheduling, obraz, probe czy crash aplikacji; potem logi, także --previous. Do testu API z pominięciem ingressu używam port-forward."
+  },
+  {
+   "topic": "AWS dla .NET",
+   "points": [
+    "Mapowanie: App Service ≈ **Elastic Beanstalk**, Container Apps ≈ **ECS na Fargate**, AKS ≈ **EKS**, Functions ≈ **Lambda**, ACR ≈ **ECR**.",
+    "Lambda + ASP.NET Core: `AddAWSLambdaHosting(LambdaEventSource.HttpApi)` – to samo API lokalnie i w Lambdzie.",
+    "Messaging: Service Bus ≈ **SQS** (kolejka) + **SNS** (pub/sub, fan-out do wielu SQS); Event Grid ≈ **EventBridge**; Event Hubs ≈ **Kinesis**.",
+    "SQS: **visibility timeout** > czas przetwarzania, jawne `DeleteMessage`, DLQ przez redrive policy (`maxReceiveCount`), long polling 20 s.",
+    "Tożsamość: **IAM roles** (task role w ECS, IRSA/Pod Identity w EKS) zamiast kluczy; SDK credential chain ≈ DefaultAzureCredential.",
+    "ECS: **execution role** (obraz, logi, wstrzyknięcie sekretów) vs **task role** (wywołania SDK z kodu).",
+    "Sekrety: **Secrets Manager** (rotacja) / Parameter Store (`AddSystemsManager`); baza: **RDS**/Aurora (+ RDS Proxy).",
+    "Monitoring: **CloudWatch** (logi, metryki, alarmy), tracing przez OpenTelemetry (ADOT) i X-Ray."
+   ],
+   "pitfalls": [
+    "Access key/secret key w konfiguracji aplikacji zamiast roli IAM.",
+    "Visibility timeout krótszy niż przetwarzanie – duplikaty.",
+    "Uprawnienia do sekretów nadane execution role, gdy kod czyta je przez SDK (potrzebna task role)."
+   ],
+   "say": "AWS tłumaczę na znane pojęcia z Azure: ECS na Fargate jak Container Apps, SQS z SNS jak Service Bus, IAM role jak Managed Identity, Secrets Manager jak Key Vault. Koncepcje – bezstanowe kontenery, tożsamość zamiast sekretów, idempotentni konsumenci – są te same."
+  }
+ ]
+}

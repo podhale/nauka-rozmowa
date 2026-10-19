@@ -1,0 +1,86 @@
+{
+  "cat": "testing",
+  "sheets": [
+    {
+      "topic": "Biblioteki do mockowania: porównanie",
+      "points": [
+        "Tworzenie: Moq `new Mock<T>()` + `.Object`; NSubstitute `Substitute.For<T>()`; FakeItEasy `A.Fake<T>()` – dwa ostatnie od razu są typu `T`.",
+        "Stub: Moq `Setup(x => x.GetAsync(7)).ReturnsAsync(o)`; NSub `x.GetAsync(7).Returns(o)`; FIE `A.CallTo(() => x.GetAsync(7)).Returns(o)`.",
+        "Weryfikacja „dokładnie raz”: `Verify(..., Times.Once())` / `Received(1)` / `MustHaveHappenedOnceExactly()`.",
+        "Dowolny argument: `It.IsAny<T>()` / `Arg.Any<T>()` / `A<T>._`; warunek: `It.Is<T>(p)` / `Arg.Is<T>(p)` / `A<T>.That.Matches(p)`.",
+        "Wszystkie trzy domyślnie **loose**: nieskonfigurowane wywołanie zwraca default, a dla `Task<T>` zakończony task z default.",
+        "**Strict**: Moq `MockBehavior.Strict`, FIE `A.Fake<T>(o => o.Strict())`; NSubstitute nie ma strict.",
+        "Wszystkie mockują tylko interfejsy oraz członki `virtual`/`abstract`; do NSubstitute dodaj NSubstitute.Analyzers.",
+        "Wybór: spójność w organizacji > gust; NSubstitute najzwięźlejszy, Moq najpopularniejszy, FIE ma jedno wejście `A.CallTo`."
+      ],
+      "pitfalls": [
+        "Strict mocki wszędzie – każde nieszkodliwe nowe wywołanie psuje dziesiątki testów.",
+        "Loose mock po cichu zwraca null i test przechodzi inną ścieżką niż zakładano – sprawdzaj wynik, nie tylko brak wyjątku.",
+        "Mieszanie dwóch bibliotek do mocków w jednym repo."
+      ],
+      "code": "// Moq\nrepo.Setup(r => r.GetAsync(7)).ReturnsAsync(order);\nemail.Verify(e => e.SendAsync(to, It.IsAny<string>()), Times.Once());\n// NSubstitute\nrepo.GetAsync(7).Returns(order);\nawait email.Received(1).SendAsync(to, Arg.Any<string>());\n// FakeItEasy\nA.CallTo(() => repo.GetAsync(7)).Returns(order);\nA.CallTo(() => email.SendAsync(to, A<string>._)).MustHaveHappenedOnceExactly();",
+      "lang": "csharp",
+      "say": "Znam Moq, NSubstitute i FakeItEasy – robią to samo, różnią się składnią; domyślnie używam loose mocków i weryfikuję tylko efekty biznesowe, a bibliotekę wybieram tak, by była jedna w całej organizacji."
+    },
+    {
+      "topic": "Frameworki testowe: xUnit, NUnit, MSTest",
+      "points": [
+        "Test: `[Fact]` / `[Test]` / `[TestMethod]`; dane: `[Theory]+[InlineData]` / `[TestCase]` / `[DataRow]`; ze źródła: `[MemberData]` / `[TestCaseSource]` / `[DynamicData]`.",
+        "Setup per test: konstruktor + `Dispose` (xUnit) / `[SetUp]`+`[TearDown]` (NUnit) / `[TestInitialize]`+`[TestCleanup]` (MSTest).",
+        "Raz na klasę: `IClassFixture<T>` / `[OneTimeSetUp]` / statyczne `[ClassInitialize(TestContext)]`; na assembly: `AssemblyFixture` (xUnit v3) / `[SetUpFixture]` / `[AssemblyInitialize]`.",
+        "Instancja: xUnit i MSTest – **nowa per test**; NUnit – **jedna na klasę** (zmiana: `[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]`).",
+        "Równoległość: xUnit domyślnie równolegle kolekcje (klasy); NUnit `[Parallelizable]`; MSTest `[assembly: Parallelize(...)]` + `[DoNotParallelize]`.",
+        "xUnit v3: pakiet `xunit.v3`, testy jako exe (`dotnet run`), `TestContext.Current` (np. `CancellationToken`), assembly fixtures, `Assert.Skip`.",
+        "MSTest 3+: `MSTest.Sdk`, runner na Microsoft.Testing.Platform, wbudowane analizatory.",
+        "Async setup: xUnit `IAsyncLifetime` (w v3 na `ValueTask`); NUnit i MSTest – metody setup zwracające `Task`."
+      ],
+      "pitfalls": [
+        "Inicjalizacja stanu w polu klasy w NUnit – testy dzielą stan i zależą od kolejności.",
+        "Włączenie równoległości (MSTest/NUnit `MethodLevel`) bez izolacji współdzielonych zasobów – losowe awarie."
+      ],
+      "say": "Wszystkie trzy są dojrzałe i mapują się 1:1 (Fact/Test/TestMethod, InlineData/TestCase/DataRow); kluczowe różnice to cykl życia instancji i domyślna równoległość, a w nowych projektach zwykle wybieram xUnit v3."
+    },
+    {
+      "topic": "Dane testowe: AutoFixture, Bogus, buildery",
+      "points": [
+        "AutoFixture: `fixture.Create<T>()` – anonimowe dane; `Build<T>().With(x => x.P, v).Without(x => x.Q).Create()`; `CreateMany<T>(n)`.",
+        "`Customize(new AutoMoqCustomization())` – interfejsy dostają mocki; są też AutoNSubstitute i AutoFakeItEasy.",
+        "`[Theory, AutoData]` wstrzykuje dane jako parametry; własny atrybut dziedziczy po `AutoDataAttribute`; `[Frozen]` musi stać **przed** SUT.",
+        "Cykle w grafie (navigation properties) → zamień `ThrowingRecursionBehavior` na `OmitOnRecursionBehavior`.",
+        "Bogus: `new Faker<T>(\"pl\").RuleFor(x => x.P, f => f.Name.FirstName()).Generate(n)`; `CustomInstantiator` dla konstruktorów.",
+        "Powtarzalność Bogusa: `UseSeed(1234)` lub `Randomizer.Seed = new Random(1234)`; `StrictMode(true)` wymusza reguły dla wszystkich pól.",
+        "Builder: sensowne domyślne + `With...`/metody semantyczne (`Paid()`); jedno miejsce zmiany przy nowym polu.",
+        "Kryterium: wartość ważna → jawnie (builder); nieważna → AutoFixture; ma wyglądać realnie → Bogus; mało wariantów → Object Mother."
+      ],
+      "pitfalls": [
+        "Losowe dane bez seeda – testy flaky, których nie da się odtworzyć.",
+        "Asercje na wartościach, których test nie ustawił jawnie (np. wygenerowanych przez AutoFixture).",
+        "Object Mother rozrastający się w dziesiątki metod-wariantów zamiast buildera."
+      ],
+      "code": "var order = fixture.Build<Order>()\n    .With(o => o.Status, OrderStatus.Paid)\n    .Create();\n\nvar customers = new Faker<Customer>(\"pl\")\n    .UseSeed(42)\n    .RuleFor(c => c.Email, f => f.Internet.Email())\n    .Generate(10);",
+      "lang": "csharp",
+      "say": "Wartości istotne dla scenariusza ustawiam jawnie przez builder, resztę generuje AutoFixture, a Bogus z seedem daje realistyczne i powtarzalne dane do seedów i testów wydajnościowych."
+    },
+    {
+      "topic": "Pokrycie kodu: coverlet i raporty",
+      "points": [
+        "`coverlet.collector` + `dotnet test --collect:\"XPlat Code Coverage\"` → `TestResults/<guid>/coverage.cobertura.xml` per projekt.",
+        "Wykluczenia: `.runsettings` (`Exclude`, `ExcludeByAttribute`, `ExcludeByFile`) lub `[ExcludeFromCodeCoverage]`; progi: `coverlet.msbuild` `/p:Threshold=...`.",
+        "ReportGenerator: `-reports:\"**/coverage.cobertura.xml\"` scala projekty; `-reporttypes:\"Html;Cobertura;MarkdownSummaryGithub\"`.",
+        "Azure DevOps: `PublishCodeCoverageResults@2` z plikiem Cobertura → zakładka Code Coverage.",
+        "GitHub Actions: podsumowanie Markdown do `$GITHUB_STEP_SUMMARY`/komentarza PR, HTML jako artefakt, ewentualnie Codecov.",
+        "**Line** = wykonane linie; **branch** = wykonane gałęzie (`if`, `?:`, `&&`, `??`) – branch mówi więcej przy logice warunkowej.",
+        "Coverage mierzy wykonanie, nie weryfikację; jakość testów sprawdza mutation testing (Stryker.NET).",
+        "Zamiast 100%: diff coverage w PR, wysokie branch w krytycznej domenie, trend zamiast twardej bramki."
+      ],
+      "pitfalls": [
+        "100% jako cel – testy bez asercji i testy getterów pod metrykę (prawo Goodharta).",
+        "Masowe `[ExcludeFromCodeCoverage]`, żeby przejść próg.",
+        "Branch coverage zaniżone przez gałęzie generowane przez kompilator (async, `using`) – nie zawsze realna luka."
+      ],
+      "code": "dotnet test --collect:\"XPlat Code Coverage\" --results-directory ./TestResults\nreportgenerator -reports:\"./TestResults/**/coverage.cobertura.xml\" \\\n  -targetdir:./coverage -reporttypes:\"Html;MarkdownSummaryGithub\"",
+      "lang": "bash",
+      "say": "Pokrycie zbieram coverletem i scalam ReportGeneratorem do raportu w CI; traktuję je jako narzędzie do szukania luk, zwłaszcza branch coverage w domenie, a nie jako cel – zamiast progu 100% pilnuję pokrycia nowego kodu."
+    }
+  ]
+}

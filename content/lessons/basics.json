@@ -1,0 +1,1457 @@
+{
+  "module": "basics",
+  "title": "Podstawy od zera",
+  "order": 0,
+  "lessons": [
+    {
+      "id": "basics-web",
+      "cat": "web",
+      "title": "Jak działa internetowa aplikacja: od kliknięcia do bazy i z powrotem",
+      "level": 1,
+      "minutes": 14,
+      "intro": "Przejdziemy razem całą drogę jednego kliknięcia „Dodaj do koszyka”: od przeglądarki, przez internet i serwer, aż do bazy danych i z powrotem na ekran. Kiedy ten obrazek masz w głowie, każde inne pytanie z rozmowy (o API, cache, bezpieczeństwo, wydajność) da się do niego „przypiąć”. Rekruterzy często zaczynają od „opowiedz, co się dzieje, gdy…”, bo w kilka minut widać, czy rozumiesz całość.",
+      "sections": [
+        {
+          "h": "Obrazek na start: restauracja",
+          "text": "Wyobraź sobie restaurację. Ty siedzisz przy stoliku, kelner przyjmuje zamówienie, kuchnia gotuje, a w spiżarni leżą produkty.\n\n- **Ty przy stoliku** to **przeglądarka** (ang. browser) – program, który pokazuje strony i wysyła prośby do serwerów.\n- **Sala i menu** to **frontend** – część aplikacji, którą widzisz i klikasz (HTML, CSS, JavaScript, np. aplikacja w Angularze).\n- **Kuchnia** to **backend** – program działający na serwerze, który przyjmuje zamówienia, sprawdza reguły i coś „gotuje” (np. aplikacja w ASP.NET Core).\n- **Spiżarnia** to **baza danych** – miejsce, gdzie dane leżą trwale, nawet gdy serwer się zrestartuje.\n- **Kartka z zamówieniem**, którą kelner nosi tam i z powrotem, to **HTTP** – umowa, w jakim formacie przeglądarka i serwer rozmawiają.\n\nKlient nigdy nie wchodzi do spiżarni sam. Tak samo przeglądarka nigdy nie łączy się bezpośrednio z bazą – zawsze pyta backend. To jedna z najważniejszych zasad bezpieczeństwa."
+        },
+        {
+          "h": "Zanim cokolwiek wyślemy: adres i DNS",
+          "text": "Wpisujesz `https://sklep.pl`. Komputer nie zna jednak nazw, zna tylko numery – **adresy IP** (np. `203.0.113.10`), czyli „numer telefonu” serwera w sieci.\n\n**DNS** (Domain Name System) to w jednym zdaniu **książka telefoniczna internetu**: zamienia nazwę `sklep.pl` na adres IP.\n\nPotem przeglądarka nawiązuje połączenie z serwerem. Literka **s** w `https` oznacza, że połączenie jest szyfrowane protokołem **TLS** (Transport Layer Security) – nikt po drodze (np. w kawiarnianym Wi‑Fi) nie podejrzy hasła ani koszyka.\n\nNa rozmowie wystarczy powiedzieć: „DNS zamienia nazwę na IP, potem nawiązywane jest połączenie TCP i szyfrowanie TLS, a dopiero w tym kanale lecą żądania HTTP”. Szczegółów sieciowych na poziomie mid zwykle nikt nie drąży."
+        },
+        {
+          "h": "HTTP: kartka z zamówieniem",
+          "text": "**HTTP** (HyperText Transfer Protocol) to prosta umowa: klient wysyła **żądanie** (request), serwer odsyła **odpowiedź** (response). Jedno pytanie – jedna odpowiedź.\n\nŻądanie składa się z czterech części:\n\n1. **Metoda** – co chcesz zrobić: `GET` (pobierz), `POST` (utwórz / wyślij), `PUT` (zastąp), `PATCH` (zmień kawałek), `DELETE` (usuń).\n2. **Adres (URL)** – czego to dotyczy, np. `/api/cart/items`.\n3. **Nagłówki** (headers) – „dopiski na marginesie”: kim jestem, w jakim formacie wysyłam, w jakim chcę odpowiedź.\n4. **Ciało** (body) – właściwa treść, np. dane w JSON. `GET` zwykle ciała nie ma.\n\nOdpowiedź ma: **kod statusu** (liczba mówiąca, jak poszło), nagłówki i ciało.\n\nWażna cecha: HTTP jest **bezstanowy** (stateless). Serwer z definicji nie pamięta poprzedniego żądania. Dlatego przy każdym żądaniu przeglądarka musi się „przedstawić” od nowa – tokenem lub ciasteczkiem (cookie, mały kawałek danych, który przeglądarka sama dołącza do żądań).",
+          "code": "POST /api/cart/items HTTP/1.1\nHost: sklep.pl\nContent-Type: application/json\nAuthorization: Bearer eyJhbGciOi...\n\n{ \"productId\": 42, \"quantity\": 1 }\n\n--- odpowiedź ---\nHTTP/1.1 201 Created\nContent-Type: application/json\nLocation: /api/cart/items/7\n\n{ \"id\": 7, \"productId\": 42, \"quantity\": 1, \"cartTotal\": 129.99 }",
+          "lang": "text"
+        },
+        {
+          "h": "Kody statusu i nagłówki – ściąga do zapamiętania",
+          "text": "Kod statusu to trzycyfrowa liczba. Pierwsza cyfra mówi o grupie:\n\n- **2xx – udało się.** `200 OK` (oto dane), `201 Created` (utworzyłem nowy zasób), `204 No Content` (zrobione, nic nie zwracam).\n- **3xx – idź gdzie indziej.** `301`/`302` przekierowanie, `304 Not Modified` (masz aktualną kopię w cache, użyj jej).\n- **4xx – błąd klienta**, czyli „to ty coś pokręciłeś”. `400 Bad Request` (złe dane), `401 Unauthorized` (nie wiem, kim jesteś – zaloguj się), `403 Forbidden` (wiem, kim jesteś, ale nie wolno ci), `404 Not Found`, `409 Conflict` (konflikt ze stanem, np. ktoś zmienił dane przed tobą), `422` (dane poprawne składniowo, ale łamią reguły), `429 Too Many Requests`.\n- **5xx – błąd serwera**, czyli „to my coś zepsuliśmy”. `500 Internal Server Error`, `502`/`503`/`504` (problem z serwerem po drodze, przeciążenie, timeout).\n\nPułapka: `401` vs `403`. Zapamiętaj: **401 = kim jesteś?**, **403 = wiem, kim jesteś, i nie wpuszczam**.\n\nNajczęstsze nagłówki:\n\n- `Content-Type` – w jakim formacie jest ciało, które wysyłam (np. `application/json`).\n- `Accept` – w jakim formacie chcę odpowiedź.\n- `Authorization` – dowód tożsamości, np. `Bearer <token>`.\n- `Cache-Control` – czy i jak długo można trzymać kopię odpowiedzi.\n- `Cookie` / `Set-Cookie` – ciasteczka wysyłane przez przeglądarkę / ustawiane przez serwer."
+        },
+        {
+          "h": "JSON: wspólny język frontu i backendu",
+          "text": "**JSON** (JavaScript Object Notation) to tekstowy format zapisu danych: obiekty w `{ }`, listy w `[ ]`, pary „klucz: wartość”. Czyta go człowiek, czyta JavaScript, czyta C#.\n\nKrok po kroku, co się dzieje z danymi:\n\n1. W Angularze masz obiekt TypeScript `{ productId: 42, quantity: 1 }`.\n2. `HttpClient` **serializuje** go (zamienia obiekt na tekst) do JSON i wysyła w ciele żądania.\n3. ASP.NET Core **deserializuje** tekst (zamienia z powrotem na obiekt) do klasy C#, np. `AddItemRequest`.\n4. Odpowiedź przechodzi tę samą drogę w drugą stronę.\n\nTypowa pułapka: nazwy pól. W C# piszemy `ProductId`, w JSON domyślnie leci `productId` (ASP.NET Core domyślnie stosuje camelCase). Druga pułapka: daty i liczby dziesiętne – data to w JSON zwykły tekst (np. `\"2026-10-19T10:00:00Z\"`), a nie obiekt `Date`.",
+          "code": "// Frontend (TypeScript)\nexport interface AddItemRequest { productId: number; quantity: number; }\n\n// Backend (C#)\npublic record AddItemRequest(int ProductId, int Quantity);",
+          "lang": "typescript"
+        },
+        {
+          "h": "Cała droga: „Dodaj do koszyka” krok po kroku",
+          "text": "Teraz składamy wszystko w jedną historię. Użytkownik klika przycisk „Dodaj do koszyka”.\n\n1. **Frontend:** komponent Angulara obsługuje kliknięcie i wywołuje serwis, np. `cartService.add(42)`.\n2. **Serwis frontu** robi `http.post('/api/cart/items', { productId: 42, quantity: 1 })`. Interceptor (pośrednik, który „dopisuje” coś do każdego żądania) dokłada nagłówek `Authorization`.\n3. **Sieć:** DNS → IP, połączenie TLS, żądanie HTTP leci do serwera (często najpierw przez load balancer, czyli „recepcję”, która rozdziela ruch na kilka serwerów).\n4. **Backend – pipeline:** ASP.NET Core przepuszcza żądanie przez **middleware** (warstwy jak bramki na lotnisku): logowanie, uwierzytelnienie (kim jesteś?), autoryzacja (czy możesz?).\n5. **Endpoint / kontroler:** JSON zamieniany jest na obiekt, sprawdzana jest walidacja (czy `quantity > 0`?).\n6. **Logika biznesowa:** serwis sprawdza, czy produkt istnieje i jest dostępny, liczy cenę.\n7. **Baza danych:** przez EF Core (biblioteka, która tłumaczy obiekty C# na SQL) wykonuje się `INSERT` do tabeli `CartItems`.\n8. **Odpowiedź:** backend zwraca `201 Created` z JSON-em koszyka.\n9. **Frontend:** serwis dostaje dane, stan koszyka się aktualizuje, licznik w nagłówku strony zmienia się z 2 na 3.\n\nCała ta podróż trwa zwykle kilkadziesiąt–kilkaset milisekund.",
+          "code": "// Backend: minimalny endpoint\napp.MapPost(\"/api/cart/items\", async (AddItemRequest req, CartService cart, ClaimsPrincipal user) =>\n{\n    if (req.Quantity <= 0) return Results.BadRequest(\"Ilość musi być > 0\");\n    var item = await cart.AddAsync(user.Identity!.Name!, req.ProductId, req.Quantity);\n    return Results.Created($\"/api/cart/items/{item.Id}\", item);\n}).RequireAuthorization();",
+          "lang": "csharp"
+        },
+        {
+          "h": "Kto za co odpowiada i typowe pomyłki",
+          "text": "- **Frontend** odpowiada za wygląd, wygodę i szybką informację zwrotną (np. podświetlenie pustego pola). **Nigdy nie jest jedynym strażnikiem** – każdy może wysłać żądanie z pominięciem przeglądarki (np. narzędziem `curl` lub Postmanem).\n- **Backend** jest jedynym miejscem, któremu ufamy: tu jest walidacja, uprawnienia i reguły biznesowe. Cena produktu pochodzi z bazy, a nie z żądania klienta.\n- **Baza** pilnuje spójności danych: klucze, ograniczenia (np. `NOT NULL`), transakcje.\n\nNajczęstsze pomyłki początkujących:\n\n- walidacja tylko na froncie („przecież przycisk jest wyłączony”),\n- zwracanie `200 OK` z treścią `{ \"error\": \"...\" }` zamiast właściwego kodu 4xx/5xx,\n- mylenie `401` i `403`,\n- błąd **CORS** (Cross-Origin Resource Sharing, zasada przeglądarki: strona z domeny A nie może swobodnie czytać odpowiedzi z domeny B, jeśli serwer B na to nie pozwoli). To blokada **przeglądarki**, nie serwera – dlatego w Postmanie „działa”."
+        },
+        {
+          "h": "Jak to opowiedzieć na rozmowie",
+          "text": "Gdy słyszysz „co się dzieje po kliknięciu?”, opowiedz to warstwami, w 60–90 sekund:\n\n„Przeglądarka rozwiązuje nazwę przez DNS, zestawia połączenie TLS i wysyła żądanie HTTP z metodą, URL-em, nagłówkami i ciałem w JSON. Po drodze może być load balancer albo reverse proxy. W ASP.NET Core żądanie przechodzi przez pipeline middleware: uwierzytelnienie, autoryzację, routing do endpointu, model binding i walidację. Logika biznesowa korzysta z bazy przez EF Core. Serwer zwraca kod statusu i JSON, a frontend aktualizuje stan i widok.”\n\nNiuanse, którymi pokażesz poziom wyżej:\n\n- HTTP jest bezstanowy, więc skalujemy backend, dokładając identyczne instancje – stan trzymamy w bazie lub cache (np. Redis).\n- Cache może zadziałać na wielu poziomach: w przeglądarce, w CDN (Content Delivery Network, sieć serwerów blisko użytkownika), na serwerze, w bazie.\n- Każdy krok to potencjalne miejsce opóźnienia – przy problemach wydajności mierzysz, który krok trwa najdłużej, zamiast zgadywać."
+        }
+      ],
+      "takeaways": [
+        "Przeglądarka nigdy nie gada z bazą bezpośrednio – zawsze przez backend, który jest jedynym zaufanym miejscem na walidację i uprawnienia.",
+        "DNS to książka telefoniczna internetu: zamienia nazwę domeny na adres IP.",
+        "Żądanie HTTP = metoda + URL + nagłówki + (opcjonalnie) ciało; odpowiedź = kod statusu + nagłówki + ciało.",
+        "2xx sukces, 3xx przekierowanie/cache, 4xx błąd klienta, 5xx błąd serwera; 401 = kim jesteś?, 403 = wiem, ale nie wolno.",
+        "HTTP jest bezstanowy – tożsamość dołączamy do każdego żądania (token, cookie).",
+        "JSON to wspólny tekstowy format frontu i backendu; obiekt jest serializowany do tekstu i deserializowany z powrotem.",
+        "CORS to ograniczenie przeglądarki, dlatego żądanie z Postmana działa, a z frontu nie."
+      ],
+      "interview": [
+        "Opowiedz, co się dzieje od wpisania adresu w przeglądarkę do wyświetlenia strony.",
+        "Czym różni się 401 od 403? A 400 od 422?",
+        "Co znaczy, że HTTP jest bezstanowy i jakie to ma konsekwencje?",
+        "Dlaczego walidacja tylko po stronie frontendu nie wystarcza?",
+        "Czym jest CORS i dlaczego w Postmanie żądanie działa, a z aplikacji nie?"
+      ],
+      "exam": [
+        {
+          "id": "basics-web-e1",
+          "q": "Co robi DNS w drodze żądania od przeglądarki do serwera?",
+          "options": [
+            "Szyfruje połączenie między przeglądarką a serwerem",
+            "Zamienia nazwę domeny na adres IP serwera",
+            "Rozdziela ruch pomiędzy kilka serwerów",
+            "Przechowuje kopie odpowiedzi blisko użytkownika"
+          ],
+          "correct": 1,
+          "why": "DNS to „książka telefoniczna internetu” – tłumaczy nazwę (sklep.pl) na adres IP. Szyfrowanie to TLS, rozdzielanie ruchu to load balancer, kopie blisko użytkownika to CDN."
+        },
+        {
+          "id": "basics-web-e2",
+          "q": "Użytkownik jest zalogowany, ale próbuje usunąć cudze zamówienie. Jaki kod statusu jest najwłaściwszy?",
+          "options": [
+            "401 Unauthorized",
+            "400 Bad Request",
+            "500 Internal Server Error",
+            "403 Forbidden"
+          ],
+          "correct": 3,
+          "why": "Serwer wie, kim jest użytkownik (więc nie 401), ale nie pozwala mu na tę operację – to dokładnie 403 Forbidden."
+        },
+        {
+          "id": "basics-web-e3",
+          "q": "Dlaczego przy każdym żądaniu HTTP przeglądarka musi ponownie wysłać token lub cookie?",
+          "options": [
+            "Bo HTTP jest bezstanowy – serwer nie pamięta poprzednich żądań",
+            "Bo token wygasa po każdym żądaniu",
+            "Bo DNS wymaga uwierzytelnienia przy każdym zapytaniu",
+            "Bo TLS nie pozwala utrzymać połączenia"
+          ],
+          "correct": 0,
+          "why": "HTTP jest bezstanowy: każde żądanie jest niezależne, więc tożsamość trzeba dołączyć za każdym razem."
+        },
+        {
+          "id": "basics-web-e4",
+          "q": "Który element żądania mówi serwerowi, w jakim formacie jest wysłane ciało?",
+          "options": [
+            "Nagłówek Accept",
+            "Metoda HTTP",
+            "Nagłówek Content-Type",
+            "Kod statusu"
+          ],
+          "correct": 2,
+          "why": "Content-Type opisuje format wysyłanego ciała (np. application/json). Accept mówi, w jakim formacie klient chce odpowiedź."
+        },
+        {
+          "id": "basics-web-e5",
+          "q": "Frontend wyłącza przycisk „Zamów”, gdy ilość jest ujemna. Czy backend nadal musi sprawdzać ilość?",
+          "options": [
+            "Nie, skoro przycisk jest wyłączony, takie żądanie nie powstanie",
+            "Tylko jeśli aplikacja nie używa HTTPS",
+            "Nie, wystarczy ograniczenie CHECK w bazie, backend może je pominąć",
+            "Tak, bo żądanie można wysłać z pominięciem przeglądarki, np. curl-em lub Postmanem"
+          ],
+          "correct": 3,
+          "why": "Frontend to tylko wygoda. Każdy może wysłać dowolne żądanie HTTP, więc backend jest jedynym zaufanym strażnikiem reguł."
+        },
+        {
+          "id": "basics-web-e6",
+          "q": "Żądanie z Postmana do API działa, a to samo żądanie z aplikacji Angular na innej domenie kończy się błędem w konsoli przeglądarki. Co jest najbardziej prawdopodobną przyczyną?",
+          "options": [
+            "Brak konfiguracji CORS na serwerze – to blokada przeglądarki",
+            "Postman ma inny adres IP",
+            "Angular nie obsługuje JSON",
+            "Serwer zwraca 500 tylko dla przeglądarek"
+          ],
+          "correct": 0,
+          "why": "CORS to reguła egzekwowana przez przeglądarkę. Postman jej nie stosuje, dlatego tam „działa”. Serwer musi zezwolić na domenę frontu."
+        },
+        {
+          "id": "basics-web-e7",
+          "q": "Backend utworzył nowy element koszyka. Która odpowiedź jest najbardziej zgodna z konwencją HTTP?",
+          "options": [
+            "200 OK z treścią { \"error\": null }",
+            "204 No Content z nagłówkiem Location",
+            "201 Created z nagłówkiem Location i danymi nowego zasobu",
+            "302 Found z przekierowaniem do listy koszyka"
+          ],
+          "correct": 2,
+          "why": "201 Created oznacza utworzenie zasobu; Location wskazuje, gdzie go znaleźć, a ciało zwykle zawiera jego dane."
+        },
+        {
+          "id": "basics-web-e8",
+          "q": "Co dzieje się w kroku „deserializacji” po stronie ASP.NET Core?",
+          "options": [
+            "Obiekt C# jest zamieniany na tekst JSON do wysłania",
+            "Tekst JSON z ciała żądania jest zamieniany na obiekt C#",
+            "Żądanie jest szyfrowane przed zapisem do bazy",
+            "Nazwa domeny jest zamieniana na adres IP"
+          ],
+          "correct": 1,
+          "why": "Deserializacja to zamiana tekstu (JSON) na obiekt. Serializacja to kierunek odwrotny – z obiektu na tekst."
+        }
+      ]
+    },
+    {
+      "id": "basics-api",
+      "cat": "aspnet",
+      "title": "Co to jest API i REST – po ludzku",
+      "level": 1,
+      "minutes": 13,
+      "intro": "API to słowo, które pada w każdej ofercie pracy, a mało kto umie je wyjaśnić prosto. Po tej lekcji opowiesz, czym jest API, czym jest REST, jak dobierać metody HTTP i kody statusu, co znaczy „idempotentny” i jak wygląda najprostsze API w .NET. To fundament pytań o projektowanie endpointów na każdej rozmowie backendowej.",
+      "sections": [
+        {
+          "h": "API jako menu w restauracji",
+          "text": "**API** (Application Programming Interface) to **umowa, jak jeden program może poprosić drugi o coś**. Nie widzisz, co dzieje się w środku – znasz tylko „menu” możliwości.\n\nAnalogia z restauracją:\n\n- **Menu** to dokumentacja API – lista dań (operacji), które możesz zamówić, i czego potrzebujesz, żeby je dostać.\n- **Kelner** to sam interfejs – przyjmuje zamówienie w ustalonej formie i przynosi wynik.\n- **Kuchnia** to implementacja – może się zmienić (nowy kucharz, nowe garnki), a menu zostaje takie samo.\n\nTo jest sedno: API **oddziela „co” od „jak”**. Frontend w Angularze nie wie, czy backend używa SQL Servera czy PostgreSQL. Zna tylko adresy, metody i format danych.\n\nSłowo API znaczy szerzej niż „web”: publiczne metody klasy też są API. Na co dzień, mówiąc „API”, mamy jednak zwykle na myśli **web API** – zestaw adresów HTTP, pod które wysyłamy żądania i dostajemy JSON."
+        },
+        {
+          "h": "REST: zasoby i adresy",
+          "text": "**REST** (Representational State Transfer) to **styl projektowania** web API, a nie biblioteka ani protokół. Jego główna myśl: myśl o **zasobach** (rzeczownikach), a nie o akcjach (czasownikach).\n\n**Zasób** (resource) to „rzecz”, o której mówi API: produkt, zamówienie, klient. Każdy zasób ma swój adres (URL):\n\n- `/api/products` – kolekcja produktów,\n- `/api/products/42` – jeden konkretny produkt,\n- `/api/orders/7/items` – pozycje zamówienia nr 7 (zasób zagnieżdżony).\n\nCo z nim robimy, mówi **metoda HTTP**, nie adres. Porównaj:\n\n- **Źle:** `POST /api/createProduct`, `GET /api/deleteProduct?id=42`\n- **Dobrze:** `POST /api/products`, `DELETE /api/products/42`\n\nInne zasady REST, warto znać z nazwy:\n\n- **bezstanowość** – każde żądanie niesie wszystko, co potrzebne (np. token),\n- **jednolity interfejs** – te same metody i kody statusu dla wszystkich zasobów,\n- **reprezentacja** – zasób wysyłamy w jakimś formacie (zwykle JSON); to nie jest „ten sam obiekt” z bazy, tylko jego opis.\n\nW praktyce większość „REST API” to tzw. „REST-like” – i to jest w porządku. Ważne, by API było spójne i przewidywalne."
+        },
+        {
+          "h": "Metody: GET, POST, PUT, PATCH, DELETE",
+          "text": "Każda metoda ma swoje znaczenie. Na przykładzie produktów:\n\n- `GET /api/products` – pobierz listę. `GET /api/products/42` – pobierz jeden. **Nie zmienia danych** (metoda „bezpieczna”).\n- `POST /api/products` – **utwórz nowy** produkt. Serwer nadaje mu id. Zwraca zwykle `201 Created`.\n- `PUT /api/products/42` – **zastąp całość** produktu 42 tym, co wysyłam. Pominięte pole = wyczyszczone pole.\n- `PATCH /api/products/42` – **zmień tylko kawałek**, np. samą cenę.\n- `DELETE /api/products/42` – usuń. Zwraca zwykle `204 No Content`.\n\nRóżnicę PUT vs PATCH najłatwiej zapamiętać tak: **PUT to wymiana całego formularza, PATCH to poprawka korektorem w jednym polu**.\n\nTypowe kody odpowiedzi w API:\n\n- `200` – zwracam dane, `201` – utworzyłem, `204` – zrobione, bez treści,\n- `400` – złe dane wejściowe (np. walidacja), `404` – nie ma takiego zasobu,\n- `409` – konflikt (np. produkt o tym kodzie już istnieje, ktoś zmienił dane przed tobą),\n- `401`/`403` – brak logowania / brak uprawnień, `500` – błąd po naszej stronie."
+        },
+        {
+          "h": "Idempotentność prostymi słowami",
+          "text": "**Idempotentna** operacja to taka, którą możesz powtórzyć wiele razy, a **efekt na serwerze będzie taki sam jak po jednym razie**.\n\nAnalogia: przycisk w windzie „piętro 5”. Wciśnięty raz czy dziesięć razy – winda i tak pojedzie na piąte. To idempotentne. Natomiast „dodaj 100 zł do konta” powtórzone dwa razy daje 200 zł – to nie jest idempotentne.\n\nJak to wygląda dla metod:\n\n1. `GET` – idempotentny (i bezpieczny, bo nic nie zmienia).\n2. `PUT` – idempotentny: „ustaw cenę na 99” dziesięć razy = cena 99.\n3. `DELETE` – idempotentny: po pierwszym usunięciu zasobu nie ma; kolejne próby nic już nie zmieniają (mogą zwrócić `404`, ale **stan** jest ten sam).\n4. `POST` – **nie** jest idempotentny: dwa razy „utwórz zamówienie” = dwa zamówienia.\n5. `PATCH` – zależy od treści: „ustaw cenę na 99” tak, „zwiększ stan o 1” nie.\n\nDlaczego to ważne? Bo sieć jest zawodna. Gdy żądanie się „zawiesi”, klient nie wie, czy dotarło. Operację idempotentną można bezpiecznie ponowić. Dla `POST` stosuje się **klucz idempotencji** (Idempotency-Key): klient wysyła unikalny identyfikator w nagłówku, a serwer, widząc go drugi raz, nie tworzy duplikatu, tylko zwraca poprzedni wynik."
+        },
+        {
+          "h": "Najprostsze API w .NET: Minimal API",
+          "text": "W ASP.NET Core API można pisać na dwa sposoby: **kontrolery** (klasy z metodami-akcjami) albo **Minimal API** (endpointy jako lambdy w `Program.cs`). Oba są pełnoprawne; Minimal API jest krótsze i świetne do nauki.\n\nCo dzieje się linijka po linijce w przykładzie obok:\n\n1. `WebApplication.CreateBuilder` – przygotowuje aplikację: konfigurację, logowanie, kontener DI (Dependency Injection, „magazyn” gotowych obiektów).\n2. `AddOpenApi()` – włącza generowanie opisu API (o tym za chwilę).\n3. `MapGet(\"/api/products/{id:int}\", …)` – „gdy przyjdzie GET pod ten adres, wywołaj tę funkcję”. `{id:int}` to parametr z URL-a, który musi być liczbą.\n4. `Results.Ok(p)` / `Results.NotFound()` – zwraca odpowiedni kod statusu i ciało w JSON.\n5. `MapPost` – parametr `CreateProduct dto` jest automatycznie wypełniany z JSON-a w ciele żądania (to **model binding**).\n6. `Results.Created(...)` – zwraca `201` z nagłówkiem `Location`.\n\nDo przechowywania użyłem zwykłej listy w pamięci – w prawdziwej aplikacji byłaby tu baza przez EF Core.",
+          "code": "var builder = WebApplication.CreateBuilder(args);\nbuilder.Services.AddOpenApi();\nvar app = builder.Build();\napp.MapOpenApi();\n\nvar products = new List<Product> { new(1, \"Kubek\", 29.99m) };\n\napp.MapGet(\"/api/products\", () => products);\napp.MapGet(\"/api/products/{id:int}\", (int id) =>\n    products.FirstOrDefault(p => p.Id == id) is { } p ? Results.Ok(p) : Results.NotFound());\napp.MapPost(\"/api/products\", (CreateProduct dto) =>\n{\n    if (dto.Price <= 0) return Results.BadRequest(\"Cena musi być > 0\");\n    var p = new Product(products.Max(x => x.Id) + 1, dto.Name, dto.Price);\n    products.Add(p);\n    return Results.Created($\"/api/products/{p.Id}\", p);\n});\napp.Run();\n\nrecord Product(int Id, string Name, decimal Price);\nrecord CreateProduct(string Name, decimal Price);",
+          "lang": "csharp"
+        },
+        {
+          "h": "Swagger / OpenAPI: menu, które pisze się samo",
+          "text": "**OpenAPI** to standard (plik JSON lub YAML), który opisuje API: jakie są adresy, metody, parametry, modele danych i możliwe odpowiedzi. To „menu restauracji” w formie, którą rozumie i człowiek, i program.\n\n**Swagger** to historyczna nazwa tego standardu i zestaw narzędzi wokół niego; najbardziej znane jest **Swagger UI** – strona, na której widzisz wszystkie endpointy i możesz je „kliknąć” i przetestować.\n\nCo warto wiedzieć w nowym .NET:\n\n- Od .NET 9 ASP.NET Core ma **wbudowane** generowanie dokumentu OpenAPI (`AddOpenApi()` + `MapOpenApi()`, pakiet `Microsoft.AspNetCore.OpenApi`). Dokument jest pod `/openapi/v1.json`.\n- Wbudowane jest samo generowanie dokumentu; do interaktywnej strony dokłada się osobną bibliotekę, np. Swagger UI lub Scalar.\n- Z dokumentu OpenAPI można **wygenerować klienta** – np. serwisy TypeScript dla Angulara – i nie pisać ręcznie interfejsów.\n\nPraktyczna zasada: dokument OpenAPI to **kontrakt** między frontem a backendem. Zmiana w nim (np. usunięcie pola) może zepsuć klientów, więc traktuj ją poważnie."
+        },
+        {
+          "h": "Pułapki i dobre praktyki",
+          "text": "Najczęstsze błędy w API, z poprawką:\n\n- **Czasowniki w URL-ach** (`/getProducts`) → rzeczowniki w liczbie mnogiej (`/products`) + metoda HTTP.\n- **Zawsze 200** nawet przy błędzie → właściwy kod (400, 404, 409, 500). Klient i narzędzia monitorujące czytają kod, nie treść.\n- **Zwracanie encji z bazy wprost** → zwracaj **DTO** (Data Transfer Object, prosta klasa tylko z polami potrzebnymi klientowi). Inaczej wyciekną pola wewnętrzne (np. hash hasła), a każda zmiana w bazie zmieni kontrakt.\n- **Brak stronicowania** → `GET /products` zwracający 100 tysięcy rekordów. Dodaj `?page=2&pageSize=20`.\n- **Niespójne błędy** → jeden format błędów w całym API. W ASP.NET Core standardem jest **ProblemDetails** (RFC 9457): JSON z polami `type`, `title`, `status`, `detail`.\n- **Łamanie kontraktu** → gdy musisz zmienić API niekompatybilnie, wprowadź **wersjonowanie** (np. `/api/v2/products`).\n\nDobra praktyka „na koniec”: projektuj API **z perspektywy klienta** – czego potrzebuje ekran, a nie jak wyglądają tabele w bazie."
+        },
+        {
+          "h": "Jak to powiedzieć na rozmowie",
+          "text": "Krótka definicja, którą warto mieć „w ustach”:\n\n„API to kontrakt, przez który program udostępnia swoje możliwości innym. REST to styl projektowania web API wokół zasobów identyfikowanych URL-ami, na których operujemy standardowymi metodami HTTP, a wynik komunikujemy kodami statusu. Komunikacja jest bezstanowa, a dane zwykle wymieniamy w JSON.”\n\nNiuanse na poziom wyżej:\n\n- Rozróżniaj **bezpieczne** (nie zmieniają stanu: GET, HEAD) i **idempotentne** (powtórzenie daje ten sam stan: GET, PUT, DELETE) metody.\n- Wspomnij o kluczu idempotencji dla płatności i zamówień.\n- Wiedz, że REST nie jest jedynym wyborem: **gRPC** (szybki, binarny, dobry między serwisami) i **GraphQL** (klient sam wybiera, jakie pola chce) mają swoje zastosowania.\n- Pokaż, że myślisz o kontrakcie: DTO, wersjonowanie, ProblemDetails, OpenAPI jako źródło prawdy."
+        }
+      ],
+      "takeaways": [
+        "API to kontrakt (menu): mówi, co można zamówić i w jakim formacie, ukrywając, jak to jest zrobione.",
+        "REST to styl: zasoby jako rzeczowniki w URL-ach, akcje wyrażone metodą HTTP, wynik – kodem statusu.",
+        "PUT zastępuje całość zasobu, PATCH zmienia jego fragment; POST tworzy nowy zasób.",
+        "Idempotentna operacja powtórzona wiele razy daje ten sam stan: GET, PUT i DELETE tak, POST nie.",
+        "Dla POST-ów, których nie wolno zdublować (płatności), stosuje się klucz idempotencji.",
+        "OpenAPI to maszynowo czytelny opis API; Swagger UI/Scalar to strona do jego przeglądania i testowania.",
+        "Zwracaj DTO zamiast encji, spójne błędy (ProblemDetails) i właściwe kody statusu."
+      ],
+      "interview": [
+        "Czym jest REST i jakie są jego główne założenia?",
+        "Czym różni się PUT od PATCH, a PUT od POST?",
+        "Co oznacza idempotentność i które metody HTTP są idempotentne?",
+        "Jak zaprojektowałbyś endpointy do zarządzania zamówieniami i ich pozycjami?",
+        "Dlaczego nie zwraca się encji EF Core bezpośrednio z API?"
+      ],
+      "exam": [
+        {
+          "id": "basics-api-e1",
+          "q": "Który projekt endpointu najlepiej pasuje do stylu REST dla usuwania produktu o id 42?",
+          "options": [
+            "POST /api/deleteProduct?id=42",
+            "DELETE /api/products/42",
+            "GET /api/products/42/delete",
+            "PUT /api/products/delete/42"
+          ],
+          "correct": 1,
+          "why": "W REST adres wskazuje zasób (rzeczownik), a akcję wyraża metoda HTTP – tu DELETE na /products/42."
+        },
+        {
+          "id": "basics-api-e2",
+          "q": "Klient wysyła PUT /api/products/42 z ciałem zawierającym tylko pole price. Czego należy się spodziewać zgodnie z semantyką PUT?",
+          "options": [
+            "Zmieni się tylko cena, reszta pól zostanie bez zmian",
+            "Serwer utworzy nowy produkt z nowym id",
+            "Zasób zostanie zastąpiony całością przesłanych danych, więc pominięte pola mogą zostać wyczyszczone",
+            "PUT nie przyjmuje ciała żądania"
+          ],
+          "correct": 2,
+          "why": "PUT oznacza zastąpienie całego zasobu. Do zmiany tylko fragmentu służy PATCH."
+        },
+        {
+          "id": "basics-api-e3",
+          "q": "Która operacja NIE jest idempotentna?",
+          "options": [
+            "POST /api/orders tworzący nowe zamówienie",
+            "PUT /api/products/42 ustawiający cenę na 99",
+            "DELETE /api/products/42",
+            "GET /api/products"
+          ],
+          "correct": 0,
+          "why": "Dwa razy wysłany POST tworzący zamówienie daje dwa zamówienia. Pozostałe operacje powtórzone dają ten sam stan serwera."
+        },
+        {
+          "id": "basics-api-e4",
+          "q": "DELETE /api/products/42 wysłany drugi raz zwraca 404. Czy DELETE nadal jest idempotentny?",
+          "options": [
+            "Nie, bo odpowiedź różni się od pierwszej",
+            "Tylko jeśli serwer zwróci za drugim razem 204",
+            "Nie, idempotentne są tylko metody bezpieczne",
+            "Tak, idempotentność dotyczy stanu na serwerze, a ten po obu wywołaniach jest taki sam"
+          ],
+          "correct": 3,
+          "why": "Idempotentność oznacza ten sam efekt na serwerze. Kod odpowiedzi może się różnić – zasobu i tak nie ma."
+        },
+        {
+          "id": "basics-api-e5",
+          "q": "Po co klient wysyła nagłówek Idempotency-Key przy płatności?",
+          "options": [
+            "Żeby serwer przy ponowieniu tego samego żądania nie wykonał płatności drugi raz",
+            "Żeby zaszyfrować dane karty",
+            "Żeby ominąć uwierzytelnianie",
+            "Żeby serwer zwrócił odpowiedź z cache przeglądarki"
+          ],
+          "correct": 0,
+          "why": "Klucz idempotencji pozwala serwerowi rozpoznać powtórzone żądanie i zwrócić poprzedni wynik zamiast tworzyć duplikat."
+        },
+        {
+          "id": "basics-api-e6",
+          "q": "Co w Minimal API oznacza zapis app.MapGet(\"/api/products/{id:int}\", (int id) => ...)?",
+          "options": [
+            "Że id jest pobierane z ciała żądania w JSON",
+            "Że endpoint przyjmie dowolny tekst jako id",
+            "Że przy GET pod ten adres zostanie wywołana lambda, a id z URL-a musi być liczbą całkowitą",
+            "Że endpoint jest dostępny tylko dla zalogowanych"
+          ],
+          "correct": 2,
+          "why": "MapGet wiąże metodę i wzorzec adresu z funkcją. {id:int} to parametr trasy z ograniczeniem do liczb całkowitych."
+        },
+        {
+          "id": "basics-api-e7",
+          "q": "Czym jest dokument OpenAPI?",
+          "options": [
+            "Biblioteką do pisania kontrolerów",
+            "Maszynowo czytelnym opisem API: adresów, metod, parametrów, modeli i odpowiedzi",
+            "Protokołem szybszym od HTTP",
+            "Bazą danych przechowującą żądania"
+          ],
+          "correct": 1,
+          "why": "OpenAPI to standard opisu API (JSON/YAML). Swagger UI czy Scalar jedynie go wyświetlają, a generatory tworzą z niego klientów."
+        },
+        {
+          "id": "basics-api-e8",
+          "q": "Dlaczego zwraca się DTO zamiast encji z bazy?",
+          "options": [
+            "Bo JSON nie obsługuje klas C#",
+            "Bo encje nie mogą mieć właściwości typu string",
+            "Bo DTO są szybsze w bazie danych",
+            "Bo encja może ujawnić wewnętrzne pola i wiąże kontrakt API ze strukturą bazy"
+          ],
+          "correct": 3,
+          "why": "DTO zawiera tylko to, czego potrzebuje klient. Dzięki temu nie wyciekają pola wewnętrzne, a zmiana w bazie nie łamie kontraktu."
+        }
+      ]
+    },
+    {
+      "id": "basics-dotnet",
+      "cat": "csharp",
+      "title": ".NET od środka: co się dzieje, gdy uruchamiasz aplikację",
+      "level": 1,
+      "minutes": 14,
+      "intro": "Piszesz w C#, wciskasz F5 i aplikacja działa – ale co dokładnie dzieje się po drodze? W tej lekcji poukładamy: kompilację do IL, JIT, CLR, stos i stertę, Garbage Collector, NuGet, budowę projektu oraz to, jak host i Dependency Injection składają aplikację w całość. To klasyczne pytania „otwierające” na rozmowach .NET.",
+      "sections": [
+        {
+          "h": "Obrazek na start: przepis, tłumacz i kucharz",
+          "text": "Wyobraź sobie, że piszesz przepis po polsku (to twój kod C#). Kucharz w Japonii nie zna polskiego, więc najpierw ktoś tłumaczy przepis na **uniwersalny język kuchni** (to **IL**). Na miejscu, tuż przed gotowaniem, lokalny pomocnik zamienia go na instrukcje dla tej konkretnej kuchni i tego konkretnego piekarnika (to **JIT**). A całą kuchnią – zapasami, sprzątaniem, bezpieczeństwem – zarządza szef kuchni (to **CLR**).\n\nTe trzy pojęcia za chwilę rozwiniemy:\n\n- **.NET** – platforma: środowisko uruchomieniowe + biblioteki + narzędzia (`dotnet` CLI). Aktualnie .NET 10 (wersja LTS, czyli z długim wsparciem).\n- **C#** – język programowania, którym piszemy kod dla .NET (obok np. F#).\n- **Biblioteka bazowa** (BCL, Base Class Library) – gotowe klocki: kolekcje, pliki, HTTP, JSON, daty."
+        },
+        {
+          "h": "C# → IL → JIT → kod maszynowy",
+          "text": "Krok po kroku, co się dzieje, gdy budujesz i uruchamiasz aplikację:\n\n1. **Kompilacja (`dotnet build`).** Kompilator C# (o nazwie Roslyn) sprawdza składnię i typy, po czym zamienia kod na **IL** (Intermediate Language) – język pośredni, niezależny od procesora. Wynik ląduje w pliku `.dll` (tzw. **assembly**, czyli „paczka” skompilowanego kodu z metadanymi o typach).\n2. **Uruchomienie (`dotnet run`).** Startuje **CLR** (Common Language Runtime) – środowisko uruchomieniowe, które wczytuje assembly.\n3. **JIT** (Just-In-Time compiler). Gdy metoda jest wywoływana **pierwszy raz**, JIT kompiluje jej IL na kod maszynowy konkretnego procesora (x64, ARM). Kolejne wywołania używają już gotowego kodu.\n4. **Tiered compilation.** Najpierw JIT kompiluje szybko i „byle jak”, żeby aplikacja ruszyła. Metody wywoływane bardzo często są potem rekompilowane porządniej (z optymalizacjami). Dlatego aplikacja .NET „rozgrzewa się” przez pierwsze sekundy.\n\nDlaczego taki podział? Jedna `.dll` działa na Windowsie, Linuksie i macOS, na Intelu i na ARM – bo ostatni krok robi się na miejscu.\n\nAlternatywa: **Native AOT** (Ahead-Of-Time) kompiluje wszystko do kodu maszynowego już przy publikacji. Plus: błyskawiczny start i mała pamięć (dobre dla kontenerów i funkcji serverless). Minus: ograniczenia, np. przy refleksji i dynamicznym ładowaniu kodu."
+        },
+        {
+          "h": "Pamięć: stos i sterta",
+          "text": "Program potrzebuje miejsca na dane. CLR ma dwa główne „magazyny”:\n\n- **Stos** (stack) – jak **stos talerzy**: kładziesz na wierzch, zdejmujesz z wierzchu. Każde wywołanie metody dokłada „talerz” (ramkę) z jej zmiennymi lokalnymi; gdy metoda się kończy, talerz znika. Bardzo szybki, sam się sprząta, ale mały i krótkotrwały.\n- **Sterta** (heap) – jak **duży magazyn**: obiekty mogą tu leżeć dowolnie długo i mogą być współdzielone. Sprząta ją Garbage Collector.\n\nGdzie co trafia (w uproszczeniu, ale wystarczająco na rozmowę):\n\n1. `int x = 5;` w metodzie – wartość leży w ramce na stosie.\n2. `var order = new Order();` – **obiekt** `Order` powstaje na stercie, a na stosie leży tylko **referencja** (adres) do niego.\n3. Pole `int Total` wewnątrz `Order` leży razem z obiektem – czyli na stercie.\n\nDlatego dokładniej mówi się: **typy wartościowe** (`int`, `struct`) kopiują wartość, **typy referencyjne** (`class`, `string`) kopiują adres. „Stos czy sterta” to szczegół implementacji, który z tego wynika.",
+          "code": "void Example()\n{\n    int count = 3;                // stos: wartość 3\n    var order = new Order();      // sterta: obiekt; stos: referencja\n    var copy = order;             // kopia ADRESU, ten sam obiekt\n    copy.Total = 100;\n    Console.WriteLine(order.Total); // 100\n}   // ramka znika; obiekt na stercie czeka na GC\n\nclass Order { public decimal Total; }",
+          "lang": "csharp"
+        },
+        {
+          "h": "Garbage Collector – sprzątacz w magazynie",
+          "text": "**GC** (Garbage Collector) to automatyczny sprzątacz sterty. W C# nie piszesz `free` ani `delete` – GC sam znajduje obiekty, do których **nikt już nie ma referencji**, i zwalnia ich pamięć.\n\nJak sprzątacz decyduje, co wyrzucić? Zaczyna od „korzeni” (roots): zmiennych lokalnych na stosach, pól statycznych. Idzie po referencjach jak po sznurkach. Czego nie da się dosięgnąć – jest śmieciem.\n\n**Generacje** – sprytny trik oparty na obserwacji, że większość obiektów żyje krótko:\n\n- **Gen 0** – nowe obiekty. Sprzątana często i szybko.\n- **Gen 1** – obiekty, które przetrwały jedno sprzątanie (strefa przejściowa).\n- **Gen 2** – „weterani”, np. cache, singletony. Sprzątana rzadko, bo to drogie.\n- **LOH** (Large Object Heap) – osobny obszar na duże obiekty (od ok. 85 KB, np. wielkie tablice).\n\nWażne pułapki:\n\n- GC zwalnia **pamięć**, ale **nie** zamyka połączeń z bazą, plików czy gniazd sieciowych. Do tego służy `IDisposable` i `using` – zwolnij zasób od razu, gdy go nie potrzebujesz.\n- „Wyciek pamięci” w .NET to zwykle obiekt, który **ktoś nadal trzyma**: statyczna lista, która rośnie, niewypięty event handler, za duży cache.",
+          "code": "// Źle: połączenie zamknie się \"kiedyś\" (albo wcale)\nvar conn = new SqlConnection(cs);\nconn.Open();\n\n// Dobrze: Dispose() wywoła się na końcu bloku, nawet przy wyjątku\nawait using var conn2 = new SqlConnection(cs);\nawait conn2.OpenAsync();",
+          "lang": "csharp"
+        },
+        {
+          "h": "Projekt, NuGet i Program.cs",
+          "text": "**Projekt** to plik `.csproj` – „lista zakupów i instrukcja” dla kompilatora: jaka wersja .NET, jakie pakiety, jakie ustawienia. **Solution** (`.sln` lub nowszy `.slnx`) grupuje kilka projektów, np. API, bibliotekę domenową i testy.\n\n**NuGet** to **sklep z gotowymi bibliotekami** dla .NET (jak npm dla JavaScriptu). Dodajesz pakiet poleceniem `dotnet add package Nazwa`, a w `.csproj` pojawia się wpis `PackageReference`. Przy budowaniu `dotnet restore` pobiera pakiety.\n\n**Program.cs** to punkt startowy. Dzięki **top-level statements** nie musisz pisać klasy `Program` i metody `Main` – kompilator wygeneruje je sam. Kod w `Program.cs` wykonuje się od góry do dołu przy starcie aplikacji.",
+          "code": "<Project Sdk=\"Microsoft.NET.Sdk.Web\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <Nullable>enable</Nullable>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\"Microsoft.EntityFrameworkCore.SqlServer\" Version=\"10.0.0\" />\n  </ItemGroup>\n</Project>",
+          "lang": "text"
+        },
+        {
+          "h": "Host i DI w jednym obrazku",
+          "text": "**Host** to „obudowa” aplikacji: przy starcie zbiera konfigurację (`appsettings.json`, zmienne środowiskowe), ustawia logowanie, buduje kontener DI i uruchamia serwer WWW (Kestrel). Potem pilnuje porządnego zamknięcia aplikacji.\n\n**DI** (Dependency Injection, wstrzykiwanie zależności) najłatwiej zrozumieć przez **gniazdko elektryczne**. Czajnik nie ma w środku elektrowni – ma wtyczkę i dostaje prąd z gniazdka. Tak samo klasa nie tworzy sobie sama zależności przez `new`, tylko deklaruje je w konstruktorze, a kontener je „podłącza”.\n\nCzytaj `Program.cs` w dwóch fazach:\n\n1. **Przed `Build()`** – rejestrujesz usługi w `builder.Services` („to jest lista gniazdek i co w nich płynie”).\n2. **Po `Build()`** – konfigurujesz pipeline (middleware) i endpointy, potem `Run()`.\n\nTrzy czasy życia usług:\n\n- **Singleton** – jedna instancja na całą aplikację (np. cache, konfiguracja).\n- **Scoped** – jedna instancja na żądanie HTTP (np. `DbContext`).\n- **Transient** – nowa instancja przy każdym wstrzyknięciu (lekkie, bezstanowe klasy).\n\nKlasyczna pułapka: **wstrzyknięcie Scoped do Singletona** (captive dependency). Singleton żyje wiecznie, więc „uwięzi” jeden `DbContext` na zawsze – stąd błędy współbieżności i nieaktualne dane. W środowisku Development ASP.NET Core wykrywa to i rzuca wyjątek przy starcie.",
+          "code": "var builder = WebApplication.CreateBuilder(args);   // host: config, logi, DI\nbuilder.Services.AddDbContext<ShopDb>();          // Scoped\nbuilder.Services.AddScoped<IOrderService, OrderService>();\nbuilder.Services.AddSingleton(TimeProvider.System);\n\nvar app = builder.Build();                         // koniec rejestracji\napp.UseAuthentication();                           // middleware\napp.MapGet(\"/orders/{id}\", (int id, IOrderService s) => s.GetAsync(id));\napp.Run();\n\npublic class OrderService(ShopDb db) : IOrderService   // zależność \"z gniazdka\"\n{\n    public Task<Order?> GetAsync(int id) => db.Orders.FindAsync(id).AsTask();\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Jak to powiedzieć na rozmowie",
+          "text": "Wersja w 30 sekund:\n\n„Kod C# kompiluje się do IL zapisanego w assembly. Przy uruchomieniu CLR wczytuje assembly, a JIT kompiluje metody do kodu maszynowego przy pierwszym wywołaniu, z tiered compilation, która później optymalizuje gorące ścieżki. Typy wartościowe kopiują wartość, referencyjne – referencję do obiektu na stercie. Stertą zarządza generacyjny GC, ale zasoby niezarządzane zwalniamy przez IDisposable. Aplikację składa host z kontenerem DI, w którym rejestrujemy usługi jako singleton, scoped albo transient.”\n\nNiuanse seniorskie:\n\n- Native AOT: szybszy start i mniej pamięci kosztem ograniczeń refleksji – warte rozważenia dla małych serwisów w kontenerach.\n- Alokacje mają koszt: mniej obiektów na stercie = mniej pracy GC (`Span<T>`, pooling, unikanie zbędnych `ToList()`).\n- Rozumienie czasów życia DI chroni przed realnymi błędami produkcyjnymi (captive dependency, `DbContext` współdzielony między wątkami)."
+        }
+      ],
+      "takeaways": [
+        "C# kompiluje się do IL (w pliku .dll), a JIT zamienia IL na kod maszynowy przy pierwszym wywołaniu metody.",
+        "CLR to środowisko uruchomieniowe: ładuje kod, zarządza pamięcią, wyjątkami i wątkami.",
+        "Stos to krótkotrwałe ramki metod, sterta to magazyn obiektów sprzątany przez GC.",
+        "GC jest generacyjny (Gen 0/1/2 + LOH); zwalnia pamięć, ale nie połączenia i pliki – do tego IDisposable i using.",
+        "NuGet to sklep z bibliotekami; .csproj opisuje projekt, a Program.cs jest punktem startowym.",
+        "Host składa aplikację: konfiguracja, logowanie, kontener DI, serwer, pipeline.",
+        "Singleton / Scoped / Transient – i nigdy Scoped wstrzyknięty do Singletona."
+      ],
+      "interview": [
+        "Co dzieje się od napisania kodu C# do jego wykonania na procesorze?",
+        "Czym różni się stos od sterty i gdzie trafiają typy wartościowe i referencyjne?",
+        "Jak działa Garbage Collector i czym są generacje?",
+        "Po co jest IDisposable, skoro mamy GC?",
+        "Wyjaśnij czasy życia usług w DI i problem captive dependency."
+      ],
+      "exam": [
+        {
+          "id": "basics-dotnet-e1",
+          "q": "Co zawiera plik .dll powstały po zbudowaniu projektu C#?",
+          "options": [
+            "Kod maszynowy dla konkretnego procesora",
+            "Kod pośredni IL wraz z metadanymi o typach",
+            "Oryginalny kod źródłowy C#",
+            "Skrypt JavaScript dla przeglądarki"
+          ],
+          "correct": 1,
+          "why": "Kompilator C# tworzy assembly z kodem IL i metadanymi. Kod maszynowy powstaje dopiero w JIT (lub przy publikacji Native AOT)."
+        },
+        {
+          "id": "basics-dotnet-e2",
+          "q": "Kiedy JIT kompiluje metodę do kodu maszynowego?",
+          "options": [
+            "Podczas dotnet build",
+            "Przy instalacji pakietu NuGet",
+            "Przy jej pierwszym wywołaniu w działającej aplikacji",
+            "Tylko gdy włączony jest tryb Debug"
+          ],
+          "correct": 2,
+          "why": "JIT działa „w samą porę” – kompiluje metodę, gdy jest potrzebna po raz pierwszy; tiered compilation może ją potem zoptymalizować."
+        },
+        {
+          "id": "basics-dotnet-e3",
+          "q": "var a = new Order(); var b = a; b.Total = 100; – ile wynosi a.Total?",
+          "options": [
+            "0, bo b jest kopią obiektu",
+            "Kod się nie skompiluje",
+            "Zależy od generacji GC",
+            "100, bo a i b wskazują ten sam obiekt na stercie"
+          ],
+          "correct": 3,
+          "why": "Order to klasa (typ referencyjny), więc przypisanie kopiuje referencję. Obie zmienne wskazują ten sam obiekt."
+        },
+        {
+          "id": "basics-dotnet-e4",
+          "q": "Dlaczego połączenie z bazą powinno być w bloku using, skoro .NET ma Garbage Collector?",
+          "options": [
+            "Bo GC zwalnia pamięć, ale nie zamyka zasobów takich jak połączenia czy pliki we właściwym momencie",
+            "Bo GC nie działa w aplikacjach webowych",
+            "Bo using przyspiesza kompilację JIT",
+            "Bo bez using połączenie trafia na stos"
+          ],
+          "correct": 0,
+          "why": "GC zajmuje się pamięcią i działa w nieprzewidywalnym momencie. Zasoby niezarządzane zwalniamy deterministycznie przez Dispose (using)."
+        },
+        {
+          "id": "basics-dotnet-e5",
+          "q": "Dlaczego GC dzieli obiekty na generacje?",
+          "options": [
+            "Żeby duże obiekty trafiały na stos",
+            "Bo większość obiektów żyje krótko, więc opłaca się często i tanio sprzątać tylko najmłodsze",
+            "Żeby każdy wątek miał własną stertę",
+            "Bo C# wymaga ręcznego zwalniania starych obiektów"
+          ],
+          "correct": 1,
+          "why": "Generacje opierają się na obserwacji, że młode obiekty szybko umierają. Gen 0 sprzątana jest często, Gen 2 rzadko."
+        },
+        {
+          "id": "basics-dotnet-e6",
+          "q": "Do czego służy NuGet?",
+          "options": [
+            "Do kompilowania IL na kod maszynowy",
+            "Do zarządzania pamięcią sterty",
+            "Do instalowania i pobierania gotowych bibliotek dla projektów .NET",
+            "Do uruchamiania testów jednostkowych"
+          ],
+          "correct": 2,
+          "why": "NuGet to menedżer pakietów .NET (odpowiednik npm). Pakiety są zapisywane w .csproj jako PackageReference."
+        },
+        {
+          "id": "basics-dotnet-e7",
+          "q": "Usługa zarejestrowana jako Singleton przyjmuje w konstruktorze DbContext (Scoped). Co jest problemem?",
+          "options": [
+            "Nic, kontener stworzy nowy DbContext przy każdym wywołaniu metody",
+            "DbContext zostanie automatycznie zamieniony na Transient",
+            "Aplikacja nie skompiluje się",
+            "Singleton „uwięzi” jeden DbContext na całe życie aplikacji – captive dependency"
+          ],
+          "correct": 3,
+          "why": "Singleton żyje przez cały czas działania aplikacji, więc wstrzyknięty Scoped żyje razem z nim. Grozi to błędami współbieżności i nieaktualnymi danymi."
+        },
+        {
+          "id": "basics-dotnet-e8",
+          "q": "Co dzieje się w Program.cs przed wywołaniem builder.Build()?",
+          "options": [
+            "Rejestracja usług w kontenerze DI i konfiguracja hosta",
+            "Obsługa pierwszego żądania HTTP",
+            "Mapowanie endpointów i middleware, które działa dopiero po Run()",
+            "Kompilacja JIT wszystkich metod"
+          ],
+          "correct": 0,
+          "why": "Przed Build() rejestrujemy usługi (builder.Services). Po Build() konfigurujemy pipeline i endpointy, a Run() uruchamia serwer."
+        }
+      ]
+    },
+    {
+      "id": "basics-db",
+      "cat": "sql",
+      "title": "Bazy danych od zera",
+      "level": 1,
+      "minutes": 15,
+      "intro": "Prawie każda aplikacja biznesowa kończy się na bazie danych, a na rozmowie prędzej czy później padnie pytanie o JOIN, indeks albo transakcję. W tej lekcji zbudujemy obraz od zera: tabele, klucze, relacje, podstawowy SQL, indeksy, transakcje i to, co robi za nas EF Core. Wszystko na jednym przykładzie – sklepie z klientami, zamówieniami i produktami.",
+      "sections": [
+        {
+          "h": "Tabela, wiersz, kolumna – arkusz Excela z zasadami",
+          "text": "**Relacyjna baza danych** (np. SQL Server, PostgreSQL) przechowuje dane w **tabelach**. Najprościej wyobrazić sobie tabelę jako **arkusz Excela, ale z pilnowanymi regułami**.\n\n- **Tabela** – jeden rodzaj rzeczy, np. `Customers` (klienci).\n- **Kolumna** – jedna cecha, z określonym **typem**, np. `Email nvarchar(200)`. Do kolumny liczbowej nie wpiszesz tekstu.\n- **Wiersz** (rekord) – jedna konkretna rzecz, np. klient Jan Kowalski.\n\nCzym baza różni się od Excela?\n\n1. Pilnuje typów i ograniczeń (np. `NOT NULL` – pole wymagane, `UNIQUE` – wartość nie może się powtórzyć).\n2. Pozwala wielu użytkownikom pracować jednocześnie bez psucia danych.\n3. Szybko wyszukuje w milionach wierszy (dzięki indeksom).\n4. Nie gubi danych przy awarii prądu (dzięki dziennikowi transakcji).\n\nDo rozmowy z bazą służy **SQL** (Structured Query Language) – język, w którym mówisz, **co** chcesz dostać, a baza sama decyduje, **jak** to zrobić."
+        },
+        {
+          "h": "Klucze i relacje: 1-n i n-n",
+          "text": "**Klucz główny** (primary key, PK) to **numer PESEL wiersza** – kolumna, która jednoznacznie identyfikuje wiersz, np. `Id`. Nie może się powtarzać ani być pusta.\n\n**Klucz obcy** (foreign key, FK) to kolumna, która **wskazuje na klucz główny w innej tabeli**. Baza pilnuje, żeby wskazywała na coś, co istnieje – to tzw. **integralność referencyjna**.\n\nRelacje na przykładzie sklepu:\n\n- **1-n (jeden do wielu):** jeden klient ma wiele zamówień, ale każde zamówienie należy do jednego klienta. Realizacja: w tabeli `Orders` jest kolumna `CustomerId` (FK do `Customers.Id`). Klucz obcy zawsze siedzi po stronie „wielu”.\n- **n-n (wiele do wielu):** zamówienie zawiera wiele produktów, a produkt występuje w wielu zamówieniach. W relacyjnej bazie robi się to **tabelą pośrednią**, np. `OrderItems` z kolumnami `OrderId`, `ProductId` i dodatkowymi danymi (`Quantity`, `UnitPrice`).\n- **1-1:** rzadsze, np. użytkownik i jego profil.\n\nCo, gdy usuniesz klienta, który ma zamówienia? Baza albo zablokuje usunięcie, albo usunie zamówienia kaskadowo (`ON DELETE CASCADE`) – zależnie od tego, jak zdefiniujesz klucz obcy.",
+          "code": "CREATE TABLE Customers (\n    Id    INT IDENTITY PRIMARY KEY,\n    Name  NVARCHAR(100) NOT NULL,\n    Email NVARCHAR(200) NOT NULL UNIQUE\n);\nCREATE TABLE Orders (\n    Id         INT IDENTITY PRIMARY KEY,\n    CustomerId INT NOT NULL REFERENCES Customers(Id),  -- FK, relacja 1-n\n    CreatedAt  DATETIME2 NOT NULL\n);\nCREATE TABLE OrderItems (                               -- tabela pośrednia n-n\n    OrderId   INT NOT NULL REFERENCES Orders(Id),\n    ProductId INT NOT NULL REFERENCES Products(Id),\n    Quantity  INT NOT NULL,\n    UnitPrice DECIMAL(10,2) NOT NULL,\n    PRIMARY KEY (OrderId, ProductId)\n);",
+          "lang": "sql"
+        },
+        {
+          "h": "Cztery podstawowe polecenia: SELECT, INSERT, UPDATE, DELETE",
+          "text": "Te cztery polecenia to tzw. **CRUD** (Create, Read, Update, Delete – utwórz, odczytaj, zmień, usuń):\n\n- `SELECT` – odczyt. Czytasz go w kolejności logicznej, nie pisanej: **FROM** (skąd) → **WHERE** (które wiersze) → **GROUP BY** (grupowanie) → **HAVING** (filtr grup) → **SELECT** (które kolumny) → **ORDER BY** (kolejność).\n- `INSERT` – dodanie wiersza.\n- `UPDATE` – zmiana istniejących wierszy.\n- `DELETE` – usunięcie wierszy.\n\nNajgroźniejsza pułapka początkujących: `UPDATE` lub `DELETE` **bez `WHERE`** zmienia lub usuwa **wszystkie** wiersze w tabeli. Dobry nawyk: najpierw napisz `SELECT` z tym samym `WHERE`, sprawdź, co zwraca, dopiero potem zamień na `UPDATE`/`DELETE`.\n\nDruga pułapka: `NULL` oznacza „nieznane”, więc `WHERE Email = NULL` nic nie znajdzie. Poprawnie: `WHERE Email IS NULL`.",
+          "code": "INSERT INTO Customers (Name, Email) VALUES ('Jan Kowalski', 'jan@x.pl');\n\nSELECT Id, Name FROM Customers WHERE Email LIKE '%@x.pl' ORDER BY Name;\n\nUPDATE Products SET Price = Price * 1.1 WHERE CategoryId = 3;\n\n-- ŹLE: usuwa wszystkie zamówienia!\n-- DELETE FROM Orders;\nDELETE FROM Orders WHERE Id = 7;",
+          "lang": "sql"
+        },
+        {
+          "h": "JOIN na przykładzie",
+          "text": "Dane są rozłożone na kilka tabel, więc żeby zobaczyć „klient + jego zamówienia”, trzeba je **złączyć**. Robi to `JOIN`: dla każdej pary wierszy sprawdza warunek z `ON` i skleja pasujące.\n\nPrzykładowe dane: klienci Jan (Id 1), Ania (Id 2), Ola (Id 3). Zamówienia: nr 10 i 11 Jana, nr 12 Ani. Ola nie ma zamówień.\n\n- **INNER JOIN** – tylko pary, które pasują z obu stron. Wynik: Jan–10, Jan–11, Ania–12. **Ola znika**, bo nie ma pary.\n- **LEFT JOIN** – wszystkie wiersze z lewej tabeli, a z prawej to, co pasuje; brak pary daje `NULL`. Wynik: Jan–10, Jan–11, Ania–12, **Ola–NULL**.\n\nKiedy który? Pytanie „pokaż klientów z ich liczbą zamówień, także zerową” → `LEFT JOIN`. Pytanie „klienci, którzy coś kupili” → `INNER JOIN`.\n\nPułapka: przy `LEFT JOIN` warunek na prawą tabelę wpisany w `WHERE` (np. `WHERE o.Total > 100`) wyrzuca wiersze z `NULL`, czyli po cichu zamienia złączenie w INNER. Taki warunek przenieś do `ON`.",
+          "code": "-- Liczba zamówień każdego klienta, także 0\nSELECT c.Name, COUNT(o.Id) AS OrdersCount\nFROM Customers c\nLEFT JOIN Orders o ON o.CustomerId = c.Id\nGROUP BY c.Name;\n-- Jan 2, Ania 1, Ola 0\n-- COUNT(o.Id), a nie COUNT(*): NULL-e się nie liczą, więc Ola ma 0, nie 1",
+          "lang": "sql"
+        },
+        {
+          "h": "Indeks – spis treści w książce",
+          "text": "Szukasz w 800-stronicowej książce rozdziału o transakcjach. Możesz kartkować od pierwszej strony (**full scan** – przejrzenie całej tabeli) albo zajrzeć do **spisu treści** i od razu otworzyć stronę 412. **Indeks** w bazie to właśnie taki spis treści: posortowana struktura (zwykle drzewo B-tree), która pozwala szybko znaleźć wiersze po wartości kolumny.\n\n- **Klucz główny** ma indeks automatycznie.\n- Indeksy zakładasz na kolumny, po których często **filtrujesz**, **łączysz** (klucze obce!) i **sortujesz**, np. `Orders.CustomerId`, `Customers.Email`.\n\nCena indeksu – książka z dziesięcioma spisami treści jest grubsza i każdą poprawkę trzeba nanieść w każdym spisie:\n\n- indeks zajmuje miejsce,\n- spowalnia `INSERT`/`UPDATE`/`DELETE`, bo baza musi aktualizować też indeks.\n\nPułapki, przez które indeks nie zadziała: funkcja na kolumnie w `WHERE` (np. `WHERE YEAR(CreatedAt) = 2026` – lepiej zakres dat) oraz `LIKE '%kot'` z procentem na początku. Jak sprawdzić, czy indeks jest używany? Spójrz w **plan wykonania** (execution plan) zapytania.",
+          "code": "CREATE INDEX IX_Orders_CustomerId ON Orders(CustomerId);\n\n-- Indeks na CreatedAt nie pomoże:\nSELECT * FROM Orders WHERE YEAR(CreatedAt) = 2026;\n-- Pomoże:\nSELECT * FROM Orders WHERE CreatedAt >= '2026-01-01' AND CreatedAt < '2027-01-01';",
+          "lang": "sql"
+        },
+        {
+          "h": "Transakcja – przelew bankowy",
+          "text": "Przelew 100 zł z konta A na konto B to dwie operacje: odejmij z A, dodaj do B. Co, jeśli po pierwszej serwer padnie? Pieniądze by „wyparowały”. **Transakcja** to obietnica: **albo wszystkie operacje się udają, albo żadna**.\n\nCechy transakcji to skrót **ACID**:\n\n- **A – Atomicity (niepodzielność):** wszystko albo nic. Błąd → `ROLLBACK` (wycofanie).\n- **C – Consistency (spójność):** po transakcji dane spełniają wszystkie reguły (klucze, ograniczenia).\n- **I – Isolation (izolacja):** równoległe transakcje nie widzą swoich „niedokończonych” zmian (stopień tej izolacji można ustawiać).\n- **D – Durability (trwałość):** po `COMMIT` (zatwierdzeniu) dane przetrwają nawet awarię.\n\nKrok po kroku:\n\n1. `BEGIN TRANSACTION` – zaczynamy.\n2. Dwa `UPDATE` na kontach.\n3. Jeśli wszystko OK – `COMMIT`. Jeśli coś się wysypało – `ROLLBACK` i stan wraca do sprzed transakcji.\n\nDobra praktyka: transakcje mają być **krótkie**. Długa transakcja trzyma blokady i inni użytkownicy czekają. Nigdy nie czekaj w środku transakcji na odpowiedź od człowieka czy wolnego zewnętrznego API.",
+          "code": "BEGIN TRANSACTION;\n  UPDATE Accounts SET Balance = Balance - 100 WHERE Id = 1;\n  UPDATE Accounts SET Balance = Balance + 100 WHERE Id = 2;\nCOMMIT;   -- przy błędzie: ROLLBACK",
+          "lang": "sql"
+        },
+        {
+          "h": "ORM i EF Core – co robi za nas",
+          "text": "**ORM** (Object-Relational Mapper) to **tłumacz między światem obiektów a światem tabel**. W C# masz klasy `Order` z listą `Items`, w bazie – tabele z kluczami. **EF Core** (Entity Framework Core) to ORM od Microsoftu.\n\nCo robi za nas:\n\n1. **Mapowanie** – klasa ↔ tabela, właściwość ↔ kolumna, nawigacja (`order.Customer`) ↔ klucz obcy.\n2. **Tłumaczenie LINQ na SQL** – piszesz `db.Orders.Where(o => o.CustomerId == 1)`, a EF generuje `SELECT … WHERE CustomerId = @p0` (z parametrem, więc bez ryzyka SQL injection).\n3. **Change tracking** – EF pamięta, jakie obiekty wczytał, i przy `SaveChanges()` sam wylicza, jakie `INSERT`/`UPDATE`/`DELETE` wysłać.\n4. **Transakcja** – jedno `SaveChanges()` domyślnie wykonuje się w jednej transakcji.\n5. **Migracje** – zmiana w klasach → plik migracji → aktualizacja schematu bazy.\n\nCzego EF **nie** zrobi za ciebie: nie pomyśli o wydajności. Klasyczna pułapka to **problem N+1**: wczytujesz 100 zamówień, a potem w pętli dociągasz klienta każdego z nich – 1 + 100 zapytań. Rozwiązanie: `Include` albo projekcja `Select` do DTO. Do odczytu bez późniejszej edycji użyj `AsNoTracking()` – szybciej i mniej pamięci.",
+          "code": "// Źle: N+1 (lazy loading w pętli)\nforeach (var o in await db.Orders.ToListAsync())\n    Console.WriteLine(o.Customer.Name);\n\n// Dobrze: jedno zapytanie, tylko potrzebne kolumny\nvar list = await db.Orders\n    .AsNoTracking()\n    .Where(o => o.CreatedAt >= from)\n    .Select(o => new { o.Id, Customer = o.Customer.Name, Items = o.Items.Count })\n    .ToListAsync();",
+          "lang": "csharp"
+        },
+        {
+          "h": "Jak to powiedzieć na rozmowie",
+          "text": "Ułóż odpowiedź od fundamentów w górę:\n\n„Relacje modeluję kluczami obcymi: 1-n przez FK po stronie wielu, n-n przez tabelę pośrednią. Indeksy zakładam pod realne zapytania – filtry, JOIN-y po kluczach obcych, sortowanie – pamiętając, że spowalniają zapisy, i weryfikuję to planem wykonania. Operacje, które muszą się udać razem, zamykam w krótkiej transakcji z gwarancjami ACID. Z EF Core korzystam świadomie: projekcje do DTO, AsNoTracking do odczytów, unikanie N+1, i patrzę na wygenerowany SQL.”\n\nNiuanse seniorskie, które warto rzucić:\n\n- poziomy izolacji (domyślne `READ COMMITTED` w SQL Server) i ich kompromis między spójnością a wydajnością,\n- **optimistic concurrency** w EF Core (kolumna `rowversion` – konflikt przy zapisie zamiast blokad),\n- normalizacja (brak powtórzeń danych) vs świadoma denormalizacja dla szybkich odczytów."
+        }
+      ],
+      "takeaways": [
+        "Tabela to arkusz z regułami: kolumny mają typy i ograniczenia, wiersze to konkretne rekordy.",
+        "Klucz główny identyfikuje wiersz, klucz obcy wskazuje na wiersz w innej tabeli; 1-n = FK po stronie „wielu”, n-n = tabela pośrednia.",
+        "UPDATE/DELETE bez WHERE dotyka wszystkich wierszy; NULL porównuj przez IS NULL.",
+        "INNER JOIN zwraca tylko pary pasujące z obu stron, LEFT JOIN zachowuje wszystkie wiersze lewej tabeli.",
+        "Indeks to spis treści: przyspiesza odczyt, ale kosztuje miejsce i spowalnia zapisy.",
+        "Transakcja = wszystko albo nic (ACID); trzymaj ją krótko.",
+        "EF Core mapuje obiekty na tabele, tłumaczy LINQ na SQL i śledzi zmiany – ale N+1 i wydajność to nadal twoja odpowiedzialność."
+      ],
+      "interview": [
+        "Jak zamodelujesz relację wiele-do-wielu między zamówieniami a produktami?",
+        "Czym różni się INNER JOIN od LEFT JOIN? Podaj przykład.",
+        "Czym jest indeks, kiedy go założysz i jakie ma koszty?",
+        "Co oznacza ACID? Kiedy potrzebujesz transakcji?",
+        "Czym jest problem N+1 w EF Core i jak go uniknąć?"
+      ],
+      "exam": [
+        {
+          "id": "basics-db-e1",
+          "q": "Jak w relacyjnej bazie zamodelować relację „jeden klient ma wiele zamówień”?",
+          "options": [
+            "Kolumną OrderIds z listą id w tabeli Customers",
+            "Kolumną CustomerId (kluczem obcym) w tabeli Orders",
+            "Osobną bazą danych dla każdego klienta",
+            "Tabelą pośrednią CustomerOrders z kluczem złożonym"
+          ],
+          "correct": 1,
+          "why": "W relacji 1-n klucz obcy umieszcza się po stronie „wielu” – każde zamówienie wskazuje swojego klienta. Tabela pośrednia jest potrzebna dla n-n."
+        },
+        {
+          "id": "basics-db-e2",
+          "q": "Klienci: Jan (2 zamówienia), Ania (1), Ola (0). Ile wierszy zwróci Customers INNER JOIN Orders ON Orders.CustomerId = Customers.Id?",
+          "options": [
+            "3 – po jednym na klienta",
+            "4 – Ola z NULL",
+            "3 – Jan dwa razy i Ania raz",
+            "6 – każdy z każdym"
+          ],
+          "correct": 2,
+          "why": "INNER JOIN zwraca tylko pasujące pary: Jan–10, Jan–11, Ania–12. Ola nie ma pary, więc nie występuje."
+        },
+        {
+          "id": "basics-db-e3",
+          "q": "Co się stanie po wykonaniu: UPDATE Products SET Price = 0; ?",
+          "options": [
+            "Cena zostanie wyzerowana we wszystkich wierszach tabeli Products",
+            "Baza zgłosi błąd, bo brakuje WHERE",
+            "Zmieni się tylko pierwszy wiersz",
+            "Nic, bo brak klucza głównego w zapytaniu"
+          ],
+          "correct": 0,
+          "why": "UPDATE bez WHERE dotyczy wszystkich wierszy. Dlatego najpierw testuje się warunek SELECT-em."
+        },
+        {
+          "id": "basics-db-e4",
+          "q": "Dlaczego WHERE YEAR(CreatedAt) = 2026 zwykle nie wykorzysta indeksu na CreatedAt?",
+          "options": [
+            "Bo indeksy nie działają na kolumnach z datą",
+            "Bo funkcja YEAR jest niedostępna w SQL Server",
+            "Bo indeks działa tylko z ORDER BY",
+            "Bo funkcja nałożona na kolumnę uniemożliwia wyszukanie w posortowanym indeksie; lepszy jest zakres dat"
+          ],
+          "correct": 3,
+          "why": "Indeks jest posortowany po wartości kolumny, nie po wyniku funkcji. Warunek zakresowy (>= i <) pozwala go użyć."
+        },
+        {
+          "id": "basics-db-e5",
+          "q": "Jaki jest główny koszt dodania wielu indeksów do tabeli?",
+          "options": [
+            "Wolniejsze zapytania SELECT",
+            "Więcej miejsca i wolniejsze INSERT/UPDATE/DELETE, bo indeksy trzeba aktualizować",
+            "Brak możliwości użycia JOIN",
+            "Utrata integralności referencyjnej"
+          ],
+          "correct": 1,
+          "why": "Każdy indeks to dodatkowy „spis treści”, który zajmuje miejsce i musi być aktualizowany przy każdej zmianie danych."
+        },
+        {
+          "id": "basics-db-e6",
+          "q": "W przelewie pierwsze UPDATE się udało, a drugie rzuciło błąd. Co gwarantuje atomowość transakcji?",
+          "options": [
+            "Że drugie UPDATE zostanie automatycznie ponowione",
+            "Że pierwsze UPDATE zostanie zatwierdzone, a drugie pominięte",
+            "Że po ROLLBACK oba UPDATE zostaną wycofane i stan wróci do sprzed transakcji",
+            "Że inne transakcje zobaczą zmianę z pierwszego UPDATE"
+          ],
+          "correct": 2,
+          "why": "Atomowość to „wszystko albo nic” – częściowo wykonana transakcja jest wycofywana w całości."
+        },
+        {
+          "id": "basics-db-e7",
+          "q": "Co jest przyczyną problemu N+1 w EF Core?",
+          "options": [
+            "Dociąganie powiązanych danych osobnym zapytaniem dla każdego z N wczytanych obiektów",
+            "Użycie AsNoTracking",
+            "Użycie projekcji Select do DTO",
+            "Brak klucza głównego w tabeli"
+          ],
+          "correct": 0,
+          "why": "Jedno zapytanie po listę + N zapytań po dane powiązane. Rozwiązania: Include albo projekcja Select."
+        },
+        {
+          "id": "basics-db-e8",
+          "q": "Co robi change tracking w EF Core?",
+          "options": [
+            "Zapisuje historię zmian w osobnej tabeli audytowej",
+            "Blokuje wiersze w bazie do końca żądania HTTP",
+            "Wysyła zmiany do bazy natychmiast po zmianie właściwości",
+            "Pamięta wczytane encje i przy SaveChanges wylicza, jakie INSERT/UPDATE/DELETE wysłać"
+          ],
+          "correct": 3,
+          "why": "Change tracker porównuje stan encji i dopiero przy SaveChanges generuje odpowiednie polecenia SQL, domyślnie w jednej transakcji."
+        }
+      ]
+    },
+    {
+      "id": "basics-angular",
+      "cat": "angular",
+      "title": "Angular od zera: komponenty, serwisy, routing",
+      "level": 1,
+      "minutes": 15,
+      "intro": "Angular to kompletny framework do budowania aplikacji frontendowych – z komponentami, DI, routingiem i klientem HTTP „w pudełku”. Po tej lekcji opowiesz, czym jest SPA, jak komponent łączy się z szablonem, po co są serwisy, jak działa routing, jak pobrać dane z API i czym są sygnały. Wszystko w nowoczesnym stylu Angulara 21: standalone, `inject()`, sygnały i nowa składnia `@if`/`@for`.",
+      "sections": [
+        {
+          "h": "SPA: jedna strona, która udaje wiele",
+          "text": "Tradycyjna strona działa jak **książka**: klikasz link, serwer przysyła nową, całą stronę, przeglądarka wszystko przeładowuje.\n\n**SPA** (Single Page Application) działa jak **aplikacja na telefonie**: przy pierwszym wejściu przeglądarka pobiera jeden `index.html` i paczkę JavaScriptu. Od tej pory **JavaScript sam podmienia fragmenty ekranu**, a z serwerem rozmawia już tylko po dane (JSON przez API).\n\nKrok po kroku:\n\n1. Wchodzisz na `sklep.pl` – serwer zwraca pusty prawie `index.html` + skrypty Angulara.\n2. Angular startuje i rysuje ekran w przeglądarce.\n3. Klikasz „Produkty” – adres zmienia się na `/products`, ale **strona się nie przeładowuje**; Angular wymienia tylko środkową część.\n4. Komponent produktów prosi API o JSON i wyświetla listę.\n\nZalety: płynność, mniej przesyłanych danych. Wady: dłuższy pierwszy start i gorsze SEO (wyszukiwarki widzą pustą stronę). Odpowiedzią jest **SSR** (Server-Side Rendering) – pierwszy widok renderowany na serwerze, a potem aplikacja „ożywa” w przeglądarce (hydratacja)."
+        },
+        {
+          "h": "Komponent = klocek LEGO",
+          "text": "Ekran aplikacji składa się z **komponentów** – jak budowla z **klocków LEGO**. Nagłówek to klocek, lista produktów to klocek, a każda karta produktu to mniejszy klocek w środku.\n\nKomponent to trzy rzeczy razem:\n\n- **klasa TypeScript** – dane i logika (co pokazuję, co robię po kliknięciu),\n- **szablon HTML** – jak to wygląda,\n- **style CSS** – domyślnie działają tylko w tym komponencie.\n\nCo znaczy kod obok, linijka po linijce:\n\n1. `@Component({...})` – dekorator: „ta klasa to komponent”.\n2. `selector: 'app-product-card'` – nazwa znacznika, którym wstawiasz klocek: `<app-product-card>`.\n3. `product = input.required<Product>()` – **wejście**: dane, które rodzic podaje do środka.\n4. `added = output<number>()` – **wyjście**: zdarzenie, które komponent wysyła do rodzica.\n5. W szablonie `(click)=\"added.emit(product().id)\"` – po kliknięciu powiadom rodzica.\n\nOd Angulara 19 komponenty są domyślnie **standalone** – nie trzeba ich deklarować w `NgModule`, same importują to, czego używają.\n\nZasada: dane płyną **w dół** przez inputy, zdarzenia **w górę** przez outputy.",
+          "code": "import { Component, input, output } from '@angular/core';\nimport { CurrencyPipe } from '@angular/common';\n\n@Component({\n  selector: 'app-product-card',\n  imports: [CurrencyPipe],\n  template: `\n    <h3>{{ product().name }}</h3>\n    <p>{{ product().price | currency:'PLN' }}</p>\n    <button (click)=\"added.emit(product().id)\">Do koszyka</button>\n  `,\n})\nexport class ProductCard {\n  product = input.required<Product>();\n  added = output<number>();\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "Szablon i binding: jak dane trafiają na ekran",
+          "text": "**Binding** (wiązanie) to „kabel” między klasą komponentu a HTML-em. Są cztery rodzaje, łatwe do rozpoznania po nawiasach:\n\n- `{{ wartosc }}` – **interpolacja**: wstaw tekst z klasy do HTML.\n- `[property]=\"wyrazenie\"` – **property binding**: ustaw właściwość elementu, np. `[disabled]=\"isSaving()\"`. Nawias kwadratowy = dane **do** widoku.\n- `(event)=\"metoda()\"` – **event binding**: reaguj na zdarzenie, np. `(click)`. Nawias okrągły = zdarzenie **z** widoku.\n- `[(ngModel)]=\"pole\"` – **two-way binding** („banan w pudełku”): dane w obie strony, typowo w formularzach.\n\nNowa składnia przepływu sterowania (control flow):\n\n- `@if (warunek) { … } @else { … }` – pokaż fragment warunkowo,\n- `@for (p of products(); track p.id) { … } @empty { … }` – pętla. `track` mówi Angularowi, jak rozpoznać element, żeby przy zmianie listy nie przerysowywał wszystkiego od nowa.",
+          "code": "@if (loading()) {\n  <p>Ładowanie…</p>\n} @else {\n  @for (p of products(); track p.id) {\n    <app-product-card [product]=\"p\" (added)=\"addToCart($event)\" />\n  } @empty {\n    <p>Brak produktów</p>\n  }\n}\n<input [value]=\"query()\" (input)=\"query.set($any($event.target).value)\" />",
+          "lang": "html"
+        },
+        {
+          "h": "Serwis i DI: wspólne narzędzia w szufladzie",
+          "text": "Komponent powinien zajmować się **wyświetlaniem**. Pobieranie danych, stan koszyka czy logika biznesowa trafiają do **serwisu** – zwykłej klasy z dekoratorem `@Injectable`.\n\nAnalogia: serwis to **wspólna szuflada z narzędziami w warsztacie**. Każdy stolarz (komponent) sięga do tej samej szuflady, zamiast nosić własny komplet.\n\nJak komponent dostaje serwis? Przez **DI** (Dependency Injection) – tak samo jak w .NET: nie tworzysz go przez `new`, tylko prosisz o niego. W nowoczesnym Angularze robi się to funkcją `inject()`.\n\n- `providedIn: 'root'` – jedna instancja serwisu na całą aplikację (singleton). Wszystkie komponenty widzą **ten sam** koszyk.\n- Można też podać serwis w `providers` konkretnego komponentu – wtedy każdy taki komponent ma własną instancję.\n\nPułapka: serwis z `providers` w komponencie, a programista oczekuje wspólnego stanu – dwa komponenty mają wtedy dwa różne koszyki.",
+          "code": "import { Injectable, inject, signal, computed } from '@angular/core';\nimport { HttpClient } from '@angular/common/http';\n\n@Injectable({ providedIn: 'root' })\nexport class CartService {\n  private http = inject(HttpClient);\n  private items = signal<CartItem[]>([]);\n\n  readonly count = computed(() => this.items().reduce((s, i) => s + i.quantity, 0));\n\n  add(productId: number) {\n    this.http.post<CartItem>('/api/cart/items', { productId, quantity: 1 })\n      .subscribe(item => this.items.update(list => [...list, item]));\n  }\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "Routing i HttpClient",
+          "text": "**Routing** to „mapa”: który adres pokazuje który komponent. Definiujesz listę tras, a w głównym szablonie stawiasz `<router-outlet />` – **ramkę na obraz**, w którą router wstawia komponent pasujący do adresu.\n\n- `{ path: 'products/:id', component: ProductDetails }` – `:id` to parametr z adresu.\n- `loadComponent: () => import(...)` – **lazy loading**: kod tej strony pobiera się dopiero, gdy ktoś na nią wejdzie. Mniejsza paczka startowa.\n- `canActivate: [authGuard]` – **guard** (strażnik): funkcja, która decyduje, czy wpuścić na trasę, np. tylko zalogowanych.\n- Linki: `<a routerLink=\"/products\">` zamiast zwykłego `href`, żeby nie przeładowywać strony.\n\n**HttpClient** to wbudowany klient do rozmowy z API. Jego metody (`get`, `post`…) zwracają **Observable** – „obietnicę strumienia danych”. Ważne: **żądanie nie wyjdzie, dopóki ktoś nie zrobi `subscribe`** (lub nie przekształci go np. w sygnał przez `toSignal`). Do wspólnych rzeczy (token, obsługa błędów) służą **interceptory** – funkcje, przez które przechodzi każde żądanie.",
+          "code": "// app.routes.ts\nexport const routes: Routes = [\n  { path: '', redirectTo: 'products', pathMatch: 'full' },\n  { path: 'products', component: ProductList },\n  { path: 'products/:id', loadComponent: () => import('./product-details').then(m => m.ProductDetails) },\n  { path: 'cart', component: Cart, canActivate: [authGuard] },\n  { path: '**', component: NotFound },\n];\n\n// app.config.ts\nexport const appConfig: ApplicationConfig = {\n  providers: [provideRouter(routes), provideHttpClient(withInterceptors([authInterceptor]))],\n};",
+          "lang": "typescript"
+        },
+        {
+          "h": "Sygnały: komórka w Excelu, która sama się przelicza",
+          "text": "W Excelu wpisujesz w komórkę A1 liczbę 2, a w B1 formułę `=A1*10`. Zmieniasz A1 na 3 – **B1 sama pokazuje 30**. Nie musisz nikomu mówić „przelicz”. **Sygnały** w Angularze działają dokładnie tak.\n\n- `signal(wartość)` – **komórka z wartością** (A1). Czytasz ją, wywołując jak funkcję: `count()`. Zmieniasz przez `set(...)` albo `update(stara => nowa)`.\n- `computed(() => ...)` – **komórka z formułą** (B1). Sama się przelicza, gdy zmieni się którykolwiek sygnał, którego użyła. Tylko do odczytu.\n- `effect(() => ...)` – **reakcja na zmianę**, np. zapis do `localStorage`. Używaj oszczędnie – nie do przepisywania jednego sygnału do drugiego (do tego jest `computed`).\n\nDlaczego to ważne? Angular wie **dokładnie**, który fragment ekranu zależy od którego sygnału, więc odświeża tylko to, co trzeba. Od Angulara 21 nowe aplikacje są domyślnie **zoneless** – bez biblioteki Zone.js, a odświeżanie widoku napędzają głównie sygnały.\n\nPułapka: mutowanie tablicy w sygnale (`items().push(x)`) – sygnał nie zauważy zmiany, bo referencja jest ta sama. Zawsze twórz nową wartość: `items.update(l => [...l, x])`.",
+          "code": "const price = signal(100);\nconst qty = signal(2);\nconst total = computed(() => price() * qty());   // 200\n\nqty.set(3);              // total() sam da 300\nprice.update(p => p * 0.9);  // total() = 270\n\neffect(() => console.log('Suma:', total()));",
+          "lang": "typescript"
+        },
+        {
+          "h": "Przepływ danych w całości i jak to opowiedzieć",
+          "text": "Złóżmy wszystko na przykładzie „Dodaj do koszyka”:\n\n1. Użytkownik klika przycisk w `ProductCard` → komponent emituje `added` z id produktu (zdarzenie w górę).\n2. Rodzic `ProductList` łapie `(added)` i woła `cartService.add(id)`.\n3. `CartService` wysyła `POST` przez `HttpClient` (interceptor dokleja token).\n4. API odpowiada JSON-em → serwis aktualizuje sygnał `items`.\n5. `computed` `count` przelicza się sam → licznik w nagłówku (inny komponent, ten sam serwis) pokazuje nową liczbę.\n\nNa rozmowie powiedz to tak:\n\n„Angular buduje SPA z drzewa standalone komponentów. Dane płyną w dół przez inputy, zdarzenia w górę przez outputy, a stan współdzielony i komunikacja z API siedzą w serwisach wstrzykiwanych przez DI. Router mapuje adresy na komponenty, z lazy loadingiem i guardami. Stan lokalny i pochodny trzymam w sygnałach, a RxJS stosuję tam, gdzie mam strumienie zdarzeń w czasie, np. wyszukiwanie z debounce.”\n\nNiuanse seniorskie: `ChangeDetectionStrategy.OnPush`, „smart vs presentational components” (komponent z logiką vs komponent tylko do wyświetlania) oraz to, że `effect` nie służy do synchronizowania stanu."
+        }
+      ],
+      "takeaways": [
+        "SPA ładuje się raz, a potem JavaScript podmienia fragmenty ekranu i pobiera z API tylko dane.",
+        "Komponent = klasa + szablon + style; dane w dół przez input(), zdarzenia w górę przez output().",
+        "{{ }} i [ ] przekazują dane do widoku, ( ) obsługuje zdarzenia, [( )] to wiązanie dwukierunkowe.",
+        "Serwisy trzymają logikę i stan współdzielony; komponenty dostają je przez inject(); providedIn: 'root' = singleton.",
+        "Router mapuje adresy na komponenty w <router-outlet>; lazy loading i guardy to standard.",
+        "HttpClient zwraca Observable – bez subscribe (lub toSignal) żądanie nie zostanie wysłane.",
+        "Sygnały działają jak komórki Excela: signal przechowuje wartość, computed sam się przelicza, effect reaguje na zmiany."
+      ],
+      "interview": [
+        "Czym jest SPA i jakie ma wady? Jak pomaga SSR?",
+        "Jak komponenty komunikują się ze sobą w Angularze?",
+        "Czym jest serwis i jak działa DI w Angularze? Co oznacza providedIn: 'root'?",
+        "Czym są sygnały i czym różnią się od Observable?",
+        "Dlaczego żądanie HttpClient może w ogóle nie zostać wysłane?"
+      ],
+      "exam": [
+        {
+          "id": "basics-angular-e1",
+          "q": "Co dzieje się w SPA, gdy użytkownik przechodzi z /products na /cart?",
+          "options": [
+            "Serwer zwraca nowy, pełny dokument HTML",
+            "Angular podmienia komponent w router-outlet bez przeładowania strony",
+            "Przeglądarka pobiera ponownie wszystkie skrypty",
+            "Strona przeładowuje się, ale stan zostaje w ciasteczku"
+          ],
+          "correct": 1,
+          "why": "W SPA router po stronie klienta zmienia adres i wymienia komponent w ramce router-outlet; z serwerem rozmawia się tylko po dane."
+        },
+        {
+          "id": "basics-angular-e2",
+          "q": "Komponent-dziecko ma powiadomić rodzica o kliknięciu „Do koszyka”. Czego użyjesz?",
+          "options": [
+            "input() w dziecku",
+            "Zmiennej globalnej window.cart",
+            "output() w dziecku i (added)=\"...\" u rodzica",
+            "Bezpośredniej modyfikacji pól rodzica przez referencję"
+          ],
+          "correct": 2,
+          "why": "Zdarzenia płyną w górę przez output(); rodzic nasłuchuje ich event bindingiem w nawiasach okrągłych."
+        },
+        {
+          "id": "basics-angular-e3",
+          "q": "Co oznacza zapis [disabled]=\"isSaving()\" w szablonie?",
+          "options": [
+            "Property binding – ustawia właściwość disabled elementu na wartość wyrażenia",
+            "Obsługę zdarzenia disabled",
+            "Wiązanie dwukierunkowe z polem isSaving",
+            "Interpolację tekstu „isSaving()”"
+          ],
+          "correct": 0,
+          "why": "Nawiasy kwadratowe to przekazanie danych z klasy do właściwości elementu w widoku."
+        },
+        {
+          "id": "basics-angular-e4",
+          "q": "Dwa komponenty pokazują różną liczbę produktów w koszyku, choć używają CartService. Co jest najbardziej prawdopodobną przyczyną?",
+          "options": [
+            "Sygnały nie działają w serwisach",
+            "Serwis musi być wstrzykiwany konstruktorem, a nie inject()",
+            "HttpClient zwraca dane w losowej kolejności",
+            "Serwis został dodany do providers komponentu, więc każdy komponent ma własną instancję"
+          ],
+          "correct": 3,
+          "why": "providers na poziomie komponentu tworzą osobną instancję. Wspólny stan zapewnia providedIn: 'root' (jedna instancja w aplikacji)."
+        },
+        {
+          "id": "basics-angular-e5",
+          "q": "Programista wywołał this.http.post('/api/cart/items', body) i nic nie trafiło do API. Dlaczego?",
+          "options": [
+            "HttpClient wymaga, by body było stringiem",
+            "Observable z HttpClient jest „leniwy” – bez subscribe (lub toSignal) żądanie nie wychodzi",
+            "POST jest blokowany przez router",
+            "Brakuje dekoratora @Component w serwisie"
+          ],
+          "correct": 1,
+          "why": "Metody HttpClient zwracają zimny Observable; żądanie jest wysyłane dopiero przy subskrypcji."
+        },
+        {
+          "id": "basics-angular-e6",
+          "q": "Masz sygnały price i qty. Jak najlepiej wyrazić sumę, która ma się aktualizować sama?",
+          "options": [
+            "effect, który przy każdej zmianie wykonuje total.set(price() * qty())",
+            "Zwykłe pole total = price() * qty() w klasie",
+            "setInterval co 100 ms przeliczający sumę",
+            "computed(() => price() * qty())"
+          ],
+          "correct": 3,
+          "why": "computed to „formuła w Excelu” – sam się przelicza, gdy zmienią się użyte sygnały. effect nie służy do przepisywania stanu."
+        },
+        {
+          "id": "basics-angular-e7",
+          "q": "Dlaczego items().push(newItem) na sygnale z tablicą jest błędem?",
+          "options": [
+            "Sygnał nie wykryje zmiany, bo referencja tablicy się nie zmieniła – należy użyć update z nową tablicą",
+            "Bo sygnały mogą przechowywać tylko liczby",
+            "Bo push jest niedostępny w TypeScript",
+            "Bo tablica w sygnale jest zamrożona i rzuci wyjątek"
+          ],
+          "correct": 0,
+          "why": "Sygnał porównuje referencje. Zmiana „w miejscu” nie powiadamia zależnych; poprawnie: items.update(l => [...l, newItem])."
+        },
+        {
+          "id": "basics-angular-e8",
+          "q": "Do czego służy loadComponent: () => import('./product-details')... w definicji trasy?",
+          "options": [
+            "Do załadowania komponentu z serwera przy każdym kliknięciu",
+            "Do sprawdzenia uprawnień użytkownika",
+            "Do lazy loadingu – kod komponentu pobiera się dopiero przy wejściu na trasę",
+            "Do renderowania komponentu po stronie serwera"
+          ],
+          "correct": 2,
+          "why": "Lazy loading dzieli aplikację na mniejsze paczki, zmniejszając rozmiar kodu ładowanego przy starcie. Uprawnienia sprawdza guard."
+        }
+      ]
+    },
+    {
+      "id": "basics-async",
+      "cat": "csharp",
+      "title": "Asynchroniczność łopatologicznie",
+      "level": 1,
+      "minutes": 14,
+      "intro": "async/await to temat, o który pytają na niemal każdej rozmowie .NET – i jednocześnie taki, w którym łatwo powiedzieć coś nieprecyzyjnie. Zbudujemy intuicję na przykładzie kelnera i kuchni, potem rozbierzemy async/await krok po kroku, zobaczymy, dlaczego `.Result` potrafi zablokować aplikację, czym asynchroniczność różni się od równoległości i jak ten sam obrazek wygląda po stronie frontu z Promise i Observable.",
+      "sections": [
+        {
+          "h": "Kelner i kuchnia",
+          "text": "Restauracja ma jednego kelnera. Przyjmuje zamówienie od stolika 1 i zanosi je do kuchni. Zupa gotuje się 10 minut.\n\n- **Kelner synchroniczny** stoi przy okienku kuchni i **czeka 10 minut**, gapiąc się w garnek. W tym czasie stoliki 2, 3 i 4 siedzą bez obsługi. Żeby obsłużyć więcej gości, właściciel musi zatrudniać kolejnych kelnerów – drogo.\n- **Kelner asynchroniczny** oddaje zamówienie, mówi „zawołajcie mnie, jak będzie gotowe” i **idzie obsługiwać inne stoliki**. Gdy kuchnia dzwoni dzwonkiem, któryś wolny kelner zanosi zupę.\n\nPrzełóżmy to na serwer:\n\n- **kelner** = **wątek** (thread),\n- **kuchnia** = baza danych, inny serwis HTTP, dysk – coś, na co się **czeka**,\n- **dzwonek** = powiadomienie systemu operacyjnego, że dane przyszły.\n\nAsynchroniczność **nie przyspiesza zupy**. Zapytanie do bazy trwa tyle samo. Zysk polega na tym, że ten sam „zespół kelnerów” obsłuży dużo więcej gości naraz – serwer ma większą **przepustowość** (throughput)."
+        },
+        {
+          "h": "Wątek vs zadanie i czekanie na I/O",
+          "text": "Dwa pojęcia, które trzeba rozdzielić:\n\n- **Wątek** (thread) – „pracownik” systemu operacyjnego, który wykonuje kod na procesorze. Jest drogi: ma własny stos (rzędu megabajta pamięci), a przełączanie między wątkami kosztuje. W ASP.NET Core żądania obsługują wątki z **puli wątków** (ThreadPool) – ograniczonej grupy pracowników wielokrotnego użytku.\n- **Zadanie** (`Task`) – **obietnica wyniku w przyszłości**, jak paragon z numerkiem w fast-foodzie. `Task<int>` znaczy „kiedyś dostaniesz `int` (albo wyjątek)”. Task to nie wątek – to opis operacji, która trwa.\n\nRodzaje pracy:\n\n- **I/O-bound** (ograniczona wejściem/wyjściem) – czekanie na bazę, sieć, plik. Procesor nic wtedy nie robi. Tu async daje najwięcej: **podczas czekania nie jest zajęty żaden wątek**.\n- **CPU-bound** (ograniczona procesorem) – liczenie, kompresja, przetwarzanie obrazu. Tu ktoś naprawdę musi pracować; async sam w sobie nic nie przyspieszy.\n\nCo się dzieje z wątkiem przy synchronicznym `Thread.Sleep` albo blokującym zapytaniu? Stoi i czeka – jak kelner przy garnku. Przy dużym ruchu pula wątków się wyczerpuje, nowe żądania czekają w kolejce i aplikacja „staje”, choć procesor jest prawie bezczynny. To zjawisko nazywa się **thread pool starvation** (zagłodzenie puli wątków)."
+        },
+        {
+          "h": "async/await krok po kroku",
+          "text": "Prześledźmy metodę z przykładu obok – co się dzieje linijka po linijce:\n\n1. Wywołujesz `GetOrderAsync(7)`. Kod wykonuje się **normalnie, synchronicznie**, aż do pierwszego `await`.\n2. `db.Orders.FindAsync(7)` wysyła zapytanie do bazy i od razu zwraca niedokończony `Task` (paragon).\n3. `await` sprawdza: zadanie skończone? Nie. Więc metoda **zapamiętuje, gdzie skończyła** (kompilator przerabia ją na tzw. maszynę stanów), **oddaje wątek** z powrotem do puli i zwraca wywołującemu swój własny niedokończony `Task`.\n4. Wątek obsługuje w tym czasie inne żądania. **Nikt nie czeka przy garnku.**\n5. Baza odpowiada. System „dzwoni dzwonkiem” i wolny wątek z puli **wznawia metodę dokładnie w miejscu po `await`**.\n6. Wykonuje się `logger.LogInformation(...)` i `return order` – co kończy zwrócony wcześniej `Task`.\n\nWażne szczegóły:\n\n- `async` samo w sobie niczego nie uruchamia w tle – tylko pozwala używać `await` w metodzie.\n- Wyjątek z zadania „wyskakuje” w miejscu `await`, więc zwykły `try/catch` działa.\n- Konwencja: metody asynchroniczne mają sufiks `Async` i zwracają `Task`/`Task<T>` (lub `ValueTask`).\n- Unikaj `async void` – wyjątku z takiej metody nie da się złapać; wyjątkiem są handlery zdarzeń w UI.",
+          "code": "public async Task<Order?> GetOrderAsync(int id)\n{\n    logger.LogInformation(\"Start {Id}\", id);      // synchronicznie\n    var order = await db.Orders.FindAsync(id);     // wątek wraca do puli\n    logger.LogInformation(\"Mam {Id}\", id);         // wznowienie po odpowiedzi bazy\n    return order;\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Dlaczego .Result i .Wait() blokują",
+          "text": "`.Result` i `.Wait()` mówią: „**stój tu, aż zadanie się skończy**”. To dokładnie kelner przy garnku – wątek jest zablokowany na cały czas czekania. Cała korzyść z async przepada.\n\nGorzej: w środowiskach z **SynchronizationContext** (kontekst, który pilnuje, by kod po `await` wrócił na ten sam wątek – np. wątek UI w WPF/WinForms albo stary ASP.NET na .NET Framework) można dostać **deadlock** (zakleszczenie):\n\n1. Wątek UI wywołuje `GetDataAsync().Result` i **blokuje się**, czekając na wynik.\n2. W środku `GetDataAsync` po `await` kod chce **wrócić na wątek UI**, żeby dokończyć.\n3. Ale wątek UI stoi zablokowany w kroku 1. Każdy czeka na drugiego – nic nie ruszy.\n\nASP.NET Core nie ma SynchronizationContext, więc klasycznego deadlocka tam nie ma – ale blokowanie dalej wyczerpuje pulę wątków.\n\nZasada: **async all the way** (async od góry do dołu). Jeśli wywołujesz metodę asynchroniczną, sam bądź asynchroniczny i używaj `await`. W kodzie bibliotek dodaje się `ConfigureAwait(false)` – „nie muszę wracać na oryginalny kontekst”.",
+          "code": "// ŹLE: blokuje wątek, w UI może się zakleszczyć\npublic IActionResult Get(int id)\n{\n    var order = service.GetOrderAsync(id).Result;\n    return Ok(order);\n}\n\n// DOBRZE: async all the way\npublic async Task<IActionResult> Get(int id, CancellationToken ct)\n{\n    var order = await service.GetOrderAsync(id, ct);\n    return Ok(order);\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Równoległość vs asynchroniczność",
+          "text": "Te słowa często się myli, a to różne rzeczy:\n\n- **Asynchroniczność** – **nie blokuj się podczas czekania**. Jeden kucharz wstawia wodę na makaron i w tym czasie kroi warzywa. Chodzi o wykorzystanie czasu oczekiwania.\n- **Równoległość** (parallelism) – **wiele rąk pracuje naraz**. Trzech kucharzy jednocześnie kroi trzy kopy warzyw. Chodzi o podział pracy CPU na wiele rdzeni.\n\nW kodzie:\n\n- Kilka **niezależnych** operacji I/O uruchom naraz i poczekaj na wszystkie: `await Task.WhenAll(a, b)`. Całość trwa tyle, ile najdłuższa, a nie suma.\n- Ciężkie obliczenia na wielu danych: `Parallel.ForEach` / `Parallel.ForEachAsync` albo PLINQ.\n- Jedno ciężkie obliczenie, które nie może blokować wątku UI: `Task.Run(...)`. W ASP.NET Core `Task.Run` zwykle nie ma sensu – i tak zabierasz wątek z tej samej puli.\n\nPułapka: `await` w pętli, gdy zadania są od siebie niezależne – robisz je po kolei, choć mogłyby iść równocześnie. Druga pułapka: `Task.WhenAll` na tym samym `DbContext` – DbContext **nie jest bezpieczny wątkowo**, równoległe zapytania na jednej instancji rzucą wyjątek.",
+          "code": "// Po kolei: ~300 ms + ~200 ms = ~500 ms\nvar user = await usersApi.GetAsync(id);\nvar orders = await ordersApi.GetAsync(id);\n\n// Równocześnie: ~300 ms (najdłuższe)\nvar userTask = usersApi.GetAsync(id);\nvar ordersTask = ordersApi.GetAsync(id);\nawait Task.WhenAll(userTask, ordersTask);\nvar (u, o) = (userTask.Result, ordersTask.Result); // tu .Result jest OK – zadania już skończone",
+          "lang": "csharp"
+        },
+        {
+          "h": "Ten sam obrazek po stronie frontu: Promise i Observable",
+          "text": "JavaScript w przeglądarce ma **jeden wątek** dla kodu i UI. Gdyby czekał synchronicznie na odpowiedź z API, cała strona by zamarzła. Dlatego tam asynchroniczność to konieczność, a „dzwonkiem kuchni” jest **event loop** (pętla zdarzeń), która wywołuje twój kod, gdy dane przyjdą.\n\n- **Promise** to odpowiednik `Task`: **jedna** przyszła wartość albo błąd. `async/await` w TypeScript działa niemal identycznie jak w C#.\n- **Observable** (RxJS, używany w Angularze) to **strumień wielu wartości w czasie** – jak subskrypcja gazety, a nie jedna paczka. Przykłady: kolejne znaki wpisywane w wyszukiwarkę, zdarzenia z WebSocketa. Jest **leniwy**: nic się nie dzieje do `subscribe()`. Można go **anulować** (`unsubscribe`), a operatory jak `debounceTime` czy `switchMap` pozwalają nim sterować.\n\nZestawienie w jednym zdaniu: **Task ≈ Promise** (jedna obietnica), **Observable ≈ strumień** (w .NET najbliżej mu do `IAsyncEnumerable<T>` lub Rx.NET). Anulowanie w .NET robi się przez `CancellationToken`.",
+          "code": "// Promise + async/await (jedna wartość)\nasync function loadOrder(id: number): Promise<Order> {\n  const res = await fetch(`/api/orders/${id}`);\n  if (!res.ok) throw new Error(`HTTP ${res.status}`);\n  return res.json();\n}\n\n// Observable (strumień wartości w czasie)\nsearch$ = this.query$.pipe(\n  debounceTime(300),\n  switchMap(q => this.http.get<Product[]>(`/api/products?q=${q}`)) // anuluje poprzednie\n);",
+          "lang": "typescript"
+        },
+        {
+          "h": "Jak to powiedzieć na rozmowie",
+          "text": "Wersja „na raz”:\n\n„async/await służy do nieblokującego czekania na operacje I/O. Przy await, jeśli zadanie nie jest gotowe, metoda zapisuje stan w maszynie stanów generowanej przez kompilator i zwalnia wątek; po zakończeniu operacji kontynuacja wznawia się na wątku z puli. To zwiększa przepustowość serwera, a nie szybkość pojedynczego żądania. Nie blokuję przez .Result ani .Wait(), stosuję async all the way, przekazuję CancellationToken, a niezależne operacje łączę Task.WhenAll.”\n\nNiuanse seniorskie:\n\n- `ValueTask` – gdy wynik często jest dostępny synchronicznie (np. z cache), oszczędza alokację; nie wolno go awaitować dwa razy.\n- `ConfigureAwait(false)` w bibliotekach; w ASP.NET Core aplikacyjnym zwykle zbędny.\n- Fire-and-forget (`_ = DoAsync()`) gubi wyjątki – na pracę w tle lepszy `BackgroundService` z kolejką.\n- CPU-bound to nie miejsce na async – to miejsce na równoległość."
+        }
+      ],
+      "takeaways": [
+        "Async to kelner, który nie stoi przy garnku: podczas czekania na I/O wątek wraca do puli i obsługuje innych.",
+        "Asynchroniczność zwiększa przepustowość serwera, nie przyspiesza pojedynczej operacji.",
+        "Task to obietnica wyniku, a nie wątek; przy I/O w czasie czekania nie jest zajęty żaden wątek.",
+        "await zapisuje stan metody, zwalnia wątek i wznawia ją po zakończeniu zadania; wyjątki łapie zwykły try/catch.",
+        ".Result/.Wait() blokują wątek (a w UI mogą zakleszczyć) – stosuj async all the way.",
+        "Asynchroniczność = nie blokuj się podczas czekania; równoległość = wiele rdzeni pracuje naraz; niezależne I/O łącz Task.WhenAll.",
+        "Na froncie: Promise ≈ Task (jedna wartość), Observable = leniwy, anulowalny strumień wielu wartości."
+      ],
+      "interview": [
+        "Co dokładnie dzieje się, gdy wykonanie dochodzi do await?",
+        "Czy async/await sprawia, że kod wykonuje się szybciej? Dlaczego?",
+        "Dlaczego .Result lub .Wait() są niebezpieczne?",
+        "Czym różni się asynchroniczność od równoległości?",
+        "Czym różni się Promise od Observable?"
+      ],
+      "exam": [
+        {
+          "id": "basics-async-e1",
+          "q": "Jaki jest główny zysk z async/await przy zapytaniach do bazy w ASP.NET Core?",
+          "options": [
+            "Zapytanie do bazy wykonuje się szybciej",
+            "Kod wykonuje się na wielu rdzeniach jednocześnie",
+            "Podczas czekania na bazę wątek wraca do puli, więc serwer obsłuży więcej żądań naraz",
+            "Baza automatycznie cache’uje wyniki"
+          ],
+          "correct": 2,
+          "why": "Async nie przyspiesza samej operacji. Zwalnia wątek na czas czekania, co zwiększa przepustowość serwera."
+        },
+        {
+          "id": "basics-async-e2",
+          "q": "Co najlepiej opisuje Task<int>?",
+          "options": [
+            "Obietnicę, że w przyszłości pojawi się wynik typu int albo wyjątek",
+            "Nowy wątek systemu operacyjnego zwracający int",
+            "Tablicę liczb przetwarzanych równolegle",
+            "Strumień wielu wartości int w czasie"
+          ],
+          "correct": 0,
+          "why": "Task to obietnica wyniku (jak paragon z numerkiem), a nie wątek. Strumień wielu wartości to raczej IAsyncEnumerable lub Observable."
+        },
+        {
+          "id": "basics-async-e3",
+          "q": "Co dzieje się w momencie await, gdy zadanie nie jest jeszcze zakończone?",
+          "options": [
+            "Wątek jest blokowany do czasu zakończenia zadania",
+            "Metoda zapisuje swój stan, zwalnia wątek i zwraca niedokończony Task; wznowi się po zakończeniu operacji",
+            "Zadanie jest anulowane i uruchamiane ponownie",
+            "Uruchamiany jest nowy wątek, który czeka na wynik"
+          ],
+          "correct": 1,
+          "why": "Kompilator przerabia metodę na maszynę stanów; await zwalnia wątek, a kontynuacja wykonuje się po zakończeniu zadania."
+        },
+        {
+          "id": "basics-async-e4",
+          "q": "Aplikacja WPF wywołuje w handlerze przycisku LoadAsync().Result i interfejs zamarza na zawsze. Dlaczego?",
+          "options": [
+            "Bo .Result działa tylko w ASP.NET Core",
+            "Bo LoadAsync nie ma sufiksu Async",
+            "Bo wątek UI nie może wykonywać zapytań HTTP",
+            "Wątek UI blokuje się na wyniku, a kontynuacja po await czeka na ten sam wątek UI – deadlock"
+          ],
+          "correct": 3,
+          "why": "SynchronizationContext UI chce wznowić kod na zablokowanym wątku UI. Każda strona czeka na drugą."
+        },
+        {
+          "id": "basics-async-e5",
+          "q": "Dwa niezależne wywołania API trwają 300 ms i 200 ms. Jak skrócić łączny czas oczekiwania?",
+          "options": [
+            "Uruchomić oba zadania, a potem await Task.WhenAll – całość trwa ok. 300 ms",
+            "Wywołać oba po kolei z await – ok. 500 ms to minimum",
+            "Użyć .Result na obu zadaniach",
+            "Opakować każde w Task.Run i awaitować po kolei"
+          ],
+          "correct": 0,
+          "why": "Niezależne operacje I/O mogą biec równocześnie; WhenAll czeka na najdłuższą."
+        },
+        {
+          "id": "basics-async-e6",
+          "q": "Czym asynchroniczność różni się od równoległości?",
+          "options": [
+            "To synonimy",
+            "Asynchroniczność zawsze wymaga wielu rdzeni procesora",
+            "Asynchroniczność to niezablokowane czekanie, równoległość to jednoczesna praca na wielu rdzeniach",
+            "Równoległość dotyczy tylko I/O, asynchroniczność tylko obliczeń"
+          ],
+          "correct": 2,
+          "why": "Async to wykorzystanie czasu oczekiwania; równoległość to podział pracy obliczeniowej na wiele wątków/rdzeni."
+        },
+        {
+          "id": "basics-async-e7",
+          "q": "Dlaczego async void jest niezalecane poza handlerami zdarzeń?",
+          "options": [
+            "Bo metoda async void nie może używać await",
+            "Bo wyjątku z async void nie da się złapać ani na nią poczekać",
+            "Bo async void zawsze wykonuje się synchronicznie",
+            "Bo kompilator nie generuje dla niej maszyny stanów"
+          ],
+          "correct": 1,
+          "why": "Wywołujący nie dostaje Task, więc nie może awaitować ani obsłużyć wyjątku – wyjątek trafia na kontekst i może ubić proces."
+        },
+        {
+          "id": "basics-async-e8",
+          "q": "Czym Observable różni się od Promise?",
+          "options": [
+            "Promise może zwrócić wiele wartości, Observable tylko jedną",
+            "Promise jest leniwy i startuje dopiero przy then",
+            "Observable działa tylko na serwerze",
+            "Observable to leniwy, anulowalny strumień wielu wartości w czasie; Promise to jedna przyszła wartość"
+          ],
+          "correct": 3,
+          "why": "Promise (jak Task) daje jedną wartość i startuje od razu. Observable jest leniwy (start przy subscribe), może emitować wiele wartości i da się go anulować."
+        }
+      ]
+    },
+    {
+      "id": "basics-queues",
+      "cat": "dist",
+      "title": "Kolejki i komunikaty łopatologicznie",
+      "level": 1,
+      "minutes": 14,
+      "intro": "Gdy aplikacja rośnie, jej części przestają do siebie „dzwonić” i zaczynają do siebie „pisać listy”. W tej lekcji zrozumiesz, czym jest kolejka komunikatów, kto jest producentem, a kto konsumentem, po co w ogóle kolejki, czym RabbitMQ różni się od Kafki, co zrobić, gdy wiadomość przyjdzie dwa razy, i czym jest wzorzec Outbox. To częste pytania przy systemach z mikroserwisami.",
+      "sections": [
+        {
+          "h": "Telefon czy list? Skrzynka pocztowa",
+          "text": "Są dwa sposoby, żeby jeden system poprosił drugi o coś:\n\n- **Telefon** (komunikacja **synchroniczna**, np. zwykłe wywołanie HTTP): dzwonisz i czekasz, aż ktoś odbierze i odpowie. Jeśli rozmówca jest zajęty albo nie ma go w domu – masz problem **teraz**.\n- **List** (komunikacja **asynchroniczna** przez kolejkę): wrzucasz list do **skrzynki pocztowej** i wracasz do swoich spraw. Adresat odbierze go, kiedy będzie mógł. Nawet jeśli dziś jest na urlopie, list poczeka.\n\n**Kolejka komunikatów** (message queue) to właśnie taka skrzynka: miejsce, do którego jeden program wkłada **wiadomości** (komunikaty), a drugi je z niego wyjmuje i przetwarza. Program, który zarządza kolejkami, to **broker** (pośrednik), np. RabbitMQ, Azure Service Bus albo Kafka.\n\n**Wiadomość** to po prostu mały pakiet danych, zwykle JSON, np. `{ \"orderId\": 7, \"total\": 129.99 }`, plus nagłówki (identyfikator, typ, czas)."
+        },
+        {
+          "h": "Producent i konsument",
+          "text": "Dwie role:\n\n- **Producent** (producer, publisher) – **wrzuca list do skrzynki**. Np. serwis zamówień po złożeniu zamówienia publikuje wiadomość `OrderPlaced`.\n- **Konsument** (consumer, subscriber) – **odbiera list i coś z nim robi**. Np. serwis e-maili wysyła potwierdzenie, a serwis magazynu rezerwuje towar.\n\nKrok po kroku:\n\n1. Klient klika „Zamów”. API zapisuje zamówienie w bazie.\n2. API publikuje wiadomość `OrderPlaced` do brokera i **od razu** odpowiada klientowi „przyjęte”.\n3. Broker przechowuje wiadomość.\n4. Konsument (np. serwis e-maili) pobiera ją, wysyła maila.\n5. Konsument **potwierdza** (ack, acknowledgement) – „list przeczytany, możesz go wyrzucić”. Dopiero wtedy broker usuwa wiadomość.\n6. Jeśli konsument padnie przed potwierdzeniem, broker **odda wiadomość ponownie** – sobie lub innej instancji.\n\nWarto rozróżniać typy wiadomości:\n\n- **Komenda** (command) – „zrób to”, ma jednego adresata: `SendInvoice`.\n- **Zdarzenie** (event) – „to się wydarzyło”, może mieć wielu słuchaczy: `OrderPlaced`. Nazwy zdarzeń są w czasie przeszłym.",
+          "code": "// Producent (np. z MassTransit – popularna biblioteka .NET nad brokerami)\npublic class OrdersController(IPublishEndpoint bus, ShopDb db) : ControllerBase\n{\n    [HttpPost(\"/api/orders\")]\n    public async Task<IActionResult> Place(PlaceOrder cmd, CancellationToken ct)\n    {\n        var order = Order.Create(cmd);\n        db.Orders.Add(order);\n        await db.SaveChangesAsync(ct);\n        await bus.Publish(new OrderPlaced(order.Id, order.Total), ct);\n        return Accepted(new { order.Id });\n    }\n}\n\n// Konsument\npublic class SendConfirmation(IEmailSender email) : IConsumer<OrderPlaced>\n{\n    public Task Consume(ConsumeContext<OrderPlaced> ctx) =>\n        email.SendAsync(ctx.Message.OrderId, ctx.CancellationToken);\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Po co kolejki: odciążenie, niezawodność, luźne powiązania",
+          "text": "Trzy główne powody, dla których dokłada się kolejkę:\n\n1. **Odciążenie i wyrównanie szczytów** (load leveling). W Black Friday przychodzi 10 tysięcy zamówień na minutę, a magazyn umie obsłużyć tysiąc. Bez kolejki magazyn by padł. Z kolejką wiadomości **czekają w skrzynce**, a konsument przerabia je we własnym tempie. Gdy kolejka rośnie – dokładasz konsumentów.\n2. **Niezawodność.** Serwis e-maili ma awarię przez 15 minut? Trudno – wiadomości poczekają, a po restarcie zostaną przetworzone. Przy wywołaniu HTTP zamówienie by się wywaliło albo maila nikt by nie wysłał.\n3. **Luźne powiązania** (loose coupling). Serwis zamówień nie musi wiedzieć, kto słucha `OrderPlaced`. Jutro dojdzie serwis programu lojalnościowego – po prostu zasubskrybuje zdarzenie, bez zmian w serwisie zamówień.\n\nCo dostajesz w pakiecie, czyli koszty:\n\n- **Eventual consistency** (spójność ostateczna) – przez chwilę systemy „nie wiedzą” o tym samym (zamówienie jest, mail jeszcze nie poszedł).\n- Trudniejsze debugowanie – trzeba śledzić wiadomość przez kilka serwisów (pomaga correlation id i tracing).\n- Dodatkowa infrastruktura do utrzymania.\n\nWniosek: kolejka nie jest „lepszym HTTP”. Gdy użytkownik potrzebuje odpowiedzi **od razu** (np. „czy produkt jest dostępny?”), zostań przy zapytaniu synchronicznym."
+        },
+        {
+          "h": "RabbitMQ vs Kafka: poczta vs dziennik zdarzeń",
+          "text": "To najczęstsze porównanie na rozmowach. Najprostszy obrazek:\n\n**RabbitMQ – poczta.** Listonosz dostarcza list do konkretnej skrzynki. Gdy adresat go odbierze i potwierdzi – **list znika**. Poczta ma sprytne sortownie (**exchange** – „sortownia”, która według reguł rozsyła wiadomości do odpowiednich kolejek).\n\n- dobre do: zadań do wykonania (wyślij maila, wygeneruj PDF), komend, elastycznego routingu,\n- wiadomość po przetworzeniu jest usuwana,\n- konkurujący konsumenci: kilka instancji bierze wiadomości z jednej kolejki, każda wiadomość trafia do jednej z nich.\n\n**Kafka – dziennik zdarzeń (kronika).** Wyobraź sobie księgę, do której zapisuje się kolejne zdarzenia, a **niczego się nie wyrywa**. Każdy czytelnik ma **własną zakładkę** (offset – numer pozycji w dzienniku) i czyta w swoim tempie. Nowy czytelnik może zacząć od początku i przeczytać całą historię.\n\n- dobre do: strumieni zdarzeń o dużej skali, analityki, odtwarzania historii (replay), integracji wielu systemów,\n- wiadomości zostają przez skonfigurowany czas (retencja), niezależnie od tego, czy ktoś je przeczytał,\n- kolejność gwarantowana w obrębie **partycji** (kawałka tematu); wiadomości z tym samym kluczem (np. `orderId`) lądują w tej samej partycji.\n\nW jednym zdaniu na rozmowę: **„RabbitMQ to broker kolejek – wiadomość jest dostarczana i usuwana; Kafka to rozproszony log – zdarzenia są trwale zapisane, a konsumenci sami pamiętają, gdzie skończyli.”**"
+        },
+        {
+          "h": "Co gdy wiadomość przyjdzie dwa razy?",
+          "text": "Wyobraź sobie: konsument pobrał wiadomość, **wysłał maila**, ale zanim zdążył potwierdzić (ack), padł. Broker nie dostał potwierdzenia, więc oddaje wiadomość ponownie. Klient dostaje **dwa maile**.\n\nTo nie błąd brokera – to jego obietnica. Większość systemów daje gwarancję **at-least-once** („co najmniej raz”): wiadomość na pewno dotrze, ale **może dotrzeć więcej niż raz**. „Dokładnie raz” (exactly-once) w rozproszonym świecie jest bardzo trudne i zwykle osiąga się je dopiero w połączeniu z logiką po stronie konsumenta.\n\nRozwiązanie: **konsument idempotentny** – taki, który przetworzenie tej samej wiadomości dwa razy kończy tym samym efektem co raz. Sposoby:\n\n1. **Tabela przetworzonych wiadomości** (inbox): zapisz `MessageId`; gdy przyjdzie znowu, pomiń. Najlepiej w tej samej transakcji co zmiana danych.\n2. **Naturalna idempotentność**: „ustaw status na Opłacone” zamiast „dodaj 100 zł”.\n3. **Unikalny klucz w bazie**: drugi `INSERT` z tym samym `OrderId` po prostu się nie uda.\n\nA wiadomość, która **zawsze** się wywala (np. błędny format)? Po kilku próbach (z rosnącymi odstępami – retry z backoff) trafia do **DLQ** (Dead Letter Queue) – „skrzynki na listy nie do doręczenia”, którą ktoś przegląda ręcznie. Inaczej blokowałaby kolejkę w nieskończoność.",
+          "code": "public async Task Consume(ConsumeContext<OrderPaid> ctx)\n{\n    var msgId = ctx.MessageId!.Value;\n    if (await db.ProcessedMessages.AnyAsync(m => m.Id == msgId))\n        return;                                   // już było – pomijamy\n\n    var order = await db.Orders.FindAsync(ctx.Message.OrderId);\n    order!.MarkAsPaid();                          // \"ustaw\", nie \"dodaj\"\n    db.ProcessedMessages.Add(new ProcessedMessage(msgId));\n    await db.SaveChangesAsync();                  // jedna transakcja\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Outbox prostymi słowami",
+          "text": "Wróćmy do producenta z przykładu wyżej. Robi dwie rzeczy: **zapis do bazy** i **publikację do brokera**. To dwa różne systemy, więc nie obejmie ich jedna transakcja. Co może pójść źle?\n\n- Zapis do bazy się udał, a potem broker nie odpowiada (albo aplikacja pada) → zamówienie jest, ale **nikt się o nim nie dowie**. Magazyn nic nie zarezerwuje.\n- Odwrotna kolejność: wiadomość poszła, a zapis do bazy się wywalił → magazyn rezerwuje towar dla zamówienia, **którego nie ma**.\n\nTo tzw. **problem podwójnego zapisu** (dual write).\n\n**Outbox** to rozwiązanie w stylu „**zostaw list na biurku w sekretariacie**”:\n\n1. W **tej samej transakcji** co zamówienie zapisujesz wiadomość do specjalnej tabeli `OutboxMessages` w swojej bazie. Albo zapisze się oba, albo nic.\n2. Osobny proces w tle (sekretarka) co chwilę sprawdza tabelę, **wysyła** zaległe wiadomości do brokera i oznacza je jako wysłane.\n3. Jeśli broker leży – sekretarka spróbuje później. Wiadomość nie zginie.\n\nUwaga: sekretarka może wysłać ten sam list dwa razy (wysłała, ale nie zdążyła oznaczyć). Dlatego **Outbox po stronie producenta + idempotentny konsument** to para, która zawsze idzie w komplecie. Biblioteki takie jak MassTransit czy NServiceBus mają Outbox wbudowany."
+        },
+        {
+          "h": "Jak to powiedzieć na rozmowie",
+          "text": "Krótko i konkretnie:\n\n„Kolejkę stosuję, gdy operacja nie musi zakończyć się w ramach żądania użytkownika: do wyrównywania szczytów, odporności na awarie zależności i luźnego powiązania serwisów. Płacę za to eventual consistency. RabbitMQ to broker z routingiem, gdzie wiadomość po potwierdzeniu znika; Kafka to rozproszony log z retencją, partycjami i offsetami konsumentów. Zakładam dostarczanie at-least-once, więc konsumenci są idempotentni, a po stronie producenta używam Outboxa, żeby zapis do bazy i publikacja były spójne. Wiadomości, które stale się wywalają, kończą w dead letter queue.”\n\nNiuanse seniorskie:\n\n- kolejność wiadomości: gwarantowana tylko w obrębie kolejki/partycji i tylko przy jednym konsumencie na partycję,\n- **correlation id** w nagłówkach i rozproszony tracing (OpenTelemetry), żeby śledzić przepływ,\n- wersjonowanie kontraktów wiadomości – konsumenci i producenci wdrażają się niezależnie,\n- **saga** – sposób koordynowania wieloetapowych procesów (z akcjami kompensującymi zamiast jednej wielkiej transakcji)."
+        }
+      ],
+      "takeaways": [
+        "Kolejka to skrzynka pocztowa: producent wrzuca wiadomość i idzie dalej, konsument odbiera ją, kiedy może.",
+        "Kolejki dają odciążenie szczytów, odporność na awarie i luźne powiązania – kosztem eventual consistency.",
+        "Komenda to „zrób to” (jeden adresat), zdarzenie to „to się stało” (wielu słuchaczy, czas przeszły).",
+        "RabbitMQ = poczta (wiadomość po potwierdzeniu znika, elastyczny routing); Kafka = dziennik zdarzeń (retencja, partycje, offsety).",
+        "Typowa gwarancja to at-least-once, więc konsument musi być idempotentny (np. tabela przetworzonych MessageId).",
+        "Wiadomości, które ciągle się wywalają, trafiają po kilku próbach do Dead Letter Queue.",
+        "Outbox: wiadomość zapisujesz w tej samej transakcji co dane, a osobny proces wysyła ją do brokera."
+      ],
+      "interview": [
+        "Kiedy użyłbyś kolejki zamiast bezpośredniego wywołania HTTP?",
+        "Czym różni się RabbitMQ od Kafki?",
+        "Co zrobisz, jeśli ta sama wiadomość zostanie dostarczona dwa razy?",
+        "Na czym polega wzorzec Outbox i jaki problem rozwiązuje?",
+        "Czym jest dead letter queue?"
+      ],
+      "exam": [
+        {
+          "id": "basics-queues-e1",
+          "q": "Sklep w Black Friday dostaje więcej zamówień, niż magazyn potrafi obsłużyć na bieżąco. Jak pomaga kolejka?",
+          "options": [
+            "Przyspiesza przetwarzanie każdego zamówienia w magazynie",
+            "Wiadomości czekają w kolejce, a konsument przetwarza je we własnym tempie, więc magazyn nie jest zalewany",
+            "Odrzuca zamówienia ponad limit",
+            "Zamienia komunikację na synchroniczną"
+          ],
+          "correct": 1,
+          "why": "To load leveling: kolejka buforuje szczyt, a konsumenci przerabiają go w swoim tempie (można ich dołożyć)."
+        },
+        {
+          "id": "basics-queues-e2",
+          "q": "Kiedy konsument powinien wysłać potwierdzenie (ack) do brokera?",
+          "options": [
+            "Zaraz po pobraniu wiadomości, przed przetwarzaniem",
+            "Nigdy – broker usuwa wiadomość sam po dostarczeniu",
+            "Tylko gdy przetwarzanie się nie udało",
+            "Po pomyślnym przetworzeniu wiadomości"
+          ],
+          "correct": 3,
+          "why": "Potwierdzenie po przetworzeniu sprawia, że przy awarii konsumenta broker odda wiadomość ponownie i nic nie zginie."
+        },
+        {
+          "id": "basics-queues-e3",
+          "q": "Która nazwa najlepiej pasuje do zdarzenia (event), a nie komendy?",
+          "options": [
+            "OrderPlaced",
+            "SendInvoice",
+            "ReserveStock",
+            "CreateOrder"
+          ],
+          "correct": 0,
+          "why": "Zdarzenie opisuje fakt, który już zaszedł, więc ma nazwę w czasie przeszłym. Pozostałe to polecenia „zrób to”."
+        },
+        {
+          "id": "basics-queues-e4",
+          "q": "Który opis najlepiej oddaje różnicę między RabbitMQ a Kafką?",
+          "options": [
+            "RabbitMQ przechowuje wiadomości wiecznie, Kafka usuwa je po odczycie",
+            "Oba działają identycznie, różnią się tylko językiem implementacji",
+            "W RabbitMQ wiadomość po potwierdzeniu znika; Kafka trzyma zdarzenia w logu przez okres retencji, a konsumenci pamiętają swój offset",
+            "Kafka nie obsługuje wielu konsumentów"
+          ],
+          "correct": 2,
+          "why": "RabbitMQ to „poczta” (dostarcz i usuń), Kafka to „dziennik zdarzeń” – trwały log z offsetami i możliwością odtworzenia historii."
+        },
+        {
+          "id": "basics-queues-e5",
+          "q": "Broker gwarantuje dostarczanie at-least-once. Co to oznacza dla konsumenta?",
+          "options": [
+            "Że każda wiadomość dotrze dokładnie raz",
+            "Że ta sama wiadomość może przyjść więcej niż raz, więc przetwarzanie powinno być idempotentne",
+            "Że wiadomości mogą zaginąć",
+            "Że kolejność wiadomości jest zawsze zachowana"
+          ],
+          "correct": 1,
+          "why": "„Co najmniej raz” oznacza możliwe duplikaty – konsument musi umieć je bezpiecznie obsłużyć."
+        },
+        {
+          "id": "basics-queues-e6",
+          "q": "Który sposób czyni konsumenta zdarzenia OrderPaid idempotentnym?",
+          "options": [
+            "Dodawanie kwoty płatności do salda przy każdej wiadomości",
+            "Wysyłanie potwierdzenia ack przed przetworzeniem",
+            "Wyłączenie ponownych prób w brokerze",
+            "Zapisanie MessageId w tabeli przetworzonych wiadomości w tej samej transakcji i pomijanie powtórek"
+          ],
+          "correct": 3,
+          "why": "Tabela przetworzonych wiadomości (inbox) pozwala rozpoznać duplikat; „dodaj kwotę” byłoby nieidempotentne."
+        },
+        {
+          "id": "basics-queues-e7",
+          "q": "Jaki problem rozwiązuje wzorzec Outbox?",
+          "options": [
+            "Spójność między zapisem do bazy a publikacją wiadomości – unika sytuacji, w której jedno się uda, a drugie nie",
+            "Duplikaty wiadomości po stronie konsumenta",
+            "Zbyt wolne zapytania SQL",
+            "Brak kolejności w partycjach Kafki"
+          ],
+          "correct": 0,
+          "why": "Outbox zapisuje wiadomość w tej samej transakcji co dane, a osobny proces ją wysyła. Duplikaty nadal są możliwe – dlatego konsument też musi być idempotentny."
+        },
+        {
+          "id": "basics-queues-e8",
+          "q": "Wiadomość z błędnym formatem za każdym razem rzuca wyjątek w konsumencie. Co jest dobrą praktyką?",
+          "options": [
+            "Ponawiać ją w nieskończoność",
+            "Usunąć kolejkę i utworzyć ją od nowa",
+            "Po kilku próbach z rosnącym odstępem przenieść ją do Dead Letter Queue",
+            "Zatrzymać wszystkich konsumentów do czasu ręcznej poprawki"
+          ],
+          "correct": 2,
+          "why": "„Trująca” wiadomość nie może blokować kolejki. Retry z backoff, a potem DLQ do ręcznej analizy."
+        }
+      ]
+    },
+    {
+      "id": "basics-docker-cloud",
+      "cat": "devops",
+      "title": "Docker, Kubernetes i chmura po ludzku",
+      "level": 1,
+      "minutes": 14,
+      "intro": "„U mnie działa” – Docker powstał po to, żeby to zdanie przestało być problemem. W tej lekcji zrozumiesz kontenery, różnicę między obrazem a kontenerem, jak napisać Dockerfile dla API w .NET, po co docker compose, czym zajmuje się Kubernetes, co właściwie daje chmura i jak CI/CD zamienia kod w działającą aplikację. Programista mid nie musi być adminem, ale musi rozumieć, dokąd trafia jego kod.",
+      "sections": [
+        {
+          "h": "Kontener jak kontener na statku",
+          "text": "Przed wynalezieniem standardowych kontenerów morskich każdy towar ładowano inaczej: worki, beczki, skrzynie. Wolno i z ryzykiem, że coś się zgubi. Potem wymyślono **jeden standardowy kontener**: co jest w środku – nie ma znaczenia; dźwig, statek i ciężarówka obsługują go tak samo.\n\n**Kontener Docker** to ten sam pomysł dla oprogramowania. Pakujesz aplikację **razem ze wszystkim, czego potrzebuje** – runtime .NET, biblioteki, pliki konfiguracyjne – do jednej standardowej „skrzynki”. Uruchomisz ją tak samo na laptopie, serwerze testowym i w chmurze.\n\nCzym kontener różni się od **maszyny wirtualnej** (VM)?\n\n- **VM** to **cały osobny dom**: własny system operacyjny, własne jądro. Ciężka (gigabajty), startuje w minutach.\n- **Kontener** to **mieszkanie w bloku**: ma własne pokoje (procesy, pliki, sieć), ale dzieli z sąsiadami fundamenty – **jądro systemu** gospodarza. Lekki (megabajty), startuje w sekundach.\n\nKonsekwencja: kontenery są szybkie i tanie, ale izolacja jest słabsza niż w VM."
+        },
+        {
+          "h": "Obraz vs kontener",
+          "text": "To rozróżnienie pada na prawie każdej rozmowie:\n\n- **Obraz** (image) to **przepis i zamrożony komplet składników** – szablon tylko do odczytu. Np. `shop-api:1.4.2`.\n- **Kontener** (container) to **ugotowane danie z tego przepisu** – działający proces uruchomiony z obrazu. Z jednego obrazu możesz uruchomić 10 identycznych kontenerów.\n\nAnalogia z programowania: **obraz to klasa, kontener to obiekt (instancja)**.\n\nWażne cechy:\n\n- Obraz składa się z **warstw** (layers). Każda instrukcja w Dockerfile to warstwa. Docker **cache’uje** warstwy, więc przy kolejnym budowaniu przebudowuje tylko to, co się zmieniło.\n- Obrazy trzyma się w **rejestrze** (registry) – „magazynie obrazów”, np. Docker Hub, Azure Container Registry, GitHub Container Registry.\n- Kontener jest **ulotny** (ephemeral): po usunięciu znika wszystko, co w nim zapisano. Dane trwałe (baza, uploady) trzyma się w **wolumenach** (volumes) albo w zewnętrznych usługach.\n- **Tag** (np. `:1.4.2`) to etykieta wersji. Tag `latest` to tylko nazwa, nie gwarancja „najnowszego” – na produkcji używaj konkretnych wersji."
+        },
+        {
+          "h": "Dockerfile dla API w .NET",
+          "text": "**Dockerfile** to plik z przepisem na obraz. Najlepszą praktyką dla .NET jest **multi-stage build** (budowanie wieloetapowe): w pierwszym etapie używasz dużego obrazu z SDK (kompilator, narzędzia), a do końcowego obrazu kopiujesz **tylko gotowy wynik** na mały obraz z samym runtime. Efekt: obraz mniejszy kilkukrotnie i bez narzędzi, które mogłyby pomóc atakującemu.\n\nLinijka po linijce:\n\n1. `FROM ...sdk:10.0 AS build` – etap budowania na obrazie z SDK .NET 10.\n2. `COPY *.csproj` + `dotnet restore` – **najpierw** same pliki projektu i pobranie pakietów. Dopóki nie zmienisz zależności, ta warstwa idzie z cache, więc budowanie jest szybkie.\n3. `COPY . .` + `dotnet publish` – reszta kodu i kompilacja w trybie Release.\n4. `FROM ...aspnet:10.0` – nowy, czysty etap na obrazie z samym runtime ASP.NET Core.\n5. `COPY --from=build` – bierzemy tylko opublikowane pliki.\n6. `USER $APP_UID` – nie uruchamiamy aplikacji jako root (obrazy .NET mają przygotowanego zwykłego użytkownika).\n7. `ENTRYPOINT` – co uruchomić przy starcie kontenera.\n\nOd .NET 8 obrazy ASP.NET Core domyślnie nasłuchują na porcie **8080**, nie 80.",
+          "code": "FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build\nWORKDIR /src\nCOPY ShopApi/*.csproj ShopApi/\nRUN dotnet restore ShopApi/ShopApi.csproj\nCOPY . .\nRUN dotnet publish ShopApi/ShopApi.csproj -c Release -o /app\n\nFROM mcr.microsoft.com/dotnet/aspnet:10.0\nWORKDIR /app\nCOPY --from=build /app .\nUSER $APP_UID\nEXPOSE 8080\nENTRYPOINT [\"dotnet\", \"ShopApi.dll\"]",
+          "lang": "dockerfile"
+        },
+        {
+          "h": "docker compose: kilka kontenerów naraz",
+          "text": "Twoja aplikacja to zwykle więcej niż jeden kontener: API, baza danych, Redis, RabbitMQ, frontend. Uruchamianie każdego ręcznie z długą listą parametrów to męka.\n\n**Docker Compose** to **lista zakupów dla całego zestawu**: w jednym pliku `compose.yaml` opisujesz wszystkie usługi, porty, zmienne środowiskowe i wolumeny. Jedno polecenie `docker compose up` uruchamia całość, `docker compose down` – sprząta.\n\nCo warto zauważyć w przykładzie:\n\n- `ports: \"5000:8080\"` – port **na twoim komputerze : port w kontenerze**. Wchodzisz na `localhost:5000`, trafiasz do aplikacji na 8080.\n- Usługi widzą się **po nazwie**: API łączy się z bazą pod adresem `db`, a nie `localhost`. Częsty błąd początkujących: w kontenerze `localhost` oznacza **sam kontener**, nie twój komputer.\n- `volumes` – dane bazy przetrwają restart kontenera.\n- `depends_on` – kolejność startu (ale samo w sobie nie czeka, aż baza będzie **gotowa** – do tego warunek `service_healthy` i healthcheck).\n\nCompose świetnie sprawdza się lokalnie i w testach; na produkcji z wieloma serwerami zwykle wchodzi Kubernetes.",
+          "code": "services:\n  api:\n    build: .\n    ports: [\"5000:8080\"]\n    environment:\n      ConnectionStrings__Shop: \"Server=db;Database=Shop;User Id=sa;Password=${DB_PASSWORD};TrustServerCertificate=true\"\n    depends_on: [db]\n  db:\n    image: mcr.microsoft.com/mssql/server:2022-latest\n    environment:\n      ACCEPT_EULA: \"Y\"\n      MSSQL_SA_PASSWORD: ${DB_PASSWORD}\n    volumes: [\"dbdata:/var/opt/mssql\"]\nvolumes:\n  dbdata:",
+          "lang": "yaml"
+        },
+        {
+          "h": "Kubernetes – kapitan floty",
+          "text": "Docker uruchamia kontenery na **jednej** maszynie. A co, gdy masz 20 serwerów i 200 kontenerów? Któryś serwer pada, ruch rośnie, trzeba wdrożyć nową wersję bez przerwy. Ktoś musi tym dowodzić.\n\n**Kubernetes** (w skrócie **K8s**) to **kapitan floty statków**. Nie mówisz mu „uruchom kontener na serwerze nr 3”. Mówisz: „**chcę mieć zawsze 3 kopie mojego API w wersji 1.4.2**” – a kapitan sam pilnuje, żeby tak było. To podejście **deklaratywne**: opisujesz **stan docelowy**, a nie kroki.\n\nCo robi kapitan:\n\n1. **Rozmieszcza** kontenery na serwerach (węzłach, nodes) tam, gdzie jest miejsce.\n2. **Leczy**: kontener padł? Uruchamia nowy. Serwer padł? Przenosi kontenery gdzie indziej.\n3. **Skaluje**: więcej ruchu → więcej kopii (automatycznie z HPA – Horizontal Pod Autoscaler).\n4. **Wdraża bez przestojów**: rolling update – wymienia kopie po kolei, starą wersję wyłącza dopiero, gdy nowa działa.\n5. **Kieruje ruch**: rozdziela żądania między kopie.\n\nSłowniczek minimum:\n\n- **Pod** – najmniejsza jednostka, „kajuta” z jednym (czasem kilkoma) kontenerami.\n- **Deployment** – opis „ile kopii jakiego obrazu ma działać”.\n- **Service** – stały adres i load balancer dla grupy podów (pody się zmieniają, adres zostaje).\n- **Ingress** – „brama” wpuszczająca ruch z internetu do odpowiednich Service’ów.\n- **ConfigMap / Secret** – konfiguracja i hasła wstrzykiwane do kontenerów.\n- **Probes** (liveness / readiness) – pytania „żyjesz?” i „gotowy na ruch?”; w .NET wystawiasz je przez health checks (`app.MapHealthChecks(\"/health\")`)."
+        },
+        {
+          "h": "Chmura: wynajem zamiast kupna",
+          "text": "Możesz kupić własne serwery, postawić je w serwerowni, pilnować prądu, chłodzenia i wymiany dysków. Albo **wynająć** moc obliczeniową od Azure, AWS czy Google Cloud i płacić za to, czego używasz. To jak **wynajem samochodu zamiast kupna**: nie martwisz się przeglądami, a gdy potrzebujesz busa na przeprowadzkę – bierzesz busa na jeden dzień.\n\nPoziomy usług, od „najwięcej robisz sam” do „najmniej”:\n\n- **IaaS** (Infrastructure as a Service) – wynajmujesz gołe maszyny wirtualne. System, aktualizacje, runtime – po twojej stronie. Np. Azure Virtual Machines.\n- **PaaS** (Platform as a Service) – wynajmujesz platformę: wrzucasz aplikację lub kontener, a dostawca dba o serwery. Np. Azure App Service, Azure Container Apps, zarządzana baza Azure SQL.\n- **SaaS** (Software as a Service) – gotowy program w przeglądarce, np. Microsoft 365.\n- **Serverless** – płacisz za każde wywołanie funkcji, a nie za czas działania serwera. Np. Azure Functions.\n\nKorzyści: elastyczne skalowanie, płatność za użycie, usługi zarządzane (backupy bazy „same się robią”), globalny zasięg. Koszty i pułapki: rachunek potrafi zaskoczyć, gdy nikt go nie pilnuje, i powstaje zależność od jednego dostawcy (vendor lock-in)."
+        },
+        {
+          "h": "CI/CD – taśma produkcyjna",
+          "text": "W fabryce samochód nie jest składany ręcznie od zera przez jednego człowieka – jedzie **taśmą produkcyjną**, a na każdym stanowisku dzieje się jeden krok i kontrola jakości. **CI/CD** to taka taśma dla kodu.\n\n- **CI** (Continuous Integration, ciągła integracja) – po każdym pushu/pull requeście automat **buduje** kod i **uruchamia testy**. Błąd wychodzi w kilka minut, a nie tydzień później.\n- **CD** (Continuous Delivery / Deployment, ciągłe dostarczanie / wdrażanie) – jeśli wszystko przeszło, automat **pakuje** aplikację (np. w obraz Docker) i **wdraża** ją na kolejne środowiska. *Delivery* – na produkcję wchodzi po kliknięciu człowieka; *Deployment* – w pełni automatycznie.\n\nTypowa taśma krok po kroku:\n\n1. Push do brancha → start pipeline’u (np. GitHub Actions, Azure DevOps Pipelines).\n2. `dotnet build` i `dotnet test`, `ng build` i testy frontu.\n3. Budowa obrazu Docker z tagiem równym numerowi wersji lub commita.\n4. Push obrazu do rejestru.\n5. Wdrożenie na środowisko testowe, testy automatyczne.\n6. Wdrożenie na produkcję (rolling update w Kubernetes).\n\nZasada złota: **ten sam obraz** przechodzi przez wszystkie środowiska, zmienia się tylko konfiguracja. Wtedy „na teście działało” naprawdę coś znaczy.",
+          "code": "# .github/workflows/ci.yml\nname: ci\non: [push, pull_request]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-dotnet@v4\n        with: { dotnet-version: '10.0.x' }\n      - run: dotnet test --configuration Release\n      - run: docker build -t ghcr.io/acme/shop-api:${{ github.sha }} .",
+          "lang": "yaml"
+        },
+        {
+          "h": "Jak to powiedzieć na rozmowie",
+          "text": "„Aplikację pakuję w obraz Docker z multi-stage build – SDK do budowania, sam runtime w obrazie końcowym, użytkownik bez uprawnień roota. Obraz jest niezmienny i ten sam przechodzi przez środowiska, a konfigurację i sekrety dostarczam zmiennymi środowiskowymi lub z Key Vaulta. Lokalnie spinam zależności docker compose. Na produkcji Kubernetes albo PaaS typu Azure Container Apps dba o skalowanie, self-healing i rolling update, a ja wystawiam health checki dla liveness i readiness. Całość buduje i wdraża pipeline CI/CD.”\n\nNiuanse seniorskie:\n\n- aplikacja w kontenerze powinna być **bezstanowa** i logować na standardowe wyjście (stdout), a nie do plików,\n- graceful shutdown: obsłuż sygnał zamknięcia, żeby dokończyć trwające żądania przy rolling update,\n- nie zawsze potrzebujesz Kubernetesa – dla kilku serwisów PaaS bywa tańszy w utrzymaniu,\n- **Infrastructure as Code** (Terraform, Bicep) – infrastruktura też opisana w kodzie i w repozytorium."
+        }
+      ],
+      "takeaways": [
+        "Kontener pakuje aplikację z zależnościami w standardową „skrzynkę”, która działa wszędzie tak samo; dzieli jądro z hostem, więc jest lżejszy od VM.",
+        "Obraz to szablon tylko do odczytu (jak klasa), kontener to jego działająca instancja (jak obiekt).",
+        "Multi-stage Dockerfile: budujesz na obrazie SDK, uruchamiasz na małym obrazie runtime; restore przed COPY całego kodu dla cache.",
+        "Docker compose uruchamia zestaw usług z jednego pliku; w kontenerze localhost to sam kontener, inne usługi wołasz po nazwie.",
+        "Kubernetes deklaratywnie utrzymuje stan docelowy: rozmieszcza, leczy, skaluje i wdraża bez przestojów.",
+        "Chmura to wynajem zamiast kupna: IaaS, PaaS, SaaS, serverless – im wyżej, tym mniej robisz sam.",
+        "CI buduje i testuje każdą zmianę, CD pakuje i wdraża; ten sam obraz przechodzi przez wszystkie środowiska."
+      ],
+      "interview": [
+        "Czym różni się kontener od maszyny wirtualnej?",
+        "Czym różni się obraz od kontenera?",
+        "Jak napisałbyś Dockerfile dla aplikacji ASP.NET Core i dlaczego multi-stage?",
+        "Jakie problemy rozwiązuje Kubernetes?",
+        "Opisz pipeline CI/CD, z którym pracowałeś."
+      ],
+      "exam": [
+        {
+          "id": "basics-docker-cloud-e1",
+          "q": "Czym kontener różni się od maszyny wirtualnej?",
+          "options": [
+            "Kontener ma własne jądro systemu, VM dzieli jądro z hostem",
+            "Kontener dzieli jądro systemu z hostem, więc jest lżejszy i startuje szybciej niż VM",
+            "Kontener nie może mieć własnej sieci ani plików",
+            "Nie ma różnicy, to dwie nazwy tej samej technologii"
+          ],
+          "correct": 1,
+          "why": "VM to „osobny dom” z własnym systemem; kontener to „mieszkanie w bloku” – izolowane procesy na wspólnym jądrze."
+        },
+        {
+          "id": "basics-docker-cloud-e2",
+          "q": "Która analogia najlepiej oddaje relację obrazu i kontenera?",
+          "options": [
+            "Obraz to obiekt, kontener to klasa",
+            "Obraz to log, kontener to baza danych",
+            "Obraz to klasa, kontener to obiekt (instancja)",
+            "Obraz to plik konfiguracyjny compose"
+          ],
+          "correct": 2,
+          "why": "Obraz jest szablonem tylko do odczytu; z jednego obrazu można uruchomić wiele kontenerów."
+        },
+        {
+          "id": "basics-docker-cloud-e3",
+          "q": "Dlaczego w Dockerfile dla .NET kopiuje się najpierw same pliki .csproj i robi dotnet restore, a dopiero potem resztę kodu?",
+          "options": [
+            "Żeby warstwa z pobranymi pakietami była cache’owana i nie budowała się od nowa przy każdej zmianie kodu",
+            "Bo dotnet publish nie działa bez wcześniejszego restore w osobnym obrazie",
+            "Żeby obraz końcowy zawierał SDK",
+            "Bo Docker nie potrafi skopiować wielu plików naraz"
+          ],
+          "correct": 0,
+          "why": "Warstwy są cache’owane. Dopóki .csproj się nie zmienia, warstwa restore jest brana z cache, co mocno przyspiesza budowanie."
+        },
+        {
+          "id": "basics-docker-cloud-e4",
+          "q": "Jaka jest główna korzyść z multi-stage build?",
+          "options": [
+            "Kontener uruchamia się jako root",
+            "Obraz zawiera kod źródłowy do debugowania",
+            "Można pominąć testy",
+            "Obraz końcowy zawiera tylko runtime i opublikowaną aplikację – jest mniejszy i bezpieczniejszy"
+          ],
+          "correct": 3,
+          "why": "SDK i narzędzia zostają w etapie budowania; do obrazu końcowego trafia tylko wynik publikacji."
+        },
+        {
+          "id": "basics-docker-cloud-e5",
+          "q": "API w docker compose nie łączy się z bazą, bo w connection stringu jest Server=localhost. Dlaczego?",
+          "options": [
+            "Bo SQL Server nie działa w kontenerach",
+            "Bo w kontenerze localhost oznacza sam kontener API; bazę trzeba wołać po nazwie usługi, np. db",
+            "Bo port 1433 jest zawsze zablokowany",
+            "Bo compose wymaga adresu IP zamiast nazwy"
+          ],
+          "correct": 1,
+          "why": "Każdy kontener ma własną sieć; usługi w compose widzą się nawzajem po nazwach usług."
+        },
+        {
+          "id": "basics-docker-cloud-e6",
+          "q": "Co oznacza, że Kubernetes działa deklaratywnie?",
+          "options": [
+            "Każdą operację trzeba wykonać ręcznie poleceniem",
+            "Kubernetes uruchamia tylko jeden kontener na serwer",
+            "Opisujesz stan docelowy (np. 3 kopie wersji 1.4.2), a Kubernetes sam do niego dąży i go utrzymuje",
+            "Konfiguracja jest możliwa tylko przez interfejs graficzny"
+          ],
+          "correct": 2,
+          "why": "Deklarujesz „co ma być”, a nie „jak to zrobić”. K8s porównuje stan faktyczny z docelowym i koryguje różnice."
+        },
+        {
+          "id": "basics-docker-cloud-e7",
+          "q": "Która usługa chmurowa to przykład PaaS?",
+          "options": [
+            "Azure App Service, gdzie wrzucasz aplikację, a dostawca dba o serwery",
+            "Maszyna wirtualna, na której sam instalujesz system i runtime",
+            "Microsoft 365 w przeglądarce",
+            "Własny serwer w biurowej serwerowni"
+          ],
+          "correct": 0,
+          "why": "PaaS to wynajem platformy: ty dostarczasz aplikację, dostawca zarządza infrastrukturą. VM to IaaS, Microsoft 365 to SaaS."
+        },
+        {
+          "id": "basics-docker-cloud-e8",
+          "q": "Co jest dobrą praktyką w CI/CD dotyczącą obrazów Docker?",
+          "options": [
+            "Budować osobny obraz dla każdego środowiska z innym kodem",
+            "Zawsze wdrażać tag latest",
+            "Pomijać testy przy wdrożeniu na produkcję, żeby było szybciej",
+            "Zbudować obraz raz i ten sam obraz promować przez wszystkie środowiska, zmieniając tylko konfigurację"
+          ],
+          "correct": 3,
+          "why": "Ten sam niezmienny obraz na teście i produkcji sprawia, że wynik testów jest wiarygodny. latest nie identyfikuje wersji."
+        }
+      ]
+    },
+    {
+      "id": "basics-teamwork",
+      "cat": "soft",
+      "title": "Praca programisty w zespole",
+      "level": 1,
+      "minutes": 14,
+      "intro": "Kod pisze się w zespole, a nie w próżni – i na rozmowie sprawdzane jest także to, czy umiesz w takim zespole działać. Ta lekcja porządkuje codzienność: Git (commit, branch, merge, pull request, konflikty), code review, Scrum (sprint, standup, backlog, estymacje), środowiska dev/test/prod i testy jako siatkę bezpieczeństwa. Po lekcji opowiesz o swoim sposobie pracy konkretnie i bez lania wody.",
+      "sections": [
+        {
+          "h": "Git: album ze zdjęciami twojego kodu",
+          "text": "**Git** to system kontroli wersji – program, który pamięta **całą historię zmian** w projekcie i pozwala wielu osobom pracować nad nim jednocześnie.\n\nAnalogia: Git to **album ze zdjęciami** twojego kodu. Co jakiś czas robisz „zdjęcie” stanu projektu i podpisujesz je. Zawsze możesz wrócić do dowolnego zdjęcia albo porównać dwa.\n\nPodstawowe pojęcia:\n\n- **Repozytorium** (repo) – cały album: kod + historia. Masz kopię lokalną, a wspólna leży na serwerze (GitHub, GitLab, Azure DevOps) – to tzw. **remote** (zwykle `origin`).\n- **Commit** – jedno zdjęcie: zapis zmian z opisem, autorem i datą. Dobry commit jest **mały i dotyczy jednej rzeczy**, z opisem „co i dlaczego”.\n- **Staging** (`git add`) – „poczekalnia”: wybierasz, które zmiany wejdą do najbliższego commita.\n- `push` – wyślij swoje commity na serwer; `pull` – pobierz cudze i dołącz do swoich.\n\nPrzykład złego i dobrego opisu commita:\n\n- **Źle:** `poprawki`, `fix`, `asdf`.\n- **Dobrze:** `Waliduj ilość > 0 przy dodawaniu do koszyka` – z historii od razu wiadomo, co się zmieniło.",
+          "code": "git switch -c feature/cart-validation   # nowa gałąź\n# ...zmiany w kodzie...\ngit add src/Cart/CartService.cs\ngit commit -m \"Waliduj ilość > 0 przy dodawaniu do koszyka\"\ngit push -u origin feature/cart-validation",
+          "lang": "bash"
+        },
+        {
+          "h": "Branch, merge i pull request",
+          "text": "**Branch** (gałąź) to **równoległa wersja projektu**, w której możesz spokojnie pracować, nie przeszkadzając innym. Jak **brudnopis**: piszesz w nim, a do czystopisu (gałęzi `main`) przepisujesz dopiero gotowe i sprawdzone.\n\nTypowy przepływ krok po kroku:\n\n1. Z aktualnego `main` tworzysz gałąź `feature/cart-validation`.\n2. Robisz kilka małych commitów i wypychasz gałąź na serwer.\n3. Otwierasz **pull request** (PR; w GitLabie: merge request) – **prośbę o włączenie** twoich zmian do `main`. PR pokazuje różnice, uruchamia automatyczne testy (CI) i jest miejscem na code review.\n4. Po akceptacji i zielonych testach następuje **merge** – scalenie gałęzi z `main`.\n5. Gałąź usuwasz.\n\nSposoby scalania, warto znać z nazwy:\n\n- **merge commit** – zachowuje całą historię gałęzi plus commit scalający,\n- **squash** – wszystkie commity z PR zgniatane w jeden; czysta historia `main`,\n- **rebase** – „przeklejenie” twoich commitów na czubek `main`, historia w jednej linii. Zasada: **nie rebase’uj gałęzi, na której pracują inni** – przepisujesz historię, którą mają już u siebie.\n\nWiele zespołów stosuje **trunk-based development**: krótkie gałęzie żyjące godziny lub dni i częste scalanie do `main`. Im dłużej żyje gałąź, tym boleśniejsze scalanie."
+        },
+        {
+          "h": "Konflikty – dwie osoby poprawiły to samo zdanie",
+          "text": "**Konflikt** powstaje, gdy dwie osoby zmieniły **te same linie** tego samego pliku, a Git nie wie, która wersja jest właściwa. Jak dwóch redaktorów, którzy inaczej poprawili to samo zdanie – ktoś musi zdecydować.\n\nGit oznacza miejsce konfliktu znacznikami (przykład obok):\n\n- między `<<<<<<<` a `=======` – **twoja** wersja,\n- między `=======` a `>>>>>>>` – wersja, którą **wciągasz**.\n\nJak rozwiązać krok po kroku:\n\n1. Otwórz plik (IDE – Rider, Visual Studio, VS Code – pokaże to wygodnie w trzech kolumnach).\n2. **Zrozum obie zmiany** – nie wybieraj w ciemno „moje” albo „ich”. Często poprawny wynik łączy obie.\n3. Usuń znaczniki, zostaw właściwy kod.\n4. Zbuduj projekt i uruchom testy.\n5. `git add` + `git commit` (lub `git rebase --continue`).\n\nJak unikać konfliktów: małe PR-y, krótko żyjące gałęzie, częste `pull` z `main`, rozmowa z kolegą, gdy wiesz, że ruszacie ten sam obszar.",
+          "code": "<<<<<<< HEAD\nif (req.Quantity <= 0) return Results.BadRequest(\"Ilość musi być > 0\");\n=======\nif (req.Quantity < 1 || req.Quantity > 99) return Results.BadRequest(\"Ilość 1–99\");\n>>>>>>> main\n\n// Po rozwiązaniu (połączone intencje obu zmian):\nif (req.Quantity is < 1 or > 99) return Results.BadRequest(\"Ilość musi być w zakresie 1–99\");",
+          "lang": "csharp"
+        },
+        {
+          "h": "Code review: druga para oczu",
+          "text": "**Code review** to przegląd kodu przez innego programistę przed scaleniem. Cel to nie „przyłapanie” autora, tylko **lepszy kod i wspólna wiedza** o systemie – jak korekta tekstu przed drukiem.\n\nNa co patrzy recenzent (od najważniejszego):\n\n1. **Poprawność** – czy kod robi to, co ma? Przypadki brzegowe, `null`, błędy, współbieżność.\n2. **Bezpieczeństwo** – walidacja, uprawnienia, SQL injection, sekrety w kodzie.\n3. **Czytelność i projekt** – nazwy, wielkość metod, czy rozwiązanie pasuje do architektury.\n4. **Testy** – czy są i czy testują to, co trzeba.\n5. **Styl** – to najmniej ważne; powinien go pilnować automat (formatter, analizatory kodu), a nie człowiek.\n\nJak pisać komentarze:\n\n- **Źle:** „To jest złe.”\n- **Dobrze:** „Tu przy pustej liście `Max()` rzuci wyjątek – może `DefaultIfEmpty()` albo wcześniejszy return?”\n- Rozróżniaj wagę: blokujące vs sugestie (np. prefiks `nit:` dla drobiazgów).\n\nJako autor: rób **małe PR-y** (do kilkuset linii), opisz „co i dlaczego”, przejrzyj własny diff przed wysłaniem i nie bierz uwag do siebie."
+        },
+        {
+          "h": "Scrum: sprint, standup, backlog, estymacje",
+          "text": "**Scrum** to popularny sposób organizacji pracy zespołu w krótkich cyklach. Zamiast planować pół roku z góry, zespół dostarcza działające kawałki co kilka tygodni i koryguje kurs.\n\nAnalogia: **remont mieszkania pokój po pokoju**. Zamiast skuwać wszystko naraz, kończysz łazienkę, oglądasz ją z właścicielem, poprawiasz plan i bierzesz się za kuchnię.\n\nRole:\n\n- **Product Owner** – decyduje, **co** jest najważniejsze; zarządza backlogiem.\n- **Scrum Master** – dba o proces i usuwa przeszkody.\n- **Developers** – zespół, który decyduje, **jak** to zrobić.\n\nElementy:\n\n- **Backlog** – uporządkowana lista wszystkiego do zrobienia (zadania, user stories – opisy potrzeby z perspektywy użytkownika: „Jako klient chcę…, aby…”).\n- **Sprint** – stały okres pracy, zwykle 2 tygodnie, z celem sprintu.\n- **Sprint planning** – wybór zadań na sprint.\n- **Daily / standup** – codzienne 15 minut: co zrobiłem, co robię, **co mnie blokuje**. To synchronizacja, nie raport dla szefa.\n- **Review** – pokazanie efektów interesariuszom.\n- **Retrospektywa** – co poprawić w sposobie pracy.\n\n**Estymacje** to szacowanie wielkości zadań, często w **story points** – względnej skali złożoności i niepewności (np. Fibonacci 1, 2, 3, 5, 8, 13), a nie w godzinach. Popularna technika: **planning poker** – każdy pokazuje kartę jednocześnie, a duże rozbieżności to sygnał, że ktoś widzi ryzyko, którego inni nie widzą. Zadanie na 13 punktów zwykle warto podzielić.\n\nWażne pojęcie: **Definition of Done** – wspólna lista, kiedy zadanie jest naprawdę skończone (kod po review, testy, wdrożone na test, dokumentacja)."
+        },
+        {
+          "h": "Środowiska dev, test, prod",
+          "text": "Kod nie trafia od razu do klientów. Przechodzi przez kilka **środowisk** – osobnych instalacji aplikacji z własną bazą i konfiguracją. Analogia z teatru:\n\n- **dev** (development) – **sala prób**: programiści sprawdzają swoje zmiany, wszystko może się sypać.\n- **test / QA** (czasem też **staging**) – **próba generalna**: testerzy i automaty sprawdzają wersję kandydującą w warunkach zbliżonych do prawdziwych.\n- **prod** (production) – **premiera z publicznością**: prawdziwi użytkownicy i prawdziwe dane.\n\nZasady:\n\n1. Ten sam kod (najlepiej ten sam obraz Docker) przechodzi przez wszystkie środowiska; **zmienia się tylko konfiguracja**.\n2. W .NET środowisko wskazuje zmienna `ASPNETCORE_ENVIRONMENT` (Development / Staging / Production), a ustawienia nadpisują pliki `appsettings.{Environment}.json` i zmienne środowiskowe.\n3. **Sekrety** (hasła, klucze API) nigdy w repozytorium. Lokalnie: `dotnet user-secrets`; na serwerach: np. Azure Key Vault.\n4. Na produkcji: brak stron z błędami pokazującymi szczegóły (stack trace), włączony HTTPS, logi i monitoring.\n5. Zmiany ryzykowne można włączać stopniowo **feature flagami** – przełącznikami w konfiguracji."
+        },
+        {
+          "h": "Testy jako siatka bezpieczeństwa",
+          "text": "Akrobata pod kopułą cyrku robi odważniejsze ewolucje, gdy ma pod sobą **siatkę**. Testy to siatka bezpieczeństwa programisty: dzięki nim możesz zmieniać i refaktoryzować kod bez strachu, że coś po cichu zepsujesz.\n\n**Piramida testów** – od dołu (dużo, szybkie, tanie) do góry (mało, wolne, drogie):\n\n- **Testy jednostkowe** (unit) – sprawdzają małą część kodu (metodę, klasę) w izolacji. Milisekundy. W .NET: xUnit, NUnit; na froncie: Jasmine/Jest/Vitest.\n- **Testy integracyjne** – kilka elementów naraz, np. endpoint API z prawdziwą bazą w kontenerze (`WebApplicationFactory` + Testcontainers).\n- **Testy E2E** (end-to-end) – cała aplikacja oczami użytkownika w przeglądarce, np. Playwright. Najwolniejsze i najbardziej kruche.\n\nDobry test jednostkowy ma budowę **AAA**: **Arrange** (przygotuj), **Act** (wykonaj), **Assert** (sprawdź) – i testuje **zachowanie**, a nie szczegóły implementacji.\n\nCo daje to zespołowi? Testy uruchamiają się w CI przy każdym PR. Gdy ktoś zepsuje logikę koszyka, **czerwony test zatrzyma scalenie** – zanim błąd dotrze do klienta. Dodatkowo test to żywa dokumentacja: pokazuje, jak kod ma się zachowywać.",
+          "code": "[Fact]\npublic void Add_WithZeroQuantity_Throws()\n{\n    // Arrange\n    var cart = new Cart();\n\n    // Act\n    var act = () => cart.Add(productId: 42, quantity: 0);\n\n    // Assert\n    Assert.Throws<ArgumentOutOfRangeException>(act);\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Jak to powiedzieć na rozmowie",
+          "text": "Pytania o pracę zespołową najlepiej odpowiadać **konkretną historią**, a nie definicją. Przydaje się schemat **STAR**: **S**ytuacja, **T**ask (zadanie), **A**kcja (co **ty** zrobiłeś), **R**ezultat (najlepiej mierzalny).\n\nPrzykładowa odpowiedź o procesie:\n\n„Pracowaliśmy w dwutygodniowych sprintach. Każde zadanie robiłem na krótkiej gałęzi, z małymi commitami, i otwierałem PR, w którym CI uruchamiało testy jednostkowe i integracyjne. Każdy PR przeglądała co najmniej jedna osoba. Po scaleniu pipeline wdrażał na test, a na produkcję – ten sam artefakt po akceptacji. Konflikty rozwiązywałem, rozumiejąc obie zmiany i uruchamiając testy, a przy większych – po prostu rozmawiałem z autorem.”\n\nNiuanse, które pokazują dojrzałość:\n\n- review to dzielenie się wiedzą, a nie kontrola – umiesz przyjąć i dać feedback,\n- estymacje to prognoza z niepewnością, nie obietnica; ryzyka komunikujesz wcześnie, na standupie,\n- „done” znaczy wdrożone i przetestowane, a nie „działa u mnie”,\n- dbasz o to, żeby `main` zawsze dało się wdrożyć."
+        }
+      ],
+      "takeaways": [
+        "Git to album zdjęć kodu: commit = małe, opisane zdjęcie jednej zmiany; push/pull synchronizują z serwerem.",
+        "Branch to brudnopis, pull request to prośba o włączenie zmian do main z review i CI; krótkie gałęzie = mniej konfliktów.",
+        "Konflikt rozwiązujesz, rozumiejąc obie zmiany, a potem budujesz i testujesz – nie wybierasz wersji w ciemno.",
+        "Code review sprawdza najpierw poprawność i bezpieczeństwo, potem czytelność; styl pilnuje automat.",
+        "Scrum: backlog, sprinty, daily dla synchronizacji, review i retro; story points to względna złożoność, nie godziny.",
+        "dev → test → prod: ten sam artefakt, inna konfiguracja; sekrety nigdy w repozytorium.",
+        "Piramida testów: dużo unit, mniej integracyjnych, mało E2E; testy w CI blokują wejście błędów do main."
+      ],
+      "interview": [
+        "Opisz swój typowy flow pracy z Gitem od zadania do wdrożenia.",
+        "Jak rozwiązujesz konflikty przy merge'u?",
+        "Na co zwracasz uwagę, robiąc code review?",
+        "Jak wygląda u was Scrum i czym są story points?",
+        "Jakie testy piszesz i dlaczego?"
+      ],
+      "exam": [
+        {
+          "id": "basics-teamwork-e1",
+          "q": "Który opis commita jest najlepszy?",
+          "options": [
+            "poprawki",
+            "Waliduj ilość > 0 przy dodawaniu do koszyka",
+            "fix fix fix",
+            "zmiany z piątku"
+          ],
+          "correct": 1,
+          "why": "Dobry commit mówi, co i dlaczego się zmieniło. Pozostałe opisy nic nie mówią przy przeglądaniu historii."
+        },
+        {
+          "id": "basics-teamwork-e2",
+          "q": "Czym jest pull request?",
+          "options": [
+            "Poleceniem pobierającym zmiany z serwera",
+            "Automatycznym scaleniem wszystkich gałęzi",
+            "Prośbą o włączenie zmian z gałęzi do main, z podglądem różnic, CI i miejscem na code review",
+            "Kopią repozytorium na innym koncie"
+          ],
+          "correct": 2,
+          "why": "PR to mechanizm platformy (GitHub, GitLab, Azure DevOps) do przeglądu i scalania zmian; git pull to coś innego."
+        },
+        {
+          "id": "basics-teamwork-e3",
+          "q": "Dlaczego nie należy robić rebase gałęzi, na której pracują też inne osoby?",
+          "options": [
+            "Bo rebase przepisuje historię, którą inni mają już u siebie, co powoduje rozjazd i problemy",
+            "Bo rebase usuwa wszystkie zmiany z gałęzi",
+            "Bo rebase działa tylko na main",
+            "Bo po rebase nie da się zrobić pull requesta"
+          ],
+          "correct": 0,
+          "why": "Rebase tworzy nowe commity w miejsce starych. Jeśli ktoś bazował na starych, jego historia rozjedzie się z twoją."
+        },
+        {
+          "id": "basics-teamwork-e4",
+          "q": "Podczas merge pojawił się konflikt: ty zmieniłeś warunek na quantity <= 0, a kolega na zakres 1–99. Co jest najlepszym podejściem?",
+          "options": [
+            "Zawsze zostawić swoją wersję",
+            "Zawsze przyjąć wersję z main",
+            "Usunąć obie zmiany i zacząć od nowa",
+            "Zrozumieć intencje obu zmian, połączyć je, usunąć znaczniki i uruchomić testy"
+          ],
+          "correct": 3,
+          "why": "Konflikt to decyzja merytoryczna. Często poprawny wynik łączy obie intencje – a testy potwierdzają, że nic się nie zepsuło."
+        },
+        {
+          "id": "basics-teamwork-e5",
+          "q": "Co w code review powinno mieć najwyższy priorytet?",
+          "options": [
+            "Poprawność działania i bezpieczeństwo",
+            "Wcięcia i formatowanie",
+            "Długość nazw zmiennych",
+            "Liczba commitów w PR"
+          ],
+          "correct": 0,
+          "why": "Najpierw: czy kod działa poprawnie i bezpiecznie. Styl i formatowanie powinien pilnować automat."
+        },
+        {
+          "id": "basics-teamwork-e6",
+          "q": "Czym są story points w Scrumie?",
+          "options": [
+            "Dokładną liczbą godzin na zadanie",
+            "Punktami za wykonane zadanie w ocenie rocznej",
+            "Liczbą linii kodu do napisania",
+            "Względną miarą złożoności, wysiłku i niepewności zadania"
+          ],
+          "correct": 3,
+          "why": "Story points porównują zadania między sobą, nie mierzą godzin. Duże rozbieżności w planning pokerze ujawniają ryzyka."
+        },
+        {
+          "id": "basics-teamwork-e7",
+          "q": "Jaki jest główny cel codziennego standupu?",
+          "options": [
+            "Szczegółowy raport dla przełożonego z każdej godziny pracy",
+            "Synchronizacja zespołu i szybkie zgłoszenie blokad",
+            "Rozwiązywanie problemów technicznych do skutku",
+            "Ocena wydajności poszczególnych programistów"
+          ],
+          "correct": 1,
+          "why": "Daily to krótka synchronizacja: co robię, co mnie blokuje. Dłuższe dyskusje przenosi się poza spotkanie."
+        },
+        {
+          "id": "basics-teamwork-e8",
+          "q": "Która praktyka dotycząca środowisk dev/test/prod jest prawidłowa?",
+          "options": [
+            "Hasła do bazy produkcyjnej trzymać w appsettings.json w repozytorium",
+            "Na produkcję wdrażać inny build niż przetestowany, ale z tej samej gałęzi",
+            "Ten sam artefakt na wszystkich środowiskach, różna konfiguracja; sekrety w user-secrets lub Key Vault",
+            "Testować tylko na produkcji, bo tam są prawdziwe dane"
+          ],
+          "correct": 2,
+          "why": "Ten sam artefakt zapewnia, że testowane jest to, co trafi na produkcję. Sekrety nigdy nie trafiają do repozytorium."
+        }
+      ]
+    }
+  ]
+}

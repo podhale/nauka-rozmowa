@@ -28,7 +28,7 @@
     <h3>Najsłabsze tematy</h3>
     @if (weak().length) {
       <div class="list">
-        @for (w of weak(); track w.cat + w.topic) {
+        @for (w of weak().slice(0, weakLimit()); track w.cat + w.topic) {
           <div class="li" style="flex-direction:row;justify-content:space-between;align-items:center;gap:10px">
             <span style="min-width:0"><app-cat-tag [cat]="w.cat" /><br /><b>{{ w.topic }}</b></span>
             <span class="row" style="gap:6px;flex-wrap:nowrap">
@@ -38,6 +38,7 @@
           </div>
         }
       </div>
+      <app-show-more [total]="weak().length" [shown]="Math.min(weakLimit(), weak().length)" [step]="8" (more)="weakLimit.set(weakLimit() + 8)" (all)="weakLimit.set(weak().length)" />
     } @else {
       <p class="muted">Pojawią się tu, gdy ocenisz kilka kart jako „nie wiem” lub pomylisz się w teście.</p>
     }
@@ -45,7 +46,7 @@
 
   <div class="card stack">
     <h3>Ostatnie sesje</h3>
-    @for (h of history(); track h.t) {
+    @for (h of history().slice(0, histLimit()); track h.t) {
       <div class="li" style="flex-direction:row;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:10px 0">
         <span><b>{{ modeLabel[h.mode] }}</b> <span class="muted" style="font-size:.85rem">{{ h.t | date: 'd MMM, HH:mm' }}</span></span>
         <span class="num">{{ h.ok }}/{{ h.n }}</span>
@@ -53,6 +54,7 @@
     } @empty {
       <p class="muted">Jeszcze nic. Zacznij od zakładki Dziś.</p>
     }
+    <app-show-more [total]="history().length" [shown]="Math.min(histLimit(), history().length)" [step]="10" (more)="histLimit.set(histLimit() + 10)" (all)="histLimit.set(history().length)" />
   </div>
 
   <div class="card stack">

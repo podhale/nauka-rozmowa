@@ -1,0 +1,50 @@
+# Builds an installable Android APK in the cloud – no Android Studio needed.
+# Push to GitHub (or click "Run workflow" in the Actions tab), wait ~5–10 min,
+# then download "nauka-rozmowa-apk" from the run's Artifacts section.
+name: Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app (validates and bundles the question bank)
+        run: npm run build
+        env:
+          NG_CLI_ANALYTICS: 'false'
+
+      - name: Create / sync Android project
+        run: |
+          if [ ! -d android ]; then npx cap add android; fi
+          npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nauka-rozmowa-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

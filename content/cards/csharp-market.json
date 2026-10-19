@@ -1,0 +1,320 @@
+{
+  "cat": "csharp",
+  "name": "C# i .NET",
+  "cards": [
+    {
+      "id": "csharp-m001",
+      "topic": "OOP – filary i polimorfizm",
+      "level": 1,
+      "q": "Wymień cztery filary programowania obiektowego i pokaż, jak każdy z nich wygląda w C#.",
+      "a": "Enkapsulacja – ukrywam stan za właściwościami i metodami, obiekt sam pilnuje swoich niezmienników (private pola, publiczne operacje). Abstrakcja – klient zna kontrakt (interfejs, klasa abstrakcyjna), a nie szczegóły implementacji. Dziedziczenie – klasa pochodna przejmuje składowe bazowej i może je rozszerzać (w C# jedna klasa bazowa, wiele interfejsów). Polimorfizm – ten sam kod wywołujący działa z różnymi typami: w runtime przez virtual/override i interfejsy, w compile time przez overloading i generics.",
+      "code": "public abstract class Payment                  // abstrakcja\n{\n    private decimal _amount;                   // enkapsulacja\n    public decimal Amount\n    {\n        get => _amount;\n        init => _amount = value > 0 ? value : throw new ArgumentOutOfRangeException(nameof(value));\n    }\n    public abstract string Process();          // polimorfizm\n}\n\npublic sealed class CardPayment : Payment     // dziedziczenie\n{\n    public override string Process() => $\"Card {Amount}\";\n}",
+      "lang": "csharp",
+      "tip": "Rekruter często dopytuje „a który filar jest najważniejszy?”. Dobra odpowiedź: enkapsulacja i polimorfizm przez interfejsy dają najwięcej w codziennym kodzie; dziedziczenie implementacji stosuję oszczędnie."
+    },
+    {
+      "id": "csharp-m002",
+      "topic": "OOP – filary i polimorfizm",
+      "level": 1,
+      "q": "Czym różni się overloading od overridingu i jak ma się to do polimorfizmu compile-time i runtime?",
+      "a": "Overloading (przeciążanie) to kilka metod o tej samej nazwie i różnych parametrach w jednym typie. Kompilator wybiera wersję w compile time na podstawie statycznych typów argumentów, więc to polimorfizm statyczny. Overriding (nadpisywanie) to zmiana implementacji metody virtual/abstract w klasie pochodnej z tą samą sygnaturą. Wersję wybiera runtime na podstawie faktycznego typu obiektu (late binding przez vtable), więc to polimorfizm dynamiczny. Typ zwracany sam w sobie nie wystarcza do przeciążenia.",
+      "code": "class Logger\n{\n    public void Log(string msg) { }            // overload 1\n    public void Log(string msg, int level) { } // overload 2\n    public virtual string Name => \"base\";\n}\n\nclass FileLogger : Logger\n{\n    public override string Name => \"file\";    // override\n}\n\nLogger l = new FileLogger();\nConsole.WriteLine(l.Name); // \"file\" – decyduje typ obiektu, nie zmiennej",
+      "lang": "csharp",
+      "tip": "Typowy follow-up: „czy można przeciążyć metodę tylko typem zwracanym?” – nie. Można natomiast od C# 9 zawęzić typ zwracany przy override (covariant return types)."
+    },
+    {
+      "id": "csharp-m003",
+      "topic": "virtual / override / new",
+      "level": 2,
+      "q": "Czym różni się override od new (method hiding) i co się stanie, gdy wywołasz metodę przez referencję typu bazowego?",
+      "a": "override zastępuje implementację metody virtual w tabeli metod wirtualnych, więc wywołanie przez referencję bazową trafia do wersji pochodnej. new tworzy nową, niezależną metodę o tej samej nazwie, która tylko ukrywa bazową: o tym, która się wykona, decyduje statyczny typ zmiennej. Bez słowa new i bez override kompilator i tak ukryje metodę, ale zgłosi ostrzeżenie CS0108/CS0114. Metody nie są domyślnie wirtualne w C# (inaczej niż w Javie), a override można zablokować przez sealed override.",
+      "code": "class Animal { public virtual string Speak() => \"...\"; public string Kind() => \"animal\"; }\nclass Dog : Animal\n{\n    public override string Speak() => \"Woof\";\n    public new string Kind() => \"dog\";\n}\n\nAnimal a = new Dog();\nConsole.WriteLine(a.Speak()); // Woof   – override, decyduje runtime\nConsole.WriteLine(a.Kind());  // animal – new, decyduje typ zmiennej\nConsole.WriteLine(((Dog)a).Kind()); // dog",
+      "lang": "csharp",
+      "tip": "Gdy kandydat mówi, że new „nadpisuje metodę”, rekruter od razu wie, że nie rozumie różnicy. Kluczowe zdanie: override – decyduje obiekt, new – decyduje typ referencji.",
+      "deep": "Method hiding to głównie narzędzie do sytuacji, w których nie masz kontroli nad bazą: biblioteka w nowej wersji dodała metodę o nazwie, którą już masz w klasie pochodnej, więc new jawnie deklaruje, że to dwie różne metody. Projektowo jest to pułapka, bo zachowanie zależy od typu zmiennej, a nie od obiektu – łamie to oczekiwania i LSP. Wywołanie wirtualne kosztuje pośrednie skoki przez vtable i utrudnia inlining. JIT potrafi je zdewirtualizować, gdy zna dokładny typ, np. przy klasach sealed albo dzięki dynamic PGO. Stąd praktyka „sealed domyślnie”. base.Metoda() w override pozwala rozszerzyć zachowanie bazowe zamiast je zastąpić."
+    },
+    {
+      "id": "csharp-m004",
+      "topic": "Interfejs vs klasa abstrakcyjna",
+      "level": 1,
+      "q": "Czy można utworzyć instancję klasy abstrakcyjnej? Czym jest metoda abstrakcyjna i po co klasie abstrakcyjnej konstruktor?",
+      "a": "Nie. new na klasie abstrakcyjnej to błąd kompilacji, ale zmienna może mieć typ abstrakcyjny i wskazywać na obiekt klasy pochodnej. Metoda abstrakcyjna nie ma ciała i jest niejawnie virtual. Każda nieabstrakcyjna klasa pochodna musi ją zaimplementować przez override, a klasa, która ma choć jedną metodę abstrakcyjną, sama musi być abstrakcyjna. Klasa abstrakcyjna może mieć konstruktor (zwykle protected), który ustawia wspólny stan i wywołują go klasy pochodne przez : base(...). W praktyce używam jej jako szablonu ze wspólnym kodem (template method), a interfejsu – jako kontraktu do DI i mockowania.",
+      "code": "public abstract class Exporter\n{\n    protected Exporter(string extension) => Extension = extension;\n    public string Extension { get; }\n\n    public string Export(Report r) => Header() + Body(r); // template method\n    protected virtual string Header() => \"\";\n    protected abstract string Body(Report r);            // musi być nadpisana\n}\n\npublic sealed class CsvExporter() : Exporter(\".csv\")\n{\n    protected override string Body(Report r) => string.Join(';', r.Values);\n}",
+      "lang": "csharp"
+    },
+    {
+      "id": "csharp-m005",
+      "topic": "Dziedziczenie i konstruktory",
+      "level": 1,
+      "q": "Dlaczego C# nie pozwala na wielodziedziczenie klas i jak sobie radzisz, gdy klasa potrzebuje zachowań z kilku źródeł?",
+      "a": "Klasa w C# ma dokładnie jedną klasę bazową (domyślnie object), bo wielodziedziczenie implementacji rodzi diamond problem: gdy dwie bazy mają tę samą metodę lub pole, nie wiadomo, którą wersję i który stan odziedziczyć. Komplikuje też układ obiektu w pamięci i kolejność konstruktorów. Zamiast tego klasa może implementować wiele interfejsów. Wspólne zachowanie składam przez kompozycję: wstrzykuję obiekty-pomocniki albo stosuję dekoratory. Od C# 8 interfejsy mogą mieć default implementation, a niejednoznaczność rozwiązuje się jawną implementacją interfejsu.",
+      "code": "public interface IAuditable { DateTime CreatedAt { get; } }\npublic interface ISoftDeletable { bool IsDeleted { get; } }\n\n// jedna baza + wiele interfejsów\npublic class Order : Entity, IAuditable, ISoftDeletable\n{\n    public DateTime CreatedAt { get; init; }\n    public bool IsDeleted { get; private set; }\n}",
+      "lang": "csharp",
+      "tip": "Dobrze dodać, że struct w ogóle nie dziedziczy (poza niejawnym ValueType), ale może implementować interfejsy."
+    },
+    {
+      "id": "csharp-m006",
+      "topic": "Dziedziczenie i konstruktory",
+      "level": 2,
+      "q": "W jakiej kolejności wykonują się inicjalizatory pól i konstruktory przy tworzeniu obiektu klasy pochodnej?",
+      "a": "Przy new Derived() najpierw wykonują się inicjalizatory pól klasy pochodnej, potem inicjalizatory pól klasy bazowej, następnie ciało konstruktora bazowego, a na końcu ciało konstruktora pochodnego. Wynika to z tego, że kompilator wstawia inicjalizatory pól na początek każdego konstruktora, przed wywołaniem : base(...). Jeśli nie napiszesz : base(...), wywoływany jest bezparametrowy konstruktor bazy – gdy go nie ma, kod się nie skompiluje. : this(...) przekierowuje do innego konstruktora tej samej klasy. Statyczny konstruktor wykonuje się raz, przed pierwszym użyciem typu.",
+      "code": "class Base\n{\n    public Base(string name) => Console.WriteLine($\"Base({name})\");\n}\n\nclass Derived : Base\n{\n    private readonly List<int> _items = new(); // wykona się przed Base(...)\n    public Derived() : this(\"default\") { }\n    public Derived(string name) : base(name) => Console.WriteLine(\"Derived\");\n}",
+      "lang": "csharp",
+      "tip": "Na rozmowie często pada wersja „co wypisze” z polami i konstruktorami w hierarchii – zapamiętaj: pola od dołu (pochodna → baza), ciała konstruktorów od góry (baza → pochodna).",
+      "deep": "Klasyczna pułapka to wywołanie metody virtual z konstruktora bazowego. Wykona się override z klasy pochodnej, zanim zadziała jej konstruktor: pola ustawione inicjalizatorami już mają wartości, ale pola ustawiane w ciele konstruktora pochodnego są jeszcze domyślne (null, 0). Analizatory to zgłaszają (CA2214), dlatego w konstruktorach nie wywołuję metod wirtualnych. Kolejność ma też znaczenie przy primary constructors: parametry są dostępne w inicjalizatorach pól i w : base(...). Przy klasach z wymaganym stanem lepiej kończyć konstrukcję poprawnym obiektem (walidacja w konstruktorze, required/init) niż stosować wzorzec Init() po new."
+    },
+    {
+      "id": "csharp-m007",
+      "topic": "Modyfikatory dostępu",
+      "level": 2,
+      "q": "Omów modyfikatory dostępu w C#, łącznie z protected internal, private protected i file. Jakie są wartości domyślne?",
+      "a": "public – dostęp wszędzie. private – tylko wewnątrz typu. protected – w typie i jego klasach pochodnych. internal – w obrębie tego samego assembly. protected internal to suma warunków: ten sam assembly LUB klasa pochodna w dowolnym assembly. private protected (C# 7.2) to iloczyn warunków: klasa pochodna I ten sam assembly. file (C# 11) dotyczy tylko typów – typ jest widoczny wyłącznie w pliku źródłowym, w którym go zadeklarowano, co przydaje się m.in. w source generatorach. Domyślnie składowe klasy i structa są private, typy najwyższego poziomu internal, a składowe interfejsu public.",
+      "code": "public class Repository\n{\n    private int _hits;                        // tylko ta klasa\n    protected void Log() { }                  // + klasy pochodne\n    internal void Reset() { }                 // ten sam assembly\n    protected internal void Warmup() { }      // assembly LUB pochodne\n    private protected void Trace() { }        // pochodne Z TEGO assembly\n}\n\nfile sealed class Helper { }                  // widoczny tylko w tym pliku",
+      "lang": "csharp",
+      "tip": "Mnemotechnika: protected internal = „OR”, private protected = „AND”. InternalsVisibleTo pozwala udostępnić internal projektowi testów."
+    },
+    {
+      "id": "csharp-m008",
+      "topic": "sealed i static",
+      "level": 1,
+      "q": "Czym różni się składowa statyczna od składowej instancji i kiedy statyczny stan staje się problemem?",
+      "a": "Składowa instancji należy do konkretnego obiektu – każdy obiekt ma własną kopię pól i metoda ma dostęp do this. Składowa static należy do typu: istnieje jedna kopia na typ (w praktyce na proces), wywołuje się ją przez nazwę klasy i nie ma dostępu do this ani pól instancji. Metody statyczne bez stanu (czyste funkcje, helpery, fabryki) są w porządku. Problem to mutowalny stan statyczny: jest współdzielony przez wszystkie żądania i wątki, więc wymaga synchronizacji, a w testach przecieka między przypadkami. Nie da się go też podmienić mockiem. W aplikacjach z DI zamiast pola static rejestruję serwis jako Singleton.",
+      "code": "public class Order\n{\n    private static int _created;              // jedna kopia dla wszystkich\n    public int Number { get; }                // każda instancja ma swoją\n\n    public Order() => Number = Interlocked.Increment(ref _created);\n\n    public static Order CreateDraft() => new(); // fabryka statyczna\n}",
+      "lang": "csharp",
+      "tip": "Typowe pytanie: „czy metoda statyczna może wywołać metodę instancji?” – tylko jeśli ma referencję do obiektu (np. przez parametr)."
+    },
+    {
+      "id": "csharp-m009",
+      "topic": "Enkapsulacja i kompozycja",
+      "level": 2,
+      "q": "Na czym polega dobra enkapsulacja w C# i jak w praktyce stosujesz kompozycję zamiast dziedziczenia?",
+      "a": "Enkapsulacja to coś więcej niż private pola z publicznymi getterami i setterami. Chodzi o to, żeby obiekt sam pilnował swoich reguł: stan zmienia się tylko przez metody o znaczeniu biznesowym, kolekcje wystawiam jako IReadOnlyList, a niepoprawnego obiektu nie da się utworzyć. Kompozycja oznacza, że klasa korzysta z innych obiektów (zwykle wstrzykniętych przez interfejs), zamiast po nich dziedziczyć. Dzięki temu zachowania można łączyć i podmieniać. Przykład to dekorator: CachedProductService opakowuje IProductService zamiast po nim dziedziczyć, a całość składa się w DI.",
+      "code": "public class Cart\n{\n    private readonly List<CartLine> _lines = [];\n    public IReadOnlyList<CartLine> Lines => _lines;   // brak zewnętrznego Add/Clear\n\n    public void Add(Product p, int qty)\n    {\n        if (qty <= 0) throw new ArgumentOutOfRangeException(nameof(qty));\n        _lines.Add(new CartLine(p.Id, qty, p.Price));\n    }\n}\n\n// kompozycja: dekorator zamiast podklasy\npublic class CachedProducts(IProductService inner, HybridCache cache) : IProductService { /* ... */ }",
+      "lang": "csharp",
+      "tip": "Anemiczny model z samymi public get; set; to częsty kontrprzykład enkapsulacji – warto umieć to nazwać."
+    },
+    {
+      "id": "csharp-m010",
+      "topic": "Generics i constraints",
+      "level": 1,
+      "q": "Czym różni się ArrayList od List<T> i dlaczego w nowym kodzie nie używa się kolekcji niegenerycznych?",
+      "a": "ArrayList (System.Collections, .NET 1.0) przechowuje elementy jako object. Typy wartościowe są więc boxowane przy dodawaniu, a przy odczycie trzeba rzutować, a błąd typu wychodzi dopiero w runtime jako InvalidCastException. List<T> jest generyczna: kompilator pilnuje typu, nie ma rzutowań ani boxingu dla List<int>, a kod jest szybszy i bezpieczniejszy. To samo dotyczy par Hashtable → Dictionary<TKey,TValue>, Queue → Queue<T> itd. Kolekcje niegeneryczne spotyka się już tylko w kodzie legacy na .NET Framework.",
+      "code": "var legacy = new ArrayList { 1, \"two\" };   // kompiluje się – brak kontroli typu\nint first = (int)legacy[0];                // rzutowanie + unboxing\n// int bad = (int)legacy[1];               // InvalidCastException w runtime\n\nvar list = new List<int> { 1, 2 };         // bez boxingu\n// list.Add(\"two\");                        // błąd kompilacji",
+      "lang": "csharp"
+    },
+    {
+      "id": "csharp-m011",
+      "topic": "Thread, ThreadPool i Task",
+      "level": 1,
+      "q": "Czym różni się Thread od ThreadPool i od Task?",
+      "a": "Thread to dedykowany wątek systemowy, który tworzysz i kontrolujesz samodzielnie. Jest kosztowny: ma własny stos (domyślnie rezerwacja ok. 1 MB) i narzut przy tworzeniu. ThreadPool to pula wielokrotnie używanych wątków zarządzana przez runtime, która sama dostosowuje liczbę wątków do obciążenia. Task to abstrakcja operacji, która kiedyś się zakończy (promise) – nie jest wątkiem. Task.Run kolejkuje pracę na ThreadPool, a Task zwracany przez I/O async w czasie oczekiwania nie zajmuje żadnego wątku. Task daje wynik, wyjątki, kontynuacje, await i anulowanie przez CancellationToken. Dziś domyślnie piszę na Taskach, a własny Thread tworzę tylko do długich, dedykowanych pętli (np. zgodność z COM/STA).",
+      "code": "var t = new Thread(() => Work()) { IsBackground = true }; // pełna kontrola, drogi\nt.Start();\n\nThreadPool.QueueUserWorkItem(_ => Work());   // brak wyniku i łatwej obsługi błędów\n\nint result = await Task.Run(() => Compute()); // ThreadPool + wynik + wyjątki + await\nstring html = await http.GetStringAsync(url); // I/O – brak wątku na czas oczekiwania",
+      "lang": "csharp",
+      "tip": "Warto wspomnieć foreground vs background: wątki foreground (domyślne dla new Thread) trzymają proces przy życiu, wątki puli są background."
+    },
+    {
+      "id": "csharp-m012",
+      "topic": "Thread, ThreadPool i Task",
+      "level": 3,
+      "q": "Czy async/await to wielowątkowość? Kiedy użyjesz Task.Run, kiedy Parallel, a kiedy samego async – także w ASP.NET Core?",
+      "a": "async/await to asynchroniczność, nie wielowątkowość. Chodzi o to, żeby nie blokować wątku na czas oczekiwania na I/O, a kontynuacja może potem wrócić na dowolny wątek puli. Dla operacji I/O-bound (HTTP, baza, pliki) używam po prostu await metod *Async – bez Task.Run. Dla pracy CPU-bound, którą da się podzielić, sięgam po Parallel.For/ForEach albo PLINQ. Task.Run służy do zdjęcia pracy CPU z wątku UI (WPF, WinForms) albo do uruchomienia niezależnej pracy w tle. W ASP.NET Core żądanie już działa na wątku puli, więc await Task.Run(...) w kontrolerze nie przyspiesza odpowiedzi, a dokłada przełączenie wątku.",
+      "code": "// I/O-bound – samo async\nvar user = await db.Users.FindAsync([id], ct);\n\n// CPU-bound w aplikacji desktop – zdjęcie pracy z wątku UI\nvar hash = await Task.Run(() => ComputeHash(bytes));\n\n// CPU-bound, dużo niezależnych elementów\nParallel.ForEach(images, img => Resize(img));",
+      "lang": "csharp",
+      "tip": "Zdanie, które dobrze brzmi: „async zwalnia wątek, Parallel zajmuje więcej wątków – pierwsze do I/O, drugie do CPU”.",
+      "deep": "W ASP.NET Core równoległość CPU wewnątrz żądania (Parallel.ForEach, wiele Task.Run) zabiera wątki innym żądaniom i pod obciążeniem obniża przepustowość. Na serwerze skalowanie robią współbieżne żądania, a nie zrównoleglanie jednego żądania. Wyjątkiem są rzadkie, ciężkie operacje z ograniczonym MaxDegreeOfParallelism albo przeniesienie ich do workera (kolejka + BackgroundService). Sync-over-async (.Result, .Wait()) to odwrotny błąd: blokuje wątek puli i prowadzi do thread pool starvation. Async też ma koszt – maszynę stanów i alokacje – więc dla czysto synchronicznej, szybkiej logiki nie dodaje się async na siłę. Gdy jedna metoda biblioteki jest tylko synchroniczna (stare SDK), a wywołanie jest wolnym I/O, Task.Run tylko maskuje problem – lepiej szukać wersji async albo izolować wywołanie w osobnym workerze."
+    },
+    {
+      "id": "csharp-m013",
+      "topic": "Parallel i PLINQ",
+      "level": 3,
+      "q": "Jak działają Parallel.For/ForEach i PLINQ, kiedy dają zysk i na co uważać?",
+      "a": "Parallel.For/ForEach dzielą kolekcję na partycje i przetwarzają je na wątkach puli. Wywołanie jest blokujące – wraca, gdy wszystko się skończy – a wyjątki zbiera w AggregateException. PLINQ (AsParallel()) robi to samo dla zapytań LINQ, z opcjami WithDegreeOfParallelism, AsOrdered i WithCancellation. Zysk dają przy pracy CPU-bound na wielu niezależnych elementach, gdy koszt pojedynczego elementu przewyższa narzut partycjonowania i synchronizacji. Wspólny stan w ciele pętli wymaga ConcurrentBag/Interlocked albo lokalnych sum (przeciążenie z localInit/localFinally). Do pracy async używam Parallel.ForEachAsync (.NET 6+) z MaxDegreeOfParallelism.",
+      "code": "var total = 0L;\nParallel.ForEach(files,\n    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },\n    () => 0L,                                   // localInit – suma per wątek\n    (file, _, local) => local + CountWords(file),\n    local => Interlocked.Add(ref total, local)); // localFinally – jeden zapis na wątek\n\nvar primes = numbers.AsParallel().Where(IsPrime).ToList();",
+      "lang": "csharp",
+      "deep": "Najczęstszy błąd to Parallel.ForEach z async lambdą: delegat Action<T> zamienia ją w async void, więc pętla kończy się, zanim operacje się wykonają, a wyjątki mogą zabić proces. Do I/O służy Parallel.ForEachAsync albo Task.WhenAll z ograniczeniem współbieżności. Dla małych operacji (dodanie liczb) narzut synchronizacji bywa większy niż zysk – trzeba mierzyć (BenchmarkDotNet). Pętla, w której każdy element bierze ten sam lock, praktycznie się serializuje. PLINQ domyślnie nie zachowuje kolejności (AsOrdered kosztuje), a ForAll pomija scalanie wyników. Zapytanie IQueryable z AsParallel() najpierw ściąga dane do pamięci. W ASP.NET Core zrównoleglanie CPU w żądaniu konkuruje z innymi żądaniami o pulę wątków, więc stosuję je w jobach batchowych i narzędziach, a w API rzadko."
+    },
+    {
+      "id": "csharp-m014",
+      "topic": "Synchronizacja wątków",
+      "level": 2,
+      "q": "Jak zsynchronizować dwa wątki? Porównaj lock/Monitor, Interlocked, volatile i prymitywy sygnalizacyjne.",
+      "a": "Do wzajemnego wykluczania (tylko jeden wątek w sekcji krytycznej) służy lock, czyli Monitor.Enter/Exit w try/finally. Monitor.TryEnter pozwala dodać timeout. Dla pojedynczych operacji na liczbach i referencjach wystarczy Interlocked (Increment, Add, Exchange, CompareExchange) – atomowo i bez blokady. volatile gwarantuje tylko widoczność i brak przestawiania odczytów/zapisów, ale nie atomowość, więc count++ na polu volatile nadal jest wyścigiem. Gdy jeden wątek ma czekać na sygnał od drugiego, używam ManualResetEventSlim/AutoResetEvent, SemaphoreSlim, CountdownEvent albo Barrier. W kodzie async – SemaphoreSlim.WaitAsync albo Channel<T>, a dla wymiany danych producent–konsument – Channel lub BlockingCollection.",
+      "code": "private int _requests;\npublic void OnRequest() => Interlocked.Increment(ref _requests); // atomowo\n\nprivate readonly ManualResetEventSlim _ready = new(false);\n// wątek A: przygotowuje dane, potem\n_ready.Set();\n// wątek B: czeka na sygnał\n_ready.Wait(TimeSpan.FromSeconds(5));",
+      "lang": "csharp",
+      "deep": "Model pamięci .NET pozwala kompilatorowi, JIT-owi i procesorowi przestawiać operacje i trzymać wartości w rejestrach. Bez bariery jeden wątek może więc w nieskończoność nie zobaczyć flagi ustawionej przez drugi. lock i Interlocked zawierają pełne bariery pamięci, a volatile i Volatile.Read/Write dają semantykę acquire/release. W praktyce volatile nadaje się do prostej flagi zatrzymania, ale w nowym kodzie lepszy jest CancellationToken. Monitor.Wait/Pulse to niskopoziomowa sygnalizacja pod lockiem, dziś rzadko pisana ręcznie. *Slim warianty (ManualResetEventSlim, SemaphoreSlim) najpierw krótko kręcą się w spinie i nie tworzą obiektu kernela, dopóki nie trzeba – są szybsze w obrębie procesu. Mutex i Semaphore (bez Slim) to obiekty systemowe, potrzebne do synchronizacji między procesami. Od .NET 9 do lock warto używać typu System.Threading.Lock."
+    },
+    {
+      "id": "csharp-m015",
+      "topic": "Synchronizacja wątków",
+      "level": 3,
+      "q": "Co to jest deadlock między wątkami, jakie warunki muszą zajść i jak mu zapobiegasz?",
+      "a": "Deadlock to sytuacja, w której wątki czekają na siebie nawzajem w cyklu i żaden nie może ruszyć dalej. Klasyczny przykład: wątek 1 trzyma lock A i czeka na B, a wątek 2 trzyma B i czeka na A. Muszą zajść jednocześnie cztery warunki Coffmana: wzajemne wykluczanie, trzymanie zasobu podczas oczekiwania na kolejny, brak wywłaszczania i cykliczne oczekiwanie. Zapobiegam, łamiąc któryś z nich. Najprościej – stała, globalna kolejność brania blokad. Do tego: jedna blokada zamiast kilku, krótkie sekcje krytyczne bez wywoływania obcego kodu (eventy, callbacki, I/O), Monitor.TryEnter albo WaitAsync z timeoutem. W kodzie async unikam .Result/.Wait().",
+      "code": "// zawsze ta sama kolejność: najpierw konto o mniejszym Id\nvoid Transfer(Account from, Account to, decimal amount)\n{\n    var (first, second) = from.Id < to.Id ? (from, to) : (to, from);\n    lock (first.Sync)\n    lock (second.Sync)\n    {\n        from.Balance -= amount;\n        to.Balance += amount;\n    }\n}",
+      "lang": "csharp",
+      "tip": "Rekruterzy lubią dopytać: „a jak wykryjesz deadlock na produkcji?” – wymień dump + syncblk/clrstack albo Parallel Stacks.",
+      "deep": "Diagnoza na produkcji: proces wisi przy niskim CPU. Robię dump (dotnet-dump collect), potem w dotnet-dump analyze polecenie syncblk pokazuje, który wątek trzyma który Monitor, a clrstack -all – na czym czekają pozostałe wątki. W Visual Studio widok Parallel Stacks od razu pokazuje cykl. Poza lockami deadlock powstaje też przy sync-over-async z SynchronizationContext (UI, stary ASP.NET), przy SemaphoreSlim(1,1) wziętym rekurencyjnie (nie jest reentrant, w przeciwieństwie do lock) oraz w bazie danych przy aktualizacji wierszy w różnej kolejności. Pokrewne zjawiska to livelock (wątki reagują na siebie i ciągle się wycofują, nie robiąc postępu) i starvation (wątek nigdy nie dostaje zasobu). Timeout nie usuwa przyczyny, ale zamienia zawieszenie w wyjątek, który da się zalogować i ponowić."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "csharp-mq001",
+      "topic": "virtual / override / new",
+      "level": 2,
+      "q": "Co wypisze ten kod?",
+      "code": "class A { public virtual string Who() => \"A\"; }\nclass B : A { public override string Who() => \"B\"; }\nclass C : A { public new string Who() => \"C\"; }\n\nA x = new B();\nA y = new C();\nC z = new C();\nConsole.WriteLine($\"{x.Who()} {y.Who()} {z.Who()}\");",
+      "lang": "csharp",
+      "options": [
+        "B C C",
+        "B A C",
+        "A A C",
+        "B A A"
+      ],
+      "correct": 1,
+      "why": "x: override w B zastępuje metodę wirtualną, więc przez referencję A wykona się B. y: metoda w C jest oznaczona new, czyli tylko ukrywa A.Who. Przez referencję typu A wywołanie trafia do wirtualnej A.Who, więc wynik to A. z: zmienna typu C widzi nową metodę C.Who, więc C. Przy new o wyborze decyduje statyczny typ zmiennej, a nie obiekt."
+    },
+    {
+      "id": "csharp-mq002",
+      "topic": "OOP – filary i polimorfizm",
+      "level": 2,
+      "q": "Co wypisze ten kod?",
+      "code": "static string Print(object o) => \"object\";\nstatic string Print(string s) => \"string\";\n\nobject value = \"tekst\";\nConsole.WriteLine(Print(value));",
+      "lang": "csharp",
+      "options": [
+        "object – przeciążenie jest wybierane w compile time na podstawie statycznego typu zmiennej",
+        "string – runtime sprawdza faktyczny typ argumentu",
+        "Błąd kompilacji – niejednoznaczne wywołanie",
+        "string, ale tylko w trybie Release, gdy JIT zoptymalizuje wywołanie"
+      ],
+      "correct": 0,
+      "why": "Overload resolution odbywa się w compile time. Zmienna value ma statyczny typ object, więc kompilator wybiera Print(object), niezależnie od tego, że w runtime jest w niej string. To polimorfizm statyczny. Runtime wybiera implementację tylko przy metodach virtual/override (albo przy dynamic: Print((dynamic)value) zwróciłoby „string”). Wywołanie nie jest niejednoznaczne, bo object pasuje tylko do jednego przeciążenia."
+    },
+    {
+      "id": "csharp-mq003",
+      "topic": "Dziedziczenie i konstruktory",
+      "level": 2,
+      "q": "Co wypisze new Derived()?",
+      "code": "static class L { public static int Log(string s) { Console.WriteLine(s); return 0; } }\n\nclass Base\n{\n    private int _a = L.Log(\"Base field\");\n    public Base() { L.Log(\"Base ctor\"); }\n}\n\nclass Derived : Base\n{\n    private int _b = L.Log(\"Derived field\");\n    public Derived() { L.Log(\"Derived ctor\"); }\n}",
+      "lang": "csharp",
+      "options": [
+        "Base field, Base ctor, Derived field, Derived ctor",
+        "Base field, Derived field, Base ctor, Derived ctor",
+        "Derived field, Base field, Base ctor, Derived ctor",
+        "Derived field, Derived ctor, Base field, Base ctor"
+      ],
+      "correct": 2,
+      "why": "Kompilator wstawia inicjalizatory pól na początek konstruktora, przed wywołaniem bazowego. Konstruktor Derived najpierw inicjalizuje _b, potem woła Base(), który inicjalizuje _a i wykonuje swoje ciało, a na końcu wykonuje się ciało Derived. Pola idą więc od pochodnej do bazy, ciała konstruktorów od bazy do pochodnej. Dlatego override wywołany z konstruktora bazy widzi już pola z inicjalizatorami, ale nie wartości ustawiane w ciele konstruktora pochodnego."
+    },
+    {
+      "id": "csharp-mq004",
+      "topic": "Modyfikatory dostępu",
+      "level": 2,
+      "q": "Base jest w assembly Core, a Derived w innym assembly (Api), które referencjonuje Core. Które wywołanie w Derived.Test() się NIE skompiluje?",
+      "code": "// assembly Core\npublic class Base\n{\n    private protected void A() { }\n    protected internal void B() { }\n}\n\n// assembly Api\npublic class Derived : Base\n{\n    public void Test()\n    {\n        A();\n        B();\n    }\n}",
+      "lang": "csharp",
+      "options": [
+        "B() – protected internal wymaga tego samego assembly",
+        "Oba wywołania",
+        "Żadne – oba są dostępne w klasie pochodnej",
+        "A() – private protected jest dostępne tylko w klasach pochodnych z tego samego assembly"
+      ],
+      "correct": 3,
+      "why": "private protected oznacza „klasa pochodna ORAZ ten sam assembly”, więc w Derived z innego assembly A() jest niedostępne. protected internal oznacza „ten sam assembly LUB klasa pochodna”, więc B() w klasie pochodnej działa w każdym assembly. Mylenie tych dwóch modyfikatorów to klasyczny błąd: protected internal jest szersze niż oba składniki, a private protected węższe."
+    },
+    {
+      "id": "csharp-mq005",
+      "topic": "Interfejs vs klasa abstrakcyjna",
+      "level": 1,
+      "q": "Która linia się NIE skompiluje?",
+      "code": "abstract class Shape\n{\n    protected Shape(string name) => Name = name;\n    public string Name { get; }\n    public abstract double Area();\n}\n\nclass Circle(double r) : Shape(\"circle\")\n{\n    public override double Area() => Math.PI * r * r;\n}\n\nShape s1 = new Circle(2);      // linia 1\nShape s2 = new Shape(\"x\");     // linia 2\nShape[] all = new Shape[10];   // linia 3",
+      "lang": "csharp",
+      "options": [
+        "Tylko linia 2",
+        "Linie 2 i 3",
+        "Żadna – klasa ma konstruktor, więc można ją utworzyć",
+        "Cała klasa Shape – klasa abstrakcyjna nie może mieć konstruktora"
+      ],
+      "correct": 0,
+      "why": "Nie można utworzyć instancji klasy abstrakcyjnej (CS0144), więc linia 2 to błąd. Linia 1 jest poprawna: zmienna typu abstrakcyjnego wskazuje na obiekt klasy pochodnej. Linia 3 tworzy tablicę referencji (wypełnioną null), a nie obiekty Shape. Klasa abstrakcyjna może mieć konstruktor – wywołuje go klasa pochodna, tutaj przez primary constructor i : Shape(\"circle\")."
+    },
+    {
+      "id": "csharp-mq006",
+      "topic": "Synchronizacja wątków",
+      "level": 1,
+      "q": "Co najprawdopodobniej wypisze ten kod?",
+      "code": "int count = 0;\nParallel.For(0, 100_000, _ => count++);\nConsole.WriteLine(count);",
+      "lang": "csharp",
+      "options": [
+        "Zawsze 100000",
+        "Rzuci wyjątek, bo zmiennej lokalnej nie można modyfikować z wielu wątków",
+        "Zwykle liczbę mniejszą niż 100000; poprawka: Interlocked.Increment(ref count)",
+        "Zawsze 0, bo lambda modyfikuje kopię zmiennej"
+      ],
+      "correct": 2,
+      "why": "count++ to trzy kroki: odczyt, dodanie i zapis. Dwa wątki mogą odczytać tę samą wartość i jedna inkrementacja przepada (race condition). Lambda przechwytuje zmienną (closure), a nie jej kopię, i runtime nie rzuca wyjątku – wynik jest po prostu niedeterministyczny. Interlocked.Increment wykonuje operację atomowo. Przy bardziej złożonym stanie potrzebny jest lock albo sumy lokalne per wątek."
+    },
+    {
+      "id": "csharp-mq007",
+      "topic": "Synchronizacja wątków",
+      "level": 2,
+      "q": "Pod obciążeniem aplikacja od czasu do czasu całkowicie się zawiesza przy niskim CPU. Jaka poprawka usuwa przyczynę?",
+      "code": "private readonly object _orders = new();\nprivate readonly object _stock = new();\n\nvoid PlaceOrder() { lock (_orders) { lock (_stock) { /* ... */ } } }\nvoid Restock()    { lock (_stock)  { lock (_orders) { /* ... */ } } }",
+      "lang": "csharp",
+      "options": [
+        "Oznaczyć pola _orders i _stock jako volatile",
+        "Zawsze brać blokady w tej samej kolejności (albo użyć jednej wspólnej blokady)",
+        "Zamienić lock na Monitor.Enter bez try/finally, żeby było szybciej",
+        "Zwiększyć ThreadPool.SetMinThreads"
+      ],
+      "correct": 1,
+      "why": "Metody biorą te same dwie blokady w przeciwnej kolejności. Gdy PlaceOrder trzyma _orders, a Restock trzyma _stock, oba wątki czekają na siebie w nieskończoność – to cykliczne oczekiwanie, czyli deadlock. Stała kolejność blokad (albo jedna blokada) łamie cykl. volatile nie ma nic wspólnego z blokadami, usunięcie try/finally grozi pozostawieniem zajętej blokady po wyjątku, a więcej wątków w puli nie odblokuje wątków zakleszczonych."
+    },
+    {
+      "id": "csharp-mq008",
+      "topic": "Parallel i PLINQ",
+      "level": 2,
+      "q": "Co jest głównym problemem tego kodu?",
+      "code": "var results = new ConcurrentBag<string>();\n\nParallel.ForEach(urls, async url =>\n{\n    var html = await http.GetStringAsync(url);\n    results.Add(html);\n});\n\nConsole.WriteLine(results.Count);",
+      "lang": "csharp",
+      "options": [
+        "ConcurrentBag nie jest thread-safe przy równoległym Add",
+        "HttpClient nie może być współdzielony między wątkami",
+        "Parallel.ForEach rzuci wyjątek, bo nie przyjmuje lambd async",
+        "Lambda staje się async void: ForEach kończy się przed pobraniem stron, więc Count jest zwykle 0, a wyjątki mogą zabić proces; trzeba użyć Parallel.ForEachAsync albo Task.WhenAll"
+      ],
+      "correct": 3,
+      "why": "Parallel.ForEach przyjmuje Action<T>, więc async lambda kompiluje się jako async void. Pętla uruchamia lambdy, a każda wraca przy pierwszym await, więc ForEach uznaje pracę za skończoną. Wyjątki z async void trafiają poza pętlę i mogą zakończyć proces. Parallel.ForEachAsync (z MaxDegreeOfParallelism) albo Task.WhenAll poprawnie czekają na zakończenie. ConcurrentBag i współdzielony HttpClient są thread-safe."
+    },
+    {
+      "id": "csharp-mq009",
+      "topic": "Thread, ThreadPool i Task",
+      "level": 2,
+      "q": "Jaki efekt ma owinięcie wywołania w Task.Run w tym endpoincie ASP.NET Core?",
+      "code": "app.MapGet(\"/rates\", async (IRatesClient client) =>\n    await Task.Run(() => client.GetRatesAsync()));\n// GetRatesAsync wykonuje asynchroniczne żądanie HTTP",
+      "lang": "csharp",
+      "options": [
+        "Żadnej korzyści: żądanie i tak czeka na wynik, a dochodzi przeskok na inny wątek puli; wystarczy await client.GetRatesAsync()",
+        "Przyspiesza odpowiedź, bo HTTP wykonuje się na osobnym wątku",
+        "Powoduje deadlock, bo ASP.NET Core ma SynchronizationContext",
+        "Tworzy nowy wątek systemowy dla każdego żądania, co szybko wyczerpie pamięć"
+      ],
+      "correct": 0,
+      "why": "Handler już działa na wątku puli, a GetRatesAsync jest prawdziwie asynchroniczne – w czasie oczekiwania na HTTP nie zajmuje wątku. Task.Run dokłada tylko kolejkowanie pracy na inny wątek puli. ASP.NET Core nie ma SynchronizationContext, więc nie ma deadlocka. Task.Run nie tworzy nowych wątków systemowych, tylko używa puli. Task.Run ma sens dla pracy CPU-bound w aplikacjach UI, a nie dla I/O na serwerze."
+    },
+    {
+      "id": "csharp-mq010",
+      "topic": "sealed i static",
+      "level": 1,
+      "q": "Co wypisze ten kod?",
+      "code": "class Counter\n{\n    public static int Total;\n    public int Mine;\n    public Counter() { Total++; Mine++; }\n}\n\nvar a = new Counter();\nvar b = new Counter();\nConsole.WriteLine($\"{Counter.Total} {a.Mine} {b.Mine}\");",
+      "lang": "csharp",
+      "options": [
+        "1 1 1",
+        "2 2 2",
+        "2 1 1",
+        "2 1 2"
+      ],
+      "correct": 2,
+      "why": "Pole static istnieje w jednej kopii dla typu, więc oba konstruktory zwiększają ten sam Total – do 2. Pole Mine należy do instancji: każdy obiekt ma własną kopię zaczynającą się od 0, więc oba mają 1. Do pola statycznego odwołuje się przez nazwę typu (Counter.Total); zapis a.Total nie skompiluje się w C# (CS0176)."
+    }
+  ]
+}

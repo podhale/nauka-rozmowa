@@ -16,6 +16,15 @@
           @if (isNewCard() && s.srs) { <span class="pill mid">nowa</span> }
         </div>
         <p class="q" [innerHTML]="c.q | rich"></p>
+        @if (!s.revealed && !s.interview) {
+          <p class="muted" style="font-size:.9rem">
+            @if (c.cat === 'algo' || c.cat === 'review') {
+              <span class="pill mid">Zadanie</span> Rozwiąż w głowie, na kartce albo w IDE, potem porównaj z rozwiązaniem.
+            } @else {
+              Odpowiedz w myślach albo na głos, potem odkryj odpowiedź i oceń się.
+            }
+          </p>
+        }
 
         @if (!s.revealed && s.interview) {
           <p class="muted" style="font-size:.92rem">
@@ -48,7 +57,13 @@
               }
               <p class="eyebrow">Wzorcowa odpowiedź</p>
             }
-            <p style="white-space:pre-line" [innerHTML]="c.a | rich"></p>
+@if (c.tr) {
+              <div class="row" style="gap:10px;align-items:flex-start"><p class="en" style="flex:1;min-width:0" [innerHTML]="c.a | rich"></p><app-speak [text]="c.a" /></div>
+              <p class="trans" [innerHTML]="c.tr | rich"></p>
+              @if (c.pron) { <p class="pron"><b>Wymowa:</b> {{ c.pron }}</p> }
+            } @else {
+              <p style="white-space:pre-line" [innerHTML]="c.a | rich"></p>
+            }
             <app-code [code]="c.code" [lang]="c.lang" />
             @if (c.deep) {
               <details class="deep" [open]="s.interview">

@@ -1,0 +1,26 @@
+{
+  "cat": "web",
+  "sheets": [
+    {
+      "topic": "GraphQL",
+      "points": [
+        "Jeden endpoint (`POST /graphql`), klient wybiera pola → brak over/under-fetchingu; kontrakt to typowany **schema (SDL)** + introspekcja.",
+        "Operacje: **query** (odczyt), **mutation** (zapis, pola top-level po kolei), **subscription** (push przez WebSocket/SSE).",
+        "Resolver na każde pole → **N+1** przy listach; **DataLoader** robi batching (`WHERE Id IN`) i cache per request.",
+        "**Hot Chocolate**: `AddGraphQLServer().AddQueryType<Query>()`, `MapGraphQL()`; `[UsePaging, UseProjection, UseFiltering, UseSorting]` w tej kolejności.",
+        "Resolvery działają równolegle, a DbContext nie jest thread-safe → osobna instancja per resolver (pooled DbContextFactory).",
+        "Angular: **Apollo Angular** (`query`/`watchQuery`/`mutate` → Observable, znormalizowany cache) + GraphQL Code Generator dla typów.",
+        "Koszty: brak cache HTTP (→ persisted queries + GET), błędy jako **200 + `errors`**, autoryzacja per pole, monitoring per operacja.",
+        "Produkcja: limit głębokości i kosztu, paginacja z max page size, timeout, trusted operations, `[Authorize]` na polach."
+      ],
+      "pitfalls": [
+        "Alerty tylko na 5xx – błędy GraphQL wracają z kodem 200.",
+        "„Wyłączyłem introspekcję, więc jest bezpiecznie” – bez limitów kosztu i autoryzacji pól to nie działa.",
+        "Wybór GraphQL dla jednego frontendu i prostego CRUD – złożoność bez zysku."
+      ],
+      "code": "builder.Services.AddGraphQLServer()\n    .AddQueryType<Query>()\n    .AddProjections().AddFiltering().AddSorting();\napp.MapGraphQL();\n\npublic class Query\n{\n    [UsePaging, UseProjection, UseFiltering, UseSorting]\n    public IQueryable<Book> GetBooks(AppDbContext db) => db.Books;\n}",
+      "lang": "csharp",
+      "say": "GraphQL wybieram, gdy kilku klientów potrzebuje różnych kształtów danych. Wtedy pilnuję N+1 przez DataLoader, limitów kosztu zapytań i autoryzacji na poziomie pól. Dla prostego CRUD i publicznego API zostaję przy REST."
+    }
+  ]
+}

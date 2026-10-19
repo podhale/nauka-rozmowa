@@ -20,7 +20,15 @@ import { CatTag, CodeBlock, RichPipe } from '../../shared/ui';
             <span class="score">{{ ok() }}/{{ s.results.length }}</span>
             <span class="pill" [class.ok]="pct() >= 85" [class.mid]="pct() >= 65 && pct() < 85" [class.no]="pct() < 65">{{ pct() }}%</span>
           </div>
+          @if (s.examKey) {
+            @if (s.results.length === s.ids.length) {
+              <p class="pill" [class.ok]="pct() >= 80" [class.no]="pct() < 80" style="align-self:flex-start;font-size:.85rem;padding:4px 12px">{{ pct() >= 80 ? 'Egzamin zaliczony ✓' : 'Egzamin niezaliczony – próg to 80%' }}</p>
+            } @else {
+              <p class="muted">Egzamin przerwany przed końcem, więc wynik się nie liczy.</p>
+            }
+          }
           <p>{{ verdict() }}</p>
+          @if (s.examKey && !s.examKey.startsWith('module:')) { <a class="linkbtn" [routerLink]="['/nauka', s.examKey]">Wróć do lekcji</a> }
           <div class="list">
             @for (c of byCat(); track c.cat) {
               <div class="li" style="flex-direction:row;justify-content:space-between;align-items:center"><app-cat-tag [cat]="c.cat" /><span class="num" style="font-weight:600">{{ c.ok }}/{{ c.n }}</span></div>

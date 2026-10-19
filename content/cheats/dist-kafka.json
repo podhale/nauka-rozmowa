@@ -1,0 +1,151 @@
+{
+  "cat": "dist",
+  "sheets": [
+    {
+      "topic": "Kafka: podstawy",
+      "points": [
+        "Kafka = rozproszony **append-only log**; czytanie nic nie usuwa – dane kasuje **retencja**.",
+        "Rekord: key, value (bajty), headers, timestamp; po zapisie dostaje **offset** w partycji.",
+        "Partycja = log na dysku podzielony na **segmenty**; ma lidera i followery na różnych brokerach.",
+        "Wiele consumer groups czyta ten sam topic niezależnie, każda z własnymi offsetami → **replay**.",
+        "Wydajność: zapis sekwencyjny, **page cache**, zero-copy (`sendfile`), batching i kompresja (lz4/zstd).",
+        "**KRaft**: metadane w Raftowym kworum kontrolerów (`__cluster_metadata`); **Kafka 4.0 = tylko KRaft**, bez ZooKeepera.",
+        "Migracja z ZooKeepera idzie przez wersję pomostową 3.x; kontrolerów zwykle 3 lub 5."
+      ],
+      "pitfalls": [
+        "Traktowanie Kafki jak kolejki zadań: brak per-wiadomościowego ack, DLQ i opóźnień „z pudełka”.",
+        "Wysyłanie dużych payloadów (limit ~1 MB) zamiast claim-check."
+      ],
+      "say": "Kafka to rozproszony, replikowany log: producenci dopisują rekordy do partycji, konsumenci sami śledzą offsety, więc wiele grup może czytać i odtwarzać te same dane. Od wersji 4.0 metadane klastra trzyma wyłącznie KRaft, bez ZooKeepera."
+    },
+    {
+      "topic": "Kafka: partycje i kolejność",
+      "points": [
+        "Kolejność jest gwarantowana **tylko w obrębie partycji**; partycja = `hash(key) mod N`.",
+        "Klucz = encja, której zdarzenia muszą być uporządkowane (OrderId, CustomerId); bez klucza – równy rozkład.",
+        "Liczba partycji = maks. równoległość w grupie; instancje ponad liczbę partycji stoją bezczynnie.",
+        "Partycje można **zwiększyć, nie zmniejszyć**; zwiększenie zmienia mapowanie kluczy i łamie kolejność przejściowo.",
+        "Za dużo partycji: więcej pamięci, plików, dłuższe rebalance i failover; wybieraj liczby z wieloma dzielnikami (6, 12, 24).",
+        "**librdkafka/Confluent.Kafka** domyślnie `consistent_random` (CRC32), **Java** – murmur2 → w .NET `Partitioner.Murmur2Random` przy mieszanych producentach.",
+        "Hot key (jeden tenant = 70% ruchu) nie rozwiąże się dodaniem partycji – potrzebny inny klucz lub sub-partycjonowanie."
+      ],
+      "pitfalls": [
+        "Zwiększenie partycji „na żywo” przy compacted topicu lub konsumentach wrażliwych na kolejność.",
+        "Równoległe przetwarzanie jednej partycji bez porządku per klucz."
+      ],
+      "say": "Kolejność mam tylko w partycji, więc dobieram klucz tak, by zdarzenia jednej encji trafiały do jednej partycji, a liczbę partycji planuję z zapasem, bo zmiana później przestawia mapowanie kluczy."
+    },
+    {
+      "topic": "Kafka: consumer groups i offsety",
+      "points": [
+        "W grupie każda partycja ma **jednego** konsumenta; różne grupy czytają niezależnie.",
+        "Offsety grup w compacted `__consumer_offsets`; commit = **następny** offset do przeczytania.",
+        "Confluent.Kafka domyślnie: auto commit + **auto offset store** przy Consume → ryzyko utraty; at-least-once: `EnableAutoOffsetStore=false` + `StoreOffset` po przetworzeniu.",
+        "`auto.offset.reset`: domyślnie **latest**; `earliest` przetwarza historię dla nowej grupy.",
+        "Rebalance: join/leave, brak heartbeatu (`session.timeout.ms`), przekroczenie `max.poll.interval.ms` (5 min), zmiana partycji.",
+        "Tańszy rebalance: **cooperative-sticky**, static membership (`group.instance.id`), nowy protokół KIP-848 (GA w 4.0, sprawdź wsparcie klienta).",
+        "**Lag** = log end offset − committed offset; alertuj na trend/opóźnienie w czasie (Burrow, Kafka exporter, `kafka-consumer-groups.sh`)."
+      ],
+      "pitfalls": [
+        "Fire-and-forget `Task.Run` po Consume przy auto commit – at-most-once i brak kolejności.",
+        "Długi handler bez timeoutów → wypadanie z grupy i pętla rebalance.",
+        "Store offsetu „ostatniej skończonej” przy równoległości – przeskoczenie nieprzetworzonej wiadomości."
+      ],
+      "code": "var config = new ConsumerConfig\n{\n    GroupId = \"billing\",\n    AutoOffsetReset = AutoOffsetReset.Earliest,\n    EnableAutoOffsetStore = false,\n    PartitionAssignmentStrategy = PartitionAssignmentStrategy.CooperativeSticky\n};\n// po przetworzeniu: consumer.StoreOffset(cr);",
+      "lang": "csharp",
+      "say": "Offset zapisuję dopiero po przetworzeniu, co daje at-least-once, a handler robię idempotentny. Monitoruję lag per partycja i ograniczam rebalance przez cooperative-sticky i static membership."
+    },
+    {
+      "topic": "Kafka: gwarancje dostarczenia",
+      "points": [
+        "RF=3 typowo; lider przyjmuje zapisy, followery replikują; **ISR** = repliki nadążające za liderem.",
+        "`acks=0` nic, `acks=1` lider, `acks=all` całe ISR; bez `min.insync.replicas=2` acks=all może znaczyć „tylko lider”.",
+        "RF=3 + min.insync=2 + acks=all: przeżywa utratę 1 brokera; przy 2 awariach zapisy stają (NotEnoughReplicas).",
+        "`unclean.leader.election.enable=false` (domyślnie) – nie wybieraj lidera spoza ISR kosztem danych.",
+        "**Idempotentny producent**: producer id + numery sekwencji → brak duplikatów i zamian kolejności przy retry w jednej sesji.",
+        "W librdkafka `enable.idempotence` włącz jawnie (w Javie domyślnie od 3.0).",
+        "**Transakcje**: atomowy zapis do wielu partycji + offsety (`SendOffsetsToTransaction`); konsumenci `read_committed`.",
+        "**Exactly-once** tylko Kafka→Kafka (Kafka Streams `exactly_once_v2`); efekty zewnętrzne = at-least-once + idempotencja."
+      ],
+      "pitfalls": [
+        "„Kafka ma exactly-once delivery” – nie: exactly-once processing w obrębie Kafki.",
+        "acks=all bez min.insync.replicas.",
+        "Brak obsługi błędu w delivery report – zapis uznany za udany, choć się nie powiódł."
+      ],
+      "say": "Dla trwałości: RF 3, min.insync.replicas 2, acks=all i idempotentny producent. Exactly-once Kafki obejmuje przepływy read-process-write w Kafce; wszystko poza nią robię at-least-once z idempotentnym konsumentem."
+    },
+    {
+      "topic": "Kafka: retention i compaction",
+      "points": [
+        "`cleanup.policy=delete`: `retention.ms` (domyślnie 7 dni) i/lub `retention.bytes` per partycja.",
+        "Usuwane są całe **segmenty** – dane żyją trochę dłużej niż retencja.",
+        "`retention.ms=-1` = bez limitu czasu (np. topic zdarzeń do replay); licz dysk × RF.",
+        "`cleanup.policy=compact`: zostaje **ostatnia wartość per klucz** – topic jako tabela stanu.",
+        "**Tombstone** = klucz + null; znika po `delete.retention.ms` (domyślnie 1 dzień).",
+        "Aktywny segment nie jest kompaktowany; konsument może widzieć też starsze wartości klucza.",
+        "`compact,delete` – kompaktowanie plus usuwanie po czasie."
+      ],
+      "pitfalls": [
+        "Flaga `deleted: true` zamiast tombstone – klucz zostaje na zawsze.",
+        "Konsument wolniejszy niż delete.retention.ms przegapia tombstone.",
+        "Mylenie compaction z event sourcingiem – historia znika."
+      ],
+      "say": "Przeczytanie nie usuwa danych – decyduje retencja czasowa lub rozmiarowa. Dla stanu typu „ostatnia wartość per klucz” używam compaction, a usunięcie robię tombstonem."
+    },
+    {
+      "topic": "Kafka: schema registry",
+      "points": [
+        "Kafka trzyma bajty – kontrakt pilnuje **schema registry** (Confluent, Apicurio, Karapace).",
+        "Subject domyślnie `<topic>-value`; wiadomość ma prefiks: magic byte + **4-bajtowe ID schematu**.",
+        "Tryby: **BACKWARD** (domyślny, najpierw konsumenci), FORWARD (najpierw producenci), FULL, `_TRANSITIVE`, NONE.",
+        "Avro: dodawaj/usuwaj pola **z wartością domyślną**; pole wymagane bez defaultu łamie BACKWARD.",
+        "Protobuf: nie zmieniaj numerów pól, usunięte oznacz `reserved`.",
+        ".NET: `Confluent.SchemaRegistry.Serdes.Avro/Protobuf`; konsument `AvroDeserializer<T>(...).AsSyncOverAsync()`.",
+        "Rejestruj schematy w CI, w produkcji `AutoRegisterSchemas = false`."
+      ],
+      "pitfalls": [
+        "Zmiana typu lub nazwy pola bez aliasu/defaultu – łamie konsumentów.",
+        "Ustawienie NONE „bo blokuje deploy”."
+      ],
+      "say": "Schema registry wersjonuje kontrakty wiadomości i przy rejestracji sprawdza kompatybilność, zwykle BACKWARD, więc niekompatybilna zmiana nie przejdzie i nie zepsuje konsumentów."
+    },
+    {
+      "topic": "Kafka w .NET",
+      "points": [
+        "Klient: **Confluent.Kafka** (wrapper na librdkafka); `ProducerBuilder` / `ConsumerBuilder`.",
+        "Producent jest thread-safe i drogi → **singleton**; `Flush` przy zamknięciu.",
+        "`ProduceAsync` zwraca `DeliveryResult` (partycja + offset); dla throughput `Produce` z callbackiem.",
+        "Konsument w `BackgroundService`; `Consume` blokuje → osobny wątek (`Task.Run`), scope DI per wiadomość.",
+        "Zamykaj przez `Close()` – szybsze przejęcie partycji i commit offsetów.",
+        "Poison message: retry z limitem → topic retry/DLT → store offsetu, żeby nie blokować partycji.",
+        "**Outbox**: dane + rekord outbox w jednej transakcji; relay (polling) lub **CDC/Debezium** publikuje z kluczem = aggregate id.",
+        "Wyższy poziom: MassTransit (Kafka rider), Wolverine, KafkaFlow."
+      ],
+      "pitfalls": [
+        "Producent tworzony per request.",
+        "Kilka niekoordynowanych relayów outboxa → duplikaty i zła kolejność.",
+        "Wyjątek z handlera zatrzymuje cały host (domyślne zachowanie BackgroundService)."
+      ],
+      "code": "var config = new ProducerConfig\n{\n    BootstrapServers = \"kafka:9092\",\n    EnableIdempotence = true\n};\nusing var producer = new ProducerBuilder<string, string>(config).Build();\nvar dr = await producer.ProduceAsync(\"orders\",\n    new Message<string, string> { Key = id, Value = json });",
+      "lang": "csharp",
+      "say": "W .NET używam Confluent.Kafka: producent jako singleton z idempotencją, konsument w BackgroundService z zapisem offsetu po przetworzeniu, a zdarzenia publikuję przez outbox, żeby zapis w bazie i publikacja były spójne."
+    },
+    {
+      "topic": "Kafka vs RabbitMQ",
+      "points": [
+        "**Kafka**: strumienie zdarzeń, duży throughput, wielu konsumentów, replay, retencja, CDC, stream processing.",
+        "**RabbitMQ**: kolejki zadań i komendy, routing (exchanges), ack per wiadomość, DLX, priorytety, opóźnienia.",
+        "**Service Bus**: zarządzany w Azure, sesje (FIFO per klucz), scheduled messages, DLQ, duplicate detection, transakcje.",
+        "Kafka: head-of-line blocking w partycji i skalowanie do liczby partycji – słabe dla nierównych zadań.",
+        "Share groups (KIP-932, „Queues for Kafka”) w linii 4.x – sprawdź status w wersji i kliencie.",
+        "Azure: Event Hubs = streaming z endpointem zgodnym z Kafką.",
+        "Własna Kafka to duży koszt operacyjny – rozważ usługę zarządzaną (Confluent Cloud, MSK, Event Hubs)."
+      ],
+      "pitfalls": [
+        "Kafka „bo modna” dla kilkuset komend na minutę.",
+        "RabbitMQ jako magazyn historii zdarzeń do replay."
+      ],
+      "say": "Kafkę wybieram, gdy dane są strumieniem zdarzeń czytanym przez wielu konsumentów i potrzebny jest replay; RabbitMQ lub Service Bus – gdy to kolejka zadań z ack per wiadomość, retry, DLQ i routingiem."
+    }
+  ]
+}

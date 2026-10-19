@@ -1,0 +1,244 @@
+{
+ "cat": "dist",
+ "name": "Systemy rozproszone i messaging",
+ "cards": [
+  {
+   "id": "dist-m001",
+   "topic": "RabbitMQ",
+   "level": 2,
+   "q": "Jak zaprojektować topologię RabbitMQ dla zdarzeń domenowych? Kiedy direct, topic, fanout, a kiedy headers exchange?",
+   "a": "Fanout, gdy każdy subskrybent ma dostać wszystko (broadcast, np. invalidacja cache). Direct do routingu po dokładnym kluczu – typowo komendy do konkretnej kolejki lub podział po typie pracy. Topic, gdy klucz ma strukturę i odbiorcy subskrybują wzorce: konwencja `<domena>.<region>.<zdarzenie>` i bindingi `order.*.created` (`*` = dokładnie jedno słowo) lub `order.#` (`#` = zero lub więcej słów). Headers exchange dopasowuje po nagłówkach (`x-match: all/any`) – rzadko używany, gdy kryteria nie mieszczą się w kluczu. Każdy serwis-odbiorca ma własną kolejkę zbindowaną do exchange'a, a instancje serwisu konkurują o wiadomości z niej.",
+   "code": "await ch.ExchangeDeclareAsync(\"shop.events\", ExchangeType.Topic, durable: true);\nawait ch.QueueDeclareAsync(\"billing.order-events\", durable: true, exclusive: false,\n    autoDelete: false, arguments: new Dictionary<string, object?> { [\"x-queue-type\"] = \"quorum\" });\nawait ch.QueueBindAsync(\"billing.order-events\", \"shop.events\", routingKey: \"order.*.created\");\nawait ch.QueueBindAsync(\"billing.order-events\", \"shop.events\", routingKey: \"order.*.cancelled\");",
+   "lang": "csharp",
+   "tip": "Wiadomość bez pasującego bindingu jest po cichu porzucana – zabezpieczeniem jest alternate exchange albo flaga `mandatory` (broker zwraca wiadomość producentowi)."
+  },
+  {
+   "id": "dist-m002",
+   "topic": "RabbitMQ",
+   "level": 3,
+   "q": "Publisher confirms, persistent messages i połączenia – jak producent upewnia się, że RabbitMQ nie zgubił wiadomości?",
+   "a": "Trzy warunki naraz: kolejka trwała (durable, najlepiej quorum), wiadomość persistent oraz publisher confirms – broker potwierdza (ack) przyjęcie wiadomości dopiero, gdy przejęła za nią odpowiedzialność (dla quorum queue po zapisie na większości węzłów), a przy problemie wysyła nack. Bez confirms `BasicPublish` to fire-and-forget: restart brokera czy zerwane połączenie gubi wiadomości po cichu. Do tego `mandatory`, żeby wykryć wiadomości bez routingu, i jedno długożyjące połączenie na aplikację z kanałami per wątek/konsument.",
+   "code": "await using var ch = await connection.CreateChannelAsync(new CreateChannelOptions(\n    publisherConfirmationsEnabled: true, publisherConfirmationTrackingEnabled: true));\nvar props = new BasicProperties { Persistent = true, MessageId = evt.Id.ToString() };\n// w kliencie 7.x await czeka na potwierdzenie; nack/return kończy się wyjątkiem\nawait ch.BasicPublishAsync(\"shop.events\", \"order.eu.created\", mandatory: true,\n    basicProperties: props, body: JsonSerializer.SerializeToUtf8Bytes(evt));",
+   "lang": "csharp",
+   "deep": "Confirm per wiadomość ogranicza throughput do jednego round-tripu na publikację, więc przy dużym wolumenie publikuje się asynchronicznie wiele wiadomości i czeka na ich potwierdzenia paczkami (okno in-flight) – w kliencie 7.x wystarczy uruchomić wiele `BasicPublishAsync` i `Task.WhenAll`, z limitem równoległości. Confirm nie oznacza dostarczenia do konsumenta – tylko to, że broker przyjął wiadomość; end-to-end zapewnia dopiero ack konsumenta. Po nack lub timeoucie producent ponawia, więc możliwe są duplikaty – stąd stabilny `MessageId` i idempotentni konsumenci (at-least-once). Nawet z confirms zapis w bazie i publikacja nie są atomowe – na to jest transactional outbox. Połączenie TCP jest drogie: jedno (lub dwa: osobno publish i consume, bo flow control blokuje publishera) na proces; kanały są lekkie, ale nie należy współdzielić jednego kanału do równoległego publikowania. Gdy broker wchodzi w memory/disk alarm, blokuje publisherów – monitoruj `connection.blocked`."
+  },
+  {
+   "id": "dist-m003",
+   "topic": "RabbitMQ",
+   "level": 2,
+   "q": "Ack, nack, reject i requeue w RabbitMQ – jak działają w szczegółach i jak dobrać prefetch?",
+   "a": "Ack usuwa wiadomość z kolejki. Reject (pojedyncza) i nack (rozszerzenie RabbitMQ, może objąć wiele wiadomości flagą `multiple`) z `requeue: true` odkładają ją z powrotem do kolejki, a z `requeue: false` – porzucają lub dead-letterują do DLX. Ponownie dostarczona wiadomość ma flagę `Redelivered`. Prefetch to limit niepotwierdzonych wiadomości na konsumenta: 1 daje równy podział przy długich zadaniach, ale niską przepustowość; dziesiątki–setki zwiększają throughput przy szybkim przetwarzaniu. Każda ścieżka handlera musi kończyć się ack albo nack – inaczej konsument utknie po osiągnięciu limitu.",
+   "code": "consumer.ReceivedAsync += async (_, ea) =>\n{\n    try\n    {\n        await HandleAsync(ea.Body, ea.Redelivered);\n        await ch.BasicAckAsync(ea.DeliveryTag, multiple: false);\n    }\n    catch (ValidationException)           // błąd trwały -> DLX\n    { await ch.BasicRejectAsync(ea.DeliveryTag, requeue: false); }\n    catch (Exception)                     // przejściowy -> retry kolejką z TTL lub limit\n    { await ch.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false); }\n};",
+   "lang": "csharp",
+   "tip": "`requeue: true` przy każdym błędzie to klasyczny poison message loop – wiadomość wraca natychmiast i blokuje konsumentów.",
+   "deep": "Prefetch dobiera się z prawa Little'a: żeby konsument się nie nudził, liczba wiadomości w drodze powinna pokrywać round-trip sieci razy tempo przetwarzania; za duży prefetch przy wielu instancjach daje nierówny podział (jedna instancja „zabiera” setki wiadomości) i większe zużycie pamięci, a po crashu wszystkie wracają z `Redelivered`. Przy przetwarzaniu równoległym w jednym konsumencie (`ConsumerDispatchConcurrency` w kliencie 7.x) prefetch musi być co najmniej równy współbieżności. Wiadomości niepotwierdzone wracają do kolejki przy zamknięciu kanału/połączenia; RabbitMQ ma też consumer delivery timeout (domyślnie 30 min), po którym zamyka kanał konsumenta, który nie potwierdził wiadomości. Requeue wkłada wiadomość z powrotem możliwie na jej pierwotną pozycję, więc kolejność między ponowieniami a nowymi wiadomościami nie jest zachowana. W quorum queues licznik dostarczeń i `x-delivery-limit` przerywają pętlę requeue."
+  },
+  {
+   "id": "dist-m004",
+   "topic": "RabbitMQ",
+   "level": 3,
+   "q": "Jak zrobić retry z opóźnieniem (exponential backoff) w RabbitMQ bez pluginów?",
+   "a": "Wzorzec z kolejkami oczekującymi: główna kolejka ma DLX wskazujący na exchange retry; przy błędzie przejściowym konsument odrzuca wiadomość (`requeue: false`) lub publikuje ją do retry. Kolejka `orders.retry.30s` ma `x-message-ttl` i własny `x-dead-letter-exchange` wskazujący z powrotem na główny exchange – po wygaśnięciu TTL wiadomość wraca do przetwarzania. Licznik prób czytam z nagłówka `x-death` (lub własnego), a po przekroczeniu limitu wysyłam wiadomość do kolejki parking lot/DLQ do analizy. Kilka kolejek z różnym TTL (10 s, 1 min, 10 min) daje backoff.",
+   "code": "// kolejka oczekująca: po 30 s wiadomość wraca do głównego exchange'a\nawait ch.QueueDeclareAsync(\"orders.retry.30s\", durable: true, exclusive: false, autoDelete: false,\n    arguments: new Dictionary<string, object?>\n    {\n        [\"x-message-ttl\"] = 30_000,\n        [\"x-dead-letter-exchange\"] = \"orders\",\n        [\"x-dead-letter-routing-key\"] = \"orders\"\n    });\n// konsument: liczba prób z nagłówka x-death; po N -> publish do \"orders.parking-lot\"",
+   "lang": "csharp",
+   "deep": "TTL ustawiam per kolejka, nie per wiadomość: wiadomości z indywidualnym TTL wygasają tylko z czoła kolejki, więc wiadomość z TTL 10 min zablokuje te z TTL 10 s za nią. Stąd osobna kolejka na każdy poziom opóźnienia. Plugin `rabbitmq_delayed_message_exchange` upraszcza sprawę, ale ma ograniczenia (opóźnione wiadomości trzymane na jednym węźle, słabe przy milionach wiadomości), więc w krytycznych systemach wiele zespołów zostaje przy TTL+DLX albo deleguje retry do biblioteki (MassTransit delayed redelivery, NServiceBus recoverability). Kolejność przetwarzania zostaje złamana – wiadomość po retry wyprzedzają nowsze – więc konsument nie może zakładać porządku. Retry ma sens tylko dla błędów przejściowych (timeout, deadlock, 503); błędy walidacji idą od razu do DLQ. Parking lot wymaga procedury: alert, analiza, ręczny lub automatyczny replay po naprawie. Retry w pamięci (Polly) przy kilku szybkich próbach + opóźniony retry przez broker przy dłuższych przerwach to typowe połączenie."
+  },
+  {
+   "id": "dist-m005",
+   "topic": "MassTransit",
+   "level": 1,
+   "q": "Jak wygląda konsument w MassTransit i czym różni się Publish od Send?",
+   "a": "Konsument to klasa implementująca `IConsumer<T>` z metodą `Consume`, rejestrowana w DI; MassTransit sam tworzy kolejki, exchange'e i bindingi (`ConfigureEndpoints`). `Publish` wysyła zdarzenie do wszystkich zainteresowanych – na RabbitMQ trafia na exchange nazwany od typu wiadomości, do którego podpięte są kolejki subskrybentów. `Send` wysyła komendę do konkretnego endpointu (kolejki), który jest jej właścicielem. Kontrakty to zwykle rekordy lub interfejsy we wspólnym pakiecie – nazwa typu i namespace wyznaczają adres wiadomości.",
+   "code": "builder.Services.AddMassTransit(x =>\n{\n    x.SetKebabCaseEndpointNameFormatter();\n    x.AddConsumer<OrderSubmittedConsumer>();\n    x.UsingRabbitMq((ctx, cfg) => { cfg.Host(\"rabbitmq\"); cfg.ConfigureEndpoints(ctx); });\n});\n\npublic record OrderSubmitted(Guid OrderId, decimal Total);\n\npublic class OrderSubmittedConsumer : IConsumer<OrderSubmitted>\n{\n    public async Task Consume(ConsumeContext<OrderSubmitted> ctx)\n    {\n        var ep = await ctx.GetSendEndpoint(new Uri(\"queue:create-invoice\"));\n        await ep.Send(new CreateInvoice(ctx.Message.OrderId));      // komenda\n    }\n}",
+   "lang": "csharp",
+   "tip": "Zmiana namespace'u lub nazwy kontraktu zmienia nazwę exchange'a – dotychczasowi subskrybenci przestają dostawać wiadomości. Kontrakty traktuj jak publiczne API."
+  },
+  {
+   "id": "dist-m006",
+   "topic": "MassTransit",
+   "level": 2,
+   "q": "Retry vs redelivery w MassTransit – czym się różnią i co się dzieje, gdy wszystkie próby zawiodą?",
+   "a": "`UseMessageRetry` to ponawianie w pamięci: wiadomość nie wraca do brokera, konsument powtarza wywołanie od razu lub z krótkimi przerwami – dobre na chwilowe błędy (deadlock, timeout). `UseDelayedRedelivery` (second-level retry) oddaje wiadomość do brokera z opóźnieniem w minutach, zwalniając konsumenta. Konfiguruje się je razem: redelivery na zewnątrz, retry w środku. Gdy wszystko zawiedzie, wiadomość trafia do kolejki `<endpoint>_error` z nagłówkami wyjątku, a MassTransit publikuje `Fault<T>`.",
+   "code": "x.AddConfigureEndpointsCallback((ctx, name, cfg) =>\n{\n    cfg.UseDelayedRedelivery(r => r.Intervals(\n        TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15)));\n    cfg.UseMessageRetry(r =>\n    {\n        r.Incremental(3, TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(500));\n        r.Ignore<ValidationException>();          // błąd trwały - bez ponowień\n    });\n});",
+   "lang": "csharp",
+   "tip": "Kolejność ma znaczenie: przy każdym redelivery wykonuje się pełna seria retry w pamięci.",
+   "deep": "Długie interwały w `UseMessageRetry` (minuty) to błąd: wiadomość blokuje slot współbieżności i prefetch, a na Azure Service Bus może wygasnąć lock – stąd podział na krótki retry i redelivery. Delayed redelivery na RabbitMQ wymaga mechanizmu opóźnień (plugin delayed exchange lub scheduler wiadomości), na Service Bus korzysta z natywnego scheduled delivery. Wyjątki trwałe (walidacja, brak encji) ignoruj albo filtruj `Handle<T>`, żeby nie marnować prób i od razu trafić do `_error`. Kolejka `_error` wymaga monitoringu i procedury: po naprawie błędu wiadomości przenosi się z powrotem (np. shovel w RabbitMQ lub narzędzia MassTransit), a `Fault<T>` może zasilić kompensację lub powiadomienie. Każda próba to ponowne wykonanie konsumenta, więc efekty uboczne (wysłany mail, wywołane API) muszą być idempotentne albo zabezpieczone outboxem. Wiadomości bez konsumenta trafiają do `_skipped` – to częsty objaw zmiany nazwy kontraktu."
+  },
+  {
+   "id": "dist-m007",
+   "topic": "MassTransit",
+   "level": 3,
+   "q": "Jak działa transactional outbox w MassTransit z EF Core i jaki problem rozwiązuje?",
+   "a": "Problem dual write: zapis do bazy i publikacja do brokera to dwie osobne operacje – jeśli broker padnie po commicie, zdarzenie ginie; jeśli publikujemy przed commitem, zdarzenie może opisywać coś, czego nie ma. Bus outbox w MassTransit przechwytuje `Publish`/`Send` wykonane w zakresie requestu i zapisuje wiadomości do tabeli outbox w tym samym `SaveChanges` co dane biznesowe; osobny serwis dostarczania wysyła je potem do brokera. Po stronie konsumenta outbox (z inboxem) deduplikuje wiadomości po MessageId i wysyła wiadomości wychodzące dopiero po commicie przetwarzania.",
+   "code": "builder.Services.AddMassTransit(x =>\n{\n    x.AddEntityFrameworkOutbox<ShopDb>(o =>\n    {\n        o.UseSqlServer();\n        o.UseBusOutbox();             // Publish w kontrolerze -> tabela OutboxMessage\n    });\n    x.UsingRabbitMq((ctx, cfg) => cfg.ConfigureEndpoints(ctx));\n});\n// ShopDb.OnModelCreating:\n//   modelBuilder.AddInboxStateEntity(); AddOutboxMessageEntity(); AddOutboxStateEntity();\n// kontroler: db.Orders.Add(o); await publish.Publish(new OrderSubmitted(o.Id)); await db.SaveChangesAsync();",
+   "lang": "csharp",
+   "deep": "Outbox daje at-least-once publikacji, nie exactly-once: serwis dostarczania może wysłać wiadomość i paść przed oznaczeniem jej jako wysłanej, więc konsumenci nadal muszą być idempotentni (inbox w MassTransit to załatwia per endpoint). Kolejność z `Publish` przed `SaveChangesAsync` jest celowa – w bus outboxie publikacja tylko dodaje encję do kontekstu, nic nie idzie na broker. Koszt: dodatkowe tabele, zapis przy każdej transakcji i opóźnienie dostarczenia (polling bazy), czyli zdarzenia są wysyłane z małym lagiem. Trzeba skonfigurować sprzątanie inboxu (okno deduplikacji) – zbyt krótkie przepuści duplikaty, zbyt długie rozdmucha tabelę. Alternatywy: CDC (Debezium) na tabeli outbox albo własny outbox z background workerem; w EF Core trzeba uważać na strategię retry i jawne transakcje. Bez biblioteki to ten sam wzorzec, ale całą obsługę błędów, kolejności i sprzątania piszesz sam."
+  },
+  {
+   "id": "dist-m008",
+   "topic": "MassTransit",
+   "level": 2,
+   "q": "Czym jest saga state machine w MassTransit i kiedy jej użyć?",
+   "a": "To orkiestrator długotrwałego procesu biznesowego zapisany jako maszyna stanów: stan sagi (instancja per CorrelationId, np. per zamówienie) jest trwale zapisany w repozytorium (EF Core, Redis, MongoDB), a zdarzenia przesuwają ją między stanami i wyzwalają kolejne komendy. Definiuję stany, zdarzenia z korelacją oraz reakcje: `Initially(When(...))`, `During(stan, When(...))`, `TransitionTo`, `Publish/Send`, `Finalize`. Używam jej, gdy proces obejmuje kilka serwisów, trwa dłużej niż jedno żądanie i wymaga timeoutów lub kompensacji.",
+   "code": "public class OrderStateMachine : MassTransitStateMachine<OrderState>\n{\n    public State AwaitingPayment { get; private set; } = null!;\n    public Event<OrderSubmitted> Submitted { get; private set; } = null!;\n    public Event<PaymentCompleted> Paid { get; private set; } = null!;\n\n    public OrderStateMachine()\n    {\n        InstanceState(x => x.CurrentState);\n        Event(() => Submitted, e => e.CorrelateById(m => m.Message.OrderId));\n        Event(() => Paid, e => e.CorrelateById(m => m.Message.OrderId));\n        Initially(When(Submitted).TransitionTo(AwaitingPayment));\n        During(AwaitingPayment, When(Paid).Publish(c => new ShipOrder(c.Saga.CorrelationId)).Finalize());\n    }\n}",
+   "lang": "csharp",
+   "tip": "Saga to nie transakcja rozproszona – zamiast rollbacku wykonuje kroki kompensujące (np. zwrot płatności, zwolnienie rezerwacji).",
+   "deep": "Współbieżne zdarzenia dla tej samej instancji sagi to realny problem – repozytorium musi mieć optimistic concurrency (wersja/rowversion) albo pessimistic locking, a konflikt kończy się retry wiadomości. Timeouty (np. brak płatności w 30 min) realizuje się przez `Schedule` z message schedulerem. Zdarzenia mogą przyjść w nieoczekiwanej kolejności lub w nieobsługiwanym stanie – trzeba to obsłużyć jawnie (`Ignore`, osobne stany), inaczej MassTransit zgłosi błąd i wiadomość trafi do `_error`. Logika domenowa nie powinna żyć w sadze – saga koordynuje, a decyzje biznesowe podejmują serwisy. Do kodowania i debugowania pomaga test harness MassTransit i wizualizacja grafu stanów. Alternatywa: choreografia (serwisy reagują na zdarzenia bez centralnego koordynatora) – prostsza przy 2–3 krokach, ale trudniejsza do śledzenia przy większych procesach. Licencjonowanie: od wersji 9 MassTransit przechodzi na model komercyjny, a v8 pozostaje open source – przy nowym projekcie warto sprawdzić aktualne warunki i alternatywy (Wolverine, NServiceBus, Rebus)."
+  },
+  {
+   "id": "dist-m009",
+   "topic": "MongoDB",
+   "level": 1,
+   "q": "Czym jest MongoDB, jak modeluje się w nim dane i kiedy wybrać go zamiast bazy SQL?",
+   "a": "MongoDB to dokumentowa baza NoSQL: dane to dokumenty BSON (JSON z typami) w kolekcjach, bez sztywnego schematu, z `_id` jako kluczem. Modeluje się pod sposób odczytu: dane czytane razem osadzam w jednym dokumencie (embedding, np. zamówienie z pozycjami), a duże lub współdzielone powiązania trzymam w osobnych kolekcjach z referencją. Wybieram MongoDB, gdy agregaty czyta się i zapisuje w całości, schemat jest zmienny (katalog produktów z różnymi atrybutami, treści, eventy) i potrzebna jest skala zapisu przez sharding. SQL zostaje lepszy przy wielu relacjach, raportach ad hoc, złożonych joinach i transakcjach obejmujących wiele encji.",
+   "code": "{\n  \"_id\": \"ord-1042\",\n  \"customerId\": \"c-17\",\n  \"status\": \"Paid\",\n  \"items\": [\n    { \"sku\": \"BOOT-42\", \"qty\": 1, \"price\": 349.0 },\n    { \"sku\": \"SOCK-3P\", \"qty\": 2, \"price\": 29.9 }\n  ],\n  \"shipping\": { \"city\": \"Kraków\", \"zip\": \"30-001\" }\n}",
+   "lang": "json",
+   "tip": "Dokument ma limit 16 MB – nieograniczenie rosnąca tablica (np. wszystkie komentarze produktu) to sygnał, że trzeba ją wydzielić do osobnej kolekcji."
+  },
+  {
+   "id": "dist-m010",
+   "topic": "MongoDB",
+   "level": 2,
+   "q": "Indeksy w MongoDB i praca z driverem .NET – co trzeba wiedzieć?",
+   "a": "Bez indeksu zapytanie robi COLLSCAN (skan całej kolekcji); `explain()` pokazuje, czy użyto IXSCAN. Indeksy: pojedyncze, złożone (kolejność pól wg reguły ESR: najpierw pola równości, potem sortowania, na końcu zakresu), multikey dla tablic, unique, TTL (automatyczne usuwanie starych dokumentów) i tekstowe. W .NET `MongoClient` rejestruję jako singleton, pracuję na typowanym `IMongoCollection<T>` z buildrami filtrów lub LINQ, a indeksy tworzę przy starcie lub migracją.",
+   "code": "var orders = client.GetDatabase(\"shop\").GetCollection<Order>(\"orders\");\nawait orders.Indexes.CreateOneAsync(new CreateIndexModel<Order>(\n    Builders<Order>.IndexKeys.Ascending(o => o.CustomerId)    // E: równość\n                             .Descending(o => o.CreatedAt)));  // S: sortowanie\n\nvar recent = await orders\n    .Find(o => o.CustomerId == customerId && o.Status == OrderStatus.Paid)\n    .SortByDescending(o => o.CreatedAt).Limit(20).ToListAsync();",
+   "lang": "csharp",
+   "deep": "Każdy indeks przyspiesza odczyt kosztem zapisu i pamięci – working set (dane + indeksy używane na co dzień) powinien mieścić się w RAM, inaczej wydajność spada skokowo. Indeks złożony obsługuje zapytania po prefiksie pól, więc `{customerId, createdAt}` pomoże przy filtrze po samym `customerId`, ale nie po samym `createdAt`. Agregacje (`$match`, `$group`, `$lookup`, `$unwind`) działają jak pipeline – `$match` na początku, żeby użyć indeksu; `$lookup` to join, ale jego częste użycie sugeruje, że model powinien być inny albo potrzebny jest SQL. Transakcje wielodokumentowe istnieją (replica set), ale są droższe niż w SQL – projektuje się tak, by atomowość zapewniał jeden dokument. Domyślny write concern `majority` i read concern wpływają na trwałość i spójność odczytów z replik. Sharding wymaga dobrego shard key (wysoka kardynalność, równy rozkład, użycie w zapytaniach) – ta sama logika co partition key w Cosmos DB. Istnieje też provider EF Core dla MongoDB, ale nie wspiera wszystkiego, co oferuje natywny driver."
+  },
+  {
+   "id": "dist-m011",
+   "topic": "Cosmos DB",
+   "level": 2,
+   "q": "Azure Cosmos DB: czym jest partition key i Request Unit, i jak je dobrać?",
+   "a": "Cosmos DB to globalnie rozproszona baza NoSQL (API NoSQL jako główne, poza nim m.in. MongoDB, Cassandra, Gremlin). Dane w kontenerze dzielone są na partycje logiczne według partition key – to najważniejsza decyzja projektowa i nie da się jej zmienić bez migracji danych. Dobry klucz ma wysoką kardynalność, równo rozkłada ruch i występuje w większości zapytań (np. `/customerId`, `/tenantId`). Koszt i przepustowość liczy się w RU (Request Units): odczyt punktowy 1 KB po `id` + partition key to ok. 1 RU, zapytania i zapisy kosztują więcej; przepustowość jest provisioned (manual lub autoscale) albo serverless.",
+   "code": "var container = cosmos.GetContainer(\"shop\", \"orders\");      // CosmosClient = singleton\nvar resp = await container.ReadItemAsync<Order>(\n    id: \"ord-1042\", partitionKey: new PartitionKey(\"c-17\"));  // point read ~1 RU\nConsole.WriteLine(resp.RequestCharge);\n\nvar q = container.GetItemQueryIterator<Order>(\n    new QueryDefinition(\"SELECT * FROM c WHERE c.customerId = @c AND c.status = 'Paid'\")\n        .WithParameter(\"@c\", \"c-17\"),\n    requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(\"c-17\") });",
+   "lang": "csharp",
+   "deep": "Partycja logiczna ma limit 20 GB i ograniczoną przepustowość (fizyczna partycja do ok. 10 000 RU/s), więc klucz o niskiej kardynalności (status, kraj, data) tworzy hot partitions i ściany skalowania; przy dużych tenantach pomagają hierarchical partition keys (np. tenant → user). Zapytanie bez partition key to fan-out po wszystkich partycjach – kosztuje RU proporcjonalnie do ich liczby. Przekroczenie RU/s daje 429 z `retry-after`; SDK ponawia automatycznie, ale stałe 429 oznacza za mało RU albo zły klucz. Spójność ma pięć poziomów: Strong, Bounded Staleness, Session (domyślny – read-your-writes w sesji), Consistent Prefix, Eventual – silniejsza kosztuje więcej RU i latencji. Indeksowanie jest domyślnie wszystkich pól – wyłączenie zbędnych ścieżek w indexing policy obniża koszt zapisu. Change feed pozwala reagować na zmiany (projekcje, outbox, sync do wyszukiwarki). Dla .NET istnieje też provider EF Core dla Cosmos, ale do wydajnego użycia trzeba rozumieć RU i partycje tak samo."
+  },
+  {
+   "id": "dist-m012",
+   "topic": "Elasticsearch",
+   "level": 2,
+   "q": "Czym jest Elasticsearch i kiedy używać go obok bazy SQL?",
+   "a": "Elasticsearch to rozproszona wyszukiwarka oparta na Lucene, z indeksem odwróconym: dla każdego termu (słowa po analizie) trzyma listę dokumentów, w których występuje, więc wyszukiwanie pełnotekstowe nie skanuje wierszy. Analizatory tokenizują tekst, normalizują wielkość liter, robią stemming i synonimy; wyniki są sortowane po trafności (BM25), są też fuzzy matching, autocomplete, agregacje (facety) i analiza logów (stos ELK). Używam go obok SQL jako projekcji do wyszukiwania: SQL jest źródłem prawdy, a indeks w Elasticu aktualizuję zdarzeniami, outboxem lub CDC. `LIKE '%buty%'` w SQL nie użyje indeksu B-tree i nie da trafności ani tolerancji literówek.",
+   "code": "POST /products/_search\n{\n  \"query\": {\n    \"bool\": {\n      \"must\":   { \"match\": { \"name\": { \"query\": \"czerwone buty\", \"fuzziness\": \"AUTO\" } } },\n      \"filter\": [ { \"term\": { \"category\": \"obuwie\" } }, { \"range\": { \"price\": { \"lte\": 400 } } } ]\n    }\n  },\n  \"aggs\": { \"brands\": { \"terms\": { \"field\": \"brand\" } } }\n}",
+   "lang": "json",
+   "tip": "Pole `text` jest analizowane (do wyszukiwania pełnotekstowego), `keyword` – nie (do filtrów, sortowania, agregacji). Złe mapowanie to najczęstsza przyczyna dziwnych wyników.",
+   "deep": "Elasticsearch jest near-real-time: dokument staje się widoczny po refreshu (domyślnie ok. 1 s), więc „zapisz i od razu wyszukaj” wymaga świadomego podejścia. Nie traktuję go jako głównej bazy: brak transakcji między dokumentami, a zmiana mappingu pola wymaga reindeksacji – robi się ją do nowego indeksu i przełącza alias bez przestoju. Synchronizacja z SQL to eventual consistency; potrzebny jest mechanizm pełnego przebudowania indeksu z bazy, bo zdarzenia czasem giną. Głęboka paginacja (`from` + `size` w dziesiątkach tysięcy) jest kosztowna – stosuje się `search_after`. Liczba shardów jest ustalana przy tworzeniu indeksu; zbyt wiele małych shardów marnuje zasoby klastra. Klient .NET to `Elastic.Clients.Elasticsearch` (NEST jest przestarzały); AWS oferuje fork OpenSearch. Dla prostego wyszukiwania w małej skali czasem wystarczy Full-Text Search w SQL Server lub PostgreSQL (tsvector) – bez utrzymywania dodatkowego klastra."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "dist-mq001",
+   "topic": "RabbitMQ",
+   "level": 1,
+   "q": "Kolejka jest zbindowana do topic exchange kluczem `order.*.created`. Która routing key trafi do tej kolejki?",
+   "options": [
+    "`order.created`",
+    "`order.eu.pl.created`",
+    "`order.eu.created`",
+    "`order.eu.created.v2`"
+   ],
+   "correct": 2,
+   "why": "`*` zastępuje dokładnie jedno słowo między kropkami, więc pasuje tylko `order.eu.created`. `order.created` ma o jedno słowo za mało, `order.eu.pl.created` o jedno za dużo, a `order.eu.created.v2` ma dodatkowe słowo na końcu. Dla zera lub wielu słów służy `#`."
+  },
+  {
+   "id": "dist-mq002",
+   "topic": "RabbitMQ",
+   "level": 2,
+   "q": "Producent publikuje zamówienia `BasicPublishAsync` do trwałej (durable) kolejki, bez dodatkowych opcji. Po restarcie brokera brakuje części zamówień, choć producent nie zgłosił błędów. Jaka jest najbardziej prawdopodobna przyczyna?",
+   "options": [
+    "Wiadomości nie były persistent, a producent nie używał publisher confirms, więc nie wiedział, czy broker je przyjął i zapisał",
+    "Za niski prefetch u konsumenta",
+    "Exchange typu topic nie wspiera trwałych kolejek",
+    "Konsument używał `autoAck: false`"
+   ],
+   "correct": 0,
+   "why": "Durable kolejka przetrwa restart, ale nie-persistent wiadomości w niej – nie; bez confirms publikacja to fire-and-forget. Prefetch i tryb ack konsumenta nie wpływają na zapis wiadomości oczekujących w kolejce, a typ exchange'a nie ma związku z trwałością kolejek."
+  },
+  {
+   "id": "dist-mq003",
+   "topic": "RabbitMQ",
+   "level": 2,
+   "q": "Konsument ma prefetch 50. Gdy wiadomość nie przechodzi walidacji, handler loguje błąd i robi `return` bez ack/nack. Po kilku godzinach konsument przestaje dostawać wiadomości, kolejka rośnie, a w panelu „Unacked” = 50. Co się dzieje?",
+   "options": [
+    "Kolejka osiągnęła `x-max-length` i odrzuca nowe wiadomości",
+    "Prefetch 50 oznacza limit 50 wiadomości na minutę",
+    "Exchange przestał routować, bo konsument jest wolny",
+    "Niepotwierdzone wiadomości wyczerpały limit prefetch – broker nie wyśle kolejnych, dopóki handler nie zrobi ack/nack/reject na każdej ścieżce"
+   ],
+   "correct": 3,
+   "why": "Prefetch to limit niepotwierdzonych wiadomości na konsumenta; każda wiadomość bez ack zajmuje miejsce do zamknięcia kanału. Błąd walidacji powinien kończyć się `BasicRejectAsync(requeue: false)` (do DLX). Prefetch nie jest limitem czasowym, a routing nie zależy od tempa konsumenta."
+  },
+  {
+   "id": "dist-mq004",
+   "topic": "RabbitMQ",
+   "level": 3,
+   "q": "Kolejka `orders` dead-letteruje do `orders.retry` (TTL 30 s, DLX z powrotem na `orders`). Po wdrożeniu wiadomość z błędnymi danymi krąży bez końca co 30 sekund. Czego brakuje?",
+   "options": [
+    "Dłuższego TTL kolejki retry, np. 10 minut",
+    "Limitu prób – liczby ponowień z nagłówka `x-death` (lub `x-delivery-limit` w quorum queue) i przeniesienia wiadomości do parking lot/DLQ po jego przekroczeniu",
+    "Zmiany nack na `requeue: true`",
+    "Ustawienia prefetch = 1"
+   ],
+   "correct": 1,
+   "why": "TTL+DLX daje opóźnienie, ale nie limit – bez licznika prób poison message krąży w nieskończoność. Dłuższy TTL tylko spowalnia pętlę, `requeue: true` robi ją natychmiastową, a prefetch nie ma związku z ponowieniami."
+  },
+  {
+   "id": "dist-mq005",
+   "topic": "MassTransit",
+   "level": 2,
+   "q": "Zespół skonfigurował w MassTransit `UseMessageRetry(r => r.Interval(5, TimeSpan.FromMinutes(10)))`, żeby przeczekać awarię zewnętrznego API. Jaki jest problem?",
+   "options": [
+    "Retry w pamięci trzyma wiadomość i slot konsumenta nawet przez 50 minut (na Service Bus może też wygasnąć lock) – długie opóźnienia należy robić przez `UseDelayedRedelivery`",
+    "`UseMessageRetry` działa tylko na Azure Service Bus",
+    "Retry w MassTransit nie może mieć więcej niż 3 prób",
+    "Po wyczerpaniu prób wiadomość zostanie usunięta bez śladu"
+   ],
+   "correct": 0,
+   "why": "Retry w pamięci jest do krótkich, szybkich ponowień; opóźnienia w minutach oddaje się brokerowi przez delayed redelivery. Działa na każdym transporcie, liczba prób jest konfigurowalna, a po wyczerpaniu prób wiadomość trafia do kolejki `_error` z `Fault<T>`."
+  },
+  {
+   "id": "dist-mq006",
+   "topic": "MassTransit",
+   "level": 3,
+   "q": "Kontroler robi `await db.SaveChangesAsync()` dla nowego zamówienia, a potem `await publishEndpoint.Publish(new OrderSubmitted(...))`. Przy chwilowej awarii brokera zamówienie jest zapisane, ale zdarzenie przepada. Co jest właściwym rozwiązaniem?",
+   "options": [
+    "Zamienić kolejność: najpierw Publish, potem SaveChanges (bez innych zmian)",
+    "Objąć obie operacje `TransactionScope`",
+    "Dodać `UseMessageRetry` na konsumencie `OrderSubmitted`",
+    "Włączyć transactional outbox (`AddEntityFrameworkOutbox` + `UseBusOutbox`), żeby wiadomość zapisała się w tym samym SaveChanges i była dostarczona później"
+   ],
+   "correct": 3,
+   "why": "Outbox zapisuje wiadomość atomowo z danymi, a serwis dostarczania wysyła ją po powrocie brokera. Odwrócenie kolejności daje zdarzenie o niezapisanym zamówieniu, broker nie uczestniczy w transakcji `TransactionScope`, a retry konsumenta nie pomoże, bo wiadomość w ogóle nie została wysłana."
+  },
+  {
+   "id": "dist-mq007",
+   "topic": "Cosmos DB",
+   "level": 2,
+   "q": "Kontener `orders` w Cosmos DB ma partition key `/status` (wartości: New, Paid, Shipped). Co jest największym problemem?",
+   "options": [
+    "Partition key musi być typu liczbowego",
+    "Niska kardynalność: ruch i dane trafiają do 3 partycji logicznych (hot partitions, limit 20 GB na partycję), a status się zmienia, a partition key jest niezmienny – lepszy np. `/customerId`",
+    "Cosmos DB nie pozwala filtrować po polu będącym partition key",
+    "Przy takim kluczu nie da się używać poziomu spójności Session"
+   ],
+   "correct": 1,
+   "why": "Dobry partition key ma wysoką kardynalność, równy rozkład i jest stabilny. Zmiana statusu wymagałaby usunięcia i ponownego wstawienia dokumentu. Klucz może być stringiem, filtrowanie po nim jest wręcz pożądane, a poziom spójności nie zależy od wyboru klucza."
+  },
+  {
+   "id": "dist-mq008",
+   "topic": "Elasticsearch",
+   "level": 2,
+   "q": "Wyszukiwarka produktów używa `WHERE Name LIKE '%buty%'` i jest wolna; biznes chce też tolerancji literówek i sortowania po trafności. Zespół proponuje przenieść produkty całkowicie do Elasticsearch i usunąć je z SQL. Co jest najlepszym podejściem?",
+   "options": [
+    "Dodać indeks B-tree na kolumnie `Name` – `LIKE` zacznie go używać",
+    "Przenieść produkty do Elasticsearch jako jedynej bazy",
+    "Zostawić SQL jako źródło prawdy, a w Elasticsearch trzymać indeks wyszukiwania synchronizowany zdarzeniami/outboxem lub CDC, akceptując opóźnienie rzędu sekund",
+    "Zastąpić wyszukiwanie zapytaniem `SOUNDEX` w SQL Server"
+   ],
+   "correct": 2,
+   "why": "Elasticsearch świetnie obsługuje full-text, fuzzy i trafność, ale nie jest transakcyjną bazą źródłową – typowo jest projekcją danych z SQL. `LIKE` z wiodącym `%` nie zrobi seeka po indeksie B-tree, a `SOUNDEX` to porównanie fonetyczne dla angielskiego, bez trafności i analizy tekstu."
+  }
+ ]
+}

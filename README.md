@@ -67,10 +67,19 @@ Synchronizacja postępu między telefonem a komputerem oraz funkcje AI działaj�
 
 ## Android (Capacitor)
 
+**Bez Android Studio, czyli GitHub buduje APK za Ciebie:**
+1. Załóż repozytorium na GitHubie i wypchnij ten folder (`git init`, `git add .`, `git commit -m "start"`, `git remote add origin …`, `git push -u origin main`).
+2. Workflow `.github/workflows/android-apk.yml` uruchomi się sam. Możesz go też włączyć ręcznie w zakładce **Actions** przyciskiem „Run workflow”.
+3. Po ok. 5–10 minutach otwórz ten przebieg w **Actions** i pobierz z sekcji *Artifacts* paczkę `nauka-rozmowa-apk`. W środku jest `app-debug.apk`.
+4. Wgraj plik na telefon i zainstaluj (zgoda na instalację z nieznanych źródeł).
+
+**Lokalnie (wymaga Android Studio albo samego Android SDK + JDK 21):**
 ```bash
-npx cap add android      # tylko za pierwszym razem, wymaga Android Studio
-npm run android
+npx cap add android      # tylko za pierwszym razem
+npm run android          # build + sync + otwiera Android Studio
 ```
+
+**Bez budowania:** otwórz aplikację z linku na telefonie i wybierz „Dodaj do ekranu głównego”.
 
 ## Dodawanie pytań
 

@@ -27,7 +27,7 @@
   <div>
     @switch (mode()) {
       @case ('mine') {
-        @for (w of mine(); track w.cat + w.topic) {
+        @for (w of mine().slice(0, mineLimit()); track w.cat + w.topic) {
           <div class="card" style="margin-bottom:12px"><app-cheat-sheet [cat]="w.cat" [topic]="w.topic" /></div>
         } @empty {
           <div class="empty">
@@ -36,6 +36,7 @@
             <button class="btn primary" (click)="session.startQuickQuiz()">Szybki test</button>
           </div>
         }
+        <app-show-more [total]="mine().length" [shown]="Math.min(mineLimit(), mine().length)" [step]="10" (more)="mineLimit.set(mineLimit() + 10)" (all)="mineLimit.set(mine().length)" />
       }
       @case ('sheets') {
         @if (sheetTotal()) {
@@ -44,8 +45,11 @@
             <div class="stack" style="gap:4px;margin-top:14px">
               <app-cat-tag [cat]="g.cat" />
               <div class="card list sheetlist" style="padding:2px 14px">
-                @for (t of g.topics; track t) {
+                @for (t of (expandedCats().has(g.cat) || ui.browseQuery() ? g.topics : g.topics.slice(0, topicsPerCat)); track t) {
                   <a class="li" [routerLink]="['/sciaga', g.cat, t]"><span style="min-width:0;font-weight:600">{{ t }}</span><span class="muted">→</span></a>
+                }
+                @if (!expandedCats().has(g.cat) && !ui.browseQuery() && g.topics.length > topicsPerCat) {
+                  <button class="li more-row" (click)="expandCat(g.cat)">Pokaż wszystkie ({{ g.topics.length }})</button>
                 }
               </div>
             </div>
@@ -58,7 +62,7 @@
         @if (cardMatches().length) {
           <p class="muted" style="font-size:.85rem;margin-bottom:6px">
             {{ cardMatches().length }} {{ cardMatches().length | plural: 'karta' : 'karty' : 'kart' }}
-            @if (cardMatches().length > maxCards) { (pokazuję {{ maxCards }}, zawęź wyszukiwanie) }
+
           </p>
           @for (g of cardGroups(); track g.cat + g.topic) {
             <div class="stack" style="gap:0;margin-top:14px">
@@ -67,7 +71,13 @@
                 <details class="item">
                   <summary><span [innerHTML]="c.q | rich"></span><span [class]="stateClass(c.id)"></span></summary>
                   <div class="body">
+@if (c.tr) {
+              <div class="row" style="gap:10px;align-items:flex-start"><p class="en" style="flex:1;min-width:0" [innerHTML]="c.a | rich"></p><app-speak [text]="c.a" /></div>
+              <p class="trans" [innerHTML]="c.tr | rich"></p>
+              @if (c.pron) { <p class="pron"><b>Wymowa:</b> {{ c.pron }}</p> }
+            } @else {
                     <p style="white-space:pre-line" [innerHTML]="c.a | rich"></p>
+                    }
                     <app-code [code]="c.code" [lang]="c.lang" />
                     @if (c.deep) { <details class="deep"><summary>Pogłębienie (senior)</summary><div class="in"><p [innerHTML]="c.deep | rich"></p></div></details> }
                     @if (c.tip) { <div class="tip"><b>Na rozmowie:</b> <span [innerHTML]="c.tip | rich"></span></div> }
@@ -80,6 +90,7 @@
               }
             </div>
           }
+          <app-show-more [total]="cardMatches().length" [shown]="Math.min(limit(), cardMatches().length)" [step]="page" (more)="limit.set(limit() + page)" (all)="limit.set(cardMatches().length)" />
         } @else {
           <div class="empty"><h3>Nic nie znaleziono</h3><p class="muted">Spróbuj krótszej frazy albo innego obszaru.</p></div>
         }

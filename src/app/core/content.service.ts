@@ -1,12 +1,12 @@
 import { Injectable, computed, signal } from '@angular/core';
-import { Card, Category, CategoryGroup, CheatSheet, ContentBundle, GroupKind, QuizQuestion } from './models';
+import { Card, Category, CategoryGroup, CheatSheet, ContentBundle, GroupKind, Lesson, LessonModule, QuizQuestion } from './models';
 
 /** Area grouping shown in the UI. Categories missing here land in "Inne". */
 export const GROUPS: CategoryGroup[] = [
   { name: '.NET i backend', kind: 'net', cats: ['csharp', 'aspnet', 'data', 'sql', 'dist'] },
   { name: 'Frontend', kind: 'ng', cats: ['signals', 'angular', 'tsrx', 'frontend'] },
   { name: 'Inżynieria', kind: 'gen', cats: ['arch', 'web', 'testing', 'devops', 'algo', 'review', 'ai'] },
-  { name: 'Rozmowa', kind: 'soft', cats: ['soft'] },
+  { name: 'Rozmowa', kind: 'soft', cats: ['cv', 'soft', 'english'] },
 ];
 
 /**
@@ -35,10 +35,19 @@ export class ContentService {
   });
   readonly cards = computed<Card[]>(() => this.categories().flatMap(c => c.cards.map(x => ({ ...x, cat: c.cat }))));
   readonly quiz = computed<QuizQuestion[]>(() => this.categories().flatMap(c => c.quiz.map(x => ({ ...x, cat: c.cat }))));
+  /** Reading modules („Nauka”), sorted; each lesson knows its module. */
+  readonly modules = computed<LessonModule[]>(() =>
+    [...(this.bundle()?.lessons ?? [])].sort((a, b) => a.order - b.order)
+      .map(m => ({ ...m, lessons: m.lessons.map(l => ({ ...l, module: m.module })) })));
+  readonly lessons = computed<Lesson[]>(() => this.modules().flatMap(m => m.lessons));
+  /** Exam questions of lessons, shaped like quiz questions (cat/topic/level from the lesson). Not part of the general quiz pool. */
+  readonly examQuestions = computed<QuizQuestion[]>(() =>
+    this.lessons().flatMap(l => l.exam.map(e => ({ ...e, cat: l.cat, topic: l.title, level: l.level }))));
   readonly byId = computed(() => {
     const m = new Map<string, Card | QuizQuestion>();
     for (const c of this.cards()) m.set(c.id, c);
     for (const q of this.quiz()) m.set(q.id, q);
+    for (const q of this.examQuestions()) m.set(q.id, q);
     return m;
   });
   readonly cheatCount = computed(() => Object.values(this.bundle()?.cheats ?? {}).reduce((a, x) => a + Object.keys(x).length, 0));
@@ -63,6 +72,8 @@ export class ContentService {
 
   card(id: string): Card | undefined { const x = this.byId().get(id); return x && 'a' in x ? x : undefined; }
   question(id: string): QuizQuestion | undefined { const x = this.byId().get(id); return x && 'options' in x ? x : undefined; }
+  lesson(id: string): Lesson | undefined { return this.lessons().find(l => l.id === id); }
+  lessonExam(id: string): QuizQuestion[] { const l = this.lesson(id); return l ? l.exam.map(e => this.question(e.id)!).filter(Boolean) : []; }
   catName(cat: string): string { return this.categories().find(c => c.cat === cat)?.name ?? cat; }
   kind(cat: string): GroupKind { return this.kinds()[cat] ?? 'gen'; }
   sheet(cat: string, topic: string): CheatSheet | null { return this.bundle()?.cheats[cat]?.[topic] ?? null; }

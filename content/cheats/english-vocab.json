@@ -1,0 +1,100 @@
+{
+ "cat": "english",
+ "sheets": [
+  {
+   "topic": "Słownictwo: kod i architektura",
+   "points": [
+    "dependency — zależność (dependency injection — wstrzykiwanie zależności)",
+    "interface / inheritance / abstraction — interfejs / dziedziczenie / abstrakcja",
+    "layer, endpoint — warstwa, punkt końcowy API",
+    "request / response / payload — żądanie / odpowiedź / dane w żądaniu",
+    "query, schema, migration — zapytanie, schemat bazy, migracja",
+    "thread, concurrency, deadlock, race condition — wątek, współbieżność, zakleszczenie, wyścig",
+    "memory leak, garbage collector — wyciek pamięci, odśmiecacz",
+    "scalability, maintainability, readability, loosely coupled — skalowalność, łatwość utrzymania, czytelność, luźno powiązany"
+   ],
+   "pitfalls": [
+    "thread (wątek) ≠ threat (zagrożenie) ≠ tread (bieżnik) – „θred”, język między zęby.",
+    "schema to skima, query to kłiri – nie „szema” i nie „kwery”.",
+    "send a request, nie „make a question”."
+   ],
+   "say": "Our services are loosely coupled and communicate through a message queue. (Nasze serwisy są luźno powiązane i komunikują się przez kolejkę wiadomości.)"
+  },
+  {
+   "topic": "Słownictwo: wydajność i problemy",
+   "points": [
+    "latency — opóźnienie, czas odpowiedzi (w ms)",
+    "throughput — przepustowość (requests per second)",
+    "bottleneck, timeout, retry — wąskie gardło, przekroczenie czasu, ponowienie",
+    "outage, incident, on call — awaria, incydent, dyżur",
+    "root cause, workaround, hotfix — przyczyna źródłowa, obejście, pilna poprawka",
+    "regression, edge case — regresja, przypadek brzegowy",
+    "reproduce, troubleshoot — odtworzyć błąd, diagnozować",
+    "logs, monitoring, rollback — logi, monitorowanie, wycofanie wdrożenia"
+   ],
+   "pitfalls": [
+    "reproduce a bug (odtworzyć), nie „repeat a bug”.",
+    "latency (jak szybko) ≠ throughput (ile na sekundę).",
+    "workaround, nie „walkaround”."
+   ],
+   "say": "I checked the logs, reproduced the bug and found the root cause. (Sprawdziłem logi, odtworzyłem błąd i znalazłem przyczynę źródłową.)"
+  },
+  {
+   "topic": "Słownictwo: praca w zespole",
+   "points": [
+    "requirement, deadline, estimate — wymaganie, termin, szacunek",
+    "stakeholder, product owner — interesariusz, właściciel produktu",
+    "backlog, sprint, standup, retrospective — lista zadań, sprint, codzienne spotkanie, retro",
+    "code review, pull request, merge conflict — przegląd kodu, PR, konflikt przy scalaniu",
+    "legacy code, technical debt, refactor — stary kod, dług techniczny, refaktoryzować",
+    "deploy, release — wdrożyć (kod), wydać wersję",
+    "onboarding, ownership — wdrożenie nowej osoby, odpowiedzialność za coś",
+    "trade-off, priority, feedback — kompromis, priorytet, informacja zwrotna"
+   ],
+   "pitfalls": [
+    "Wdrożenie człowieka = onboarding, wdrożenie kodu = deployment.",
+    "feedback jest niepoliczalny: some feedback, nie „a feedback”.",
+    "debt czyta się „det” (b nieme); term ≠ deadline."
+   ],
+   "say": "I took ownership of the module and reduced our technical debt. (Wziąłem odpowiedzialność za moduł i zmniejszyłem nasz dług techniczny.)"
+  },
+  {
+   "topic": "Wymowa trudnych słów",
+   "points": [
+    "cache — kesz; queue — kju; suite — słit",
+    "Azure — eżer/ażer; SQL — es-kju-el lub sikłel; data — dejta",
+    "width — łidθ; height — hajt; null — nal; char — czar",
+    "algorithm — elgeryðem; architecture — arkitekczer; hierarchy — hajerarki",
+    "router — rałter (US) / ruter (UK); schedule — skedżul (US) / szedżul (UK)",
+    "async — ejsink; debug — dibag; method — meθed; variable — weriebel",
+    "integer — intydżer; boolean — bulien; determine — ditermin; component — kempounent",
+    "Linux — linuks; GitHub — githab; Kubernetes — kubernetis; nginx — endżin-iks; YAML — jamel; JSON — dżejsen; Angular — engjuler"
+   ],
+   "pitfalls": [
+    "determine to „ditermin”, nie „ditermajn”.",
+    "height to „hajt”, nie „hejt” (hate).",
+    "Nie czytaj nazw technologii po polsku (azure, kubernetes, json) – rekruter może nie zrozumieć."
+   ],
+   "say": "I build APIs with ASP dot NET Core and Angular apps that run in Docker. (Buduję API w ASP.NET Core i aplikacje Angular, które działają w Dockerze.)"
+  },
+  {
+   "topic": "Liczby, wersje i symbole",
+   "points": [
+    ".NET 8 — dot net eight; C# 14 — C sharp fourteen",
+    "v2.1.3 — version two point one point three",
+    "99.9% — ninety-nine point nine percent (three nines); 1.5 GB — one point five gigabytes",
+    "200 ms — two hundred milliseconds; 10k RPS — ten thousand requests per second",
+    "=> — arrow; != — not equal; && — and; || — or",
+    "# — hash; @ — at; / — slash; \\ — backslash",
+    "_ — underscore; - — dash / hyphen / minus",
+    "[] — square brackets; {} — curly braces; () — parentheses; <> — angle brackets"
+   ],
+   "pitfalls": [
+    "Ułamki z kropką: one point five, nigdy „one comma five”.",
+    "two hundred, nie „two hundreds”.",
+    "@ to „at”, nie „monkey”."
+   ],
+   "say": "Our API handles ten thousand requests per second with two hundred milliseconds latency. (Nasze API obsługuje 10 tys. żądań na sekundę przy opóźnieniu 200 ms.)"
+  }
+ ]
+}

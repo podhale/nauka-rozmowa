@@ -40,6 +40,12 @@ export class TodayPage {
     }));
   });
 
+  protected readonly nextLesson = computed(() => {
+    const lp = this.store.state().lessons ?? {};
+    return this.content.lessons().find(l => !lp[l.id]?.read);
+  });
+  protected readonly lessonsRead = computed(() => { const lp = this.store.state().lessons ?? {}; return this.content.lessons().filter(l => lp[l.id]?.read).length; });
+
   protected openCategory(cat: string): void {
     this.ui.selectOnly(cat);
     void this.router.navigate(['/fiszki']);

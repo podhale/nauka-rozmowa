@@ -3,6 +3,7 @@ import bash from 'highlight.js/lib/languages/bash';
 import csharp from 'highlight.js/lib/languages/csharp';
 import css from 'highlight.js/lib/languages/css';
 import dockerfile from 'highlight.js/lib/languages/dockerfile';
+import http from 'highlight.js/lib/languages/http';
 import javascript from 'highlight.js/lib/languages/javascript';
 import json from 'highlight.js/lib/languages/json';
 import plaintext from 'highlight.js/lib/languages/plaintext';
@@ -15,6 +16,7 @@ hljs.registerLanguage('bash', bash);
 hljs.registerLanguage('csharp', csharp);
 hljs.registerLanguage('css', css);
 hljs.registerLanguage('dockerfile', dockerfile);
+hljs.registerLanguage('http', http);
 hljs.registerLanguage('javascript', javascript);
 hljs.registerLanguage('json', json);
 hljs.registerLanguage('plaintext', plaintext);
@@ -26,7 +28,7 @@ hljs.registerLanguage('yaml', yaml);
 const LANG: Record<string, string> = {
   csharp: 'csharp', 'c#': 'csharp', cs: 'csharp', typescript: 'typescript', ts: 'typescript', javascript: 'javascript', js: 'javascript',
   html: 'xml', xml: 'xml', sql: 'sql', json: 'json', bash: 'bash', shell: 'bash', sh: 'bash', yaml: 'yaml', yml: 'yaml',
-  dockerfile: 'dockerfile', docker: 'dockerfile', css: 'css', text: 'plaintext',
+  dockerfile: 'dockerfile', docker: 'dockerfile', http: 'http', css: 'css', text: 'plaintext',
 };
 
 export const escapeHtml = (s: unknown): string =>
@@ -53,16 +55,25 @@ export function markdownHtml(text: string): string {
       return;
     }
     let list: string[] | null = null;
+    let ordered = false;
+    const flush = () => { if (list) out.push(ordered ? `<ol>${list.join('')}</ol>` : `<ul>${list.join('')}</ul>`); list = null; };
     for (const raw of part.split('\n')) {
       const line = raw.trimEnd();
-      const m = line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
-      if (m) { (list ??= []).push(`<li>${inlineHtml(m[1])}</li>`); continue; }
-      if (list) { out.push(`<ul>${list.join('')}</ul>`); list = null; }
+      const num = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
+      if (num || bullet) {
+        const isOrdered = !!num;
+        if (list && isOrdered !== ordered) flush();
+        ordered = isOrdered;
+        (list ??= []).push(`<li>${inlineHtml((num ?? bullet)![1])}</li>`);
+        continue;
+      }
+      flush();
       const h = line.match(/^#{1,4}\s+(.*)$/);
       if (h) out.push(`<p><b>${inlineHtml(h[1])}</b></p>`);
       else if (line.trim()) out.push(`<p>${inlineHtml(line)}</p>`);
     }
-    if (list) out.push(`<ul>${list.join('')}</ul>`);
+    flush();
   });
   return out.join('');
 }

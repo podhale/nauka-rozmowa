@@ -1,0 +1,45 @@
+{
+  "cat": "data",
+  "sheets": [
+    {
+      "topic": "Dapper w praktyce",
+      "points": [
+        "Extension methods na `IDbConnection`: `QueryAsync<T>`, `QuerySingle/FirstOrDefaultAsync`, `ExecuteAsync` (liczba wierszy), `ExecuteScalarAsync<T>`.",
+        "Mapowanie po nazwie kolumny (case-insensitive); snake_case → `DefaultTypeMap.MatchNamesWithUnderscores = true` albo aliasy.",
+        "Zawsze parametry `@x` + obiekt anonimowy; listy: `WHERE Id IN @ids` (bez nawiasów); limit 2100 parametrów → TVP/OPENJSON.",
+        "`DbString { IsAnsi = true, Length = n }` dla kolumn varchar – brak `CONVERT_IMPLICIT` i scanu.",
+        "Multi-mapping: `Query<T1,T2,TRes>(sql, map, splitOn: \"Kol\")`; 1-n → deduplikacja słownikiem.",
+        "`QueryMultipleAsync` + `ReadAsync<T>` – kilka zestawów w jednym round tripie, czytaj po kolei.",
+        "Transakcje: `BeginTransaction` + parametr `transaction` w **każdym** wywołaniu.",
+        "`ExecuteAsync(sql, lista)` = N poleceń, nie bulk; bulk: `SqlBulkCopy`, TVP, `INSERT … SELECT FROM OPENJSON`."
+      ],
+      "pitfalls": [
+        "Interpolacja wartości w SQL (`$\"... {name}\"`) – SQL injection; dynamiczne ORDER BY tylko z whitelisty.",
+        "Brak `splitOn` przy kluczu innym niż `Id` – wyjątek przy multi-mappingu.",
+        "Pominięty `transaction` w jednym wywołaniu – InvalidOperationException od SqlClient."
+      ],
+      "code": "var rows = await conn.QueryAsync<OrderDto>(\n    \"SELECT Id, Total FROM Orders WHERE CustomerId = @customerId AND Status IN @statuses\",\n    new { customerId, statuses = new[] { \"New\", \"Paid\" } });",
+      "lang": "csharp",
+      "say": "Dapper to cienka warstwa nad ADO.NET: piszę SQL sam, Dapper parametryzuje i mapuje wyniki z minimalnym narzutem. Używam go do raportów i ciężkich odczytów, pilnując parametrów, typów (DbString dla varchar) i przekazywania transakcji."
+    },
+    {
+      "topic": "Procedury składowane z .NET",
+      "points": [
+        "EF, encje: `db.Set.FromSql($\"EXEC dbo.Proc {x}\")` – interpolacja = parametry; kolumny muszą pokryć encję.",
+        "EF, DTO: `db.Database.SqlQuery<T>($\"EXEC ...\")` (EF Core 8+); bez wyniku: `ExecuteSqlAsync` (zwraca liczbę wierszy).",
+        "SQL Server **nie pozwala komponować** na EXEC → `AsEnumerable()`/`AsAsyncEnumerable()` po FromSql albo filtr w procedurze.",
+        "OUTPUT w EF: `SqlParameter { Direction = Output }` + `ExecuteSqlRawAsync(\"EXEC p @a, @out OUTPUT\", ...)`.",
+        "EF Core 7+: mapowanie CUD encji na procedury (`InsertUsingStoredProcedure` itd.).",
+        "Dapper: `commandType: CommandType.StoredProcedure`; OUTPUT/RETURN przez `DynamicParameters` + `p.Get<T>()` **po** wykonaniu.",
+        "Listy: TVP – `CREATE TYPE dbo.IntList AS TABLE`, `DataTable.AsTableValuedParameter(\"dbo.IntList\")`.",
+        "RETURN to tylko int (status); błędy przez `THROW` → `SqlException.Number`."
+      ],
+      "pitfalls": [
+        "`.Where()` po `FromSql(\"EXEC ...\")` – niepoprawny SQL.",
+        "Odczyt OUTPUT przed wykonaniem polecenia albo przed przeczytaniem wszystkich zestawów z QueryMultiple.",
+        "Procedury poza kontrolą wersji – trzymaj je w migracjach lub projekcie bazy."
+      ],
+      "say": "Procedury wołam z EF przez FromSql albo SqlQuery dla wyników i ExecuteSql dla komend, pamiętając, że na EXEC nie da się komponować LINQ. Gdy potrzebuję OUTPUT, wielu zestawów albo TVP, wybieram Dappera z DynamicParameters."
+    }
+  ]
+}

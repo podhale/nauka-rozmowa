@@ -1,0 +1,135 @@
+{
+ "cat": "english",
+ "sheets": [
+  {
+   "topic": "Przedstaw się",
+   "points": [
+    "I'm a full-stack developer with five years of experience. — Jestem programistą full-stack z 5-letnim doświadczeniem.",
+    "On the back end, I use C# and .NET. On the front end, I use Angular. — Na backendzie C# i .NET, na frontendzie Angular.",
+    "Currently, I work at … on … — Obecnie pracuję w … nad …",
+    "I'm looking for a bigger product and an international team. — Szukam większego produktu i międzynarodowego zespołu.",
+    "I'm good at solving problems. / I learn new tools quickly. — Dobrze rozwiązuję problemy. / Szybko uczę się narzędzi.",
+    "My English is not perfect yet, but I practice every week. — Mój angielski nie jest idealny, ale ćwiczę co tydzień.",
+    "I want to be a senior developer and understand architecture better. — Chcę zostać seniorem i lepiej rozumieć architekturę.",
+    "3 długości: 15 s (3 zdania) → 45 s (+ projekt i rola) → 90 s (+ historia, osiągnięcie, czego szukam)."
+   ],
+   "pitfalls": [
+    "Życiorys od szkoły zamiast teraźniejszości – zaczynaj od tego, kim jesteś TERAZ.",
+    "Krytyka obecnego szefa/firmy przy „why are you changing your job?” – mów o tym, czego szukasz.",
+    "„I have no weaknesses” / „I'm a perfectionist” – podaj prawdziwą słabość i co z nią robisz."
+   ],
+   "say": "I'm a full-stack developer with five years of experience in .NET and Angular. (Jestem programistą full-stack z pięcioletnim doświadczeniem w .NET i Angularze.)"
+  },
+  {
+   "topic": "Opowiedz o projekcie",
+   "points": [
+    "It's a web application for … About … people use it every day. — To aplikacja webowa do … Codziennie używa jej ok. … osób.",
+    "The back end is a .NET API, and the front end is Angular. — Backend to API w .NET, frontend to Angular.",
+    "Everything runs in Azure, in Docker containers. — Wszystko działa w Azure, w kontenerach Dockera.",
+    "I was responsible for … / I worked mostly on … — Byłem odpowiedzialny za … / Pracowałem głównie nad …",
+    "We are a team of seven. We work in Scrum with two-week sprints. — Zespół 7 osób, Scrum, dwutygodniowe sprinty.",
+    "STAR: The page was slow → My task was … → I checked … and added … → Now it loads in under one second.",
+    "We reduced X from … to … / by about … percent. — Zmniejszyliśmy X z … do … / o ok. … procent.",
+    "If I started again, I would … — Gdybym zaczynał od nowa, zrobiłbym …"
+   ],
+   "pitfalls": [
+    "Lista technologii bez powiązań („C#, Angular, Docker…”) – opowiadaj od przeglądarki do bazy.",
+    "Samo „we” – rekruter chce usłyszeć, co zrobiłeś TY („I”).",
+    "„on the production”, „responsible of” – poprawnie: in production, responsible for."
+   ],
+   "say": "I was responsible for the orders module, both the API and the Angular screens. (Odpowiadałem za moduł zamówień – zarówno API, jak i ekrany w Angularze.)"
+  },
+  {
+   "topic": "Wyjaśnij technicznie po angielsku",
+   "points": [
+    "REST API: resources with URLs, HTTP methods GET/POST/PUT/DELETE, JSON. — zasoby z URL, metody HTTP, JSON.",
+    "Dependency injection: a class gets its dependencies from outside, in the constructor. — klasa dostaje zależności z zewnątrz.",
+    "async/await: we wait for I/O without blocking a thread. — czekamy na I/O bez blokowania wątku.",
+    "Middleware: code in the request pipeline; the order is important. — kod w potoku żądania, kolejność ma znaczenie.",
+    "EF Core: ORM, maps classes to tables, LINQ → SQL, migrations. / Index: faster reads, slower writes. / Transaction: all or nothing.",
+    "Component = part of the screen; service = shared logic. Signal = value Angular tracks; Observable = stream of values over time.",
+    "Unit test = one small piece, fast, no real DB. CI/CD = build, test, deploy automatically. Docker image = template, container = running image.",
+    "Authentication = who you are; authorization = what you can do. JWT = signed token, sent in the Authorization header."
+   ],
+   "pitfalls": [
+    "Async = szybszy/równoległy kod – NIE, chodzi o niezablokowany wątek.",
+    "Mylenie authentication i authorization (401 vs 403).",
+    "Wymowa: cache = „kesz”, queue = „kju”, schema = „skima”, Azure = „eżer”."
+   ],
+   "say": "Authentication checks who you are, and authorization checks what you are allowed to do. (Uwierzytelnianie sprawdza, kim jesteś, a autoryzacja – co wolno Ci robić.)"
+  },
+  {
+   "topic": "Zwroty ratunkowe",
+   "points": [
+    "Sorry, I didn't understand the question. — Przepraszam, nie zrozumiałem pytania.",
+    "Could you repeat that more slowly, please? — Czy może Pan powtórzyć wolniej?",
+    "Just to check, do you mean X or Y? — Upewnię się: chodzi o X czy o Y?",
+    "Good question. Let me think for a moment. — Dobre pytanie. Chwilę pomyślę.",
+    "I'm not sure, but I would start like this… — Nie jestem pewien, ale zacząłbym tak…",
+    "I haven't worked with X, but I have used Y, which is similar. — Nie pracowałem z X, ale używałem podobnego Y.",
+    "Sorry, let me say that again in a simpler way. — Powiem to jeszcze raz prościej.",
+    "I don't know the English word for it. It's… — Nie znam angielskiego słowa. To jest…"
+   ],
+   "pitfalls": [
+    "Samo „I don't know” – zawsze dodaj, jak byś to sprawdził lub rozwiązał.",
+    "Ciągłe „sorry for my English” – powiedz najwyżej raz, potem mów spokojnie i wolno.",
+    "Zgadywanie, o co chodziło w pytaniu – lepiej dopytać."
+   ],
+   "say": "Good question. Let me think for a moment. (Dobre pytanie. Pozwól mi chwilę pomyśleć.)"
+  },
+  {
+   "topic": "Pytania do rekrutera",
+   "points": [
+    "How big is the team, and who is in it? — Jak duży jest zespół i kto w nim jest?",
+    "What is the project about, and who are the users? — O czym jest projekt i kto go używa?",
+    "How do you work day to day? Scrum or Kanban? — Jak pracujecie na co dzień? Scrum czy Kanban?",
+    "Which versions of .NET and Angular do you use? — Jakich wersji .NET i Angulara używacie?",
+    "What does onboarding look like? — Jak wygląda wdrożenie nowej osoby?",
+    "What is the biggest challenge for the team right now? — Jakie jest największe wyzwanie zespołu?",
+    "What are the next steps in the process? — Jakie są kolejne kroki?"
+   ],
+   "pitfalls": [
+    "„No, everything is clear” – zawsze zadaj 1–2 pytania.",
+    "Pytania, na które odpowiedź jest na stronie firmy („What does your company do?”).",
+    "Pytanie o podwyżki i urlop zanim padnie oferta."
+   ],
+   "say": "What does a typical day look like for the team? (Jak wygląda typowy dzień w zespole?)"
+  },
+  {
+   "topic": "Small talk i formalności",
+   "points": [
+    "Hi, nice to meet you. Thank you for inviting me. — Miło mi. Dziękuję za zaproszenie.",
+    "I'm good, thank you. How are you? — Dobrze, dziękuję. A jak Pan/Pani się ma?",
+    "Sorry, I think my connection is bad. Can you hear me well? — Chyba mam słabe łącze. Dobrze mnie słychać?",
+    "Sorry, you froze / you're breaking up. Could you repeat the last part? — Zaciął się Pan / przerywa. Proszę powtórzyć.",
+    "Can I share my screen? Can you see it now? — Mogę udostępnić ekran? Widać?",
+    "Thank you for your time. I'm looking forward to hearing from you. — Dziękuję za czas. Czekam na wiadomość.",
+    "Mail: Thank you for the interview today. I'm still very interested in this role. Best regards. — 3–4 zdania, w ciągu 24 h."
+   ],
+   "pitfalls": [
+    "„How are you?” to formułka – nie opowiadaj o problemach.",
+    "„I hear you bad” – poprawnie: „I can't hear you well”.",
+    "Follow-up z pytaniem o ofertę lub pieniądze – brzmi nachalnie."
+   ],
+   "say": "Thank you for your time. It was a pleasure to talk to you. (Dziękuję za poświęcony czas. Miło było z Panem rozmawiać.)"
+  },
+  {
+   "topic": "Typowe błędy Polaków",
+   "points": [
+    "currently / right now — aktualnie (NIE actually = tak naprawdę); eventually = w końcu (NIE ewentualnie = possibly).",
+    "sympathetic = współczujący (sympatyczny = friendly); control = sterować (sprawdzić = check/review); suggest > propose.",
+    "fabric = tkanina (fabryka = factory); lecture = wykład (lektura = reading).",
+    "I have five years OF experience. / I have been working here FOR 3 years / SINCE 2022.",
+    "MAKE a decision / a mistake; DO a review / a task / my best; WRITE tests.",
+    "I'm A developer; a project → the project. information / advice / feedback – bez „-s” i bez „a”.",
+    "rise (rose) = rosnąć; raise (raised) = podnieść coś. It depends ON. Explain it TO me. Discuss sth (bez about). I agree (bez am)."
+   ],
+   "pitfalls": [
+    "„I am agree”, „it's depend”, „explain me”, „discuss about” – najczęstsze kalki z polskiego.",
+    "„Eventually we will add caching” – brzmi jak pewna zapowiedź, a nie opcja.",
+    "„I am working here since 2022” – poprawnie: „I have been working here since 2022”."
+   ],
+   "say": "It depends on the project, but I usually start with a simple solution. (To zależy od projektu, ale zwykle zaczynam od prostego rozwiązania.)"
+  }
+ ]
+}

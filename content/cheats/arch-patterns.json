@@ -1,0 +1,128 @@
+{
+ "cat": "arch",
+ "sheets": [
+  {
+   "topic": "Wzorce kreacyjne",
+   "points": [
+    "**Singleton**: jedna instancja; ręcznie przez `Lazy<T>`/static readonly, w aplikacji .NET – `AddSingleton` (jawna zależność, testowalność).",
+    "**Factory Method**: decyzję „co utworzyć” zamyka metoda; GoF = podklasa decyduje (`ILoggerProvider.CreateLogger`), static factory = `Order.Create(...)` z walidacją.",
+    "**Abstract Factory**: rodzina pasujących obiektów, np. `DbProviderFactory` → `CreateConnection/CreateCommand/CreateParameter`.",
+    "**Builder**: konfiguracja krok po kroku + `Build()` – `WebApplicationBuilder`, `StringBuilder`, `ModelBuilder`, Test Data Builder w testach.",
+    "**Prototype**: kopia istniejącego obiektu – `record` + `with` (płytka!), `MemberwiseClone`; w TS spread i `structuredClone`.",
+    "Dane z runtime + zależności z DI → własna fabryka, delegat w rejestracji, `ActivatorUtilities.CreateInstance`, `IHttpClientFactory`, `IDbContextFactory<T>`, keyed services.",
+    "W Angularze: `providedIn: 'root'` = singleton, `useFactory` w providerach = fabryka."
+   ],
+   "pitfalls": [
+    "Statyczny Singleton = ukryty stan globalny; singleton w DI nie może trzymać zależności scoped (captive dependency).",
+    "`with`/spread kopiują płytko – zagnieżdżone listy są współdzielone z oryginałem.",
+    "Fabryka-singleton z `IServiceProvider` rozwiązuje scoped usługi z root scope – używaj `IServiceScopeFactory`."
+   ],
+   "code": "builder.Services.AddSingleton(TimeProvider.System);          // Singleton przez DI\nbuilder.Services.AddKeyedScoped<IExporter, CsvExporter>(\"csv\"); // wybór po kluczu\nvar exporter = ActivatorUtilities.CreateInstance<PdfExporter>(sp, fileName); // runtime arg + DI",
+   "lang": "csharp",
+   "say": "Wzorce kreacyjne odpowiadają na pytanie, kto i jak tworzy obiekty. W .NET większość tej pracy przejmuje kontener DI, więc sam piszę głównie static factory w domenie, buildery w testach i fabryki tam, gdzie część danych znam dopiero w runtime."
+  },
+  {
+   "topic": "Wzorce strukturalne",
+   "points": [
+    "**Adapter** – inny interfejs: tłumaczy cudze SDK na twój port (`IPaymentGateway` → Stripe).",
+    "**Facade** – prostszy interfejs do kilku podsystemów (`CheckoutFacade.PlaceOrderAsync`).",
+    "**Decorator** – ten sam interfejs + zachowanie (cache, logi, retry); w DI ręcznie przez delegat lub `services.Decorate<,>()` (Scrutor).",
+    "**Proxy** – ten sam interfejs + kontrola dostępu: virtual (EF `UseLazyLoadingProxies`, `virtual` nawigacje), remote (typowany klient HTTP), protection, caching.",
+    "`DelegatingHandler` w `HttpClient` = łańcuch dekoratorów zakończony `SocketsHttpHandler`.",
+    "**Composite** – liść i grupa przez wspólny interfejs (drzewa, reguły); .NET: `CompositeFileProvider`, Angular: `FormGroup`.",
+    "**Bridge** – dwie niezależne osie (abstrakcja × implementacja) połączone kompozycją zamiast N×M klas; np. `ILogger` × providery."
+   ],
+   "pitfalls": [
+    "Ostatnie `Decorate` jest najbardziej zewnętrzne – kolejność ma znaczenie (logowanie trafień w cache).",
+    "Lazy loading proxy → N+1 zapytań i ukryte I/O; w API preferuj `Include`/projekcję.",
+    "Fasada, która rośnie w god object."
+   ],
+   "code": "services.AddScoped<IProductRepository, SqlProductRepository>();\nservices.Decorate<IProductRepository, CachedProductRepository>();   // Scrutor\nservices.AddHttpClient<IPaymentsApi, PaymentsApi>()\n    .AddHttpMessageHandler<CorrelationIdHandler>();                // DelegatingHandler",
+   "lang": "csharp",
+   "say": "Adapter zmienia interfejs, Facade go upraszcza, Decorator zachowuje interfejs i dokłada zachowanie, a Proxy zachowuje interfejs i kontroluje dostęp. W .NET widzę je codziennie: dekoratory repozytoriów, handlery HttpClienta i lazy loading proxy w EF."
+  },
+  {
+   "topic": "Wzorce behawioralne",
+   "points": [
+    "**Strategy** – wymienny algorytm wybierany z zewnątrz (DI + `IEnumerable<T>`/keyed services); **State** – obiekt sam zmienia zachowanie i przechodzi między stanami.",
+    "**Observer** – `event` (sync, pamiętaj o `-=`), `IObservable<T>` (OnNext/OnError/OnCompleted), RxJS, signals.",
+    "**Chain of Responsibility** – middleware (`next`), MediatR `IPipelineBehavior`, `HttpInterceptorFn`; ogniwo może przerwać łańcuch.",
+    "**Command** – żądanie jako obiekt (`PlaceOrder`) → handler, kolejka, retry, undo; komendy w trybie rozkazującym, zdarzenia w przeszłym.",
+    "**Mediator** – centralny pośrednik; MediatR to in-process dispatcher, od v13 (2025) licencja komercyjna.",
+    "**Template Method** – szkielet w bazie, kroki w podklasie: `BackgroundService.ExecuteAsync`, `OnModelCreating`.",
+    "**Iterator** – `IEnumerable<T>` + `yield return` = leniwość (deferred execution); async: `IAsyncEnumerable<T>`.",
+    "**Visitor** – double dispatch dla stabilnych drzew (`ExpressionVisitor`, Roslyn); w kodzie aplikacyjnym często wystarcza switch expression."
+   ],
+   "pitfalls": [
+    "Wyciek pamięci przez event w długożyjącym publisherze bez wypisania.",
+    "Wielokrotne wyliczanie `IEnumerable` ponownie uruchamia generator/zapytanie.",
+    "Handler wysyłający kolejne komendy przez mediator – ukryty graf zależności."
+   ],
+   "code": "public async Task<TRes> Handle(TReq req, RequestHandlerDelegate<TRes> next, CancellationToken ct)\n{\n    logger.LogInformation(\"Start {Req}\", typeof(TReq).Name);   // przed\n    var res = await next();                                    // następne ogniwo\n    logger.LogInformation(\"Koniec {Req}\", typeof(TReq).Name);  // po\n    return res;\n}",
+   "lang": "csharp",
+   "say": "Wzorce behawioralne opisują, jak obiekty współpracują i dzielą odpowiedzialność. W praktyce najczęściej używam Strategy przez DI, Chain of Responsibility w middleware i pipeline'ach, Observer w eventach i RxJS oraz Command w CQRS."
+  },
+  {
+   "topic": "Wzorce enterprise",
+   "points": [
+    "**Repository** per agregat po stronie zapisu (`GetAsync`, `AddAsync`); odczyty bezpośrednio przez DbContext/Dapper z projekcją do DTO.",
+    "**Unit of Work** = `DbContext` (change tracker + `SaveChanges` w transakcji); własne `IUnitOfWork` tylko jako cienki port – zarejestrowany jako TA SAMA instancja.",
+    "**Specification** – nazwane kryterium jako `Expression<Func<T,bool>>`, łączone i tłumaczone na SQL (Ardalis.Specification).",
+    "**Result pattern** – oczekiwane porażki w sygnaturze (`NotFound/Conflict/Validation`) → mapowanie na `ProblemDetails` w jednym miejscu; wyjątki dla nieoczekiwanych.",
+    "**Options pattern** – silnie typowana konfiguracja + `ValidateDataAnnotations().ValidateOnStart()`.",
+    "**CQRS handler** – cienki: pobierz agregat → metoda domenowa → `SaveChanges` → wynik; zero HTTP i ifów biznesowych.",
+    "**Outbox** – wiadomość w tabeli w tej samej transakcji, publikacja w tle; at-least-once → idempotentni konsumenci.",
+    "**Null Object** (`NullLogger.Instance`, `Stream.Null`, pusta kolekcja) i **guard clauses** (`ArgumentNullException.ThrowIfNull`, `ThrowIfNegative`)."
+   ],
+   "pitfalls": [
+    "Generic repository z `GetAll()`/zwracanym `IQueryable` – wczytywanie tabel do pamięci i przeciekająca abstrakcja.",
+    "`SaveChanges` w każdej metodzie repozytorium psuje atomowość use case'u.",
+    "Niesprawdzony `Result` – błąd znika po cichu."
+   ],
+   "code": "services.AddDbContext<ShopDb>(o => o.UseNpgsql(cs));\nservices.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<ShopDb>()); // ta sama instancja\nservices.AddScoped<IOrderRepository, OrderRepository>();",
+   "lang": "csharp",
+   "say": "Nad EF Core stosuję repozytorium per agregat po stronie zapisu, a DbContext traktuję jako Unit of Work. Błędy biznesowe zwracam jako Result i mapuję na ProblemDetails, wyjątki zostawiam na sytuacje nieoczekiwane, a integrację z brokerem robię przez Outbox."
+  },
+  {
+   "topic": "Clean Architecture w praktyce",
+   "points": [
+    "Warstwy: **Domain** (encje, VO, reguły) ← **Application** (use case'y, porty, DTO) ← **Infrastructure** (EF Core, HTTP, e-mail) / **API** (endpointy, composition root).",
+    "Reguła zależności: referencje do środka; Application definiuje interfejs, Infrastructure implementuje (DIP). Wymuszaj referencjami projektów, `internal` i testami architektury (NetArchTest).",
+    "EF Core: `DbContext`, `IEntityTypeConfiguration<T>`, migracje w Infrastructure; encje domenowe mapowane Fluent API, bez atrybutów EF w Domain.",
+    "DTO: request/response w API (Contracts), wyniki use case'ów w Application; mapowanie ręczne/projekcja `Select`/Mapperly; nigdy encja w `[FromBody]` (over-posting).",
+    "Use case = granica transakcji; endpoint tylko tłumaczy HTTP ↔ komenda ↔ wynik.",
+    "**Hexagonal**: porty driving (use case'y) i driven (`IPaymentGateway`), adaptery na obrzeżach; **Onion**: koncentryczne warstwy wokół domeny – ta sama idea.",
+    "**Vertical Slice**: kod po funkcjach (`Features/Orders/PlaceOrder`), mniej warstw, każdy slice dobiera podejście; **modularny monolit**: moduły = bounded contexty z kontraktami i osobnym schematem.",
+    "Typowe błędy: anemic domain, porty zwracające typy EF/SDK, `IQueryable` w Application, 4 projekty i 6 warstw dla prostego CRUD-a."
+   ],
+   "pitfalls": [
+    "Application zależny od `HttpContext`/`IConfiguration` zamiast portów (`ICurrentUser`, Options).",
+    "Warstwy pass-through, które tylko przepisują dane – koszt bez zysku.",
+    "Moduły w monolicie sięgające do cudzych tabel lub klas wewnętrznych."
+   ],
+   "code": "src/\n  Shop.Domain/          (zero zależności)\n  Shop.Application/     -> Domain       (use case'y, IOrderRepository)\n  Shop.Infrastructure/  -> Application  (ShopDb, OrderRepository, migracje)\n  Shop.Api/             -> Application (+ Infrastructure tylko dla DI)\ntests/  Domain.Tests, Application.Tests, Api.IntegrationTests, ArchitectureTests",
+   "lang": "text",
+   "say": "Clean Architecture to dla mnie przede wszystkim kierunek zależności: domena i use case'y nie wiedzą o EF ani HTTP, a infrastruktura dostarcza adaptery do portów. Liczbę warstw dobieram do złożoności – w prostych modułach wolę vertical slices, a większy system zaczynam jako modularny monolit."
+  },
+  {
+   "topic": "Wzorce w Angularze",
+   "points": [
+    "**Smart/dumb**: container wstrzykuje serwisy i obsługuje akcje; presentational ma tylko `input()`/`output()` i `OnPush`.",
+    "**Facade nad stanem**: serwis wystawia readonly signals (`computed`/`asReadonly()`) i metody-intencje; ukrywa HttpClient/NgRx przed komponentami.",
+    "**Adapter dla API**: mapowanie DTO → model (daty, enumy, kwoty) w jednym miejscu, np. `map(ds => ds.map(toOrder))`.",
+    "**Strategy przez DI**: `InjectionToken` (interfejsy TS nie istnieją w runtime), `useClass` do podmiany, `multi: true` do wielu implementacji.",
+    "**Observer**: signals dla stanu (`computed`, `effect`), RxJS dla zdarzeń w czasie (`debounceTime`, `switchMap`); mosty `toSignal`/`toObservable`.",
+    "**Decorator/Chain**: `HttpInterceptorFn` + `withInterceptors([...])`; `req.clone()`, bo żądania są niemutowalne.",
+    "**Singleton**: `providedIn: 'root'` = jedna instancja, leniwie i tree-shakable; `providers` komponentu/trasy = nowa instancja."
+   ],
+   "pitfalls": [
+    "Serwis root dodany przypadkiem do `providers` komponentu – dwie instancje i „znikający” stan.",
+    "Publiczny `WritableSignal` w fasadzie – każdy komponent może zmieniać stan z pominięciem reguł.",
+    "Ręczne `subscribe` bez `takeUntilDestroyed`/`async` pipe – wycieki."
+   ],
+   "code": "export const EXPORTERS = new InjectionToken<Exporter[]>('EXPORTERS');\nproviders: [\n  { provide: EXPORTERS, useClass: CsvExporter, multi: true },\n  { provide: EXPORTERS, useClass: PdfExporter, multi: true },\n]\nprovideHttpClient(withInterceptors([authInterceptor, loggingInterceptor]));",
+   "lang": "typescript",
+   "say": "W Angularze wzorce realizuje głównie DI i reaktywność: komponenty dzielę na smart i prezentacyjne, stan chowam za fasadą z signals, odpowiedzi API mapuję adapterem, a cross-cutting rzeczy jak autoryzacja robię interceptorami."
+  }
+ ]
+}

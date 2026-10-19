@@ -1,0 +1,146 @@
+{
+  "cat": "csharp",
+  "sheets": [
+    {
+      "topic": "OOP – filary i polimorfizm",
+      "points": [
+        "4 filary: **enkapsulacja** (ukryty stan, niezmienniki), **abstrakcja** (kontrakt zamiast szczegółów), **dziedziczenie** (1 klasa bazowa), **polimorfizm** (jeden kod, wiele typów).",
+        "Polimorfizm **compile-time**: overloading, generics, operatory – wybór robi kompilator na podstawie statycznych typów.",
+        "Polimorfizm **runtime**: `virtual`/`override`, `abstract`, interfejsy – wybór przez vtable na podstawie faktycznego typu obiektu.",
+        "**Overloading** = ta sama nazwa, różne parametry, ten sam typ; **overriding** = ta sama sygnatura w klasie pochodnej.",
+        "Nie przeciążysz metody samym typem zwracanym; przy `override` od C# 9 możesz zawęzić typ zwracany (covariant returns).",
+        "`dynamic` przenosi overload resolution do runtime – rzadko potrzebne, zwykle zapach."
+      ],
+      "pitfalls": [
+        "Myślenie, że `Print(object)` vs `Print(string)` wybiera się po typie obiektu w runtime – decyduje typ zmiennej.",
+        "Mówienie „nadpisałem metodę” o przeciążeniu albo o `new`."
+      ],
+      "say": "Overloading to polimorfizm statyczny – kompilator wybiera metodę po typach argumentów. Overriding to polimorfizm dynamiczny – runtime wybiera implementację po typie obiektu przez virtual/override albo interfejs."
+    },
+    {
+      "topic": "virtual / override / new",
+      "points": [
+        "Metody w C# **nie są domyślnie virtual** – trzeba jawnie dać `virtual`, `abstract` albo implementować interfejs.",
+        "`override` zastępuje wpis w vtable – przez referencję bazową wykona się wersja pochodna.",
+        "`new` (method hiding) tworzy niezależną metodę – decyduje **statyczny typ zmiennej**.",
+        "Brak `new` i `override` przy tej samej nazwie = ukrycie z ostrzeżeniem CS0108/CS0114.",
+        "`sealed override` blokuje dalsze nadpisywanie; klasa `sealed` pozwala JIT-owi na devirtualizację.",
+        "`base.Method()` w override rozszerza zachowanie bazowe zamiast je zastępować."
+      ],
+      "pitfalls": [
+        "Użycie `new` tam, gdzie oczekiwano polimorfizmu – kod wywołujący przez typ bazowy „nie widzi” zmiany.",
+        "Wywoływanie metod virtual z konstruktora bazowego (CA2214)."
+      ],
+      "code": "Animal a = new Dog();\na.Speak(); // override -> Dog.Speak\na.Kind();  // new      -> Animal.Kind",
+      "lang": "csharp",
+      "say": "override – decyduje typ obiektu, new – decyduje typ referencji. new stosuję tylko świadomie, gdy muszę ukryć składową z bazy, nad którą nie mam kontroli."
+    },
+    {
+      "topic": "Dziedziczenie i konstruktory",
+      "points": [
+        "Klasa ma **jedną klasę bazową** (domyślnie `object`) i dowolnie wiele interfejsów; struct nie dziedziczy.",
+        "Brak wielodziedziczenia klas = brak **diamond problem** (która implementacja/stan wygrywa).",
+        "Zachowania z wielu źródeł: interfejsy + **kompozycja** (wstrzyknięte zależności, dekoratory), default interface methods.",
+        "Kolejność: **pola pochodnej → pola bazy → ciało konstruktora bazy → ciało konstruktora pochodnej**.",
+        "Bez `: base(...)` wołany jest bezparametrowy konstruktor bazy – jak go nie ma, błąd kompilacji.",
+        "`: this(...)` łączy konstruktory w obrębie klasy; statyczny konstruktor wykonuje się raz, przed pierwszym użyciem typu, thread-safe.",
+        "Virtual wywołany z konstruktora bazy trafia do override, gdy pola ustawiane w ciele konstruktora pochodnego są jeszcze domyślne."
+      ],
+      "pitfalls": [
+        "Odpowiedź „konstruktor bazy wykonuje się pierwszy, więc pola bazy też” – inicjalizatory pól pochodnej idą przed nim.",
+        "Hierarchie dziedziczenia budowane dla reużycia kodu zamiast relacji „is-a”."
+      ],
+      "say": "C# ma pojedyncze dziedziczenie klas, żeby uniknąć diamond problem – wiele źródeł zachowań łączę interfejsami i kompozycją. Przy tworzeniu obiektu najpierw idą inicjalizatory pól od pochodnej do bazy, a potem ciała konstruktorów od bazy do pochodnej."
+    },
+    {
+      "topic": "Modyfikatory dostępu",
+      "points": [
+        "`public` – wszędzie; `private` – tylko typ; `protected` – typ + pochodne; `internal` – ten sam assembly.",
+        "`protected internal` = ten sam assembly **LUB** pochodna (szersze).",
+        "`private protected` = pochodna **I** ten sam assembly (węższe), C# 7.2.",
+        "`file` (C# 11) – tylko dla typów; widoczny wyłącznie w pliku źródłowym (np. source generatory).",
+        "Domyślnie: składowe klasy/structa `private`, typ najwyższego poziomu `internal`, składowe interfejsu `public`.",
+        "`[InternalsVisibleTo(\"X.Tests\")]` udostępnia `internal` projektowi testów."
+      ],
+      "pitfalls": [
+        "Zamiana znaczeń `protected internal` i `private protected`.",
+        "Wszystko `public` „bo tak szybciej” – utrata enkapsulacji i niechciane API publiczne biblioteki."
+      ],
+      "say": "Daję najwęższy dostęp, który wystarcza. protected internal to assembly albo dziedziczenie, private protected – dziedziczenie, ale tylko w tym samym assembly."
+    },
+    {
+      "topic": "Enkapsulacja i kompozycja",
+      "points": [
+        "Enkapsulacja = obiekt **sam pilnuje niezmienników**; stan zmieniam metodami o znaczeniu biznesowym, nie setterami.",
+        "Kolekcje wystawiam jako `IReadOnlyList<T>`/`IReadOnlyCollection<T>`, pole `List<T>` zostaje prywatne.",
+        "Walidacja w konstruktorze/fabryce + `init`/`required` – nie da się zbudować niepoprawnego obiektu.",
+        "Kompozycja: klasa **ma** zależności (przez interfejs, wstrzyknięte w DI), zamiast **być** ich podklasą.",
+        "Dekorator (cache, retry, logowanie) zamiast hierarchii `LoggingCachingService : CachingService`.",
+        "Dziedziczenie zostawiam dla prawdziwego „is-a” i szablonów (template method w klasie abstrakcyjnej)."
+      ],
+      "pitfalls": [
+        "Anemiczny model z samymi `{ get; set; }` nazywany „enkapsulacją”.",
+        "Zwracanie `List<T>` z pola – klient może dowolnie modyfikować stan obiektu."
+      ],
+      "say": "Enkapsulacja to dla mnie obiekt, którego nie da się wprowadzić w niepoprawny stan z zewnątrz. Zachowania łączę kompozycją i dekoratorami w DI, a dziedziczenie zostawiam dla prawdziwych relacji is-a."
+    },
+    {
+      "topic": "Thread, ThreadPool i Task",
+      "points": [
+        "`Thread` – dedykowany wątek systemowy, drogi (stos ~1 MB rezerwacji), pełna kontrola; foreground domyślnie trzyma proces.",
+        "`ThreadPool` – pula wielokrotnie używanych wątków (background), runtime sam dobiera ich liczbę.",
+        "`Task` to **obietnica wyniku**, nie wątek; `Task.Run` kolejkuje pracę na ThreadPool.",
+        "Task zwracany przez I/O async **nie zajmuje wątku** podczas oczekiwania.",
+        "async/await = asynchroniczność (nie blokuj wątku na I/O), nie wielowątkowość.",
+        "I/O-bound → `await *Async`; CPU-bound → `Parallel`/PLINQ; zdjęcie pracy z wątku UI → `Task.Run`.",
+        "W ASP.NET Core `await Task.Run(...)` w handlerze nie przyspiesza, tylko dokłada przeskok wątku."
+      ],
+      "pitfalls": [
+        "„async tworzy nowy wątek” – nie tworzy.",
+        "Sync-over-async (`.Result`, `.Wait()`) w kodzie serwerowym → thread pool starvation."
+      ],
+      "code": "string html = await http.GetStringAsync(url);   // I/O – bez wątku\nint sum = await Task.Run(() => Compute(data));  // CPU – wątek z puli (UI)\nParallel.ForEach(items, Process);               // CPU – wiele wątków",
+      "lang": "csharp",
+      "say": "Thread to wątek systemowy, ThreadPool to pula takich wątków, a Task to abstrakcja operacji, która nie musi mieć żadnego wątku. Async służy do I/O, Parallel do pracy CPU, a Task.Run na serwerze rzadko ma sens."
+    },
+    {
+      "topic": "Parallel i PLINQ",
+      "points": [
+        "`Parallel.For/ForEach` – blokujące, partycjonują dane na wątki puli, wyjątki w `AggregateException`.",
+        "PLINQ: `AsParallel()`, `WithDegreeOfParallelism`, `AsOrdered` (kosztuje), `WithCancellation`, `ForAll`.",
+        "Opłaca się dla **CPU-bound** i wielu niezależnych elementów, gdy praca na element > narzut.",
+        "Wspólny stan: `Interlocked`, kolekcje Concurrent albo sumy lokalne (`localInit`/`localFinally`).",
+        "Praca async: `Parallel.ForEachAsync` (.NET 6+) z `MaxDegreeOfParallelism` albo `Task.WhenAll`.",
+        "Ogranicz `MaxDegreeOfParallelism`, gdy obok działa inny ruch (API, inne joby)."
+      ],
+      "pitfalls": [
+        "`Parallel.ForEach(items, async x => ...)` = async void: pętla kończy się przed pracą, wyjątki zabijają proces.",
+        "Jeden wspólny `lock` w ciele pętli – efektywnie kod sekwencyjny z narzutem.",
+        "Zrównoleglanie CPU wewnątrz żądania ASP.NET Core kosztem innych żądań."
+      ],
+      "code": "await Parallel.ForEachAsync(ids,\n    new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct },\n    async (id, token) => await ProcessAsync(id, token));",
+      "lang": "csharp",
+      "say": "Parallel i PLINQ stosuję do pracy CPU-bound na wielu niezależnych elementach, z ograniczonym stopniem równoległości i bez współdzielonego stanu. Do I/O używam Parallel.ForEachAsync albo WhenAll, nigdy async lambdy w Parallel.ForEach."
+    },
+    {
+      "topic": "Synchronizacja wątków",
+      "points": [
+        "`lock` = `Monitor.Enter/Exit` w try/finally; reentrant; bez `await` w środku; od .NET 9 typ `System.Threading.Lock`.",
+        "`Interlocked` (Increment, Add, Exchange, CompareExchange) – atomowe operacje bez blokady.",
+        "`volatile` = widoczność i brak przestawiania, **nie atomowość** (`x++` dalej jest wyścigiem).",
+        "Sygnalizacja: `ManualResetEventSlim`, `AutoResetEvent`, `SemaphoreSlim`, `CountdownEvent`, `Barrier`.",
+        "Async: `SemaphoreSlim.WaitAsync` + `Release` w finally; producent–konsument: `Channel<T>`.",
+        "`Mutex`/`Semaphore` (kernel) – między procesami; wersje *Slim – w procesie, szybsze.",
+        "Deadlock = 4 warunki Coffmana; łam **cykliczne oczekiwanie**: stała kolejność blokad, jedna blokada, timeouty (`TryEnter`)."
+      ],
+      "pitfalls": [
+        "`lock(this)`, `lock(typeof(X))`, lock na stringu – obcy kod może zablokować ten sam obiekt.",
+        "Wywoływanie eventów/callbacków/I/O pod lockiem – droga do deadlocka i contention.",
+        "`SemaphoreSlim(1,1)` wzięty rekurencyjnie – nie jest reentrant, zawiesza się."
+      ],
+      "code": "lock (_sync) { _items.Add(x); }             // sekcja krytyczna\nInterlocked.Increment(ref _count);         // licznik\nawait _gate.WaitAsync(ct);\ntry { await SaveAsync(ct); } finally { _gate.Release(); }",
+      "lang": "csharp",
+      "say": "Dobieram najlżejsze narzędzie: Interlocked dla liczników, lock dla krótkich sekcji synchronicznych, SemaphoreSlim w kodzie async i eventy do sygnalizacji. Deadlockom zapobiegam stałą kolejnością blokad i krótkimi sekcjami krytycznymi."
+    }
+  ]
+}

@@ -1,0 +1,914 @@
+{
+  "module": "arch",
+  "title": "Architektura",
+  "order": 4,
+  "lessons": [
+    {
+      "id": "arch-solid",
+      "cat": "arch",
+      "title": "SOLID, DRY, KISS, YAGNI w praktyce",
+      "level": 2,
+      "minutes": 15,
+      "intro": "SOLID, DRY, KISS i YAGNI to kilka prostych zasad, które pomagają pisać kod łatwy do zmieniania. Każdą omówimy tak samo: jaki problem rozwiązuje, jak wygląda kod, który ją łamie, i jak go poprawić w C# i w Angularze. Na koniec: czym jest clean code, jak rozpoznać „śmierdzący” kod i jak go bezpiecznie poprawiać.",
+      "sections": [
+        {
+          "h": "Po co w ogóle te zasady – kuchnia w restauracji",
+          "text": "Wszystkie te zasady odpowiadają na jedno pytanie: **ile kosztuje zmiana w kodzie**. Kod piszesz raz, a potem dziesiątki razy go czytasz i poprawiasz.\n\nWyobraź sobie kuchnię w restauracji, która dobrze działa:\n\n- **S** – każdy kucharz ma swoje stanowisko: jeden robi zupy, drugi desery. Nie miesza się wszystkiego w jednym garnku.\n- **O** – nowe danie w karcie dodajesz bez przebudowy kuchni.\n- **L** – każdy kucharz z certyfikatem może zastąpić innego i goście nie zauważą różnicy.\n- **I** – kelner dostaje kartę dań, a nie całą książkę receptur.\n- **D** – szef kuchni zamawia „pomidory”, a nie „pomidory wyłącznie od pana Zenka”.\n\nTe zasady to **wskazówki, nie prawa**. Stosowane na ślepo prowadzą do przesady: interfejs do każdej klasy, fabryka fabryk. Dlatego obok SOLID stoją KISS i YAGNI, które mówią „nie komplikuj”.\n\nPod spodem są dwa pojęcia. **Cohesion** (spójność) to to, czy elementy jednej klasy naprawdę do siebie pasują. **Coupling** (sprzężenie) to to, jak mocno klasy wiedzą o sobie nawzajem. Chcemy dużej spójności i małego sprzężenia."
+        },
+        {
+          "h": "S – Single Responsibility: jeden powód do zmiany",
+          "text": "**Single Responsibility Principle (SRP)** – klasa powinna mieć tylko jeden powód do zmiany. „Powód” to zwykle jedna grupa ludzi, która może zażądać zmiany: księgowość, marketing, admini.\n\n**Źle:** `OrderService` liczy rabaty, zapisuje do bazy, robi PDF faktury i wysyła maila. Marketing chce zmienić treść maila – i musisz testować od nowa liczenie rabatów, bo to ta sama klasa.\n\n**Dobrze:** rozdzielasz na `DiscountCalculator`, `IOrderRepository`, `IInvoiceRenderer`, `INotificationSender`. Zmiana maila dotyka jednej małej klasy.\n\nW Angularze najczęstsze złamanie SRP to „komponent-kombajn”: sam pobiera dane przez `HttpClient`, przerabia je, trzyma stan, waliduje formularz i jeszcze wyświetla. Poprawka: pobieranie danych i stan do serwisu, a komponent tylko wyświetla i przekazuje kliknięcia dalej.\n\nUwaga na częsty mit: SRP **nie znaczy** „klasa ma jedną metodę”. Klasa może mieć dziesięć metod, jeśli wszystkie zmieniają się z tego samego powodu."
+        },
+        {
+          "h": "O – Open/Closed: dodawaj, zamiast przerabiać",
+          "text": "**Open/Closed Principle (OCP)** – kod ma być otwarty na rozszerzanie, ale zamknięty na modyfikację. Prościej: nowy wariant dodajesz jako nowy kawałek kodu, a nie przez grzebanie w starym.\n\nSygnał ostrzegawczy to `switch`, który rośnie przy każdej nowej opcji. W przykładzie niżej każdy nowy przewoźnik oznacza edycję tej samej metody – i ryzyko, że zepsujesz istniejących.\n\nCo się dzieje w wersji „dobrze”, krok po kroku:\n\n- **1.** Interfejs `IShippingCost` mówi: „umiem policzyć koszt dla jednego przewoźnika”.\n- **2.** Każdy przewoźnik to osobna, mała klasa.\n- **3.** Kontener DI (Dependency Injection, czyli mechanizm, który sam tworzy obiekty i podaje je tam, gdzie są potrzebne) wstrzykuje wszystkie implementacje jako `IEnumerable`.\n- **4.** Kalkulator wybiera właściwą. Nowy przewoźnik = nowa klasa + jedna linijka rejestracji.",
+          "code": "// ŹLE: każdy nowy przewoźnik = edycja switcha\ndecimal Cost(Shipment s) => s.Carrier switch\n{\n    \"dpd\" => s.Weight * 2.1m,\n    \"inpost\" => 12m,\n    _ => throw new NotSupportedException()\n};\n\n// DOBRZE: strategia + DI\npublic interface IShippingCost { string Carrier { get; } decimal For(Shipment s); }\n\npublic sealed class DpdCost : IShippingCost\n{\n    public string Carrier => \"dpd\";\n    public decimal For(Shipment s) => s.Weight * 2.1m;\n}\n\npublic sealed class ShippingCalculator(IEnumerable<IShippingCost> strategies)\n{\n    public decimal Cost(Shipment s) =>\n        strategies.Single(x => x.Carrier == s.Carrier).For(s);\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "L, I, D – zastępowalność, małe interfejsy, zależność od abstrakcji",
+          "text": "**Liskov Substitution Principle (LSP)** – obiekt klasy pochodnej musi działać wszędzie tam, gdzie działa klasa bazowa, bez niespodzianek. Jak zastępca kucharza: jeśli nie umie robić zup, to nie może zastąpić zupowego. **Źle:** klasa implementuje `IRepository<T>`, ale w `Delete` rzuca `NotSupportedException`, bo „jest tylko do odczytu”. Kod, który ufa interfejsowi, wybucha. **Dobrze:** dwa interfejsy – `IReadOnlyRepository<T>` i `IRepository<T>`.\n\n**Interface Segregation Principle (ISP)** – nie zmuszaj nikogo do zależenia od metod, których nie używa. **Źle:** `IUserService` z 25 metodami, z czego raporty używają dwóch – każda zmiana interfejsu psuje mocki we wszystkich testach. **Dobrze:** małe interfejsy pod potrzeby, np. `IUserLookup` i `IUserAdmin`. W TypeScript to np. przekazanie do komponentu `Pick<User, 'id' | 'name'>` zamiast całego obiektu.\n\n**Dependency Inversion Principle (DIP)** – logika biznesowa nie zależy od szczegółów (SQL, SMTP); obie strony zależą od abstrakcji, a tę abstrakcję **definiuje strona biznesowa**. Analogia z gniazdkiem: lampa wymaga „gniazdka 230 V”, a nie konkretnej elektrowni. DIP to zasada, a DI (wstrzykiwanie zależności) to technika, która pomaga ją zrealizować.\n\nW Angularze DIP widać przy `InjectionToken` (kluczu, pod którym rejestrujesz zależność). Komponent prosi o „jakiś logger”, a konfiguracja decyduje, czy to konsola, czy zewnętrzny serwis:",
+          "code": "export interface Logger { log(msg: string): void; }\nexport const LOGGER = new InjectionToken<Logger>('LOGGER');\n\n// app.config.ts – tu wybierasz konkretną implementację\nproviders: [{ provide: LOGGER, useClass: ConsoleLogger }]\n\n// komponent zna tylko abstrakcję\nexport class CheckoutComponent {\n  private readonly logger = inject(LOGGER);\n}",
+          "lang": "typescript"
+        },
+        {
+          "h": "DRY, KISS, YAGNI – zasady zdrowego rozsądku",
+          "text": "**DRY (Don't Repeat Yourself, „nie powtarzaj się”)** – każda reguła biznesowa ma mieć jedno miejsce w kodzie. Chodzi o **wiedzę**, nie o identyczne linijki. **Źle:** „VIP ma 10% rabatu” jest wpisane w trzech serwisach i w szablonie Angulara. Zmiana na 15% – i jedno miejsce na pewno zostanie pominięte.\n\nPułapka DRY: kod wygląda tak samo, ale zmienia się z różnych powodów, np. walidacja adresu dostawy i adresu firmy. Skleisz je w jedną metodę, a za miesiąc dorośnie flagi `bool isCompany` i trzy `if`-y. Lepsza mała duplikacja niż zła abstrakcja. Praktyczna reguła: wspólny kod wydzielaj przy trzecim powtórzeniu („rule of three”).\n\n**KISS (Keep It Simple, Stupid, „nie komplikuj”)** – wybierz najprostsze rozwiązanie, które działa. Zwykły `if` zamiast skomplikowanego wzorca, `record` zamiast hierarchii klas.\n\n**YAGNI (You Aren't Gonna Need It, „nie będziesz tego potrzebować”)** – nie buduj funkcji na zapas. Konfigurowalny silnik reguł „bo może kiedyś” kosztuje czas i testy dziś, a za rok wymagania i tak będą inne. Wyjątek: rzeczy trudne do dodania później (bezpieczeństwo, migracje danych, wersjonowanie API) warto przemyśleć od razu.\n\nWidać tu napięcie: OCP i DIP zachęcają do abstrakcji, KISS i YAGNI do ich unikania. Rozstrzyga pytanie: **czy ta część naprawdę się zmienia?** Jeśli tak – abstrakcja. Jeśli nie – prosty kod."
+        },
+        {
+          "h": "Clean code i code smells – źle → dobrze",
+          "text": "**Clean code** to kod, który następna osoba (często ty za pół roku) przeczyta bez bólu głowy. Kilka nawyków:\n\n- **Nazwy mówiące, co robią**: `overdueInvoices` zamiast `list2`.\n- **Guard clauses** – na początku metody sprawdzasz złe przypadki i od razu wychodzisz, zamiast zagnieżdżać `if`-y.\n- **Brak magicznych liczb** – liczba `14` dostaje nazwę `RefundWindow`.\n- **Komentarz wyjaśnia „dlaczego”**, a nie „co” – „co” ma być widać z kodu.\n\n**Code smell** („zapach kodu”) to objaw, że coś może być nie tak – kod działa, ale trudno go zmieniać. Najczęstsze i lekarstwa:\n\n- **Long Method / God Object** – metoda na 200 linii lub klasa robiąca wszystko → wydziel mniejsze metody i klasy.\n- **Long Parameter List** – 7 parametrów → jeden obiekt, np. `record CreateOrderRequest`.\n- **Primitive Obsession** – wszędzie gołe `string email` → typ `Email`, który sam pilnuje poprawności.\n- **Feature Envy** – metoda używa głównie danych innej klasy → przenieś ją tam.\n- **Shotgun Surgery** – jedna zmiana wymaga poprawek w 10 miejscach → zbierz wiedzę w jedno miejsce.\n- **Speculative Generality** – abstrakcje „na zapas” → usuń (YAGNI).",
+          "code": "// ŹLE: zagnieżdżenia i magiczne liczby (co to jest status 3? co to jest 14?)\npublic bool CanRefund(Order o)\n{\n    if (o != null) { if (o.Status == 3) { if ((DateTime.UtcNow - o.PaidAt).Days < 14) return true; } }\n    return false;\n}\n\n// DOBRZE: guard clauses, nazwy z domeny, czas podawany z zewnątrz (łatwy test)\nprivate static readonly TimeSpan RefundWindow = TimeSpan.FromDays(14);\n\npublic bool CanRefund(Order order, DateTime now)\n{\n    ArgumentNullException.ThrowIfNull(order);              // 1. brak zamówienia = błąd\n    if (order.Status != OrderStatus.Delivered) return false; // 2. niedostarczone = nie\n    return now - order.PaidAt < RefundWindow;               // 3. mieści się w 14 dniach?\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Bezpieczna refaktoryzacja i jak o tym mówić na rozmowie",
+          "text": "**Refaktoryzacja** to zmiana budowy kodu bez zmiany tego, co kod robi. Jak przemeblowanie pokoju: meble te same, układ lepszy. Bezpieczny przepis:\n\n- **1.** Upewnij się, że są testy, które pilnują obecnego zachowania. Przy starym kodzie bez testów napisz najpierw **testy charakteryzujące** – takie, które utrwalają to, co kod robi dziś (nawet jeśli to dziwne).\n- **2.** Rób małe kroki: po każdym kod się kompiluje i testy są zielone.\n- **3.** Korzystaj z automatycznych refaktoryzacji IDE (Rider, Visual Studio) – są bezpieczniejsze niż ręczne przepisywanie.\n- **4.** Nie mieszaj dużej refaktoryzacji z nową funkcją w jednym PR (pull request, czyli zgłoszeniu zmian do przeglądu).\n\n**Na rozmowie** schemat odpowiedzi jest prosty: definicja jednym zdaniem → przykład złamania zasady z twojego projektu → jak to poprawiłeś → kiedy byś tego nie robił. Np.: „Mieliśmy import plików ze switchem po formacie. Przy czwartym formacie wydzieliłem `IImportParser` w DI – nowy format to nowa klasa i test. Przy dwóch formatach zostawiłbym switch, bo prościej”.\n\n**Niuanse seniorskie:** DIP to nie „używam kontenera DI” – można mieć kontener i dalej zależeć od konkretnych klas bazy danych. Interfejs z jedną implementacją bez potrzeby testów czy wymiany to często szum. Zasady SOLID to środek, a celem jest niski koszt zmian – pokazanie tego osądu odróżnia mida od seniora."
+        }
+      ],
+      "takeaways": [
+        "Zasady projektowe istnieją po to, by obniżyć koszt zmian – to wskazówki, nie prawa.",
+        "SRP to jeden powód do zmiany (jedna grupa zamawiających zmiany), a nie jedna metoda w klasie.",
+        "OCP: nowy wariant to nowa klasa (strategia w DI) zamiast kolejnej gałęzi switcha.",
+        "LSP łamie podtyp, który rzuca NotSupportedException tam, gdzie baza obiecuje działanie.",
+        "DIP: logika biznesowa definiuje abstrakcję, infrastruktura ją implementuje; DI to tylko technika.",
+        "DRY dotyczy wiedzy biznesowej – przypadkowo podobny kod lepiej zostawić zduplikowany niż sklejać flagami.",
+        "KISS i YAGNI hamują przesadę; abstrakcję wprowadzaj tam, gdzie zmiany naprawdę się zdarzają.",
+        "Refaktoryzacja wymaga testów pilnujących zachowania i małych, zielonych kroków."
+      ],
+      "interview": [
+        "Wyjaśnij każdą literę SOLID na przykładzie z własnego projektu.",
+        "Czym różni się Dependency Inversion od Dependency Injection?",
+        "Kiedy duplikacja kodu jest lepsza niż abstrakcja?",
+        "Jakie code smells najczęściej spotykasz i jak je refaktoryzujesz?",
+        "Jak bezpiecznie zrefaktoryzować legacy kod bez testów?"
+      ],
+      "exam": [
+        {
+          "id": "arch-solid-e1",
+          "q": "Co najlepiej oddaje sens Single Responsibility Principle?",
+          "options": [
+            "Klasa powinna mieć jeden powód do zmiany, zwykle związany z jedną grupą zamawiającą zmiany",
+            "Klasa powinna mieć dokładnie jedną publiczną metodę",
+            "Każda klasa powinna implementować dokładnie jeden interfejs",
+            "Każda warstwa aplikacji powinna mieć jedną klasę serwisową"
+          ],
+          "why": "SRP mówi o spójności i powodach zmian. Liczba metod czy interfejsów nie jest kryterium – klasa z wieloma metodami może mieć jeden powód do zmiany.",
+          "correct": 0
+        },
+        {
+          "id": "arch-solid-e2",
+          "q": "Kalkulator kosztów wysyłki ma `switch` po nazwie przewoźnika, edytowany przy każdym nowym przewoźniku. Która poprawka realizuje OCP?",
+          "options": [
+            "Przeniesienie switcha do osobnej klasy statycznej",
+            "Interfejs strategii `IShippingCost` z implementacją per przewoźnik rejestrowaną w DI",
+            "Zamiana switcha na łańcuch if/else if",
+            "Dodanie gałęzi `default`, która zwraca koszt zerowy"
+          ],
+          "why": "Strategia sprawia, że nowy przewoźnik to nowa klasa, a istniejący kod nie jest modyfikowany. Pozostałe opcje dalej wymagają edycji tego samego miejsca.",
+          "correct": 1
+        },
+        {
+          "id": "arch-solid-e3",
+          "q": "Która sytuacja jest typowym naruszeniem Liskov Substitution Principle?",
+          "options": [
+            "Klasa pochodna dodaje nową publiczną metodę, której nie ma w bazie",
+            "Interfejs ma dwie różne implementacje rejestrowane w DI",
+            "Implementacja `IRepository<T>` rzuca `NotSupportedException` w metodzie `Delete`, bo „to repozytorium tylko do odczytu”",
+            "Klasa bazowa jest abstrakcyjna i nie da się jej utworzyć"
+          ],
+          "why": "Kod korzystający z `IRepository<T>` zakłada, że `Delete` działa. Podtyp łamie obietnicę bazy, więc nie da się go bezpiecznie podstawić. Poprawka to rozdzielenie interfejsów odczytu i zapisu.",
+          "correct": 2
+        },
+        {
+          "id": "arch-solid-e4",
+          "q": "Jaka jest relacja między Dependency Inversion Principle a Dependency Injection?",
+          "options": [
+            "To dwie nazwy tej samej rzeczy",
+            "DI jest zasadą projektową, a DIP to konkretny kontener, np. Microsoft.Extensions.DependencyInjection",
+            "DIP wymaga użycia kontenera DI, inaczej jest złamany",
+            "DIP to zasada o kierunku zależności i właścicielu abstrakcji; DI to technika dostarczania zależności, która pomaga ją realizować"
+          ],
+          "why": "Można stosować DI i dalej zależeć od konkretnych klas infrastruktury (łamiąc DIP) albo realizować DIP bez kontenera, przekazując zależności ręcznie.",
+          "correct": 3
+        },
+        {
+          "id": "arch-solid-e5",
+          "q": "Według DIP, kto powinien „posiadać” (definiować) interfejs `IOrderRepository`?",
+          "options": [
+            "Warstwa logiki biznesowej, która go używa",
+            "Projekt infrastruktury z implementacją EF Core",
+            "Osobny projekt „Common” współdzielony przez wszystkie warstwy",
+            "Warstwa API, bo to ona rejestruje zależności"
+          ],
+          "why": "Abstrakcję definiuje strona biznesowa według swoich potrzeb, a infrastruktura ją implementuje – jak lampa, która wymaga „gniazdka”, a nie konkretnej elektrowni.",
+          "correct": 0
+        },
+        {
+          "id": "arch-solid-e6",
+          "q": "Dwie metody walidujące adres dostawy i adres firmy wyglądają dziś identycznie, ale należą do różnych procesów biznesowych. Co jest najrozsądniejsze według lekcji?",
+          "options": [
+            "Natychmiast połączyć je w jedną metodę z flagą `isCompany`",
+            "Zostawić je osobno, bo to przypadkowe podobieństwo, a nie wspólna wiedza",
+            "Wydzielić bazową klasę abstrakcyjną `AddressValidatorBase`",
+            "Przenieść walidację do frontendu, żeby uniknąć duplikacji"
+          ],
+          "why": "DRY dotyczy wiedzy. Kod zmieniający się z różnych powodów sklejony w jedno obrasta flagami i warunkami – lepsza drobna duplikacja niż zła abstrakcja.",
+          "correct": 1
+        },
+        {
+          "id": "arch-solid-e7",
+          "q": "Zespół buduje konfigurowalny silnik reguł rabatowych, choć dziś istnieje jedna stała reguła. Którą zasadę najbardziej narusza?",
+          "options": [
+            "Liskov Substitution Principle",
+            "Interface Segregation Principle",
+            "YAGNI",
+            "DRY"
+          ],
+          "why": "Budowanie funkcji „na zapas” bez realnej potrzeby to klasyczne naruszenie YAGNI, a w kodzie objawia się jako smell Speculative Generality.",
+          "correct": 2
+        },
+        {
+          "id": "arch-solid-e8",
+          "q": "Metoda `CalculateBonus` w klasie `PayrollService` odwołuje się prawie wyłącznie do pól obiektu `Employee`. Jak nazywa się ten smell i jaka jest typowa poprawka?",
+          "options": [
+            "Primitive Obsession – wprowadzić value object",
+            "Shotgun Surgery – rozbić metodę na kilka klas",
+            "Long Parameter List – wprowadzić obiekt parametrów",
+            "Feature Envy – przenieść metodę do `Employee`"
+          ],
+          "why": "Feature Envy to metoda „zazdrosna” o dane innej klasy. Naturalnym ruchem jest przeniesienie zachowania tam, gdzie są dane.",
+          "correct": 3
+        },
+        {
+          "id": "arch-solid-e9",
+          "q": "Masz stary moduł bez testów i musisz go zrefaktoryzować. Od czego zacząć?",
+          "options": [
+            "Od testów charakteryzujących, które utrwalają obecne zachowanie, a potem małe kroki refaktoryzacji",
+            "Od przepisania modułu od zera według SOLID",
+            "Od dodania interfejsów do wszystkich klas, żeby dało się je mockować",
+            "Od połączenia refaktoryzacji z nową funkcją, żeby oszczędzić jeden cykl testów"
+          ],
+          "why": "Refaktoryzacja to zmiana budowy bez zmiany zachowania. Bez siatki bezpieczeństwa nie wiesz, czy zachowanie się nie zmieniło, dlatego najpierw testy charakteryzujące.",
+          "correct": 0
+        },
+        {
+          "id": "arch-solid-e10",
+          "q": "Komponent Angulara pobiera dane przez `HttpClient`, przerabia je, trzyma stan i waliduje formularz. Która zmiana najlepiej poprawia SRP?",
+          "options": [
+            "Zamiana `HttpClient` na `fetch`",
+            "Przeniesienie pobierania danych i stanu do serwisu, komponent tylko wyświetla i przekazuje akcje",
+            "Przeniesienie całej logiki do szablonu HTML",
+            "Dodanie `ChangeDetectionStrategy.OnPush` bez innych zmian"
+          ],
+          "why": "Komponent ma wtedy jeden powód do zmiany – wygląd. Dostęp do danych i stan zmieniają się z innych powodów, więc trafiają do serwisu.",
+          "correct": 1
+        }
+      ]
+    },
+    {
+      "id": "arch-clean",
+      "cat": "arch",
+      "title": "Clean Architecture, Onion i Vertical Slice",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Clean Architecture, Onion i Hexagonal to trzy nazwy jednej idei: logika biznesowa w środku, technologie (baza, HTTP, maile) na zewnątrz. Vertical Slice tnie aplikację inaczej – według funkcji, a nie warstw. Na rozmowie pytają, jak układasz projekt w .NET, gdzie leży `DbContext`, po co MediatR i kiedy to wszystko jest przesadą.",
+      "sections": [
+        {
+          "h": "Problem: logika przyklejona do bazy danych",
+          "text": "Klasyczna aplikacja ma trzy warstwy: UI → logika biznesowa → dostęp do danych. Brzmi dobrze, ale jest haczyk: **logika biznesowa zależy od bazy danych**. Serwisy biorą `DbContext`, encje mają atrybuty EF, a reguły mieszają się z zapytaniami.\n\nSkutki w praktyce:\n\n- Nie przetestujesz reguły rabatu bez stawiania bazy.\n- Wymiana ORM-a (ORM to biblioteka tłumacząca obiekty na tabele, np. EF Core) oznacza przepisanie logiki.\n- Dodanie drugiego „wejścia”, np. kolejki obok HTTP, wymaga kopiowania kodu.\n\n**Analogia:** logika biznesowa to silnik samochodu, a baza, HTTP i kolejki to koła i opony. Chcesz zmieniać opony bez rozbierania silnika.\n\nStąd architektury „koncentryczne”: Hexagonal (Alistair Cockburn), Onion (Jeffrey Palermo) i Clean Architecture (Robert C. Martin). Wszystkie mówią to samo: **środek nic nie wie o świecie zewnętrznym**."
+        },
+        {
+          "h": "Reguła zależności i warstwy krok po kroku",
+          "text": "Najważniejsza zasada to **Dependency Rule**: w kodzie zależności wskazują tylko do środka. „Zależy” znaczy tu: ma `using` albo referencję do projektu. Domena nie ma żadnych referencji do warstw zewnętrznych.\n\nCo jeśli środek potrzebuje bazy albo maila? Definiuje **interfejs** („potrzebuję czegoś, co zapisze zamówienie”), a warstwa zewnętrzna go implementuje. To ta sama zasada co DIP z SOLID, tylko w skali całej aplikacji.\n\nWarstwy od środka:\n\n- **1. Domain** – encje, reguły biznesowe, wyjątki domenowe. Zero frameworków. Tu są reguły, które obowiązywałyby nawet na papierze, np. „nie można anulować wysłanego zamówienia”.\n- **2. Application** – przypadki użycia (use cases), czyli konkretne operacje: „złóż zamówienie”, „anuluj rezerwację”. Definiuje interfejsy typu `IOrderRepository`, `IEmailSender`. Zależy tylko od Domain.\n- **3. Infrastructure** – konkretne technologie: EF Core, klient SMTP, Azure Blob. Implementuje interfejsy z Application.\n- **4. API (Presentation)** – kontrolery lub Minimal API. Tłumaczy HTTP na wywołania use case’ów. Tu jest też **composition root**, czyli `Program.cs`, w którym łączysz interfejsy z implementacjami w DI.\n\nOnion opisuje dokładnie to samo jako „pierścienie cebuli”. Na rozmowie warto powiedzieć wprost: to w dużej mierze różne nazwy tej samej idei.",
+          "code": "src/\n  Shop.Domain/          // brak referencji do innych projektów\n  Shop.Application/     // -> Shop.Domain\n  Shop.Infrastructure/  // -> Shop.Application (i pośrednio Domain)\n  Shop.Api/             // -> Application + Infrastructure (tylko do rejestracji DI)\ntests/\n  Shop.Domain.Tests/          // czyste testy jednostkowe\n  Shop.Application.Tests/     // use case’y z fałszywymi implementacjami\n  Shop.Api.IntegrationTests/  // WebApplicationFactory + Testcontainers",
+          "lang": "text"
+        },
+        {
+          "h": "Porty i adaptery – gniazdka i wtyczki",
+          "text": "Hexagonal Architecture używa obrazowych nazw. **Port** to interfejs na granicy aplikacji – jak gniazdko w ścianie. **Adapter** to konkretna implementacja – wtyczka, którą do gniazdka wkładasz.\n\nSą dwa kierunki:\n\n- **Driving adapters** (sterujące) – to one **wywołują** aplikację: kontroler HTTP, konsument kolejki, zadanie w tle, test.\n- **Driven adapters** (sterowane) – to je **wywołuje** aplikacja: repozytorium EF, bramka płatności, wysyłka maili, zegar.\n\nZysk: ten sam use case odpalisz z HTTP, z kolejki i z testu, podmieniając tylko adaptery. Najmniejszy praktyczny przykład portu to zegar – `TimeProvider` wbudowany w .NET od wersji 8. W testach podajesz sztuczny czas i testy reguł typu „14 dni na zwrot” przestają być losowe.\n\nPrzykład niżej krok po kroku: 1) Application mówi, czego potrzebuje (`IPaymentGateway`), 2) Infrastructure dostarcza implementację dla konkretnego dostawcy, 3) `Program.cs` łączy jedno z drugim.",
+          "code": "// 1. Application: port – „potrzebuję kogoś, kto pobierze płatność”\npublic interface IPaymentGateway\n{\n    Task<PaymentResult> ChargeAsync(Money amount, string token, CancellationToken ct);\n}\n\n// 2. Infrastructure: adapter dla konkretnego dostawcy\npublic sealed class StripePaymentGateway(HttpClient http) : IPaymentGateway\n{\n    public async Task<PaymentResult> ChargeAsync(Money amount, string token, CancellationToken ct)\n    {\n        // wywołanie API dostawcy i zamiana odpowiedzi na PaymentResult\n        throw new NotImplementedException();\n    }\n}\n\n// 3. Api/Program.cs: composition root – tu wtyczka trafia do gniazdka\nbuilder.Services.AddHttpClient<IPaymentGateway, StripePaymentGateway>();",
+          "lang": "csharp"
+        },
+        {
+          "h": "Gdzie co leży w projekcie .NET",
+          "text": "Pytania, które padają niemal zawsze, i krótkie odpowiedzi:\n\n- **Gdzie jest `DbContext`?** W Infrastructure. Częsty, świadomy kompromis: interfejs `IAppDbContext` z `DbSet<T>` w Application, żeby use case mógł pisać zapytania LINQ bez warstwy repozytoriów. Zyskujesz prostotę, tracisz pełną niezależność od EF. Ważne, żeby umieć ten kompromis nazwać.\n- **Mapowanie tabel EF** – klasy `IEntityTypeConfiguration<T>` w Infrastructure, a nie atrybuty na encjach. Domena zostaje czysta.\n- **Walidacja** – format danych wejściowych (pole wymagane, max długość) w Application, np. FluentValidation. Reguły biznesowe w Domain, w konstruktorach i metodach encji.\n- **DTO** (Data Transfer Object – prosta klasa do przesyłania danych) – w Application. Kontroler nie zwraca encji domenowych.\n- **Logowanie, transakcje, cache** – rzeczy „przekrojowe” (cross-cutting) idą do middleware, filtrów albo dekoratorów.\n\nRegułę zależności **pilnuj automatycznie**: referencje projektów blokują błędy w kompilatorze, a testy architektury (np. NetArchTest, ArchUnitNET) łapią resztę na CI (ciągłej integracji, czyli automatycznym buildzie po każdym pushu).\n\nW Angularze odpowiednikiem jest podział na `core` (rzeczy globalne, np. interceptory), `features/*` (funkcje aplikacji) i `shared` (wspólne komponenty), plus reguła ESLint zabraniająca importów z jednej funkcji do drugiej."
+        },
+        {
+          "h": "Vertical Slice – kroimy tort pionowo",
+          "text": "Clean Architecture tnie aplikację **poziomo** – jak tort na warstwy: biszkopt, krem, owoce. Kłopot: żeby dodać jedno pole do jednego ekranu, ruszasz kontroler, DTO, serwis, repozytorium, encję i mapowanie – pięć folderów.\n\n**Vertical Slice** (spopularyzowany przez Jimmy’ego Bogarda) kroi tort **pionowo**: każdy kawałek ma wszystkie warstwy, ale tylko dla jednej funkcji. Wszystko o „Zarezerwuj stolik” leży w jednym pliku lub folderze.\n\nCo robi kod niżej, krok po kroku:\n\n- **1.** `Command` opisuje dane wejściowe tej jednej funkcji.\n- **2.** `Map` rejestruje endpoint `POST /reservations`.\n- **3.** `Handle` szuka stolika; brak → 404.\n- **4.** Regułę („czy można zarezerwować?”) wykonuje encja domenowa `table.Reserve(...)`, a nie handler.\n- **5.** Zapis i odpowiedź 201 Created.\n\nZalety: co zmienia się razem, leży razem; funkcję łatwo usunąć; prosty odczyt może iść wprost przez `DbContext`, a złożony zapis przez bogaty model domeny. Wady: ryzyko kopiowania kodu między slice’ami. Vertical Slice da się łączyć z domeną w środku – to częsty, dobry układ.",
+          "code": "// Features/Reservations/CreateReservation.cs\npublic static class CreateReservation\n{\n    public sealed record Command(Guid TableId, DateTime Start, int Guests);\n\n    public static void Map(IEndpointRouteBuilder app) =>\n        app.MapPost(\"/reservations\", Handle);\n\n    static async Task<IResult> Handle(Command cmd, AppDbContext db, CancellationToken ct)\n    {\n        var table = await db.Tables.FindAsync([cmd.TableId], ct);\n        if (table is null) return Results.NotFound();\n        var reservation = table.Reserve(cmd.Start, cmd.Guests); // reguły w domenie\n        await db.SaveChangesAsync(ct);\n        return Results.Created($\"/reservations/{reservation.Id}\", new { reservation.Id });\n    }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "MediatR i alternatywy",
+          "text": "**MediatR** to biblioteka-pośrednik. Analogia: recepcja w hotelu. Kontroler nie szuka sam właściwego pracownika – oddaje karteczkę `Send(new CreateOrder(...))`, a recepcja znajduje handler, który się tym zajmie.\n\nNajwiększa zaleta to **pipeline behaviors** – „bramki”, przez które przechodzi każde żądanie. Jedno miejsce na walidację, logowanie, transakcję czy pomiar czasu.\n\nWady:\n\n- Trudniej przejść w IDE od kontrolera do logiki („Go to definition” trafia w bibliotekę).\n- Rejestracja przez refleksję – trochę magii i drobny narzut.\n- Od 2025 roku MediatR (podobnie jak AutoMapper) jest rozwijany **komercyjnie** – nowsze wersje w części zastosowań firmowych wymagają licencji.\n\nAlternatywy:\n\n- **Bez pośrednika** – handler to zwykła klasa wstrzyknięta do endpointu; walidacja i logowanie przez filtry endpointów, middleware lub dekoratory (np. `Decorate` z biblioteki Scrutor).\n- **Wolverine** – pośrednik i obsługa kolejek w jednym.\n- **Mediator na source generatorach** (np. biblioteka Mediator) – podobne API, ale kod generowany przy kompilacji, bez refleksji.\n\nWażne zdanie na rozmowę: MediatR **to nie** CQRS ani Clean Architecture – to tylko narzędzie do przekazywania żądań."
+        },
+        {
+          "h": "Kiedy prościej wystarczy i jak o tym mówić",
+          "text": "Cztery projekty, repozytoria, MediatR i mapowanie DTO dla aplikacji z pięcioma tabelami to strzelanie z armaty do wróbla. Dobierz strukturę do problemu:\n\n- **Prosty CRUD** (Create, Read, Update, Delete – aplikacja, która głównie zapisuje i wyświetla dane), narzędzie wewnętrzne, MVP → jeden projekt, foldery per funkcja, `DbContext` używany wprost.\n- **Logika głównie w zapytaniach i walidacji** → vertical slices bez osobnej domeny.\n- **Złożone reguły, system na lata, większy zespół** → Clean/Onion z bogatą domeną.\n\nTypowe pułapki:\n\n- „Domena”, która jest tylko kopią tabel, a cała logika siedzi w serwisach – koszt warstw bez zysku.\n- Generyczne `IRepository<T>` nad EF, które tylko ukrywa możliwości EF i utrudnia optymalizację zapytań.\n- Mapowanie encja → DTO → ViewModel → DTO dla każdego pola.\n\n**Jak to powiedzieć na rozmowie:** „Zaczynam od prostej struktury per funkcja. Osobną domenę wydzielam, gdy pojawiają się prawdziwe reguły biznesowe. Kierunek zależności pilnuję referencjami projektów i testami architektury. Clean Architecture to dla mnie kierunek zależności, nie liczba projektów w solution”."
+        }
+      ],
+      "takeaways": [
+        "Hexagonal, Onion i Clean Architecture łączy jedna reguła: zależności w kodzie wskazują do środka, ku domenie.",
+        "Domain nie zależy od niczego, Application od Domain, Infrastructure implementuje porty, API jest composition rootem.",
+        "Porty definiuje rdzeń; driving adapters go wywołują (HTTP, kolejka, test), driven adapters są przez niego wywoływane (baza, mail).",
+        "DbContext leży w Infrastructure; IAppDbContext w Application to świadomy kompromis, który trzeba umieć nazwać.",
+        "Vertical Slice grupuje kod według funkcji, zwiększając spójność; można go łączyć z bogatą domeną.",
+        "MediatR to narzędzie do dispatchu i pipeline behaviors – nie jest ani CQRS, ani Clean Architecture, ma alternatywy.",
+        "Regułę zależności wymuszaj referencjami projektów i testami architektury, a nie tylko konwencją.",
+        "Dla prostego CRUD-a pełne warstwy to over-engineering – liczy się kierunek zależności, nie liczba projektów."
+      ],
+      "interview": [
+        "Opisz warstwy Clean Architecture i powiedz, która od której zależy.",
+        "Gdzie umieścisz DbContext i konfigurację EF Core w takim projekcie?",
+        "Czym Vertical Slice Architecture różni się od architektury warstwowej?",
+        "Czy MediatR jest potrzebny do CQRS? Jakie widzisz jego wady?",
+        "Kiedy Clean Architecture to przesada?"
+      ],
+      "exam": [
+        {
+          "id": "arch-clean-e1",
+          "q": "Co mówi Dependency Rule w Clean Architecture?",
+          "options": [
+            "Każda warstwa może zależeć tylko od warstwy bezpośrednio pod nią, jak w klasycznym modelu UI → BLL → DAL",
+            "Zależności w kodzie źródłowym wskazują wyłącznie do środka – warstwy wewnętrzne nic nie wiedzą o zewnętrznych",
+            "Infrastruktura jest w centrum, bo wszystkie warstwy z niej korzystają",
+            "Zależności między warstwami są zabronione – komunikują się wyłącznie przez zdarzenia"
+          ],
+          "why": "Rdzeń (domena i przypadki użycia) jest niezależny od technologii. Gdy potrzebuje świata zewnętrznego, definiuje interfejs, który implementuje warstwa zewnętrzna.",
+          "correct": 1
+        },
+        {
+          "id": "arch-clean-e2",
+          "q": "W którym projekcie powinna znaleźć się implementacja `IOrderRepository` oparta na EF Core?",
+          "options": [
+            "Domain",
+            "Application",
+            "Infrastructure",
+            "W tym samym pliku co encja `Order`"
+          ],
+          "why": "Interfejs (port) definiuje Application lub Domain, a adapter oparty na konkretnej technologii leży w Infrastructure.",
+          "correct": 2
+        },
+        {
+          "id": "arch-clean-e3",
+          "q": "Który element jest przykładem driving (primary) adaptera w Hexagonal Architecture?",
+          "options": [
+            "Repozytorium EF Core zapisujące zamówienia",
+            "Klient SMTP wysyłający potwierdzenia",
+            "Implementacja `TimeProvider` zwracająca bieżący czas",
+            "Konsument wiadomości z kolejki, który uruchamia przypadek użycia"
+          ],
+          "why": "Driving adapters wywołują aplikację (HTTP, kolejka, test). Repozytorium, SMTP i zegar to driven adapters, które aplikacja sama wywołuje przez porty.",
+          "correct": 3
+        },
+        {
+          "id": "arch-clean-e4",
+          "q": "Zespół wystawia `IAppDbContext` z właściwościami `DbSet<T>` w warstwie Application. Jak najtrafniej to ocenić?",
+          "options": [
+            "To świadomy kompromis: prostsze zapytania kosztem sprzężenia Application z EF Core",
+            "To zawsze błąd, który całkowicie dyskwalifikuje projekt jako Clean Architecture",
+            "To wymóg Clean Architecture, bez którego nie da się testować",
+            "Nie ma to żadnych skutków, bo `DbSet<T>` jest częścią BCL, a nie EF Core"
+          ],
+          "why": "`DbSet<T>` pochodzi z EF Core, więc Application zaczyna zależeć od ORM-a. Wiele zespołów akceptuje to dla prostoty – ważne, by decyzja była świadoma.",
+          "correct": 0
+        },
+        {
+          "id": "arch-clean-e5",
+          "q": "Gdzie najlepiej umieścić konfigurację mapowania encji domenowej `Order` na tabelę?",
+          "options": [
+            "W atrybutach `[Table]` i `[Column]` na encji w projekcie Domain",
+            "W klasie `IEntityTypeConfiguration<Order>` w projekcie Infrastructure",
+            "W kontrolerze API, który korzysta z encji",
+            "W projekcie Application obok handlerów komend"
+          ],
+          "why": "Mapowanie to szczegół persystencji. Fluent configuration w Infrastructure utrzymuje domenę wolną od zależności od EF.",
+          "correct": 1
+        },
+        {
+          "id": "arch-clean-e6",
+          "q": "Jaką główną wadę architektury warstwowej adresuje Vertical Slice Architecture?",
+          "options": [
+            "Brak możliwości użycia EF Core w warstwie danych",
+            "Brak wsparcia dla wstrzykiwania zależności w kontrolerach",
+            "Jedna zmiana funkcjonalna rozkłada się na wiele warstw i folderów, więc kod zmieniający się razem nie leży razem",
+            "Konieczność stosowania mikroserwisów"
+          ],
+          "why": "Vertical Slice grupuje kod według funkcji, zwiększając spójność. Dodanie pola do jednego ekranu dotyka jednego slice’a zamiast pięciu warstw.",
+          "correct": 2
+        },
+        {
+          "id": "arch-clean-e7",
+          "q": "Które zdanie o MediatR jest prawdziwe?",
+          "options": [
+            "Jest wymagany do zastosowania CQRS w .NET",
+            "Jest częścią ASP.NET Core od wersji 8",
+            "Zapewnia rozproszone przesyłanie wiadomości między mikroserwisami",
+            "To narzędzie do dispatchu requestów z pipeline behaviors; CQRS i Clean Architecture działają bez niego"
+          ],
+          "why": "MediatR to mediator w procesie. CQRS to idea rozdzielenia zapisu i odczytu, którą można zrealizować zwykłymi klasami handlerów.",
+          "correct": 3
+        },
+        {
+          "id": "arch-clean-e8",
+          "q": "Jak najskuteczniej pilnować, by projekt Domain nie zaczął referencjonować Infrastructure?",
+          "options": [
+            "Strukturą referencji projektów oraz testami architektury (np. NetArchTest) uruchamianymi na CI",
+            "Komentarzem w README z opisem warstw",
+            "Umieszczeniem wszystkich warstw w jednym projekcie z folderami",
+            "Oznaczeniem klas domenowych jako `internal`"
+          ],
+          "why": "Kompilator blokuje niedozwolone referencje projektów, a testy architektury łapią subtelniejsze naruszenia. Konwencje bez automatyzacji szybko się rozjeżdżają.",
+          "correct": 0
+        },
+        {
+          "id": "arch-clean-e9",
+          "q": "Masz wewnętrzne narzędzie CRUD z kilkoma tabelami i prawie bez reguł biznesowych. Co jest najrozsądniejsze?",
+          "options": [
+            "Pełna Clean Architecture z czterema projektami, generycznym repozytorium i MediatR",
+            "Prosta struktura per funkcja z `DbContext` używanym wprost w handlerach lub endpointach",
+            "Mikroserwis na każdą tabelę",
+            "Event Sourcing, aby zachować pełną historię zmian"
+          ],
+          "why": "Warstwy i abstrakcje kosztują. Bez złożonych reguł nie dają zysku – liczy się kierunek zależności, nie liczba projektów.",
+          "correct": 1
+        },
+        {
+          "id": "arch-clean-e10",
+          "q": "Gdzie w Clean Architecture znajduje się composition root, czyli rejestracja implementacji w DI?",
+          "options": [
+            "W projekcie Domain, bo to centrum aplikacji",
+            "W każdym handlerze osobno, przez `new`",
+            "W projekcie startowym (API), np. w `Program.cs`",
+            "W projekcie testów jednostkowych"
+          ],
+          "why": "Composition root jest w najbardziej zewnętrznej warstwie – tylko ona zna wszystkie konkretne implementacje i może je połączyć.",
+          "correct": 2
+        }
+      ]
+    },
+    {
+      "id": "arch-ddd",
+      "cat": "arch",
+      "title": "DDD: od języka domeny do agregatów",
+      "level": 3,
+      "minutes": 15,
+      "intro": "Domain-Driven Design (DDD, projektowanie sterowane domeną) to sposób budowania systemów, w którym kod ma odzwierciedlać to, jak naprawdę działa biznes. Przejdziemy od wspólnego języka z biznesem, przez podział systemu na konteksty, aż po encje, value objecty i agregaty w C#. Na rozmowach DDD to klasyczny temat „seniorski” – liczy się nie słownik, tylko rozumienie, po co to wszystko.",
+      "sections": [
+        {
+          "h": "Po co DDD – tłumacz, który przekręca słowa",
+          "text": "Wyobraź sobie, że biznes mówi „rezerwacja wstępna”, analityk pisze w dokumencie „booking draft”, a w kodzie jest tabela `Orders` z kolumną `Status = 7`. Każde przejście między ludźmi to tłumaczenie – a w tłumaczeniu gubi się sens. Stąd biorą się błędy typu „przecież mówiliśmy co innego”.\n\n**Domena** to obszar biznesu, który system obsługuje: rezerwacje stolików, ubezpieczenia, magazyn. DDD (Eric Evans, 2003) mówi: niech kod używa **dokładnie tych samych pojęć i reguł**, co eksperci od tej domeny.\n\nDDD ma dwie części:\n\n- **Strategiczną** – jak podzielić duży system na kawałki i jak te kawałki ze sobą rozmawiają (bounded context, context map).\n- **Taktyczną** – jak zbudować model w kodzie (encje, value objecty, agregaty, zdarzenia, repozytoria).\n\nCzęsty błąd to zaczynanie od taktyki („zróbmy agregaty”) bez strategii. Większa wartość leży w dobrym podziale i wspólnym języku."
+        },
+        {
+          "h": "Ubiquitous language, bounded context i context map",
+          "text": "**Ubiquitous language** (wszechobecny język) to wspólny słownik zespołu i biznesu, używany wszędzie: w rozmowach, dokumentacji, nazwach klas i metod. Jeśli biznes mówi „gość potwierdza rezerwację”, to w kodzie jest `reservation.Confirm()`, a nie `UpdateStatus(2)`.\n\n**Bounded context** (ograniczony kontekst) to granica, wewnątrz której dane słowo ma jedno, jednoznaczne znaczenie. Przykład: słowo „Klient”.\n\n- W kontekście **Sprzedaż** klient to ktoś z koszykiem, rabatami i historią zamówień.\n- W kontekście **Wysyłka** klient to tylko adres i telefon.\n- W kontekście **Księgowość** klient to NIP i dane do faktury.\n\nPróba zrobienia jednej klasy `Customer` dla wszystkich kończy się „kombajnem” z 60 polami. DDD mówi: niech każdy kontekst ma **własny model**, nawet jeśli nazwa się powtarza. Bounded context często staje się modułem w monolicie albo osobną usługą.\n\n**Context map** (mapa kontekstów) to rysunek pokazujący, jak konteksty ze sobą współpracują. Kilka typowych relacji:\n\n- **Customer–Supplier** – jeden kontekst dostarcza dane, drugi z nich korzysta i może zgłaszać potrzeby.\n- **Anti-Corruption Layer (ACL)** – warstwa tłumacząca, która chroni nasz model przed cudzym, np. przed dziwnym modelem starego systemu.\n- **Shared Kernel** – mały, wspólny kawałek modelu, który dwa zespoły utrzymują razem.\n- **Conformist** – po prostu przyjmujemy cudzy model, bo nie mamy wpływu (np. API dostawcy)."
+        },
+        {
+          "h": "Encja i value object – dowód osobisty kontra banknot",
+          "text": "**Encja** (entity) to obiekt, który ma **tożsamość** – liczy się „kto to jest”, a nie jakie ma teraz dane. Ty zmieniasz fryzurę i adres, ale wciąż jesteś tą samą osobą, bo masz ten sam PESEL. Zamówienie zmienia status, ale to wciąż to samo zamówienie o tym samym `Id`.\n\n**Value object** (obiekt wartości) to obiekt **bez tożsamości**, definiowany wyłącznie przez wartości. Banknot 100 zł – nie obchodzi cię, który to konkretnie egzemplarz, liczy się wartość. Przykłady: `Money`, `Email`, `Address`, `DateRange`.\n\nCechy value objectu:\n\n- **Porównanie po wartościach** – dwa `Money(100, \"PLN\")` są równe.\n- **Niemutowalność** – nie zmieniasz kwoty, tylko tworzysz nowy obiekt.\n- **Sam pilnuje poprawności** – nie da się utworzyć ujemnego `Money` czy `Email` bez `@`.\n\nW C# `record` daje porównanie po wartościach za darmo. Value objecty to też lekarstwo na smell **Primitive Obsession** – zamiast gołego `decimal` i `string` masz typy, które wiedzą, co znaczą. W EF Core zapisujesz je np. jako owned types albo complex types.",
+          "code": "// Value object: porównanie po wartości, niemutowalny, sam się waliduje\npublic sealed record Money\n{\n    public decimal Amount { get; }\n    public string Currency { get; }\n\n    public Money(decimal amount, string currency)\n    {\n        if (amount < 0) throw new DomainException(\"Kwota nie może być ujemna\");\n        if (currency.Length != 3) throw new DomainException(\"Kod waluty ma 3 litery\");\n        (Amount, Currency) = (amount, currency.ToUpperInvariant());\n    }\n\n    public Money Add(Money other) => other.Currency == Currency\n        ? new Money(Amount + other.Amount, Currency)\n        : throw new DomainException(\"Różne waluty\");\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Agregat, granice i niezmienniki",
+          "text": "**Niezmiennik** (invariant) to reguła biznesowa, która musi być prawdziwa **zawsze**, np. „suma pozycji zamówienia nie przekracza limitu klienta” albo „stolik nie ma dwóch rezerwacji na tę samą godzinę”.\n\n**Agregat** to grupa obiektów, które pilnują wspólnych niezmienników i zmieniają się razem. Ma jeden „wejściowy” obiekt – **aggregate root** (korzeń agregatu). Analogia: samochód. Nie wymieniasz koła, wkręcając się bezpośrednio w oś – mówisz mechanikowi (korzeniowi), a on pilnuje, żeby wszystko się zgadzało.\n\nZasady agregatów krok po kroku:\n\n- **1.** Z zewnątrz rozmawiasz **tylko z korzeniem**. Nie ma publicznego `order.Lines.Add(...)` – jest `order.AddLine(...)`, który sprawdza reguły.\n- **2.** Jeden agregat = **jedna transakcja**. Zapisujesz cały agregat naraz.\n- **3.** Między agregatami odwołujesz się **po Id**, a nie przez referencję do obiektu (`CustomerId`, a nie `Customer`).\n- **4.** Agregaty **małe**. Duży agregat = blokady i konflikty przy równoległych zmianach.\n- **5.** Spójność między agregatami jest zwykle **ostateczna** (eventual consistency) – osiągana chwilę później, przez zdarzenia.\n\nJak wyznaczyć granicę? Zadaj pytanie: „które dane muszą być spójne **natychmiast**, w jednej transakcji?”. Tylko one należą do jednego agregatu."
+        },
+        {
+          "h": "Przykład w C#: źle (anemic) → dobrze (rich)",
+          "text": "**Anemic model** (anemiczny model) to encje, które są tylko workami na dane: same `get; set;`, a cała logika siedzi w serwisach. Każdy może ustawić dowolny status w dowolnym momencie, a reguły są rozrzucone po kodzie. Martin Fowler nazwał to antywzorcem w kontekście DDD.\n\n**Rich model** (bogaty model) to encje, które **same pilnują swoich reguł**. Settery są prywatne, a zmiana stanu odbywa się przez metody o nazwach z języka biznesu.\n\nCo robi kod niżej, linijka po linijce:\n\n- `private readonly List<OrderLine> _lines` – lista jest prywatna, z zewnątrz widać ją tylko do odczytu.\n- `AddLine` sprawdza status i limit pozycji – nie da się dodać pozycji do wysłanego zamówienia.\n- `Submit` zmienia status i **rejestruje zdarzenie domenowe** `OrderSubmitted`.\n- Nie ma publicznego `Status = ...` – jedyna droga zmiany to metody biznesowe.\n\nUczciwie: dla prostego CRUD-a anemiczny model jest w porządku. Rich model ma sens, gdy reguł jest dużo i są ważne.",
+          "code": "// ŹLE: order.Status = OrderStatus.Shipped; order.Lines.Add(line); – z dowolnego miejsca\n\n// DOBRZE: aggregate root pilnuje niezmienników\npublic sealed class Order : AggregateRoot\n{\n    private readonly List<OrderLine> _lines = [];\n    public IReadOnlyList<OrderLine> Lines => _lines;\n    public OrderStatus Status { get; private set; } = OrderStatus.Draft;\n\n    public void AddLine(ProductId productId, int qty, Money price)\n    {\n        if (Status != OrderStatus.Draft) throw new DomainException(\"Zamówienie już złożone\");\n        if (_lines.Count >= 50) throw new DomainException(\"Maksymalnie 50 pozycji\");\n        _lines.Add(new OrderLine(productId, qty, price));\n    }\n\n    public void Submit()\n    {\n        if (_lines.Count == 0) throw new DomainException(\"Puste zamówienie\");\n        Status = OrderStatus.Submitted;\n        Raise(new OrderSubmitted(Id, DateTime.UtcNow));\n    }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Domain events i repozytorium",
+          "text": "**Domain event** (zdarzenie domenowe) to informacja „coś ważnego się wydarzyło” – zawsze w czasie przeszłym: `OrderSubmitted`, `ReservationCancelled`. Analogia: dzwonek w kuchni restauracji – kucharz nie biega do kelnera, tylko dzwoni, a kto ma zareagować, ten reaguje.\n\nJak to działa krok po kroku:\n\n- **1.** Agregat zapisuje zdarzenie na swojej wewnętrznej liście (`Raise(...)`).\n- **2.** Przy zapisie (np. w `SaveChangesAsync` albo w pipeline) zdarzenia są zbierane i przekazywane do handlerów.\n- **3.** Handlery robią efekty uboczne: wysyłka maila, aktualizacja innego agregatu, publikacja na kolejkę.\n\nRóżnica, o którą pytają: **domain event** żyje wewnątrz jednego kontekstu i procesu. **Integration event** wychodzi na zewnątrz (np. przez RabbitMQ czy Azure Service Bus) do innych usług. Żeby nie zgubić zdarzenia, gdy baza zapisała dane, a kolejka nie odpowiedziała, stosuje się **Outbox pattern**: zdarzenie zapisujesz w tej samej transakcji do tabeli „outbox”, a osobny proces wysyła je potem na kolejkę.\n\n**Repozytorium** w DDD udaje kolekcję agregatów w pamięci: „daj mi zamówienie o tym Id”, „dodaj zamówienie”. Zasady: **jedno repozytorium na agregat** (nie na tabelę), interfejs w warstwie domeny lub aplikacji, implementacja w infrastrukturze. Pamiętaj, że `DbContext` w EF Core sam w sobie łączy wzorce Repository i Unit of Work (jednostki pracy, czyli zapisu wielu zmian w jednej transakcji)."
+        },
+        {
+          "h": "Kiedy DDD ma sens i jak o tym mówić na rozmowie",
+          "text": "DDD kosztuje: rozmowy z biznesem, naukę zespołu, więcej klas. Opłaca się, gdy:\n\n- domena jest **złożona** – dużo reguł, wyjątków, procesów (ubezpieczenia, logistyka, finanse),\n- system to **core domain** – to, czym firma wygrywa z konkurencją,\n- system będzie żył **latami** i rozwijało go kilka zespołów.\n\nNie opłaca się dla prostych CRUD-ów, paneli administracyjnych czy **generic subdomains** – rzeczy, które każdy ma tak samo (logowanie, wysyłka maili). Te lepiej kupić lub zrobić najprościej. **Supporting subdomain** to coś pomocniczego, ale specyficznego dla firmy – zwykle wystarczy prostsze podejście.\n\nTypowe pułapki:\n\n- Agregaty-giganty („Klient ze wszystkimi zamówieniami”) – blokady i wolne ładowanie.\n- Referencje obiektowe między agregatami zamiast Id.\n- Taktyczne DDD bez wspólnego języka – klasy nazwane po DDD, ale model dalej nie odpowiada biznesowi.\n\n**Jak mówić na rozmowie:** zacznij od strategii („najpierw wspólny język i bounded contexty”), potem taktyka na przykładzie („agregat `Reservation` pilnuje, że stolik nie ma dwóch rezerwacji na ten sam slot”), a na koniec kompromisy („dla modułu raportów nie robiłem DDD – tam wystarczy zapytanie SQL do read modelu”). To pokazuje, że rozumiesz DDD jako narzędzie, a nie religię."
+        }
+      ],
+      "takeaways": [
+        "DDD to przede wszystkim wspólny język z biznesem i dobry podział systemu, a dopiero potem wzorce w kodzie.",
+        "Bounded context to granica, w której pojęcie ma jedno znaczenie – „Klient” w Sprzedaży i w Wysyłce to różne modele.",
+        "Encja ma tożsamość (Id), value object jest definiowany przez wartości, niemutowalny i sam się waliduje.",
+        "Agregat pilnuje niezmienników; z zewnątrz rozmawia się tylko z korzeniem, jeden agregat = jedna transakcja.",
+        "Między agregatami odwołujemy się po Id, a spójność między nimi jest zwykle ostateczna, przez domain events.",
+        "Rich model trzyma reguły w encjach (prywatne settery, metody biznesowe); anemic model jest OK dla prostego CRUD-a.",
+        "Repozytorium jest per agregat, nie per tabela; Outbox chroni przed zgubieniem zdarzeń integracyjnych.",
+        "DDD opłaca się w złożonej core domain, nie w prostych CRUD-ach i generic subdomains."
+      ],
+      "interview": [
+        "Czym jest bounded context i jak wyznaczyłbyś granice kontekstów w znanym ci systemie?",
+        "Jaka jest różnica między encją a value objectem? Podaj przykłady.",
+        "Jak wyznaczasz granice agregatu i dlaczego agregaty powinny być małe?",
+        "Czym różni się domain event od integration event i jak zapewnić, że zdarzenie nie zginie?",
+        "Kiedy nie stosowałbyś DDD?"
+      ],
+      "exam": [
+        {
+          "id": "arch-ddd-e1",
+          "q": "Słowo „Produkt” w kontekście Katalogu oznacza opis, zdjęcia i kategorie, a w kontekście Magazynu – lokalizację na półce i stan. Jak DDD każe to rozwiązać?",
+          "options": [
+            "Jedna klasa `Product` ze wszystkimi polami, współdzielona przez oba konteksty",
+            "Dziedziczenie: `CatalogProduct` i `WarehouseProduct` dziedziczą po wspólnej bazie z wszystkimi polami",
+            "Osobny model produktu w każdym bounded contexcie, powiązany wspólnym identyfikatorem",
+            "Przechowywanie produktu wyłącznie jako JSON, żeby każdy kontekst czytał, co chce"
+          ],
+          "why": "Bounded context to granica znaczenia. Każdy kontekst ma własny model dopasowany do swoich potrzeb, zamiast jednego „kombajnu” z dziesiątkami pól.",
+          "correct": 2
+        },
+        {
+          "id": "arch-ddd-e2",
+          "q": "Która cecha NIE pasuje do value objectu?",
+          "options": [
+            "Jest porównywany po wartościach wszystkich pól",
+            "Jest niemutowalny – zmiana oznacza nowy obiekt",
+            "Sam pilnuje poprawności przy tworzeniu",
+            "Ma unikalny identyfikator, po którym jest porównywany"
+          ],
+          "why": "Tożsamość (Id) to cecha encji. Value object, jak banknot 100 zł, liczy się tylko przez swoją wartość.",
+          "correct": 3
+        },
+        {
+          "id": "arch-ddd-e3",
+          "q": "Jakie pytanie najlepiej pomaga wyznaczyć granicę agregatu?",
+          "options": [
+            "Które dane muszą być spójne natychmiast, w jednej transakcji, by chronić niezmiennik?",
+            "Które tabele mają między sobą klucze obce?",
+            "Które dane są wyświetlane na tym samym ekranie?",
+            "Które klasy są w tym samym folderze projektu?"
+          ],
+          "why": "Agregat to granica spójności transakcyjnej wokół niezmienników. Klucze obce czy ekrany UI nie wyznaczają reguł biznesowych.",
+          "correct": 0
+        },
+        {
+          "id": "arch-ddd-e4",
+          "q": "Agregat `Order` potrzebuje informacji o kliencie. Jak powinien się do niego odwoływać?",
+          "options": [
+            "Przez właściwość nawigacyjną `Customer`, ładowaną zawsze razem z zamówieniem",
+            "Przez `CustomerId`, a nie przez referencję do obiektu agregatu `Customer`",
+            "Przez skopiowanie wszystkich danych klienta do zamówienia przy każdym odczycie",
+            "Klient i zamówienie powinny być zawsze jednym agregatem"
+          ],
+          "why": "Odwołanie po Id zachowuje małe agregaty i osobne transakcje. Referencja obiektowa kusi, by zmieniać dwa agregaty naraz.",
+          "correct": 1
+        },
+        {
+          "id": "arch-ddd-e5",
+          "q": "Kod w serwisie robi `order.Lines.Add(line); order.Status = OrderStatus.Shipped;`, a encja ma tylko publiczne gettery i settery. Jak to nazwać?",
+          "options": [
+            "Rich domain model – encja jest elastyczna, bo każdy może ją zmienić",
+            "Poprawny aggregate root, bo `Order` jest korzeniem",
+            "Anemic domain model – reguły są poza encją, a stan można dowolnie zmieniać z zewnątrz",
+            "Event Sourcing, bo zmiany statusu są zapisywane"
+          ],
+          "why": "Anemiczny model to worek na dane. W rich model zmiany idą przez metody typu `AddLine()` i `Ship()`, które sprawdzają niezmienniki.",
+          "correct": 2
+        },
+        {
+          "id": "arch-ddd-e6",
+          "q": "Czym różni się domain event od integration event?",
+          "options": [
+            "Domain event jest w czasie przyszłym, integration event w przeszłym",
+            "Domain event zawsze zapisuje się do bazy, integration event nigdy",
+            "To synonimy – różnią się tylko nazwą klasy bazowej",
+            "Domain event działa wewnątrz jednego kontekstu, integration event jest publikowany do innych usług, np. przez kolejkę"
+          ],
+          "why": "Domain events informują inne części tej samej domeny. Integration events przekraczają granicę kontekstu lub procesu i stanowią kontrakt z innymi systemami.",
+          "correct": 3
+        },
+        {
+          "id": "arch-ddd-e7",
+          "q": "Zapis zamówienia do bazy się udał, ale publikacja zdarzenia na kolejkę się nie powiodła. Który wzorzec temu zapobiega?",
+          "options": [
+            "Outbox – zdarzenie zapisane w tej samej transakcji do tabeli, wysyłane później przez osobny proces",
+            "Repository – bo ukrywa szczegóły bazy danych",
+            "Shared Kernel – bo konteksty współdzielą model",
+            "Anti-Corruption Layer – bo tłumaczy modele"
+          ],
+          "why": "Outbox zamienia dwie operacje (baza + kolejka) w jedną transakcję w bazie, a wysyłka na kolejkę jest ponawiana aż do skutku.",
+          "correct": 0
+        },
+        {
+          "id": "arch-ddd-e8",
+          "q": "Integrujesz się ze starym systemem ERP o chaotycznym modelu danych. Jaki wzorzec z context map chroni twój model?",
+          "options": [
+            "Conformist",
+            "Anti-Corruption Layer",
+            "Shared Kernel",
+            "Big Ball of Mud"
+          ],
+          "why": "ACL to warstwa tłumacząca cudzy model na nasz, dzięki czemu pojęcia ze starego systemu nie „zarażają” naszej domeny.",
+          "correct": 1
+        },
+        {
+          "id": "arch-ddd-e9",
+          "q": "Ile repozytoriów zgodnie z DDD powinien mieć agregat `Order` z encjami podrzędnymi `OrderLine`?",
+          "options": [
+            "Dwa – osobno dla `Order` i dla `OrderLine`",
+            "Po jednym na każdą tabelę w bazie",
+            "Jedno – dla agregatu `Order`; `OrderLine` jest zapisywane razem z nim",
+            "Żadnego – agregaty zapisują się same przez metodę `Save()`"
+          ],
+          "why": "Repozytorium jest per agregat. Encje podrzędne są dostępne tylko przez korzeń, więc nie mają własnych repozytoriów.",
+          "correct": 2
+        },
+        {
+          "id": "arch-ddd-e10",
+          "q": "Dla którego modułu pełne taktyczne DDD jest najmniej uzasadnione?",
+          "options": [
+            "Silnika wyceny polis z wieloma wyjątkami i regułami",
+            "Modułu rezerwacji, który pilnuje braku konfliktów terminów i limitów miejsc",
+            "Systemu rozliczeń kontraktów będącego główną przewagą firmy",
+            "Prostego panelu do edycji słowników (CRUD) bez reguł biznesowych"
+          ],
+          "why": "DDD opłaca się w złożonej core domain. Dla prostych CRUD-ów i generic subdomains koszt modelowania przewyższa korzyści.",
+          "correct": 3
+        }
+      ]
+    },
+    {
+      "id": "arch-cqrs-es",
+      "cat": "arch",
+      "title": "CQRS i Event Sourcing",
+      "level": 3,
+      "minutes": 14,
+      "intro": "CQRS rozdziela w aplikacji zapis od odczytu, a Event Sourcing zamiast aktualnego stanu zapisuje historię zdarzeń. To dwa osobne pomysły, często mylone i często stosowane tam, gdzie nie trzeba. Po lekcji będziesz umiał wyjaśnić oba prostymi słowami, pokazać kod w C# i – co najważniejsze na rozmowie – powiedzieć, kiedy ich NIE używać.",
+      "sections": [
+        {
+          "h": "CQRS – kasa i tablica z menu",
+          "text": "**CQRS** (Command Query Responsibility Segregation, rozdzielenie odpowiedzialności komend i zapytań) to pomysł, żeby osobno projektować **zapis** i **odczyt**.\n\n- **Command** (komenda) – prośba o zmianę: „złóż zamówienie”, „anuluj rezerwację”. Zmienia stan, zwykle nic nie zwraca (najwyżej Id albo wynik operacji).\n- **Query** (zapytanie) – prośba o dane: „pokaż moje zamówienia”. Niczego nie zmienia.\n\n**Analogia:** w barze kasa przyjmuje zamówienia i pilnuje reguł (czy masz kartę lojalnościową, czy danie jest dostępne). Tablica z menu nad ladą tylko pokazuje informacje – szybko i czytelnie. To dwa różne „urządzenia” zoptymalizowane pod różne zadania.\n\nDlaczego to ma sens? Bo zapis i odczyt mają **różne potrzeby**:\n\n- Zapis potrzebuje reguł biznesowych, walidacji, transakcji – tu pasuje bogaty model domeny.\n- Odczyt potrzebuje szybkości i danych „pod ekran” – płaskich DTO, złączeń, filtrów, stronicowania.\n\nJeden model do obu zadań to kompromis, w którym oba cierpią. CQRS pozwala zrobić każdy z nich dobrze."
+        },
+        {
+          "h": "Poziomy CQRS – od jednej bazy do dwóch",
+          "text": "Najważniejsza rzecz, którą warto powiedzieć na rozmowie: **CQRS nie wymaga dwóch baz danych ani kolejek**. To spektrum:\n\n- **Poziom 1 – osobne klasy, ta sama baza.** Komendy idą przez agregaty i `SaveChangesAsync`, zapytania czytają tę samą bazę, ale prosto: `AsNoTracking()` i projekcja `Select` do DTO, albo Dapper z ręcznym SQL. Najczęstsze i najtańsze.\n- **Poziom 2 – osobne modele odczytu w tej samej bazie.** Widoki SQL, zdenormalizowane tabele „pod ekran” aktualizowane razem z zapisem lub przez zdarzenia.\n- **Poziom 3 – osobne magazyny.** Zapis w SQL Server/PostgreSQL, odczyt w Elasticsearch, Redis albo osobnej bazie, aktualizowany asynchronicznie przez zdarzenia. Najszybsze odczyty, ale pojawia się opóźnienie (eventual consistency).\n\nPrzykład niżej to poziom 1. Co się dzieje krok po kroku:\n\n- **1.** `PlaceOrderHandler` ładuje dane, tworzy agregat (reguły w domenie) i zapisuje.\n- **2.** `GetMyOrdersHandler` w ogóle nie dotyka agregatów: `AsNoTracking()` wyłącza śledzenie zmian (szybciej, mniej pamięci), a `Select` pobiera tylko kolumny potrzebne na ekran.",
+          "code": "// KOMENDA: przez model domeny i reguły\npublic sealed class PlaceOrderHandler(AppDbContext db)\n{\n    public async Task<Guid> Handle(PlaceOrder cmd, CancellationToken ct)\n    {\n        var order = Order.Create(cmd.CustomerId, cmd.Lines); // walidacja i niezmienniki\n        db.Orders.Add(order);\n        await db.SaveChangesAsync(ct);\n        return order.Id;\n    }\n}\n\n// ZAPYTANIE: prosto i szybko, bez agregatów\npublic sealed class GetMyOrdersHandler(AppDbContext db)\n{\n    public Task<List<OrderListItem>> Handle(Guid customerId, CancellationToken ct) =>\n        db.Orders.AsNoTracking()\n          .Where(o => o.CustomerId == customerId)\n          .OrderByDescending(o => o.CreatedAt)\n          .Select(o => new OrderListItem(o.Id, o.CreatedAt, o.Total.Amount, o.Status.ToString()))\n          .ToListAsync(ct);\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Read modele i eventual consistency",
+          "text": "**Read model** (model odczytu) to dane przygotowane z góry pod konkretny ekran lub zapytanie. Analogia: zamiast liczyć za każdym razem, ile masz pieniędzy, sumując wszystkie paragony, trzymasz w portfelu karteczkę z aktualnym saldem.\n\nPrzykład: lista zamówień w panelu klienta pokazuje nazwę klienta, liczbę pozycji, sumę i status. Zamiast łączyć pięć tabel przy każdym wejściu, trzymasz gotową tabelę `OrderSummaries` z jednym wierszem na zamówienie.\n\nGdy read model jest aktualizowany **asynchronicznie** (przez zdarzenia), pojawia się **eventual consistency** (spójność ostateczna): dane po stronie odczytu będą poprawne, ale **za chwilę**, nie natychmiast. Krok po kroku:\n\n- **1.** Użytkownik składa zamówienie – komenda zapisuje je i publikuje zdarzenie `OrderPlaced`.\n- **2.** API zwraca 202 Accepted albo 201 Created z Id.\n- **3.** W tle handler zdarzenia dopisuje wiersz do `OrderSummaries` (np. 200 ms później).\n- **4.** Jeśli Angular od razu odświeży listę, zamówienia może jeszcze nie być.\n\nJak sobie z tym radzić w UI:\n\n- **Optimistic UI** – Angular od razu dodaje pozycję do listy lokalnie (np. w `signal`), zanim serwer potwierdzi.\n- Zwracanie z komendy danych potrzebnych do wyświetlenia.\n- Powiadomienie push (SignalR), gdy read model jest gotowy.\n- Dla ekranu „właśnie to zrobiłem” – czytanie ze strony zapisu (read-your-writes)."
+        },
+        {
+          "h": "Event Sourcing – wyciąg z konta zamiast salda",
+          "text": "Zwykła aplikacja zapisuje **aktualny stan**: w tabeli jest „saldo: 300 zł”. Nie wiesz, jak do tego doszło.\n\n**Event Sourcing** (ES) zapisuje **wszystkie zdarzenia**, które zmieniły stan, a stan aktualny **wylicza się** z tych zdarzeń. Jak wyciąg bankowy: wpłata 500, wypłata 150, przelew −50 → saldo 300. Historia jest źródłem prawdy, a saldo to tylko wynik.\n\nPojęcia:\n\n- **Event store** (magazyn zdarzeń) – baza, która przechowuje zdarzenia w kolejności, zwykle jako strumień na agregat (`order-123`). Zdarzeń się **nie zmienia i nie usuwa** – tylko dopisuje (append-only).\n- **Odtworzenie stanu (rehydration)** – wczytujesz zdarzenia agregatu i „przewijasz” je po kolei metodą `Apply`.\n- **Optimistic concurrency** – przy zapisie podajesz oczekiwaną wersję strumienia; jeśli ktoś w międzyczasie coś dopisał, zapis się nie uda i trzeba spróbować ponownie.\n\nW .NET popularne opcje to **Marten** (event store na PostgreSQL), **EventStoreDB/KurrentDB** (dedykowana baza) lub własna tabela zdarzeń w SQL.\n\nKod niżej: `Apply` zmienia stan na podstawie zdarzenia, a `Load` buduje agregat od zera, przewijając historię.",
+          "code": "public sealed class BankAccount\n{\n    public Guid Id { get; private set; }\n    public decimal Balance { get; private set; }\n    public int Version { get; private set; }\n\n    // stan wyliczany z historii\n    public static BankAccount Load(IEnumerable<object> history)\n    {\n        var acc = new BankAccount();\n        foreach (var e in history) acc.Apply(e);\n        return acc;\n    }\n\n    private void Apply(object e)\n    {\n        if (e is AccountOpened o) Id = o.AccountId;\n        else if (e is MoneyDeposited d) Balance += d.Amount;\n        else if (e is MoneyWithdrawn w) Balance -= w.Amount;\n        Version++; // numer wersji do optimistic concurrency\n    }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Projekcje i snapshoty",
+          "text": "**Projekcja** to kod, który czyta strumień zdarzeń i buduje z nich read model. To „tłumacz” z historii na tabelę pod ekran. Na przykład projekcja `OrderSummaryProjection` słucha `OrderPlaced`, `OrderShipped`, `OrderCancelled` i aktualizuje jeden wiersz w tabeli `OrderSummaries`.\n\nCo daje projekcja:\n\n- Z tych samych zdarzeń możesz zbudować **wiele różnych widoków**: listę zamówień, raport sprzedaży, statystyki.\n- Nowy raport dodany po roku? **Przewijasz całą historię** od początku i masz dane wstecz. To jedna z największych zalet ES.\n- Błąd w projekcji? Poprawiasz kod, kasujesz read model i budujesz go od nowa (replay).\n\nWażne: handlery projekcji muszą być **idempotentne** – dwukrotne przetworzenie tego samego zdarzenia nie może zepsuć danych (np. zapisuj numer ostatnio przetworzonego zdarzenia).\n\n**Snapshot** (migawka) to zapisany stan agregatu w danym momencie. Problem: konto z 50 000 operacji wczytywałoby się długo. Rozwiązanie krok po kroku:\n\n- **1.** Co np. 500 zdarzeń zapisujesz snapshot: „wersja 50 000, saldo 1 234 zł”.\n- **2.** Przy wczytywaniu bierzesz ostatni snapshot.\n- **3.** Dogrywasz tylko zdarzenia późniejsze od niego.\n\nSnapshot to **optymalizacja**, a nie źródło prawdy – zawsze można go wyrzucić i odtworzyć ze zdarzeń. Często lepszą odpowiedzią na długie strumienie jest jednak przemyślenie modelu (np. „zamknięcie miesiąca” jako nowy strumień)."
+        },
+        {
+          "h": "Kiedy NIE stosować i połączenie z DDD",
+          "text": "Najczęstsza wpadka to wprowadzanie CQRS z osobnymi bazami i Event Sourcingu „bo modne”. Koszty ES są realne:\n\n- **Wersjonowanie zdarzeń** – zdarzeń nie zmienisz, więc zmiana kształtu `OrderPlaced` wymaga nowych wersji i „upcasterów” (kodu tłumaczącego stare zdarzenia na nowe).\n- **RODO / GDPR** – prawo do usunięcia danych kłóci się z „nigdy nie usuwamy”. Stosuje się m.in. crypto-shredding (dane osobowe szyfrowane kluczem, który się usuwa).\n- **Eventual consistency** w całym UI, trudniejsze debugowanie i raportowanie ad hoc.\n- Mniej doświadczonych ludzi na rynku i krzywa nauki dla zespołu.\n\n**Nie stosuj**, gdy: aplikacja to CRUD, nie potrzebujesz historii zmian, zespół jest mały i nie zna tych wzorców, a spójność natychmiastowa jest wymagana wszędzie. Do zwykłego audytu często wystarczy tabela historii albo temporal tables w SQL Server.\n\n**Stosuj ES**, gdy historia jest wartością biznesową: finanse, księgowość, rezerwacje, logistyka, systemy wymagające pełnego audytu i odtwarzania stanu „na dzień X”.\n\n**Połączenie z DDD** jest naturalne: agregat przyjmuje komendę, sprawdza niezmienniki i **emituje domain events** – w ES te same zdarzenia są zapisem stanu. Komendy trafiają do agregatów (strona zapisu CQRS), a projekcje budują read modele (strona odczytu). Ale to trzy niezależne pomysły: DDD bez CQRS, CQRS bez ES i DDD z CQRS bez ES to wszystko poprawne kombinacje."
+        },
+        {
+          "h": "Jak o tym mówić na rozmowie",
+          "text": "Schemat dobrej odpowiedzi:\n\n- **1.** Zdefiniuj prosto: „CQRS to osobne modele dla zapisu i odczytu; ES to zapisywanie zdarzeń zamiast stanu”.\n- **2.** Rozdziel pojęcia: „CQRS nie wymaga ES ani dwóch baz; ES praktycznie wymaga CQRS, bo z samego strumienia zdarzeń trudno robić zapytania”.\n- **3.** Pokaż poziomy: „u nas wystarczył CQRS na jednej bazie – komendy przez EF i agregaty, zapytania przez projekcje `Select` albo Dapper”.\n- **4.** Powiedz o kosztach: eventual consistency, wersjonowanie zdarzeń, RODO.\n- **5.** Daj kryterium: „ES wybrałbym tam, gdzie historia jest wartością biznesową”.\n\n**Niuanse seniorskie:** idempotentne projekcje i obsługa zdarzeń „co najmniej raz” (at-least-once), Outbox przy publikacji zdarzeń, optimistic concurrency na wersji strumienia, monitorowanie opóźnienia read modelu (lag) i plan na pełne przebudowanie projekcji. Jeśli to wspomnisz, rekruter zobaczy, że znasz nie tylko teorię, ale i życie produkcyjne."
+        }
+      ],
+      "takeaways": [
+        "CQRS to osobne modele zapisu (komendy, reguły, agregaty) i odczytu (zapytania, DTO pod ekran).",
+        "CQRS nie wymaga dwóch baz ani kolejek – najprostszy poziom to osobne handlery na tej samej bazie.",
+        "Asynchroniczne read modele oznaczają eventual consistency, z którą trzeba sobie poradzić także w UI.",
+        "Event Sourcing zapisuje niezmienialną historię zdarzeń, a aktualny stan jest z niej wyliczany.",
+        "Projekcje budują read modele ze zdarzeń, muszą być idempotentne i można je przebudować od zera.",
+        "Snapshot to optymalizacja wczytywania długich strumieni, a nie źródło prawdy.",
+        "ES kosztuje: wersjonowanie zdarzeń, RODO, trudniejsze debugowanie – nie stosuj go w zwykłym CRUD-zie.",
+        "DDD, CQRS i ES dobrze się łączą, ale są niezależne i każdą kombinację wybiera się osobno."
+      ],
+      "interview": [
+        "Czym jest CQRS i czy wymaga dwóch baz danych?",
+        "Co to jest eventual consistency i jak obsłużyć ją w aplikacji Angular?",
+        "Jak działa Event Sourcing i czym są projekcje oraz snapshoty?",
+        "Kiedy nie zastosowałbyś Event Sourcingu?",
+        "Jak CQRS i Event Sourcing łączą się z DDD?"
+      ],
+      "exam": [
+        {
+          "id": "arch-cqrs-es-e1",
+          "q": "Które stwierdzenie o CQRS jest prawdziwe?",
+          "options": [
+            "Wymaga osobnej bazy danych dla odczytu",
+            "Wymaga Event Sourcingu",
+            "Wymaga kolejki wiadomości między zapisem a odczytem",
+            "Można go stosować na jednej bazie danych – wystarczą osobne modele i handlery dla zapisu i odczytu"
+          ],
+          "why": "CQRS to spektrum. Najprostszy, najczęstszy poziom to rozdzielone komendy i zapytania na tej samej bazie, bez ES i kolejek.",
+          "correct": 3
+        },
+        {
+          "id": "arch-cqrs-es-e2",
+          "q": "Dlaczego w handlerze zapytania warto użyć `AsNoTracking()` i projekcji `Select` do DTO?",
+          "options": [
+            "Bo odczyt nie zmienia danych – wyłączenie śledzenia i pobranie tylko potrzebnych kolumn przyspiesza zapytanie",
+            "Bo bez tego EF Core nie pozwoli wykonać zapytania",
+            "Bo `AsNoTracking()` automatycznie dodaje cache w Redis",
+            "Bo w ten sposób zapytanie wykona się w transakcji z komendą"
+          ],
+          "why": "Śledzenie zmian jest potrzebne tylko przy zapisie. Projekcja ogranicza dane do tego, czego potrzebuje ekran.",
+          "correct": 0
+        },
+        {
+          "id": "arch-cqrs-es-e3",
+          "q": "Użytkownik złożył zamówienie, a odświeżona zaraz potem lista go nie pokazuje. Read model jest aktualizowany przez zdarzenia w tle. Co to za zjawisko?",
+          "options": [
+            "Deadlock w bazie danych",
+            "Eventual consistency – read model zostanie zaktualizowany chwilę później",
+            "Błąd optimistic concurrency",
+            "Utrata zdarzenia, której nie da się naprawić"
+          ],
+          "why": "Asynchroniczna aktualizacja read modelu oznacza krótkie opóźnienie. W UI łagodzi się je np. optimistic UI lub powiadomieniem przez SignalR.",
+          "correct": 1
+        },
+        {
+          "id": "arch-cqrs-es-e4",
+          "q": "Co jest źródłem prawdy w systemie z Event Sourcingiem?",
+          "options": [
+            "Najnowszy snapshot agregatu",
+            "Tabela read modelu",
+            "Niezmienialny, dopisywany strumień zdarzeń",
+            "Cache w pamięci aplikacji"
+          ],
+          "why": "Stan i read modele są wyliczane ze zdarzeń. Snapshoty i projekcje można wyrzucić i odbudować.",
+          "correct": 2
+        },
+        {
+          "id": "arch-cqrs-es-e5",
+          "q": "Po roku działania biznes chce nowy raport obejmujący całą historię. Jak Event Sourcing to ułatwia?",
+          "options": [
+            "Raport trzeba liczyć tylko od dnia wdrożenia, bo historia jest niedostępna",
+            "Odtwarzasz dane z logów aplikacji",
+            "Kopiujesz snapshoty do hurtowni danych",
+            "Piszesz nową projekcję i przewijasz przez nią wszystkie zdarzenia od początku"
+          ],
+          "why": "Zdarzenia przechowują pełną historię, więc nowy widok można zbudować wstecz przez replay.",
+          "correct": 3
+        },
+        {
+          "id": "arch-cqrs-es-e6",
+          "q": "Do czego służy snapshot w Event Sourcingu?",
+          "options": [
+            "Do przyspieszenia wczytywania agregatu – wczytujesz migawkę i dogrywasz tylko późniejsze zdarzenia",
+            "Do zastąpienia zdarzeń, które potem można usunąć",
+            "Do publikowania zdarzeń integracyjnych do innych usług",
+            "Do wersjonowania schematu zdarzeń"
+          ],
+          "why": "Snapshot to optymalizacja przy długich strumieniach. Źródłem prawdy pozostają zdarzenia.",
+          "correct": 0
+        },
+        {
+          "id": "arch-cqrs-es-e7",
+          "q": "Handler projekcji może dostać to samo zdarzenie dwa razy. Jaką cechę musi mieć?",
+          "options": [
+            "Transakcyjność z event store",
+            "Idempotentność – ponowne przetworzenie nie zmienia wyniku",
+            "Synchroniczność z komendą",
+            "Niemutowalność read modelu"
+          ],
+          "why": "Dostarczanie „co najmniej raz” jest typowe. Idempotentny handler (np. pamiętający ostatnio przetworzoną pozycję) nie podwoi danych.",
+          "correct": 1
+        },
+        {
+          "id": "arch-cqrs-es-e8",
+          "q": "Która sytuacja jest najsłabszym kandydatem do Event Sourcingu?",
+          "options": [
+            "Konta finansowe wymagające pełnego audytu",
+            "System rezerwacji, gdzie trzeba odtworzyć stan „na dzień X”",
+            "Prosty CRUD słowników bez potrzeby historii zmian",
+            "Logistyka śledząca każdy etap przesyłki"
+          ],
+          "why": "ES kosztuje (wersjonowanie, RODO, eventual consistency). Opłaca się, gdy historia jest wartością biznesową, a nie w zwykłym CRUD-zie.",
+          "correct": 2
+        },
+        {
+          "id": "arch-cqrs-es-e9",
+          "q": "Jak Event Sourcing radzi sobie z wymogiem RODO usunięcia danych osobowych, skoro zdarzeń się nie usuwa?",
+          "options": [
+            "Nie da się tego pogodzić – ES jest zakazany w UE",
+            "Wystarczy usunąć snapshot",
+            "Wystarczy usunąć wiersz z read modelu",
+            "Np. crypto-shredding – dane osobowe są szyfrowane kluczem, który się usuwa"
+          ],
+          "why": "Usunięcie klucza czyni zaszyfrowane dane nieczytelnymi bez modyfikacji strumienia. Usunięcie snapshotu czy read modelu nie usuwa danych ze zdarzeń.",
+          "correct": 3
+        },
+        {
+          "id": "arch-cqrs-es-e10",
+          "q": "Które zdanie o relacji DDD, CQRS i Event Sourcingu jest prawdziwe?",
+          "options": [
+            "To niezależne pomysły; dobrze się łączą (agregat emituje zdarzenia, projekcje budują odczyt), ale każdy można stosować bez pozostałych",
+            "Event Sourcing jest obowiązkową częścią DDD",
+            "CQRS można stosować tylko razem z Event Sourcingiem",
+            "DDD zabrania osobnych modeli odczytu"
+          ],
+          "why": "DDD bez CQRS, CQRS bez ES czy DDD z CQRS bez ES to poprawne kombinacje. Wybiera się je według potrzeb, nie w pakiecie.",
+          "correct": 0
+        }
+      ]
+    },
+    {
+      "id": "arch-system-design",
+      "cat": "arch",
+      "title": "System design na rozmowie",
+      "level": 3,
+      "minutes": 15,
+      "intro": "Na rozmowie system design nie chodzi o „jedyną poprawną odpowiedź”, tylko o to, jak myślisz: czy dopytujesz o wymagania, liczysz skalę, nazywasz kompromisy. Poznasz schemat prowadzenia takiej rozmowy krok po kroku i przejdziesz przez pełny przykład – skracacz linków w .NET + Angular. Na koniec: monolit modularny czy mikroserwisy.",
+      "sections": [
+        {
+          "h": "O co chodzi w tej rozmowie – architekt i klient",
+          "text": "Wyobraź sobie architekta, do którego przychodzi klient: „chcę dom”. Zły architekt od razu rysuje willę z basenem. Dobry pyta: ile osób, jaki budżet, jaka działka, czy planujecie dzieci? Dopiero potem szkicuje – i mówi, z czego rezygnuje i dlaczego.\n\nRozmowa system design wygląda tak samo. Dostajesz ogólne zadanie („zaprojektuj skracacz linków”) i 45–60 minut. Rekruter ocenia:\n\n- czy **zbierasz wymagania**, zamiast zgadywać,\n- czy umiesz **oszacować skalę** i wyciągnąć z liczb wnioski,\n- czy projekt jest **prosty na start** i wiesz, jak go rozbudować,\n- czy **nazywasz kompromisy** (trade-offs, czyli „zyskuję X, płacę Y”),\n- czy **mówisz na głos** i prowadzisz rozmowę.\n\nNajgorsze, co możesz zrobić, to milczeć przez 10 minut albo od razu rysować Kafkę, Kubernetes i 12 mikroserwisów."
+        },
+        {
+          "h": "Schemat rozmowy krok po kroku",
+          "text": "Trzymaj się stałej kolejności – to twoja mapa, gdy zestresujesz się w trakcie:\n\n- **1. Wymagania funkcjonalne (ok. 5 min)** – co system robi? Wypisz 3–5 głównych funkcji i ustal, czego NIE robimy.\n- **2. Wymagania niefunkcjonalne** – ile użytkowników, jakie opóźnienie jest OK, co ważniejsze: dostępność czy spójność, czy dane mogą zginąć.\n- **3. Estymacje (back-of-the-envelope, „na serwetce”)** – ruch na sekundę, ilość danych, proporcja odczytów do zapisów.\n- **4. API** – kilka endpointów z metodą HTTP, parametrami i odpowiedzią.\n- **5. Model danych** – główne tabele lub kolekcje i wybór bazy.\n- **6. Architektura wysokiego poziomu** – prosty rysunek: klient → load balancer → API → baza.\n- **7. Skalowanie i wąskie gardła** – cache, kolejki, replikacja, partycjonowanie, co się zepsuje pierwsze.\n- **8. Podsumowanie** – co zrobiłbyś dalej, mając więcej czasu.\n\nKilka pojęć, które się pojawią:\n\n- **Load balancer** – „portier”, który rozdziela ruch między kilka serwerów.\n- **Skalowanie wertykalne** – mocniejszy serwer. **Horyzontalne** – więcej serwerów. To drugie wymaga, by API było **bezstanowe** (stateless): każde żądanie może trafić do dowolnej instancji.\n- **SLA / dostępność 99,9%** – ok. 43 minuty przestoju w miesiącu.\n- **Latency p99** – czas, w jakim mieści się 99% odpowiedzi."
+        },
+        {
+          "h": "Przykład: skracacz linków – wymagania i estymacje",
+          "text": "Zadanie: zaprojektuj serwis typu bit.ly w .NET + Angular.\n\n**Wymagania funkcjonalne** (po dopytaniu):\n\n- Użytkownik wkleja długi URL i dostaje krótki kod, np. `sho.rt/aZ3k9Q`.\n- Wejście w krótki link przekierowuje na oryginał.\n- Opcjonalnie: własny alias, data wygaśnięcia, statystyki kliknięć w panelu Angular.\n- Poza zakresem: edycja linków, zespoły, płatności.\n\n**Niefunkcjonalne:** przekierowanie musi być bardzo szybkie (p99 < 50 ms) i bardzo dostępne; statystyki mogą się spóźniać o kilka sekund (eventual consistency jest OK).\n\n**Estymacje krok po kroku** (załóżmy):\n\n- **1.** 100 mln nowych linków miesięcznie → ok. 100 000 000 / 2 600 000 s ≈ **40 zapisów/s**.\n- **2.** Odczytów 100 razy więcej → ok. **4 000 przekierowań/s**, w szczycie ×3–5.\n- **3.** Rekord ok. 500 B → 100 mln × 500 B = **50 GB miesięcznie**, ok. 3 TB w 5 lat.\n- **4.** Długość kodu: 62 znaki (a–z, A–Z, 0–9), 7 znaków → 62^7 ≈ **3,5 biliona** kombinacji – wystarczy na długo.\n\n**Wniosek z liczb** (to właśnie chce usłyszeć rekruter): system jest **zdominowany odczytami**, więc kluczowy jest cache i szybka ścieżka przekierowania. Zapisy są małe – jedna baza na start spokojnie da radę."
+        },
+        {
+          "h": "API, model danych i generowanie kodów",
+          "text": "**API** – mało endpointów, jasne kody HTTP:\n\n- `POST /api/links` z `{ url, alias?, expiresAt? }` → 201 Created z `{ code, shortUrl }`.\n- `GET /{code}` → **301** (stałe, przeglądarka zapamięta – mniej ruchu, ale zgubisz statystyki) albo **302** (tymczasowe – każde kliknięcie przejdzie przez nas). Do statystyk wybieramy 302 – to dobry przykład kompromisu do nazwania na głos.\n- `GET /api/links/{code}/stats` → dane do panelu Angular.\n\n**Model danych:** tabela `Links(Code PK, LongUrl, OwnerId, CreatedAt, ExpiresAt)` i osobno zdarzenia kliknięć. Dostęp jest prawie zawsze „po kluczu”, więc pasuje zarówno SQL (PostgreSQL / SQL Server z indeksem na `Code`), jak i baza klucz–wartość. Na rozmowie wystarczy uzasadnić: „SQL, bo zespół go zna, a 3 TB w 5 lat to nie problem; przy wzroście – partycjonowanie po `Code`”.\n\n**Jak generować kod?** Trzy opcje i ich kompromisy:\n\n- **Hash URL-a** (np. SHA-256, pierwsze 7 znaków) – prosty, ale kolizje trzeba wykrywać i obsługiwać.\n- **Licznik + Base62** – unikalny id z bazy (sekwencja) zamieniony na znaki 0–9, a–z, A–Z. Bez kolizji, ale kody są przewidywalne (da się „przeglądać” cudze linki).\n- **Losowy kod + sprawdzenie unikalności** – nieprzewidywalny, przy 3,5 biliona kombinacji kolizje są rzadkie; unikalność gwarantuje klucz główny.\n\nKod niżej to endpoint przekierowania: najpierw cache, potem baza, a statystyka idzie do kolejki w tle, żeby nie spowalniać użytkownika.",
+          "code": "app.MapGet(\"/{code}\", async (string code, HybridCache cache, AppDbContext db,\n    IClickQueue clicks, HttpContext http, CancellationToken ct) =>\n{\n    // 1. cache (pamięć + Redis), przy braku – zapytanie do bazy\n    var url = await cache.GetOrCreateAsync($\"link:{code}\", async token =>\n        await db.Links.AsNoTracking()\n            .Where(l => l.Code == code && (l.ExpiresAt == null || l.ExpiresAt > DateTime.UtcNow))\n            .Select(l => l.LongUrl)\n            .FirstOrDefaultAsync(token), cancellationToken: ct);\n\n    if (url is null) return Results.NotFound();\n\n    // 2. statystyka asynchronicznie – nie blokuje przekierowania\n    await clicks.EnqueueAsync(new Click(code, DateTime.UtcNow, http.Request.Headers.Referer), ct);\n\n    // 3. 302, żeby każde kliknięcie przechodziło przez nas\n    return Results.Redirect(url, permanent: false);\n});",
+          "lang": "csharp"
+        },
+        {
+          "h": "Skalowanie: cache, kolejki, wąskie gardła",
+          "text": "**Cache** – „podręczna szuflada” z najczęściej używanymi rzeczami. W .NET masz `IMemoryCache` (w pamięci jednej instancji), `IDistributedCache` z Redisem (wspólny dla wszystkich instancji) i `HybridCache` (oba poziomy naraz, z ochroną przed stampede). Kilka pojęć:\n\n- **Cache-aside** – aplikacja najpierw pyta cache, przy braku czyta bazę i wkłada wynik do cache (jak w kodzie wyżej).\n- **TTL** (time to live) – po jakim czasie wpis wygasa.\n- **Cache stampede** – wpis wygasa i nagle 1000 żądań naraz idzie do bazy. Lekarstwo: blokada na jedno odświeżenie (HybridCache to robi) lub losowy TTL.\n- **Invalidacja** – usuwanie wpisu po zmianie danych; jedna z „trudnych rzeczy w informatyce”.\n- **CDN** (Content Delivery Network) – serwery blisko użytkownika; dla Angulara serwują pliki statyczne aplikacji.\n\n**Kolejka** (RabbitMQ, Azure Service Bus, Kafka) to skrzynka pocztowa: nadawca wrzuca list i idzie dalej, odbiorca wyjmuje we własnym tempie. Daje: szybszą odpowiedź dla użytkownika, wygładzenie szczytów, odporność na awarię odbiorcy. W skracaczu kliknięcia trafiają do kolejki, a worker (`BackgroundService`) zapisuje je paczkami.\n\n**Wąskie gardła** – zawsze zapytaj sam siebie „co padnie pierwsze?”:\n\n- **Baza przy odczytach** → cache, repliki do odczytu (read replicas).\n- **Baza przy zapisach / rozmiarze** → partycjonowanie (sharding, czyli podział danych na kilka baz, np. po hashu `Code`).\n- **Pojedynczy serwer** → kilka bezstanowych instancji za load balancerem.\n- **Nadużycia** → rate limiting (wbudowany w ASP.NET Core middleware `AddRateLimiter`), np. 10 nowych linków na minutę na użytkownika.\n\nKluczowa zasada: **nie dodawaj elementu, którego nie uzasadniają liczby z estymacji**."
+        },
+        {
+          "h": "Monolit modularny czy mikroserwisy",
+          "text": "**Monolit** to jedna aplikacja wdrażana w całości. **Mikroserwisy** to wiele małych aplikacji, każda z własną bazą i własnym wdrożeniem. **Monolit modularny** to środek: jedna aplikacja, ale podzielona na moduły z wyraźnymi granicami (najlepiej według bounded contextów z DDD), które komunikują się przez publiczne interfejsy lub zdarzenia w procesie.\n\n**Analogia:** monolit modularny to dom z osobnymi pokojami i drzwiami. Mikroserwisy to osiedle osobnych domów – każdy ma własny prąd i wodę, ale dojście do sąsiada wymaga wyjścia na ulicę (sieć).\n\nCo kosztują mikroserwisy:\n\n- komunikacja przez sieć – opóźnienia, timeouty, ponawianie, circuit breaker (bezpiecznik odcinający wywołania do usługi, która nie odpowiada),\n- brak transakcji między usługami – potrzebne sagi i Outbox,\n- monitoring rozproszony (OpenTelemetry, tracing), osobne CI/CD, wersjonowanie kontraktów.\n\nKiedy mikroserwisy mają sens: wiele niezależnych zespołów, części systemu o bardzo różnych potrzebach skalowania lub technologii, wymóg niezależnych wdrożeń. W pozostałych przypadkach rozsądny start to **monolit modularny**: tani w utrzymaniu, a dobrze wyznaczone moduły można później wydzielić jako usługi.\n\nW skracaczu: jeden monolit modularny z modułami **Links** i **Analytics**, worker do kliknięć i Angular jako osobna aplikacja SPA (Single Page Application) serwowana z CDN. Gdyby analityka zaczęła obciążać system – to pierwszy kandydat do wydzielenia."
+        },
+        {
+          "h": "Jak wypaść dobrze – pułapki i niuanse seniorskie",
+          "text": "Typowe błędy kandydatów:\n\n- Rysowanie rozwiązania przed zadaniem pytań o wymagania.\n- Technologie bez uzasadnienia („bo Kafka jest skalowalna”).\n- Brak liczb – nie wiesz, czy potrzebujesz jednego serwera, czy stu.\n- Udawanie, że rozwiązanie nie ma wad.\n- Zapominanie o frontendzie: jak Angular pobiera dane, stronicowanie, obsługa błędów i stanów ładowania.\n\nZdania, które dobrze brzmią:\n\n- „Zanim zacznę, chciałbym doprecyzować wymagania – czy…?”\n- „Z estymacji wychodzi przewaga odczytów 100:1, więc skupię się na cache.”\n- „Wybieram 302 zamiast 301 – płacę większym ruchem, zyskuję statystyki.”\n- „Na start jeden monolit modularny; wydzielę analitykę, gdy zacznie przeszkadzać.”\n\n**Niuanse seniorskie**, które warto dorzucić, gdy zostanie czas: **idempotencja** przy tworzeniu linku (nagłówek Idempotency-Key, żeby podwójne kliknięcie nie tworzyło dwóch linków), **observability** (logi, metryki, tracing przez OpenTelemetry), **bezpieczeństwo** (blokowanie złośliwych URL-i, rate limiting, autoryzacja do statystyk), **koszty** chmury i **plan awarii** (co, jeśli padnie Redis – aplikacja ma działać wolniej, ale działać). Pokazujesz wtedy, że myślisz o systemie na produkcji, a nie tylko o diagramie."
+        }
+      ],
+      "takeaways": [
+        "System design ocenia sposób myślenia: wymagania, liczby, kompromisy i komunikację, a nie jedyną poprawną odpowiedź.",
+        "Stała kolejność: wymagania → estymacje → API → model danych → architektura → skalowanie → podsumowanie.",
+        "Estymacje mają prowadzić do wniosków, np. przewaga odczytów oznacza, że kluczowy jest cache.",
+        "Każdy wybór nazywaj jako kompromis, np. 302 zamiast 301 – więcej ruchu, ale pełne statystyki.",
+        "Cache-aside z TTL i ochroną przed stampede to podstawowe narzędzie przy systemach zdominowanych odczytami.",
+        "Kolejka odcina wolne zadania od ścieżki użytkownika i wygładza szczyty ruchu.",
+        "Skalowanie horyzontalne wymaga bezstanowego API; bazę odciążają cache, repliki i partycjonowanie.",
+        "Monolit modularny to rozsądny start; mikroserwisy uzasadniają niezależne zespoły i różne potrzeby skalowania."
+      ],
+      "interview": [
+        "Zaprojektuj skracacz linków – od wymagań do skalowania.",
+        "Jak oszacujesz ruch i rozmiar danych dla nowego systemu?",
+        "Gdzie i jak zastosowałbyś cache, a jak rozwiązałbyś jego unieważnianie?",
+        "Kiedy wybrałbyś mikroserwisy zamiast monolitu modularnego?",
+        "Co jest wąskim gardłem twojego projektu i jak byś je usunął?"
+      ],
+      "exam": [
+        {
+          "id": "arch-system-design-e1",
+          "q": "Od czego powinieneś zacząć rozmowę system design po usłyszeniu zadania?",
+          "options": [
+            "Od doprecyzowania wymagań funkcjonalnych i niefunkcjonalnych",
+            "Od narysowania architektury mikroserwisowej z kolejką",
+            "Od wyboru bazy danych",
+            "Od napisania kodu najważniejszego endpointu"
+          ],
+          "why": "Bez wymagań nie wiesz, co projektujesz ani jaką skalę obsłużyć. Rekruter ocenia właśnie umiejętność dopytywania.",
+          "correct": 0
+        },
+        {
+          "id": "arch-system-design-e2",
+          "q": "Estymacja pokazała ok. 40 zapisów/s i ok. 4 000 odczytów/s. Jaki wniosek jest najtrafniejszy?",
+          "options": [
+            "Trzeba od razu shardować bazę pod zapisy",
+            "System jest zdominowany odczytami, więc priorytetem jest cache i szybka ścieżka odczytu",
+            "Potrzebne są mikroserwisy, bo ruch jest duży",
+            "Liczby nie mają znaczenia dla projektu"
+          ],
+          "why": "Proporcja 100:1 wskazuje, gdzie inwestować. 40 zapisów/s obsłuży pojedyncza baza, a odczyty najlepiej odciążyć cache’em.",
+          "correct": 1
+        },
+        {
+          "id": "arch-system-design-e3",
+          "q": "Dlaczego skracacz linków z wymaganymi statystykami kliknięć zwraca 302 zamiast 301?",
+          "options": [
+            "Bo 301 nie jest obsługiwane przez nowoczesne przeglądarki",
+            "Bo 302 jest szybsze w przetwarzaniu przez serwer",
+            "Bo 301 jest zapamiętywane przez przeglądarkę i kolejne kliknięcia omijałyby serwer, gubiąc statystyki",
+            "Bo 301 wymaga HTTPS, a 302 nie"
+          ],
+          "why": "Przekierowanie stałe trafia do cache przeglądarki. Płacimy większym ruchem za to, że każde kliknięcie przechodzi przez nas.",
+          "correct": 2
+        },
+        {
+          "id": "arch-system-design-e4",
+          "q": "Jaka jest wada generowania kodów przez licznik z bazy zamieniony na Base62?",
+          "options": [
+            "Często występują kolizje",
+            "Kody mają zmienną i bardzo dużą długość od początku",
+            "Nie da się ich zapisać w bazie SQL",
+            "Kody są przewidywalne, więc łatwo „przeglądać” kolejne linki"
+          ],
+          "why": "Licznik gwarantuje unikalność bez kolizji, ale kolejne wartości są łatwe do odgadnięcia. Losowe kody tego problemu nie mają.",
+          "correct": 3
+        },
+        {
+          "id": "arch-system-design-e5",
+          "q": "Popularny wpis w cache wygasa i nagle setki żądań jednocześnie odpytują bazę. Jak się nazywa ten problem?",
+          "options": [
+            "Cache stampede",
+            "Cache-aside",
+            "Write-through",
+            "Read replica lag"
+          ],
+          "why": "Stampede to lawina żądań po wygaśnięciu wpisu. Pomaga blokada na jedno odświeżenie (np. HybridCache) lub losowy TTL.",
+          "correct": 0
+        },
+        {
+          "id": "arch-system-design-e6",
+          "q": "Dlaczego w endpoincie przekierowania zapis kliknięcia trafia do kolejki zamiast bezpośrednio do bazy?",
+          "options": [
+            "Bo kolejka zapewnia natychmiastową spójność statystyk",
+            "Żeby wolny zapis nie wydłużał przekierowania i żeby wygładzić szczyty ruchu",
+            "Bo baza SQL nie potrafi zapisywać kliknięć",
+            "Żeby uniknąć używania cache"
+          ],
+          "why": "Kolejka odcina zadania drugorzędne od ścieżki użytkownika. Statystyki mogą się spóźniać – wymagania dopuszczają eventual consistency.",
+          "correct": 1
+        },
+        {
+          "id": "arch-system-design-e7",
+          "q": "Co jest warunkiem skalowania horyzontalnego API za load balancerem?",
+          "options": [
+            "Każda instancja musi mieć własną, osobną bazę danych",
+            "Load balancer musi kierować użytkownika zawsze na ten sam serwer",
+            "API musi być bezstanowe – każde żądanie może obsłużyć dowolna instancja",
+            "API musi być napisane jako mikroserwisy"
+          ],
+          "why": "Stan w pamięci jednej instancji (np. sesja) psuje skalowanie. Stan trzyma się w bazie lub w rozproszonym cache.",
+          "correct": 2
+        },
+        {
+          "id": "arch-system-design-e8",
+          "q": "Baza przestaje nadążać z odczytami mimo dobrych indeksów. Która kolejność działań jest najrozsądniejsza?",
+          "options": [
+            "Od razu sharding na 16 baz",
+            "Przepisanie systemu na mikroserwisy",
+            "Wyłączenie transakcji w bazie",
+            "Cache dla gorących danych, potem repliki do odczytu; sharding dopiero, gdy rozmiar lub zapisy tego wymagają"
+          ],
+          "why": "Najpierw tańsze i prostsze kroki. Sharding mocno komplikuje system i rozwiązuje głównie problem zapisów i rozmiaru danych.",
+          "correct": 3
+        },
+        {
+          "id": "arch-system-design-e9",
+          "q": "Mały zespół (5 osób) buduje nowy produkt. Jaka architektura jest zwykle najrozsądniejszym startem?",
+          "options": [
+            "Monolit modularny z wyraźnymi granicami modułów, które można później wydzielić",
+            "Mikroserwis dla każdej encji",
+            "Jeden monolit bez żadnego podziału na moduły",
+            "Architektura serverless z osobną funkcją na każdy endpoint i osobną bazą"
+          ],
+          "why": "Mikroserwisy kosztują sieć, sagi i rozproszony monitoring. Monolit modularny daje porządek granic bez tych kosztów.",
+          "correct": 0
+        },
+        {
+          "id": "arch-system-design-e10",
+          "q": "Użytkownik dwa razy szybko kliknął „Skróć” i powstały dwa linki. Który mechanizm temu zapobiega?",
+          "options": [
+            "Rate limiting na poziomie CDN",
+            "Idempotencja żądania, np. nagłówek Idempotency-Key sprawdzany przez serwer",
+            "Zamiana 302 na 301",
+            "Zwiększenie TTL w cache"
+          ],
+          "why": "Klucz idempotencji pozwala serwerowi rozpoznać powtórzone żądanie i zwrócić ten sam wynik zamiast tworzyć nowy zasób.",
+          "correct": 1
+        }
+      ]
+    }
+  ]
+}

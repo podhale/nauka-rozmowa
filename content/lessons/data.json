@@ -1,0 +1,767 @@
+{
+  "module": "data",
+  "title": "Bazy danych",
+  "order": 2,
+  "lessons": [
+    {
+      "id": "data-sql-basics",
+      "cat": "sql",
+      "title": "SQL, który musisz umieć na rozmowie",
+      "level": 2,
+      "minutes": 15,
+      "intro": "Na rozmowie .NET prawie zawsze pada kilka pytań z SQL – często z kartką lub edytorem i zadaniem typu „znajdź drugą najwyższą pensję”. Ta lekcja porządkuje to, co trzeba umieć na pamięć: kolejność wykonania zapytania, JOIN-y z NULL-ami, grupowanie, podzapytania, CTE i funkcje okna, a na końcu klasyczne zadania z gotowymi rozwiązaniami.",
+      "sections": [
+        {
+          "h": "Kolejność wykonania SELECT – przepis czytany od środka",
+          "text": "Wyobraź sobie kucharza z przepisem. Na kartce na górze jest „podaj na talerzu”, ale on najpierw wyjmuje produkty z lodówki, potem odrzuca zepsute, potem kroi i dzieli na porcje, a dopiero na końcu nakłada. SQL działa tak samo: piszemy od `SELECT`, ale baza **logicznie** wykonuje zapytanie w innej kolejności.\n\nKrok po kroku:\n\n1. `FROM` + `JOIN` – „wyjmij produkty”: zbierz wiersze ze wszystkich tabel.\n2. `WHERE` – „odrzuć zepsute”: wyrzuć pojedyncze wiersze, które nie pasują.\n3. `GROUP BY` – „podziel na porcje”: zwiń wiersze w grupy (np. jedna grupa = jeden dział).\n4. `HAVING` – odrzuć całe grupy, które nie pasują.\n5. `SELECT` – wylicz kolumny, nadaj im aliasy (alias = nowa nazwa kolumny, np. `AS Cnt`).\n6. `DISTINCT` – usuń powtórzone wiersze.\n7. `ORDER BY` – posortuj.\n8. `OFFSET/FETCH` lub `TOP` – utnij wynik do N wierszy.\n\nCo z tego wynika w praktyce:\n\n- Aliasu z `SELECT` **nie użyjesz w `WHERE`** – na etapie 2 on jeszcze nie istnieje. W `ORDER BY` (etap 7) już tak.\n- Agregatu (funkcji liczącej coś dla grupy: `COUNT`, `SUM`, `AVG`) nie wstawisz do `WHERE` – grup jeszcze nie ma. Służy do tego `HAVING`.\n\nTo kolejność **logiczna**, czyli „jaki ma być wynik”. Optymalizator (część bazy, która wybiera, jak fizycznie wykonać zapytanie) może robić rzeczy w innej kolejności, ale wynik musi być taki sam.",
+          "code": "SELECT d.Name, COUNT(*) AS Cnt          -- krok 5\nFROM Employees e                        -- krok 1\nJOIN Departments d ON d.Id = e.DeptId   -- krok 1\nWHERE e.IsActive = 1                    -- krok 2\nGROUP BY d.Name                         -- krok 3\nHAVING COUNT(*) > 5                     -- krok 4\nORDER BY Cnt DESC;                      -- krok 7: alias już istnieje",
+          "lang": "sql"
+        },
+        {
+          "h": "JOIN-y i NULL – gdzie najczęściej się potykamy",
+          "text": "JOIN to łączenie dwóch tabel w pary wierszy według warunku. Analogia: lista gości i lista zamówionych dań na weselu.\n\n- `INNER JOIN` – tylko goście, którzy coś zamówili (i dania, które mają gościa).\n- `LEFT JOIN` – wszyscy goście; jak ktoś nic nie zamówił, w kolumnach dania ma pustkę (`NULL`).\n- `RIGHT JOIN` – to samo, ale „wszystko z prawej”; w praktyce zamienia się kolejność tabel i pisze `LEFT`.\n- `FULL OUTER JOIN` – wszyscy goście i wszystkie dania, dopasowane tam, gdzie się da.\n- `CROSS JOIN` – każdy gość z każdym daniem (iloczyn kartezjański).\n\n**NULL** to nie zero ani pusty tekst – to „nie wiadomo”. Czy „nie wiadomo” równa się „nie wiadomo”? Też nie wiadomo. Dlatego `NULL = NULL` nie daje prawdy, tylko trzeci stan UNKNOWN, a `WHERE` przepuszcza wyłącznie prawdę. Na `NULL` sprawdzamy przez `IS NULL` / `IS NOT NULL`.\n\nNajczęstsza pułapka – źle → dobrze:\n\n1. Robisz `LEFT JOIN`, bo chcesz też klientów bez zamówień.\n2. W `WHERE` dajesz warunek na kolumnę zamówienia, np. `o.Status = 'Paid'`.\n3. Klient bez zamówień ma tam `NULL`, `NULL = 'Paid'` to UNKNOWN, więc `WHERE` go wyrzuca.\n4. Efekt: `LEFT JOIN` po cichu zamienił się w `INNER JOIN`. Poprawka: przenieś warunek do `ON`.\n\nInne skutki `NULL`: `COUNT(*)` liczy wszystkie wiersze, a `COUNT(kolumna)` pomija `NULL`-e; `SUM` i `AVG` też je ignorują. `COALESCE(a, b)` zwraca pierwszą wartość, która nie jest `NULL`.",
+          "code": "-- ŹLE: klienci bez zamówień znikają\nSELECT c.Name, o.Id\nFROM Customers c\nLEFT JOIN Orders o ON o.CustomerId = c.Id\nWHERE o.Status = 'Paid';\n\n-- DOBRZE: warunek na prawej tabeli w ON\nSELECT c.Name, o.Id\nFROM Customers c\nLEFT JOIN Orders o ON o.CustomerId = c.Id\n                  AND o.Status = 'Paid';",
+          "lang": "sql"
+        },
+        {
+          "h": "GROUP BY i HAVING – sortowanie paragonów do kopert",
+          "text": "Masz stos paragonów i chcesz wiedzieć, ile wydał każdy klient. Wkładasz paragony do kopert po kliencie (`GROUP BY CustomerId`) i na każdej kopercie piszesz sumę (`SUM(Total)`). Z każdej koperty zostaje **jeden** wiersz wyniku.\n\nStąd zasada: każda kolumna w `SELECT` musi być albo w `GROUP BY`, albo w funkcji agregującej. Jeśli w kopercie jest 10 paragonów z różnymi datami, a ty prosisz o „datę” – baza nie wie, którą wybrać, więc zgłasza błąd.\n\n`WHERE` vs `HAVING` – ulubione pytanie na rozmowie:\n\n- `WHERE` odrzuca **pojedyncze paragony, zanim** trafią do kopert (np. tylko z 2025 roku).\n- `HAVING` odrzuca **całe koperty po** zsumowaniu (np. tylko klienci, którzy wydali ponad 10 000).\n\nJeśli warunek nie dotyczy agregatu, daj go do `WHERE` – mniej paragonów do sortowania. Przydatny trik to **agregacja warunkowa**: `SUM(CASE WHEN ... THEN 1 ELSE 0 END)` liczy w jednym przebiegu, ile wierszy spełnia dany warunek.",
+          "code": "SELECT CustomerId,\n       COUNT(*)                                        AS Orders,\n       SUM(CASE WHEN Status = 'Paid' THEN 1 ELSE 0 END) AS Paid,\n       SUM(Total)                                      AS Revenue\nFROM Orders\nWHERE OrderDate >= '2025-01-01'     -- paragony przed kopertami\nGROUP BY CustomerId                 -- koperty\nHAVING SUM(Total) > 10000;          -- całe koperty",
+          "lang": "sql"
+        },
+        {
+          "h": "Podzapytania, IN i EXISTS",
+          "text": "Podzapytanie to zapytanie schowane w innym zapytaniu – jak pytanie pomocnicze, które zadajesz, zanim odpowiesz na główne. Rodzaje:\n\n- **skalarne** – zwraca jedną wartość, np. średnią pensję do porównania,\n- **zbiorowe** – zwraca listę wartości, używane z `IN`,\n- **skorelowane** – korzysta z kolumn zapytania zewnętrznego, więc logicznie jest liczone osobno dla każdego wiersza.\n\n`EXISTS` pyta tylko „czy jest choć jeden taki wiersz?” – jak bramkarz, który sprawdza, czy jesteś na liście, ale nie czyta całej listy. Dlatego w środku pisze się zwyczajowo `SELECT 1`. `NOT EXISTS` odpowiada na pytania typu „klienci, którzy nic nie zamówili”.\n\nPułapka z `NOT IN` krok po kroku:\n\n1. Piszesz `WHERE Id NOT IN (SELECT ManagerId FROM Employees)`.\n2. Prezes nie ma przełożonego, więc w liście jest `NULL`.\n3. `NOT IN` oznacza „różne od każdego elementu”, w tym od `NULL` – a to daje UNKNOWN.\n4. Wynik: **zero wierszy**, bez żadnego błędu. `NOT EXISTS` tego problemu nie ma.\n\nTrzecia droga do tego samego to `LEFT JOIN ... WHERE prawa.Id IS NULL`. Działa, ale `NOT EXISTS` czytelniej mówi, o co chodzi.",
+          "code": "-- ŹLE: jeśli Orders.CustomerId ma NULL, wynik jest pusty\nSELECT Id, Name FROM Customers\nWHERE Id NOT IN (SELECT CustomerId FROM Orders);\n\n-- DOBRZE: odporne na NULL\nSELECT c.Id, c.Name FROM Customers c\nWHERE NOT EXISTS (SELECT 1 FROM Orders o\n                  WHERE o.CustomerId = c.Id);",
+          "lang": "sql"
+        },
+        {
+          "h": "CTE – zapytanie rozpisane na kroki",
+          "text": "CTE (Common Table Expression, „wspólne wyrażenie tabelaryczne”) to nazwany wynik pomocniczy, zdefiniowany przez `WITH` i dostępny tylko w jednym poleceniu, które po nim następuje. To jak notatka na marginesie: „najpierw policz to, nazwij to `Ranked`, a potem z tego wybierz”. Zamiast trzech poziomów nawiasów masz czytelne kroki.\n\nCo warto wiedzieć:\n\n- W SQL Server CTE **nie jest zapisywane** na boku – to jakby wkleić podzapytanie w miejsce nazwy. Użyte dwa razy może zostać policzone dwa razy. Gdy wynik pośredni jest drogi, lepsza bywa tabela tymczasowa `#temp`.\n- Polecenie przed `WITH` musi kończyć się średnikiem – stąd zwyczaj pisania `;WITH`.\n- **CTE rekurencyjne** to CTE, które odwołuje się do samego siebie. Służy do hierarchii (pracownik → przełożony, drzewo kategorii).\n\nJak działa rekurencja w przykładzie poniżej:\n\n1. Część **anchor** (kotwica) znajduje prezesa – osobę bez przełożonego, poziom 0.\n2. Część rekurencyjna dołącza ludzi, których przełożony jest już w wyniku – poziom 1.\n3. Krok 2 powtarza się dla kolejnych poziomów, aż nie przybędzie nikt nowy.\n4. Domyślnie limit to 100 poziomów (`OPTION (MAXRECURSION n)` go zmienia).",
+          "code": "WITH Chain AS (\n    SELECT Id, Name, ManagerId, 0 AS Lvl\n    FROM Employees WHERE ManagerId IS NULL      -- 1. anchor: prezes\n    UNION ALL\n    SELECT e.Id, e.Name, e.ManagerId, c.Lvl + 1\n    FROM Employees e\n    JOIN Chain c ON e.ManagerId = c.Id          -- 2-3. kolejne poziomy\n)\nSELECT * FROM Chain ORDER BY Lvl;",
+          "lang": "sql"
+        },
+        {
+          "h": "Funkcje okna – patrzenie na sąsiadów bez zwijania wierszy",
+          "text": "Funkcja okna (window function) liczy coś dla każdego wiersza na podstawie innych wierszy, ale **nie zwija wyniku** – to główna różnica względem `GROUP BY`. Analogia: tabela wyników w klasie. Każdy uczeń zostaje na liście, a obok jego oceny dopisujesz średnią klasy i jego miejsce w rankingu.\n\nSkładnia: `funkcja() OVER (PARTITION BY ... ORDER BY ...)`.\n\n- `PARTITION BY` – dzieli wiersze na osobne „klasy” (np. działy), liczone niezależnie.\n- `ORDER BY` w `OVER` – ustala kolejność wewnątrz klasy (ważne dla rankingów i sum narastających).\n\nRanking dla pensji 100, 90, 90, 80 – to pytanie pada niemal zawsze:\n\n- `ROW_NUMBER()` → 1, 2, 3, 4 – zawsze kolejne numery, remis rozstrzygnięty przypadkowo,\n- `RANK()` → 1, 2, 2, 4 – remis dzieli miejsce, potem dziura (jak w sporcie),\n- `DENSE_RANK()` → 1, 2, 2, 3 – remis dzieli miejsce, bez dziury.\n\nInne przydatne: `LAG`/`LEAD` (wartość z poprzedniego/następnego wiersza), `SUM(...) OVER (ORDER BY ...)` (suma narastająca), `AVG(...) OVER (PARTITION BY ...)` (średnia grupy obok każdego wiersza).\n\nUwaga: funkcje okna liczone są w kroku `SELECT`, więc **nie wstawisz ich do `WHERE`**. Żeby filtrować po wyniku, owiń zapytanie w CTE.",
+          "code": "SELECT Name, DeptId, Salary,\n       AVG(Salary) OVER (PARTITION BY DeptId)          AS DeptAvg,\n       DENSE_RANK() OVER (PARTITION BY DeptId\n                          ORDER BY Salary DESC)        AS RankInDept,\n       Salary - LAG(Salary) OVER (ORDER BY HireDate)   AS DiffToPrev\nFROM Employees;",
+          "lang": "sql"
+        },
+        {
+          "h": "Typowe zadania rekrutacyjne – jeden wzorzec, wiele zastosowań",
+          "text": "Większość zadań „na kartce” rozwiązuje ten sam schemat: **1)** w CTE ponumeruj wiersze funkcją rankingu, **2)** w zapytaniu zewnętrznym odfiltruj po numerze.\n\n**N-ta najwyższa pensja.** Użyj `DENSE_RANK`, bo dla pensji 100, 100, 90 „druga najwyższa” to 90, a `ROW_NUMBER` dałby drugi raz 100.\n\n**Top N w każdej grupie** (np. 3 najlepiej zarabiających w każdym dziale): ranking z `PARTITION BY DeptId` i filtr `<= 3`.\n\n**Duplikaty.** Znalezienie: `GROUP BY Email HAVING COUNT(*) > 1`. Usunięcie z zostawieniem jednego egzemplarza:\n\n1. `ROW_NUMBER() OVER (PARTITION BY Email ORDER BY Id)` – w każdej grupie duplikatów najstarszy wiersz dostaje 1.\n2. `DELETE` z CTE tam, gdzie numer > 1 (SQL Server pozwala usuwać przez CTE oparte na jednej tabeli).\n\n**Self-join** – tabela połączona sama ze sobą przez dwa aliasy, jak dwie kopie tej samej listy pracowników: jedna jako „pracownicy”, druga jako „szefowie”. Klasyk: kto zarabia więcej niż jego szef: `FROM Employees e JOIN Employees m ON e.ManagerId = m.Id WHERE e.Salary > m.Salary`.",
+          "code": "WITH Ranked AS (                          -- krok 1: ponumeruj\n    SELECT Name, DeptId, Salary,\n           DENSE_RANK() OVER (PARTITION BY DeptId\n                              ORDER BY Salary DESC) AS Rnk\n    FROM Employees\n)\nSELECT Name, DeptId, Salary               -- krok 2: odfiltruj\nFROM Ranked\nWHERE Rnk <= 3;     -- top 3 w dziale; bez PARTITION BY i Rnk = 2\n                    -- dostajesz drugą najwyższą pensję",
+          "lang": "sql"
+        },
+        {
+          "h": "Jak o tym mówić na rozmowie",
+          "text": "Przy zadaniu na żywo zacznij od **pytań o założenia**: czy mogą być remisy, czy w kolumnie bywają `NULL`-e, co zwrócić, gdy N-tej wartości nie ma, jaka to baza. To pokazuje dojrzałość lepiej niż szybkie pisanie.\n\nPotem myśl na głos: „warunek dam do `ON`, bo to `LEFT JOIN`”, „`ROW_NUMBER` owijam w CTE, bo `WHERE` wykonuje się wcześniej”. Gdy są dwa podejścia (`NOT EXISTS` vs `LEFT JOIN ... IS NULL`), wymień oba i powiedz, które wybierasz i dlaczego.\n\nAkcent seniorski: poprawne zapytanie to połowa sukcesu, druga połowa to plan wykonania i indeksy (kolejna lekcja). W .NET często piszesz to przez LINQ, więc warto wiedzieć, jaki SQL wygeneruje EF Core, i umieć go podejrzeć w logach."
+        }
+      ],
+      "takeaways": [
+        "Logiczna kolejność: FROM/JOIN → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → OFFSET/TOP; stąd alias z SELECT działa w ORDER BY, a nie w WHERE.",
+        "Warunek na prawej tabeli LEFT JOIN umieszczony w WHERE zamienia złączenie w INNER JOIN – taki warunek należy do ON.",
+        "NULL oznacza wartość nieznaną: porównujemy przez IS NULL, a NOT IN z NULL-em w podzapytaniu zwraca pusty wynik – używaj NOT EXISTS.",
+        "WHERE filtruje wiersze przed grupowaniem, HAVING filtruje grupy po agregacji.",
+        "CTE poprawia czytelność i pozwala na rekurencję, ale w SQL Server nie jest materializowane.",
+        "Funkcje okna liczą wartość dla każdego wiersza bez zwijania wyniku; ROW_NUMBER, RANK i DENSE_RANK różnią się obsługą remisów.",
+        "N-ta pensja, top N per grupa i usuwanie duplikatów rozwiązuje ten sam wzorzec: funkcja rankingu w CTE + filtr na zewnątrz."
+      ],
+      "interview": [
+        "Jaka jest różnica między WHERE a HAVING?",
+        "Napisz zapytanie zwracające drugą najwyższą pensję. Co jeśli są remisy?",
+        "Czym różnią się ROW_NUMBER, RANK i DENSE_RANK?",
+        "Dlaczego NOT IN może zwrócić pusty wynik i czym go zastąpić?",
+        "Jak usunąć duplikaty z tabeli, zostawiając po jednym wierszu?"
+      ],
+      "exam": [
+        {
+          "id": "data-sql-basics-e1",
+          "q": "Dlaczego poniższe zapytanie zwraca błąd w SQL Server?",
+          "code": "SELECT Price * 1.23 AS Gross\nFROM Products\nWHERE Gross > 100;",
+          "lang": "sql",
+          "options": [
+            "Alias z SELECT nie jest jeszcze dostępny na etapie WHERE",
+            "Nie można mnożyć kolumny przez liczbę w SELECT",
+            "Brakuje GROUP BY",
+            "WHERE musi stać po ORDER BY"
+          ],
+          "correct": 0,
+          "why": "WHERE jest przetwarzane logicznie przed SELECT, więc alias Gross jeszcze nie istnieje. Trzeba powtórzyć wyrażenie lub użyć CTE/podzapytania."
+        },
+        {
+          "id": "data-sql-basics-e2",
+          "q": "Masz `Customers c LEFT JOIN Orders o ON o.CustomerId = c.Id WHERE o.Status = 'Paid'`. Co się dzieje z klientami bez zamówień?",
+          "options": [
+            "Pojawiają się z NULL w kolumnach zamówienia",
+            "Znikają z wyniku – złączenie zachowuje się jak INNER JOIN",
+            "Pojawiają się dwukrotnie",
+            "Zapytanie kończy się błędem"
+          ],
+          "correct": 1,
+          "why": "Dla klientów bez zamówień o.Status to NULL, a NULL = 'Paid' daje UNKNOWN, więc WHERE ich odrzuca. Warunek trzeba przenieść do ON."
+        },
+        {
+          "id": "data-sql-basics-e3",
+          "q": "Podzapytanie w `WHERE Id NOT IN (SELECT ManagerId FROM Employees)` zwraca m.in. wartość NULL. Jaki będzie wynik?",
+          "options": [
+            "Wszystkie wiersze",
+            "Wiersze z pominięciem tych, gdzie Id jest NULL",
+            "Pusty zbiór",
+            "Błąd wykonania"
+          ],
+          "correct": 2,
+          "why": "Id NOT IN (…, NULL) oznacza m.in. Id <> NULL, co daje UNKNOWN, więc żaden wiersz nie przechodzi. NOT EXISTS nie ma tego problemu."
+        },
+        {
+          "id": "data-sql-basics-e4",
+          "q": "Pensje w dziale to 100, 90, 90, 80. Jakie wartości zwróci RANK() OVER (ORDER BY Salary DESC)?",
+          "options": [
+            "1, 2, 3, 4",
+            "1, 2, 2, 3",
+            "1, 1, 2, 3",
+            "1, 2, 2, 4"
+          ],
+          "correct": 3,
+          "why": "RANK nadaje remisom tę samą pozycję i zostawia dziurę – po dwóch drugich miejscach następne jest czwarte. DENSE_RANK dałby 1, 2, 2, 3."
+        },
+        {
+          "id": "data-sql-basics-e5",
+          "q": "Chcesz pokazać tylko te działy, w których średnia pensja przekracza 10 000. Gdzie umieścisz warunek AVG(Salary) > 10000?",
+          "options": [
+            "W WHERE",
+            "W HAVING",
+            "W ON",
+            "W ORDER BY"
+          ],
+          "correct": 1,
+          "why": "Agregaty są dostępne dopiero po GROUP BY, a grupy filtruje HAVING. WHERE działa na pojedynczych wierszach przed grupowaniem."
+        },
+        {
+          "id": "data-sql-basics-e6",
+          "q": "Czym różni się funkcja okna `SUM(Total) OVER (PARTITION BY CustomerId)` od `SUM(Total) ... GROUP BY CustomerId`?",
+          "options": [
+            "Funkcja okna zachowuje każdy wiersz i dokleja do niego sumę grupy",
+            "Funkcja okna działa tylko z ORDER BY",
+            "Nie ma różnicy w wyniku",
+            "GROUP BY nie może sumować"
+          ],
+          "correct": 0,
+          "why": "GROUP BY zwija wiersze do jednego na grupę, a funkcja okna liczy wartość dla każdego wiersza osobno, nie zmieniając liczby wierszy."
+        },
+        {
+          "id": "data-sql-basics-e7",
+          "q": "Chcesz zwrócić tylko wiersze, dla których ROW_NUMBER() OVER (...) = 1. Jak to zrobić poprawnie?",
+          "options": [
+            "Wstawić ROW_NUMBER() = 1 do WHERE",
+            "Wstawić warunek do HAVING",
+            "Użyć GROUP BY ROW_NUMBER()",
+            "Policzyć numer w CTE lub podzapytaniu i filtrować w zapytaniu zewnętrznym"
+          ],
+          "correct": 3,
+          "why": "Funkcje okna są liczone na etapie SELECT, po WHERE i HAVING, więc filtr po ich wyniku musi być w zapytaniu zewnętrznym."
+        },
+        {
+          "id": "data-sql-basics-e8",
+          "q": "Szukasz drugiej najwyższej unikalnej pensji, a dane to 100, 100, 90. Które podejście poprawnie zwróci 90?",
+          "options": [
+            "ROW_NUMBER() i filtr = 2",
+            "TOP 2 ... ORDER BY Salary DESC i wybór ostatniego",
+            "DENSE_RANK() i filtr = 2",
+            "MAX(Salary) z GROUP BY Salary"
+          ],
+          "correct": 2,
+          "why": "DENSE_RANK daje 1, 1, 2 – pozycja 2 to 90. ROW_NUMBER dałby drugiemu wierszowi 100, podobnie TOP 2 bez DISTINCT."
+        },
+        {
+          "id": "data-sql-basics-e9",
+          "q": "Co jest prawdą o CTE w SQL Server?",
+          "options": [
+            "Wynik CTE jest zawsze zapisywany w tempdb i liczony raz",
+            "CTE jest widoczne do końca sesji",
+            "CTE nie może odwoływać się do samego siebie",
+            "CTE działa jak wklejone podzapytanie – przy kilku odwołaniach może być liczone wielokrotnie"
+          ],
+          "correct": 3,
+          "why": "SQL Server rozwija CTE w miejscu użycia (nie materializuje). Rekurencja jest możliwa, a zasięg kończy się na jednym poleceniu."
+        },
+        {
+          "id": "data-sql-basics-e10",
+          "q": "Jak znaleźć pracowników zarabiających więcej niż ich bezpośredni przełożony (ManagerId wskazuje na Id w tej samej tabeli)?",
+          "options": [
+            "CROSS JOIN bez warunku",
+            "GROUP BY ManagerId HAVING MAX(Salary) > Salary",
+            "Self-join Employees e JOIN Employees m ON e.ManagerId = m.Id z warunkiem e.Salary > m.Salary",
+            "UNION obu kolumn pensji"
+          ],
+          "correct": 2,
+          "why": "To klasyczny self-join: ta sama tabela występuje dwa razy z różnymi aliasami – raz jako pracownik, raz jako przełożony."
+        }
+      ]
+    },
+    {
+      "id": "data-indexes",
+      "cat": "sql",
+      "title": "Indeksy i plany wykonania",
+      "level": 2,
+      "minutes": 15,
+      "intro": "„Endpoint działa wolno – co sprawdzisz?” to jedno z najczęstszych pytań na rozmowie backendowej, a odpowiedź prawie zawsze prowadzi do indeksów i planu wykonania. Po tej lekcji zrozumiesz, jak zbudowany jest indeks, dlaczego jedno zapytanie robi seek, a inne scan, i jak rozmawiać o statystykach, parameter sniffing oraz kosztach indeksów. Przykłady dotyczą SQL Server, ale idee przenoszą się na PostgreSQL.",
+      "sections": [
+        {
+          "h": "Po co indeks – skorowidz w książce",
+          "text": "Masz 800-stronicową książkę o kuchni i szukasz „pierogi”. Bez skorowidza kartkujesz stronę po stronie. Ze skorowidzem patrzysz na literę P, czytasz „pierogi – s. 412” i od razu tam skaczesz. **Indeks w bazie to właśnie taki skorowidz**: posortowana lista wartości ze wskazaniem, gdzie leżą wiersze.\n\nBez indeksu baza robi to, co ty bez skorowidza – czyta całą tabelę. To się nazywa **scan** (przeglądanie wszystkiego). Z indeksem może zrobić **seek** (skok prosto do szukanej wartości).\n\nIndeksy w SQL Server mają kształt drzewa **B-tree** (dokładniej B+ tree – zrównoważone drzewo, w którym wszystkie liście są na tej samej głębokości). Dane leżą na stronach po 8 KB. Jak wygląda szukanie klucza 412:\n\n1. Baza czyta **korzeń** (root) – jedną stronę z informacją typu „1–500 idź w lewo, 501–1000 w prawo”.\n2. Schodzi do strony **pośredniej** – „401–450 idź tutaj”.\n3. Dochodzi do **liścia** (leaf) – strony z posortowanymi kluczami, gdzie jest wpis 412.\n\nTakich poziomów jest zwykle 3–4 nawet przy milionach wierszy, więc znalezienie jednego wiersza to kilka odczytów stron zamiast tysięcy. Liście są połączone jak lista, więc po znalezieniu początku zakresu („od 412 do 430”) baza czyta dalej po kolei."
+        },
+        {
+          "h": "Clustered vs nonclustered – książka a skorowidz",
+          "text": "**Indeks klastrowy (clustered)** to sama tabela ułożona w kolejności klucza – jak słownik, gdzie hasła *są* treścią i stoją alfabetycznie. Liście drzewa zawierają **całe wiersze**. Może być tylko jeden, bo tych samych danych nie ułożysz jednocześnie w dwóch kolejnościach. Tabela bez indeksu klastrowego to **heap** („sterta” – wiersze bez ustalonej kolejności). W SQL Server `PRIMARY KEY` domyślnie tworzy indeks klastrowy.\n\n**Indeks nieklastrowy (nonclustered)** to osobny skorowidz na końcu książki. Jego liście zawierają klucz indeksu plus **adres wiersza**: klucz klastrowy (gdy tabela go ma) albo RID (Row ID – fizyczny adres wiersza w heapie). Takich indeksów może być wiele.\n\nJaki klucz klastrowy wybrać? Taki, który jest:\n\n- **wąski** – kopiuje się go do każdego indeksu nieklastrowego jako „adres”,\n- **unikalny** i **niezmienny** – zmiana klucza oznacza przenoszenie wiersza,\n- **rosnący** – nowe wiersze dopisują się na końcu, jak nowe strony w zeszycie.\n\nDlatego `int`/`bigint IDENTITY` (liczba nadawana automatycznie po kolei) to bezpieczny wybór. Losowy `Guid.NewGuid()` jako klucz klastrowy działa jak wpisywanie nowych haseł w środek gotowego słownika: strony trzeba rozcinać (**page split**), a indeks się fragmentuje (strony są w nieładzie i do połowy puste). Jeśli potrzebujesz GUID-ów, użyj sekwencyjnych (`NEWSEQUENTIALID()`, w .NET 9+ `Guid.CreateVersion7()`) albo zostaw `IDENTITY` jako klucz klastrowy, a GUID jako zwykły indeks unikalny."
+        },
+        {
+          "h": "Seek, scan, key lookup i indeks pokrywający",
+          "text": "Plan wykonania to „instrukcja”, którą baza ułożyła dla twojego zapytania – drzewko operatorów do podejrzenia w SSMS. Najważniejsze operatory:\n\n- **Index Seek** – skok do konkretnej wartości lub początku zakresu. Tani, gdy wierszy jest mało.\n- **Index Scan / Clustered Index Scan** – przeczytanie całego indeksu lub tabeli. Nie zawsze zło: gdy zwracasz większość tabeli, przeczytanie wszystkiego po kolei bywa tańsze.\n- **Key Lookup** – indeks nieklastrowy znalazł wiersz, ale nie ma wszystkich potrzebnych kolumn, więc baza dla **każdego** znalezionego wiersza idzie do indeksu klastrowego po resztę.\n\nAnalogia do Key Lookup: skorowidz mówi „pierogi – s. 412”, ale ty potrzebujesz też czasu gotowania, więc musisz otworzyć stronę 412. Dla jednego przepisu to nic. Dla 40 000 przepisów – 40 000 skoków po książce.\n\nRozwiązaniem jest **indeks pokrywający (covering index)** – taki, który zawiera wszystkie kolumny potrzebne zapytaniu, więc baza nie musi zaglądać do tabeli. Kolumny potrzebne tylko do wyświetlenia dodaje się przez `INCLUDE`: leżą wyłącznie w liściach, nie wpływają na sortowanie i nie powiększają wyższych poziomów drzewa. Kolumny do filtrowania i sortowania idą do klucza.\n\nCo robi poniższy indeks, linijka po linijce:\n\n1. `(CustomerId, Status, ...)` – seek do zamówień danego klienta o danym statusie.\n2. `OrderDate DESC` – w obrębie tej grupy wpisy są już posortowane, więc znika operator Sort.\n3. `INCLUDE (Total)` – kwota jest w liściu, więc znika Key Lookup.",
+          "code": "-- Zapytanie: WHERE CustomerId = @id AND Status = 'Paid'\n--            ORDER BY OrderDate DESC; zwraca Total\nCREATE NONCLUSTERED INDEX IX_Orders_Customer_Status_Date\nON dbo.Orders (CustomerId, Status, OrderDate DESC)   -- 1, 2\nINCLUDE (Total);                                     -- 3",
+          "lang": "sql"
+        },
+        {
+          "h": "Kolejność kolumn i selektywność",
+          "text": "Indeks złożony (na kilku kolumnach) `(A, B, C)` jest posortowany najpierw po A, w ramach A po B, w ramach B po C – jak książka telefoniczna: najpierw nazwisko, potem imię. Szukanie „Nowak Anna” jest szybkie. Szukanie wszystkich „Ann” bez nazwiska wymaga przejrzenia całej książki.\n\nTo **reguła lewego prefiksu**: seek jest możliwy dla warunków na `A`, na `A + B`, na `A + B + C`, ale **nie** dla samego `B` czy `C`.\n\nJak układać kolumny w kluczu – krok po kroku:\n\n1. Najpierw kolumny porównywane **równością** (`=`).\n2. Potem **jedna** kolumna z **zakresem** (`>`, `BETWEEN`, `LIKE 'abc%'`) – kolumny po zakresie nie zawężają już skoku.\n3. Kolumna z `ORDER BY` za kolumnami równości pozwala uniknąć sortowania.\n\n**Selektywność** to odpowiedź na pytanie „jaki procent wierszy przejdzie przez filtr?”. `Email` (unikalny) – bardzo selektywny, idealny do indeksu. `IsDeleted`, gdzie 99% to zera – prawie wcale; baza i tak wybierze scan, bo seek plus tysiące lookupów wyjdzie drożej. Wyjątek: gdy szukasz właśnie tej rzadkiej wartości. Wtedy świetny jest **indeks filtrowany** – indeks tylko na części wierszy, np. `WHERE Status = 'Pending'`."
+        },
+        {
+          "h": "SARGability – nie zasłaniaj kolumny",
+          "text": "SARGable (od „Search ARGument”) to warunek, przy którym baza może zrobić seek po indeksie. Prosta zasada: **kolumna musi stać „goła”** po jednej stronie porównania.\n\nDlaczego? Skorowidz jest posortowany po słowie „pierogi”. Jeśli zapytasz „znajdź hasła, których trzecia litera to E”, posortowanie nic ci nie da – musisz przeczytać wszystkie. Tak samo `YEAR(OrderDate) = 2025`: indeks jest posortowany po dacie, a nie po wyniku funkcji `YEAR`, więc baza liczy funkcję dla każdego wiersza.\n\nTypowi zabójcy seeków:\n\n- funkcja na kolumnie: `YEAR(OrderDate)`, `UPPER(Email)`, `ISNULL(Col, 0)`,\n- arytmetyka na kolumnie: `Price * 1.23 > 100`,\n- `LIKE '%kot'` – wildcard na początku (a `LIKE 'kot%'` jest OK),\n- **niejawna konwersja typów** – kolumna `varchar` (tekst 1-bajtowy), parametr `nvarchar` (Unicode, domyślny dla stringów w .NET). Baza może musieć konwertować kolumnę w każdym wierszu. W EF Core oznacz takie pola `.IsUnicode(false)`.\n\nNaprawa zwykle polega na przeniesieniu obliczeń na stronę stałej, np. zamiast roku – zakres dat.",
+          "code": "-- ŹLE: funkcja na kolumnie => scan całej tabeli\nSELECT Id FROM Orders WHERE YEAR(OrderDate) = 2025;\n\n-- DOBRZE: goła kolumna i zakres => seek\nSELECT Id FROM Orders\nWHERE OrderDate >= '2025-01-01' AND OrderDate < '2026-01-01';",
+          "lang": "sql"
+        },
+        {
+          "h": "Statystyki i parameter sniffing",
+          "text": "Zanim baza wykona zapytanie, optymalizator musi zgadnąć, ile wierszy zwróci każdy krok – od tego zależy wybór planu. Zgaduje na podstawie **statystyk**: histogramu (do 200 „kubełków” opisujących rozkład wartości w kolumnie). To jak GPS, który wybiera trasę na podstawie danych o korkach – jeśli dane są nieaktualne, wybierze zatkaną drogę.\n\nStatystyki odświeżają się automatycznie po pewnej liczbie zmian, ale po dużym imporcie mogą być przestarzałe. W planie rzeczywistym porównuj **Estimated Rows** (szacunek) z **Actual Rows** (rzeczywistość) – duża różnica to czerwona flaga.\n\n**Parameter sniffing** krok po kroku:\n\n1. EF Core wysyła zapytanie z parametrem, np. `WHERE CustomerId = @p`.\n2. Przy pierwszym wywołaniu baza „podgląda” (sniff) wartość `@p` – powiedzmy klient z 3 zamówieniami – i układa plan idealny dla 3 wierszy.\n3. Plan trafia do **plan cache** (pamięci gotowych planów) i jest używany ponownie.\n4. Przychodzi klient z 2 milionami zamówień – dostaje plan dla 3 wierszy i zapytanie trwa minuty.\n\nSposoby: `OPTION (RECOMPILE)` (nowy plan przy każdym wywołaniu, kosztem CPU), `OPTIMIZE FOR (@p UNKNOWN)` (plan dla „przeciętnej” wartości), aktualizacja statystyk. SQL Server 2022 ma **Parameter Sensitive Plan optimization** – kilka wariantów planu dla jednego zapytania. Regresje planów najłatwiej znaleźć w **Query Store** (wbudowanym rejestrze zapytań i ich planów)."
+        },
+        {
+          "h": "Kiedy indeks szkodzi i jak to zmierzyć",
+          "text": "Indeks przyspiesza czytanie, ale spowalnia pisanie. Analogia: każdy nowy przepis w książce musisz dopisać do **każdego** skorowidza – alfabetycznego, według składników, według czasu przygotowania. Im więcej skorowidzów, tym dłużej trwa dodanie przepisu.\n\nKoszty indeksów:\n\n- wolniejsze `INSERT`, `UPDATE`, `DELETE` i więcej blokad – boli w tabelach typu log czy kolejka,\n- więcej miejsca na dysku i w pamięci,\n- duplikaty – indeks `(A)` obok `(A, B)` jest zwykle zbędny,\n- nieużywane indeksy – w SQL Server sprawdzisz je w `sys.dm_db_index_usage_stats`.\n\nPodpowiedzi „missing index” w planie traktuj jak sugestię, nie rozkaz – nie biorą pod uwagę innych zapytań ani kosztu zapisów.\n\nJak mierzyć: włącz **Actual Execution Plan** (plan rzeczywisty) i `SET STATISTICS IO, TIME ON`. **Logical reads** (liczba przeczytanych stron 8 KB) to najlepsza, powtarzalna miara pracy zapytania – porównuj ją przed i po zmianie.",
+          "code": "SET STATISTICS IO, TIME ON;\n\nSELECT Id, Total FROM dbo.Orders\nWHERE CustomerId = 42 AND Status = 'Paid';\n-- Messages: Table 'Orders'. Scan count 1, logical reads 3 ...",
+          "lang": "sql"
+        },
+        {
+          "h": "Jak o tym mówić na rozmowie",
+          "text": "Na pytanie „zapytanie jest wolne, co robisz?” odpowiadaj procesem: **1)** znajdź winne zapytanie (logi EF Core, Query Store, APM), **2)** obejrzyj plan rzeczywisty i logical reads, **3)** postaw hipotezę (brak indeksu, key lookup, warunek nie-SARGable, złe statystyki, parameter sniffing), **4)** popraw, **5)** zmierz ponownie.\n\nPokaż, że znasz kompromisy: indeks pokrywający usuwa lookupy, ale kosztuje przy zapisach; seek nie zawsze wygrywa ze scanem; `RECOMPILE` leczy sniffing kosztem CPU. Akcent seniorski: wspomnij pułapki z .NET – `nvarchar` kontra `varchar` w parametrach i losowe GUID-y jako klucz klastrowy. To brzmi jak doświadczenie z produkcji, a nie z książki."
+        }
+      ],
+      "takeaways": [
+        "Indeks to posortowane drzewo B-tree: dojście do klucza kosztuje tyle odczytów, ile poziomów drzewa (O(log n)).",
+        "Indeks klastrowy to sama tabela w kolejności klucza (jeden na tabelę); nieklastrowy przechowuje klucz i wskaźnik do wiersza (klucz klastrowy lub RID).",
+        "Key Lookup pojawia się, gdy indeks nie ma wszystkich kolumn – usuwa się go indeksem pokrywającym z INCLUDE.",
+        "Indeks złożony działa według reguły lewego prefiksu; kolumny równości przed kolumną zakresu.",
+        "Funkcja lub konwersja na kolumnie w WHERE łamie SARGability i zamienia seek w scan.",
+        "Plan zależy od statystyk i od wartości parametru z pierwszego wywołania (parameter sniffing).",
+        "Każdy indeks spowalnia zapisy i zajmuje miejsce – dodawaj je na podstawie pomiarów, usuwaj nieużywane."
+      ],
+      "interview": [
+        "Czym różni się indeks klastrowy od nieklastrowego?",
+        "Co to jest key lookup i jak go wyeliminować?",
+        "Dlaczego zapytanie z WHERE YEAR(Date) = 2025 nie korzysta z indeksu?",
+        "Co to jest parameter sniffing i jak sobie z nim radzić?",
+        "Czy więcej indeksów to zawsze szybsza baza?"
+      ],
+      "exam": [
+        {
+          "id": "data-indexes-e1",
+          "q": "Dlaczego tabela w SQL Server może mieć tylko jeden indeks klastrowy?",
+          "options": [
+            "Bo indeks klastrowy jest zawsze kluczem głównym",
+            "Bo liście indeksu klastrowego to same wiersze tabeli, które mogą być ułożone tylko w jednej kolejności",
+            "Bo ograniczenie wynika z licencji Standard Edition",
+            "Bo indeks klastrowy przechowuje tylko kolumny INCLUDE"
+          ],
+          "correct": 1,
+          "why": "Indeks klastrowy to sama tabela uporządkowana według klucza – danych nie da się jednocześnie ułożyć na dwa sposoby. PK domyślnie jest klastrowy, ale nie musi."
+        },
+        {
+          "id": "data-indexes-e2",
+          "q": "Plan pokazuje Index Seek na IX_Orders_CustomerId oraz Key Lookup wykonany 40 000 razy. Co najpewniej pomoże?",
+          "options": [
+            "Dodanie brakujących kolumn z SELECT do INCLUDE tego indeksu",
+            "Usunięcie indeksu klastrowego",
+            "Zamiana zapytania na SELECT *",
+            "Przebudowa statystyk na tabeli Customers"
+          ],
+          "correct": 0,
+          "why": "Key Lookup oznacza, że indeks nie ma wszystkich potrzebnych kolumn. Indeks pokrywający (INCLUDE) pozwala obsłużyć zapytanie bez skoków do indeksu klastrowego."
+        },
+        {
+          "id": "data-indexes-e3",
+          "q": "Istnieje indeks na (LastName, FirstName). Które zapytanie może wykonać na nim Index Seek?",
+          "options": [
+            "WHERE FirstName = 'Anna'",
+            "WHERE LEFT(LastName, 3) = 'Kow'",
+            "WHERE LastName = 'Nowak' AND FirstName LIKE 'A%'",
+            "WHERE FirstName LIKE '%na'"
+          ],
+          "correct": 2,
+          "why": "Reguła lewego prefiksu: seek wymaga warunku na pierwszej kolumnie. Funkcja LEFT na kolumnie łamie SARGability, a samo FirstName nie jest prefiksem."
+        },
+        {
+          "id": "data-indexes-e4",
+          "q": "Który warunek jest SARGable dla indeksu na kolumnie OrderDate?",
+          "options": [
+            "WHERE YEAR(OrderDate) = 2025",
+            "WHERE DATEADD(day, 7, OrderDate) > GETDATE()",
+            "WHERE CONVERT(varchar(10), OrderDate, 120) = '2025-03-01'",
+            "WHERE OrderDate >= '2025-01-01' AND OrderDate < '2026-01-01'"
+          ],
+          "correct": 3,
+          "why": "Tylko zakres na „gołej” kolumnie pozwala na seek. W pozostałych kolumna jest opakowana funkcją, więc baza musi policzyć wyrażenie dla każdego wiersza."
+        },
+        {
+          "id": "data-indexes-e5",
+          "q": "Zapytanie raz trwa 20 ms, a po restarcie serwera nagle 30 s, choć dane się nie zmieniły. Wolno jest dla wszystkich klientów, dopóki plan nie wypadnie z cache. Co jest najbardziej prawdopodobną przyczyną?",
+          "options": [
+            "Fragmentacja indeksu klastrowego",
+            "Parameter sniffing – plan skompilowano dla nietypowej wartości parametru z pierwszego wywołania",
+            "Brak klucza obcego",
+            "Za mało kolumn w INCLUDE"
+          ],
+          "correct": 1,
+          "why": "Plan jest tworzony pod wartość parametru z pierwszego wywołania i używany dalej. Po restarcie pierwszym wywołaniem mógł być „nietypowy” klient, co dało plan zły dla reszty."
+        },
+        {
+          "id": "data-indexes-e6",
+          "q": "Indeks ma klucz (CustomerId, OrderDate). Zapytanie: WHERE CustomerId = @c AND OrderDate >= @d ORDER BY OrderDate. Co uzyskujesz dzięki tej kolejności kolumn?",
+          "options": [
+            "Seek po CustomerId i zakresie dat oraz wiersze już posortowane po OrderDate",
+            "Tylko scan całego indeksu",
+            "Seek wyłącznie po OrderDate",
+            "Zapytanie zawsze wymaga osobnego operatora Sort"
+          ],
+          "correct": 0,
+          "why": "Najpierw kolumna równości, potem zakres. W obrębie jednego CustomerId wpisy są posortowane po OrderDate, więc seek obejmuje zakres, a Sort nie jest potrzebny."
+        },
+        {
+          "id": "data-indexes-e7",
+          "q": "Dlaczego losowy GUID (Guid.NewGuid()) jako klucz klastrowy bywa problemem?",
+          "options": [
+            "GUID nie może być kluczem głównym",
+            "Indeks klastrowy nie obsługuje typu uniqueidentifier",
+            "Nowe wiersze trafiają w losowe miejsca drzewa, powodując page splits i fragmentację, a szeroki klucz powiela się w każdym indeksie nieklastrowym",
+            "GUID-y spowalniają tylko odczyty, nie zapisy"
+          ],
+          "correct": 2,
+          "why": "Rosnący klucz dopisuje na końcu, losowy – w środku stron. Dodatkowo 16-bajtowy klucz klastrowy jest kopiowany do każdego indeksu nieklastrowego."
+        },
+        {
+          "id": "data-indexes-e8",
+          "q": "Kolumna Email w bazie ma typ varchar, a aplikacja wysyła parametr jako nvarchar. Co może się stać?",
+          "options": [
+            "Nic – typy są zawsze konwertowane bez kosztu",
+            "Baza odrzuci zapytanie z błędem typu",
+            "Indeks zostanie automatycznie przebudowany",
+            "Niejawna konwersja kolumny może uniemożliwić seek i wymusić scan"
+          ],
+          "correct": 3,
+          "why": "nvarchar ma wyższy priorytet typu, więc konwertowana bywa kolumna, co łamie SARGability. W EF Core warto oznaczyć takie właściwości jako IsUnicode(false)."
+        },
+        {
+          "id": "data-indexes-e9",
+          "q": "Tabela Events przyjmuje 5 000 insertów na sekundę i ma 12 indeksów nieklastrowych. Co jest najrozsądniejszym krokiem?",
+          "options": [
+            "Dodać kolejne indeksy, by przyspieszyć odczyty",
+            "Wyłączyć statystyki",
+            "Zamienić wszystkie indeksy na klastrowe",
+            "Sprawdzić użycie indeksów (np. sys.dm_db_index_usage_stats) i usunąć nieużywane lub zdublowane"
+          ],
+          "correct": 3,
+          "why": "Każdy indeks kosztuje przy każdym zapisie. Przy tabeli intensywnie zapisywanej utrzymuje się tylko te indeksy, które realnie są używane przez odczyty."
+        },
+        {
+          "id": "data-indexes-e10",
+          "q": "Kiedy Clustered Index Scan może być lepszy niż Index Seek z Key Lookup?",
+          "options": [
+            "Tylko gdy tabela jest heapem",
+            "Nigdy – scan jest zawsze gorszy",
+            "Gdy zapytanie zwraca dużą część tabeli – tysiące losowych lookupów kosztują więcej niż sekwencyjne przeczytanie całości",
+            "Gdy zapytanie ma ORDER BY"
+          ],
+          "correct": 2,
+          "why": "Optymalizator liczy koszty: przy niskiej selektywności sekwencyjny scan jest tańszy niż seek z ogromną liczbą lookupów. Seek nie jest celem samym w sobie."
+        }
+      ]
+    },
+    {
+      "id": "data-transactions",
+      "cat": "sql",
+      "title": "Transakcje, izolacja i współbieżność",
+      "level": 3,
+      "minutes": 15,
+      "intro": "Co się stanie, gdy dwie osoby jednocześnie kupią ostatnią sztukę towaru albo edytują ten sam rekord? Ta lekcja tłumaczy transakcje od zera: ACID, anomalie, poziomy izolacji, wersjonowanie (RCSI/SNAPSHOT), blokady i deadlocki, a na koniec optymistyczną współbieżność w EF Core z rowversion. To temat, który odróżnia mida od seniora na rozmowie.",
+      "sections": [
+        {
+          "h": "Po co transakcje – przelew, który nie może zgubić pieniędzy",
+          "text": "Przelew 100 zł z konta A na konto B to dwie operacje: odjąć z A, dodać do B. Co, jeśli serwer padnie między nimi? Pieniądze znikają. **Transakcja** to grupa operacji, która wykonuje się „wszystko albo nic” – jak koperta, którą listonosz doręcza w całości albo wcale.\n\nWłaściwości transakcji opisuje skrót **ACID**:\n\n- **Atomicity** (atomowość) – wszystkie operacje albo żadna. Błąd w połowie = `ROLLBACK`, czyli cofnięcie wszystkiego.\n- **Consistency** (spójność) – po transakcji dane spełniają wszystkie reguły: klucze obce, `CHECK`, unikalność.\n- **Isolation** (izolacja) – równoległe transakcje nie widzą swoich „połówek”. Jak bardzo są odizolowane, zależy od **poziomu izolacji** – o tym dalej.\n- **Durability** (trwałość) – po `COMMIT` (zatwierdzeniu) dane przetrwają awarię, bo zostały zapisane w dzienniku transakcji (transaction log) na dysku.\n\nW SQL Server każde pojedyncze polecenie jest osobną transakcją (tryb autocommit). Żeby objąć kilka poleceń jedną transakcją, używasz `BEGIN TRAN ... COMMIT`.",
+          "code": "BEGIN TRAN;\n    UPDATE Accounts SET Balance = Balance - 100 WHERE Id = 1;\n    UPDATE Accounts SET Balance = Balance + 100 WHERE Id = 2;\nCOMMIT;   -- dopiero teraz zmiany są trwałe i widoczne dla innych\n-- przy błędzie: ROLLBACK – oba UPDATE-y zostają cofnięte",
+          "lang": "sql"
+        },
+        {
+          "h": "Anomalie – co może pójść nie tak przy współbieżności",
+          "text": "Współbieżność (concurrency) to sytuacja, gdy wiele transakcji działa na tych samych danych w tym samym czasie. Bez izolacji pojawiają się **anomalie** – dziwne wyniki. Oto cztery, o które pytają najczęściej, każda z prostym przykładem:\n\n- **Dirty read** (brudny odczyt) – czytasz zmianę, której ktoś jeszcze nie zatwierdził. Transakcja A zmienia cenę na 0 zł, B to czyta i wystawia fakturę, A robi `ROLLBACK`. Faktura jest na cenę, która nigdy „nie istniała”.\n- **Non-repeatable read** (niepowtarzalny odczyt) – w jednej transakcji czytasz ten sam wiersz dwa razy i dostajesz różne wartości, bo ktoś w międzyczasie go zmienił i zatwierdził.\n- **Phantom read** (fantom) – dwa razy wykonujesz to samo zapytanie o zakres (np. „zamówienia z dziś”) i za drugim razem pojawia się nowy wiersz, który ktoś dodał.\n- **Lost update** (zgubiona aktualizacja) – dwie osoby czytają stan magazynu = 10, każda odejmuje 1 i zapisuje 9. Powinno być 8, jedna zmiana przepadła.\n\nLost update to najczęstszy błąd w realnych aplikacjach webowych: użytkownik otwiera formularz, ktoś inny w tym czasie go edytuje, a ostatni zapis nadpisuje pierwszy."
+        },
+        {
+          "h": "Poziomy izolacji – suwak między bezpieczeństwem a wydajnością",
+          "text": "Poziom izolacji to ustawienie, które mówi, przed którymi anomaliami baza ma cię chronić. Działa jak suwak: im wyżej, tym bezpieczniej, ale tym więcej czekania na blokady i ryzyka deadlocków.\n\nPoziomy w SQL Server od najniższego:\n\n1. **READ UNCOMMITTED** – widzisz nawet niezatwierdzone zmiany (dirty reads). To samo robi podpowiedź `WITH (NOLOCK)`.\n2. **READ COMMITTED** – **domyślny**. Widzisz tylko zatwierdzone dane, ale te same wiersze mogą się zmienić między odczytami.\n3. **REPEATABLE READ** – przeczytane wiersze są zablokowane do końca transakcji, więc nikt ich nie zmieni. Fantomy nadal możliwe.\n4. **SERIALIZABLE** – blokuje też **zakresy**, więc nikt nie wstawi nowego wiersza do przeczytanego zakresu. Wynik jak przy wykonywaniu transakcji po kolei. Najwolniejszy.\n5. **SNAPSHOT** – osobna kategoria oparta na wersjach wierszy, opisana w następnej sekcji.\n\nUwaga na `NOLOCK`: to nie jest „szybki odczyt bez skutków ubocznych”. Poza dirty reads może zwrócić ten sam wiersz dwa razy albo pominąć wiersz, gdy dane są w trakcie przenoszenia między stronami. Nie nadaje się do niczego, co ma się zgadzać, np. do sald czy raportów finansowych.\n\nDla porównania: PostgreSQL domyślnie też ma READ COMMITTED, ale od zawsze realizuje go przez wersjonowanie, więc czytający nie blokują piszących."
+        },
+        {
+          "h": "RCSI i SNAPSHOT – czytanie ze zdjęcia, a nie z żywego obrazu",
+          "text": "W zwykłym READ COMMITTED w SQL Server czytelnik czeka, aż piszący zwolni blokadę. To jak kolejka do tablicy ogłoszeń, którą ktoś właśnie przepisuje. **Wersjonowanie wierszy** (row versioning) rozwiązuje to inaczej: przy zmianie baza zachowuje starą wersję wiersza (w `tempdb` albo, przy włączonym ADR – Accelerated Database Recovery – w samej bazie), a czytelnik dostaje „zdjęcie” ostatniego zatwierdzonego stanu.\n\nDwa warianty:\n\n- **RCSI** (Read Committed Snapshot Isolation) – włączany na poziomie bazy (`ALTER DATABASE ... SET READ_COMMITTED_SNAPSHOT ON`). Zmienia zachowanie domyślnego READ COMMITTED: każde **polecenie** widzi zdjęcie z chwili swojego startu. Czytelnicy nie blokują piszących i odwrotnie. W Azure SQL Database jest włączony domyślnie.\n- **SNAPSHOT** – trzeba go dopuścić w bazie (`ALLOW_SNAPSHOT_ISOLATION ON`) i jawnie wybrać w transakcji. Cała **transakcja** widzi zdjęcie z chwili swojego startu. Jeśli spróbujesz zmienić wiersz, który ktoś zmienił po twoim starcie, dostaniesz błąd konfliktu aktualizacji (3960) i trzeba ponowić transakcję.\n\nKoszty: dodatkowe miejsce i praca na przechowywanie wersji. Pułapka RCSI: kod, który po cichu polegał na blokowaniu (np. „sprawdź, potem zapisz”), może zacząć zachowywać się inaczej – czytelnik nie czeka już na piszącego."
+        },
+        {
+          "h": "Blokady i deadlocki",
+          "text": "Blokada (lock) to znacznik „ten zasób jest teraz mój”. Podstawowe rodzaje:\n\n- **S** (shared, współdzielona) – do czytania; wiele transakcji może ją mieć naraz,\n- **X** (exclusive, wyłączna) – do zmiany; nikt inny nie czyta (bez wersjonowania) ani nie pisze,\n- **U** (update) – „zamierzam zmienić”; zapobiega klasycznemu deadlockowi dwóch czytelników, którzy chcą potem pisać.\n\nGdy jedna transakcja trzyma bardzo dużo blokad wierszy, SQL Server może je zamienić na jedną blokadę całej tabeli – to **lock escalation**.\n\n**Deadlock** (zakleszczenie) to dwa samochody na wąskim moście jadące z przeciwnych stron – żaden nie cofnie się sam. Krok po kroku:\n\n1. Transakcja A blokuje wiersz Konto 1.\n2. Transakcja B blokuje wiersz Konto 2.\n3. A chce Konto 2 – czeka na B.\n4. B chce Konto 1 – czeka na A. Nikt nie może ruszyć.\n5. SQL Server wykrywa cykl, wybiera **ofiarę** (deadlock victim), cofa ją i zwraca błąd **1205**.\n\nJak zapobiegać: blokuj zasoby **zawsze w tej samej kolejności** (np. rosnąco po Id), trzymaj transakcje **krótko** (żadnych wywołań HTTP ani czekania na użytkownika w środku), miej indeksy, żeby `UPDATE` nie skanował i nie blokował zbyt wielu wierszy. A ponieważ deadlocka nie da się wykluczyć w 100%, aplikacja powinna umieć **ponowić** transakcję po błędzie 1205."
+        },
+        {
+          "h": "Współbieżność pesymistyczna vs optymistyczna",
+          "text": "Jak bronić się przed lost update? Są dwie filozofie.\n\n**Pesymistyczna** – „na pewno ktoś mi przeszkodzi, więc zamykam drzwi”. Blokujesz wiersz już przy odczycie i trzymasz blokadę do końca transakcji. W SQL Server: `SELECT ... WITH (UPDLOCK, ROWLOCK)`, w PostgreSQL: `SELECT ... FOR UPDATE`. Dobra przy dużej rywalizacji o te same dane i krótkich operacjach (np. rezerwacja ostatniego miejsca). Wada: inni czekają.\n\n**Optymistyczna** – „pewnie nikt mi nie przeszkodzi, ale sprawdzę przy zapisie”. Nic nie blokujesz, tylko trzymasz **wersję** wiersza z momentu odczytu. Zapis wygląda tak:\n\n1. Czytasz wiersz razem z kolumną wersji, np. `Version = 7`.\n2. Użytkownik edytuje formularz (może to trwać minuty – nic nie jest zablokowane).\n3. Zapisujesz `UPDATE ... WHERE Id = @id AND Version = 7`.\n4. Jeśli zmieniono **0 wierszy**, ktoś zdążył zmienić dane – zgłaszasz konflikt.\n\nOptymistyczna to standard w aplikacjach webowych, bo nie można trzymać blokady w bazie, gdy użytkownik myśli nad formularzem.",
+          "code": "-- Optymistyczny zapis \"ręcznie\"\nUPDATE Products\nSET Price = @newPrice\nWHERE Id = @id AND RowVer = @originalRowVer;\n\nIF @@ROWCOUNT = 0\n    THROW 50001, 'Konflikt: ktoś zmienił produkt w międzyczasie.', 1;",
+          "lang": "sql"
+        },
+        {
+          "h": "Transakcje i rowversion w EF Core",
+          "text": "EF Core robi optymistyczną współbieżność za ciebie. W SQL Server najwygodniej użyć kolumny `rowversion` – specjalnego typu, którego wartość baza **sama** zmienia przy każdej modyfikacji wiersza. W modelu to `byte[]` z atrybutem `[Timestamp]` (lub `.IsRowVersion()` w konfiguracji).\n\nCo się dzieje przy `SaveChanges`, linijka po linijce w przykładzie poniżej:\n\n1. `FindAsync` wczytuje produkt razem z bieżącym `RowVersion`.\n2. Zmieniasz cenę – EF zapamiętuje oryginalną wersję.\n3. `SaveChangesAsync` generuje `UPDATE ... WHERE Id = @id AND RowVersion = @oryginalna`.\n4. Jeśli baza zgłosi 0 zmienionych wierszy, EF rzuca **`DbUpdateConcurrencyException`**.\n5. W `catch` decydujesz: odświeżyć dane i pokazać użytkownikowi konflikt (w API zwykle **409 Conflict**), nadpisać albo scalić.\n\nO transakcjach w EF Core: jedno wywołanie `SaveChanges` jest już transakcją – wszystkie zmiany idą razem albo wcale. Jawną transakcję (`Database.BeginTransactionAsync()`) otwierasz, gdy potrzebujesz kilku `SaveChanges` lub mieszasz je z surowym SQL. Pułapka: przy włączonym `EnableRetryOnFailure` (automatyczne ponawianie przy błędach przejściowych) własną transakcję trzeba opakować w `Database.CreateExecutionStrategy().ExecuteAsync(...)`, inaczej EF zgłosi wyjątek – nie może ponowić czegoś, czego granic nie zna.",
+          "code": "public class Product\n{\n    public int Id { get; set; }\n    public decimal Price { get; set; }\n    [Timestamp] public byte[] RowVersion { get; set; } = [];\n}\n\nvar p = await db.Products.FindAsync(id);          // 1\np!.Price = dto.Price;                             // 2\ndb.Entry(p).Property(x => x.RowVersion).OriginalValue = dto.RowVersion;\ntry { await db.SaveChangesAsync(); }              // 3\ncatch (DbUpdateConcurrencyException)              // 4\n{\n    return Results.Conflict(\"Produkt został zmieniony przez kogoś innego.\"); // 5\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Jak o tym mówić na rozmowie",
+          "text": "Zacznij od ACID jednym zdaniem na literę, potem przejdź do praktyki: „domyślnie READ COMMITTED; w projektach, gdzie odczyty blokowały zapisy, włączaliśmy RCSI”. Anomalie tłumacz na przykładach biznesowych (magazyn, saldo), a nie definicjami.\n\nNa pytanie o edycję tego samego rekordu przez dwie osoby odpowiedz: optymistyczna współbieżność z `rowversion`, `DbUpdateConcurrencyException`, 409 w API i przekazywanie wersji w DTO do klienta (Angular trzyma ją w formularzu i odsyła). Ważny szczegół: wersję z DTO trzeba ustawić jako `OriginalValue`, inaczej EF porówna z wartością świeżo wczytaną z bazy.\n\nAkcent seniorski: deadlocki traktuj jako coś, co się zdarzy – kolejność blokowania, krótkie transakcje, ponawianie. I wiedz, że `NOLOCK` to nie optymalizacja, tylko zgoda na błędne dane."
+        }
+      ],
+      "takeaways": [
+        "Transakcja to „wszystko albo nic”; ACID = atomowość, spójność, izolacja, trwałość.",
+        "Główne anomalie: dirty read, non-repeatable read, phantom read i lost update – ta ostatnia najczęściej psuje aplikacje webowe.",
+        "Domyślny poziom w SQL Server to READ COMMITTED; wyższe poziomy dają więcej ochrony kosztem blokad i deadlocków.",
+        "RCSI daje każdemu poleceniu zdjęcie zatwierdzonych danych, więc czytelnicy nie blokują piszących; SNAPSHOT robi to dla całej transakcji i zgłasza konflikty przy zapisie.",
+        "NOLOCK to nie darmowe przyspieszenie – może zwrócić niezatwierdzone, zdublowane lub pominięte wiersze.",
+        "Deadlocków unika się przez stałą kolejność blokowania i krótkie transakcje, a i tak trzeba umieć ponowić transakcję po błędzie 1205.",
+        "W aplikacjach webowych standardem jest optymistyczna współbieżność: rowversion, DbUpdateConcurrencyException i 409 Conflict.",
+        "SaveChanges jest transakcją; przy EnableRetryOnFailure własne transakcje opakowuje się w execution strategy."
+      ],
+      "interview": [
+        "Wyjaśnij ACID na przykładzie przelewu.",
+        "Jakie znasz poziomy izolacji i przed jakimi anomaliami chronią?",
+        "Czym się różni RCSI od SNAPSHOT?",
+        "Co to jest deadlock i jak mu zapobiegać?",
+        "Dwie osoby edytują ten sam rekord – jak to obsłużysz w EF Core i API?"
+      ],
+      "exam": [
+        {
+          "id": "data-transactions-e1",
+          "q": "Serwer padł po odjęciu kwoty z konta A, ale przed dodaniem jej do konta B. Która właściwość ACID gwarantuje, że po restarcie saldo A wróci do stanu sprzed przelewu?",
+          "options": [
+            "Durability",
+            "Consistency",
+            "Atomicity",
+            "Isolation"
+          ],
+          "correct": 2,
+          "why": "Atomowość oznacza „wszystko albo nic”: niezatwierdzona transakcja jest wycofywana w całości. Durability dotyczy przetrwania już zatwierdzonych zmian."
+        },
+        {
+          "id": "data-transactions-e2",
+          "q": "Dwóch sprzedawców czyta stan magazynu = 10, każdy odejmuje 1 w aplikacji i zapisuje 9. Jak nazywa się ta anomalia?",
+          "options": [
+            "Lost update",
+            "Dirty read",
+            "Phantom read",
+            "Deadlock"
+          ],
+          "correct": 0,
+          "why": "Obie transakcje zapisały wynik obliczony na podstawie tego samego starego stanu, więc jedna zmiana przepadła – to lost update."
+        },
+        {
+          "id": "data-transactions-e3",
+          "q": "Który poziom izolacji w SQL Server jest domyślny?",
+          "options": [
+            "READ UNCOMMITTED",
+            "READ COMMITTED",
+            "REPEATABLE READ",
+            "SERIALIZABLE"
+          ],
+          "correct": 1,
+          "why": "Domyślny jest READ COMMITTED. Włączenie RCSI nie zmienia nazwy poziomu, tylko sposób jego realizacji (wersjonowanie zamiast blokad S)."
+        },
+        {
+          "id": "data-transactions-e4",
+          "q": "Transakcja dwa razy wykonuje SELECT COUNT(*) FROM Orders WHERE Date = dziś i dostaje 5, a potem 6, bo ktoś dodał zamówienie. Który poziom izolacji jako najniższy z klasycznych (blokadowych) temu zapobiega?",
+          "options": [
+            "READ COMMITTED",
+            "READ UNCOMMITTED",
+            "REPEATABLE READ",
+            "SERIALIZABLE"
+          ],
+          "correct": 3,
+          "why": "To phantom read. REPEATABLE READ blokuje tylko przeczytane wiersze, a nie zakres, więc nowy wiersz może się pojawić. SERIALIZABLE blokuje zakresy."
+        },
+        {
+          "id": "data-transactions-e5",
+          "q": "Czym RCSI różni się od poziomu SNAPSHOT?",
+          "options": [
+            "RCSI daje zdjęcie danych z początku każdego polecenia, SNAPSHOT – z początku całej transakcji",
+            "RCSI używa blokad, SNAPSHOT wersji wierszy",
+            "SNAPSHOT pozwala na dirty reads",
+            "Nie ma różnicy, to dwie nazwy tego samego"
+          ],
+          "correct": 0,
+          "why": "Oba korzystają z wersjonowania wierszy, ale RCSI zapewnia spójność na poziomie polecenia, a SNAPSHOT na poziomie całej transakcji (z konfliktami aktualizacji przy zapisie)."
+        },
+        {
+          "id": "data-transactions-e6",
+          "q": "Dlaczego WITH (NOLOCK) w raporcie sald jest złym pomysłem?",
+          "options": [
+            "Bo spowalnia zapytanie przez dodatkowe blokady",
+            "Bo powoduje deadlocki z każdym UPDATE",
+            "Bo może zwrócić niezatwierdzone dane, a nawet zdublować lub pominąć wiersze",
+            "Bo nie działa z indeksami nieklastrowymi"
+          ],
+          "correct": 2,
+          "why": "NOLOCK = READ UNCOMMITTED: brudne odczyty, a przy przenoszeniu danych między stronami także duplikaty i braki wierszy. Dla danych, które mają się zgadzać, to niedopuszczalne."
+        },
+        {
+          "id": "data-transactions-e7",
+          "q": "Transakcja A aktualizuje konto 1, potem konto 2. Transakcja B aktualizuje konto 2, potem konto 1. Co najskuteczniej zapobiegnie deadlockom?",
+          "options": [
+            "Podniesienie poziomu izolacji do SERIALIZABLE",
+            "Aktualizowanie kont zawsze w tej samej kolejności, np. rosnąco po Id",
+            "Dodanie NOLOCK do UPDATE",
+            "Wydłużenie timeoutu połączenia"
+          ],
+          "correct": 1,
+          "why": "Deadlock to cykl oczekiwania. Gdy wszystkie transakcje blokują zasoby w tej samej kolejności, cykl nie może powstać. Wyższa izolacja zwykle zwiększa ryzyko."
+        },
+        {
+          "id": "data-transactions-e8",
+          "q": "Aplikacja dostała od SQL Server błąd 1205 (deadlock victim). Co jest właściwą reakcją?",
+          "options": [
+            "Zignorować – baza i tak dokończyła transakcję",
+            "Restartować pulę połączeń",
+            "Przełączyć bazę w tryb single-user",
+            "Ponowić całą transakcję, bo została wycofana"
+          ],
+          "correct": 3,
+          "why": "Ofiara deadlocka jest wycofywana w całości. Bezpiecznie jest ją ponowić (z limitem prób), a długofalowo usunąć przyczynę."
+        },
+        {
+          "id": "data-transactions-e9",
+          "q": "Użytkownik edytuje produkt w formularzu przez 5 minut. Dlaczego zwykle wybiera się współbieżność optymistyczną, a nie pesymistyczną?",
+          "options": [
+            "Bo nie można trzymać blokady w bazie przez czas myślenia użytkownika – zablokowałoby to innych",
+            "Bo optymistyczna gwarantuje brak konfliktów",
+            "Bo pesymistyczna nie jest dostępna w SQL Server",
+            "Bo optymistyczna nie wymaga żadnej kolumny w tabeli"
+          ],
+          "correct": 0,
+          "why": "Blokada musiałaby trwać przez całą edycję. Optymistyczna nic nie blokuje, tylko przy zapisie sprawdza wersję i wykrywa konflikt."
+        },
+        {
+          "id": "data-transactions-e10",
+          "q": "Klient Angular odsyła DTO z RowVersion pobranym przy otwarciu formularza. Kod wczytuje encję przez FindAsync, przepisuje pola i woła SaveChangesAsync, ale konflikt nigdy nie jest wykrywany. Dlaczego?",
+          "options": [
+            "rowversion działa tylko z PostgreSQL",
+            "EF porównuje z wersją właśnie wczytaną z bazy – wersję z DTO trzeba ustawić jako OriginalValue",
+            "SaveChangesAsync nie wykonuje UPDATE dla byte[]",
+            "Brakuje jawnej transakcji BeginTransaction"
+          ],
+          "correct": 1,
+          "why": "Warunek WHERE RowVersion = @orig używa oryginalnej wartości śledzonej przez EF. Po świeżym odczycie to aktualna wersja z bazy, więc trzeba podmienić ją na tę z DTO."
+        }
+      ]
+    },
+    {
+      "id": "data-efcore",
+      "cat": "data",
+      "title": "EF Core bez wpadek wydajnościowych",
+      "level": 2,
+      "minutes": 15,
+      "intro": "EF Core pozwala pisać zapytania w LINQ, ale łatwo nim wygenerować setki niepotrzebnych zapytań albo wczytać pół bazy do pamięci. W tej lekcji przejdziesz przez najczęstsze wpadki i ich naprawy: czas życia DbContext, śledzenie zmian, N+1, Include vs projekcja, split queries, operacje masowe, migracje w zespole oraz bezpieczny raw SQL. Na rozmowach .NET to pytania niemal obowiązkowe.",
+      "sections": [
+        {
+          "h": "DbContext i jego czas życia – notes kelnera",
+          "text": "`DbContext` to obiekt, przez który rozmawiasz z bazą w EF Core. Wyobraź sobie kelnera z notesem: przyjmuje zamówienia od jednego stolika (jedno żądanie HTTP), zapisuje zmiany w notesie, a na końcu zanosi wszystko naraz do kuchni (`SaveChanges`). To wzorzec **Unit of Work** – zbieranie zmian i zapis jedną paczką.\n\nNotes ma też drugą rolę – **identity map**: jeśli w tym samym kontekście dwa razy wczytasz produkt o Id 5, dostaniesz ten sam obiekt w pamięci, a nie dwie kopie.\n\nNajważniejsze zasady czasu życia (lifetime):\n\n- `AddDbContext` rejestruje kontekst jako **scoped** – jeden na żądanie HTTP. To właściwy wybór dla kontrolerów i Minimal API.\n- `DbContext` **nie jest thread-safe** (nie wolno go używać z kilku wątków naraz). Dwa równoległe zapytania na jednym kontekście (np. `Task.WhenAll`) kończą się wyjątkiem „A second operation was started on this context instance…”.\n- Nie wstrzykuj kontekstu do **singletona** (np. `BackgroundService`) – kelner z jednego stolika obsługiwałby całą restaurację przez tygodnie, a notes puchłby bez końca. Zamiast tego użyj `IDbContextFactory<T>` (`AddDbContextFactory`) albo utwórz scope przez `IServiceScopeFactory`.\n- `AddDbContextPool` ponownie używa instancji kontekstu – mniejszy koszt tworzenia przy dużym ruchu, ale kontekst nie może trzymać własnego stanu między żądaniami.",
+          "code": "// ŹLE: singleton trzyma jeden DbContext przez cały czas życia aplikacji\npublic class Worker(AppDbContext db) : BackgroundService { /* ... */ }\n\n// DOBRZE: krótko żyjący kontekst na każdą porcję pracy\npublic class Worker(IDbContextFactory<AppDbContext> factory) : BackgroundService\n{\n    protected override async Task ExecuteAsync(CancellationToken ct)\n    {\n        await using var db = await factory.CreateDbContextAsync(ct);\n        // ... praca, SaveChangesAsync, kontekst znika\n    }\n}",
+          "lang": "csharp"
+        },
+        {
+          "h": "Change tracking i AsNoTracking",
+          "text": "**Change tracking** (śledzenie zmian) to mechanizm, dzięki któremu EF wie, co zapisać. Przy wczytaniu encji (obiektu mapowanego na tabelę) EF robi jej „zdjęcie” – kopię oryginalnych wartości. Przy `SaveChanges` uruchamia `DetectChanges`: porównuje obecne wartości ze zdjęciem i generuje `UPDATE` tylko dla zmienionych kolumn.\n\nTo wygodne, ale kosztuje: pamięć na kopie i czas na porównywanie. Gdy wczytujesz 5 000 wierszy tylko po to, żeby wysłać je jako JSON, to czysta strata.\n\nDlatego dla zapytań **tylko do odczytu** dodajesz `AsNoTracking()` – EF nie robi zdjęć i nie zapamiętuje encji. Krok po kroku, kiedy czego użyć:\n\n1. Wczytujesz, zmieniasz i zapisujesz → zwykłe zapytanie (śledzone).\n2. Tylko wyświetlasz → `AsNoTracking()`.\n3. Tylko wyświetlasz, ale chcesz, by ten sam klient pojawiający się w wielu zamówieniach był jednym obiektem → `AsNoTrackingWithIdentityResolution()`.\n4. Aplikacja głównie czyta → możesz ustawić domyślnie `UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)` i włączać śledzenie przez `AsTracking()` tam, gdzie zapisujesz.\n\nPułapka: encja wczytana z `AsNoTracking()` i zmieniona **nie zostanie zapisana** przez `SaveChanges` – EF o niej nie wie. Trzeba ją dołączyć (`Update`/`Attach`) albo wczytać ze śledzeniem."
+        },
+        {
+          "h": "N+1 – sto wycieczek do sklepu po jedno jajko",
+          "text": "**Problem N+1** to sytuacja, gdy aplikacja wykonuje 1 zapytanie po listę, a potem N dodatkowych zapytań – po jednym dla każdego elementu. Jak pójście do sklepu po listę zakupów, a potem osobna wycieczka po każde jajko.\n\nJak powstaje krok po kroku:\n\n1. `var orders = await db.Orders.ToListAsync();` – 1 zapytanie, 100 zamówień.\n2. W pętli `foreach` czytasz `order.Customer.Name`.\n3. Przy włączonym **lazy loading** (leniwym ładowaniu – EF dociąga powiązane dane w chwili pierwszego dostępu do właściwości) każdy dostęp to osobne zapytanie: 100 kolejnych.\n4. Razem 101 zapytań. Lokalnie nie widać, na produkcji z opóźnieniem sieci 2 ms na zapytanie robi się z tego sekunda.\n\nBez lazy loadingu N+1 też się zdarza – gdy sam w pętli wywołujesz zapytanie dla każdego elementu.\n\nJak go wykryć:\n\n- logowanie SQL: `optionsBuilder.LogTo(Console.WriteLine, LogLevel.Information)` albo kategoria `Microsoft.EntityFrameworkCore.Database.Command` w logach – widać serię prawie identycznych zapytań,\n- APM i narzędzia (Application Insights, OpenTelemetry, MiniProfiler) – liczba zapytań na żądanie,\n- test integracyjny, który liczy zapytania (np. przez `DbCommandInterceptor`).\n\nNaprawa: pobierz wszystko jednym zapytaniem – `Include` albo projekcja `Select` (następna sekcja).",
+          "code": "// ŹLE: 1 + N zapytań (przy lazy loading)\nvar orders = await db.Orders.ToListAsync();\nforeach (var o in orders)\n    Console.WriteLine(o.Customer.Name);   // osobne zapytanie za każdym razem\n\n// DOBRZE: 1 zapytanie z JOIN, tylko potrzebne kolumny\nvar rows = await db.Orders\n    .Select(o => new { o.Id, CustomerName = o.Customer.Name })\n    .ToListAsync();",
+          "lang": "csharp"
+        },
+        {
+          "h": "Include, projekcja i split queries",
+          "text": "`Include` mówi EF: „razem z zamówieniami wczytaj pełne obiekty klientów”. Dostajesz **całe encje** ze wszystkimi kolumnami i (domyślnie) śledzone. To jak przyniesienie całej szafy, gdy potrzebujesz jednej koszuli.\n\n**Projekcja** (`Select` do DTO lub typu anonimowego) wybiera tylko potrzebne pola. Zalety:\n\n- SQL pobiera tylko wskazane kolumny – mniej danych przez sieć, często szansa na indeks pokrywający,\n- wynik nie jest encją, więc nie jest śledzony – nie trzeba `AsNoTracking`,\n- EF sam dołoży JOIN-y dla nawigacji użytych w `Select` – bez `Include`.\n\nKiedy więc `Include`? Gdy wczytujesz encje **do modyfikacji** (np. zamówienie z pozycjami, które zmienisz i zapiszesz). Do odczytu na potrzeby API zwykle lepsza jest projekcja.\n\nPrzydatne: **filtered include** – `Include(o => o.Items.Where(i => !i.IsDeleted))` dociąga tylko część kolekcji.\n\n**Dwie kolekcje naraz – cartesian explosion.**\n\nGdy dołączasz **dwie kolekcje** naraz, np. `Include(b => b.Posts).Include(b => b.Contributors)`, EF domyślnie generuje jedno zapytanie z JOIN-ami. Baza zwraca wtedy każdą kombinację: blog z 50 postami i 20 współautorami daje 50 × 20 = 1 000 wierszy, w których dane bloga powtarzają się 1 000 razy. To **cartesian explosion** (eksplozja kartezjańska) – jak wydrukowanie tabliczki mnożenia, gdy chciałeś dwie krótkie listy.\n\nRozwiązanie: **split query** – `AsSplitQuery()` sprawia, że EF wykonuje osobne zapytanie na każdą kolekcję (blog, posty, współautorzy) i skleja wynik w pamięci. Można to ustawić globalnie: `UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)` w konfiguracji providera, a w pojedynczych zapytaniach wracać przez `AsSingleQuery()`.\n\nKompromisy split queries:\n\n- kilka round-tripów (podróży do bazy) zamiast jednego,\n- zapytania nie są jedną migawką – bez transakcji o odpowiedniej izolacji dane mogą się zmienić między nimi,\n- przy `Skip/Take` potrzebne jest jednoznaczne sortowanie (`OrderBy` po unikalnym kluczu), inaczej kolejne zapytania mogą dotyczyć innych wierszy.\n\nEF loguje ostrzeżenie, gdy zapytanie ładuje kilka kolekcji w trybie single query, a zachowanie nie zostało jawnie skonfigurowane – warto je czytać.",
+          "code": "// Do odczytu w API: projekcja do DTO\nvar dto = await db.Orders\n    .Where(o => o.Id == id)\n    .Select(o => new OrderDto(\n        o.Id,\n        o.Customer.Name,\n        o.Items.Count,\n        o.Items.Sum(i => i.Price * i.Quantity)))\n    .SingleOrDefaultAsync();",
+          "lang": "csharp"
+        },
+        {
+          "h": "ExecuteUpdate i ExecuteDelete – zmiany hurtem",
+          "text": "Klasyczny sposób zmiany wielu wierszy w EF: wczytaj wszystkie encje, zmień je w pętli, `SaveChanges`. Dla 10 000 wierszy to 10 000 obiektów w pamięci i tysiące `UPDATE`-ów. `ExecuteUpdateAsync` i `ExecuteDeleteAsync` (od EF Core 7) generują **jedno** polecenie SQL wykonywane od razu w bazie – jak okólnik do wszystkich zamiast osobnego listu do każdego.\n\nCo trzeba o nich wiedzieć:\n\n- wykonują się **natychmiast**, bez `SaveChanges` i poza change trackerem,\n- encje już wczytane do kontekstu **nie zostaną zaktualizowane** – kontekst o zmianie nie wie,\n- nie sprawdzają automatycznie tokenów współbieżności (`rowversion`) – jeśli tego potrzebujesz, dodaj warunek do `Where`,\n- nie uruchamiają logiki z `SaveChanges` (interceptory `SaveChanges`, ustawianie pól audytowych w nadpisanym `SaveChanges`) – o tym łatwo zapomnieć,\n- jeśli mają być atomowe razem z innymi zmianami, obejmij je jawną transakcją.\n\nW EF Core 10 `ExecuteUpdateAsync` przyjmuje także zwykłą lambdę (nie tylko drzewo wyrażeń), co ułatwia warunkowe dodawanie `SetProperty`.",
+          "code": "// ŹLE: 10 000 encji w pamięci i 10 000 UPDATE-ów\nvar old = await db.Sessions.Where(s => s.LastSeen < cutoff).ToListAsync();\ndb.Sessions.RemoveRange(old);\nawait db.SaveChangesAsync();\n\n// DOBRZE: jedno DELETE ... WHERE\nawait db.Sessions.Where(s => s.LastSeen < cutoff).ExecuteDeleteAsync();\n\nawait db.Products\n    .Where(p => p.CategoryId == catId)\n    .ExecuteUpdateAsync(s => s.SetProperty(p => p.Price, p => p.Price * 1.1m));",
+          "lang": "csharp"
+        },
+        {
+          "h": "Migracje w zespole i CI/CD",
+          "text": "**Migracja** to plik C# opisujący zmianę schematu bazy („dodaj kolumnę”, „utwórz indeks”), generowany przez `dotnet ef migrations add Nazwa`. Obok migracji EF trzyma **model snapshot** – zdjęcie aktualnego modelu, z którym porównuje kolejne zmiany.\n\nTypowe problemy w zespole i ich rozwiązania:\n\n- **Konflikty w snapshot** – dwie osoby dodały migracje równolegle. Po merge'u usuń swoją migrację, zaktualizuj gałąź i wygeneruj ją ponownie, żeby snapshot i kolejność były spójne.\n- **Zmiana nazwy kolumny** bywa wykryta jako „usuń + dodaj”, co **kasuje dane**. Zawsze przeglądaj wygenerowaną migrację i SQL (`dotnet ef migrations script`) przed wdrożeniem.\n- **Wdrożenie**: zamiast `Database.Migrate()` przy starcie aplikacji (ryzykowne, gdy startuje kilka instancji naraz, a aplikacja potrzebuje uprawnień do zmiany schematu) lepiej uruchamiać migracje osobnym krokiem pipeline'u CI/CD.\n- **Skrypt idempotentny**: `dotnet ef migrations script --idempotent` tworzy SQL, który sam sprawdza, które migracje już zastosowano, więc można go bezpiecznie puścić na dowolnej bazie.\n- **Bundle**: `dotnet ef migrations bundle` tworzy samodzielny plik wykonywalny z migracjami do uruchomienia w pipeline.\n- **Zgodność wstecz**: przy wdrożeniach bez przestojów stara wersja aplikacji działa jeszcze na nowym schemacie. Usuwanie lub zmianę nazwy kolumny rozkłada się na kilka wdrożeń (najpierw dodaj nową, potem przenieś dane, na końcu usuń starą)."
+        },
+        {
+          "h": "Raw SQL, parametryzacja i kiedy sięgnąć po Dappera",
+          "text": "Czasem LINQ nie wystarcza i chcesz napisać SQL ręcznie. EF Core daje do tego:\n\n- `FromSql($\"...\")` – zapytanie zwracające encje; interpolowane wartości **automatycznie stają się parametrami**,\n- `SqlQuery<T>($\"...\")` – zapytanie zwracające dowolny typ (od EF Core 8 także typy niezmapowane),\n- `ExecuteSqlAsync($\"...\")` – polecenie bez wyniku (UPDATE, DELETE, procedura).\n\nPułapka **SQL injection** (wstrzyknięcia SQL – gdy dane od użytkownika stają się częścią kodu SQL): metody z sufiksem `Raw` (`FromSqlRaw`, `ExecuteSqlRawAsync`) przyjmują zwykły string. Jeśli zbudujesz go przez sklejanie lub interpolację, wartość trafi do SQL jako tekst polecenia. Wersje bez `Raw` przyjmują `FormattableString` i parametryzują bezpiecznie. Parametryzacja pomaga też wydajności – plan zapytania jest ponownie używany.\n\n**Dapper** to lekki micro-ORM: piszesz SQL, a on mapuje wynik na obiekty. Sięgnij po niego, gdy: masz złożone raporty pisane i strojone ręcznie w SQL, gorącą ścieżkę (hot path), gdzie liczy się każdy narzut, albo potrzebujesz pełnej kontroli nad SQL. Oba narzędzia można łączyć w jednym projekcie: EF do zapisu i logiki domenowej, Dapper do ciężkich odczytów, nawet na tym samym połączeniu (`db.Database.GetDbConnection()`).",
+          "code": "// ŹLE: wartość od użytkownika wklejona w tekst SQL => SQL injection\nvar users = db.Users.FromSqlRaw($\"SELECT * FROM Users WHERE Name = '{name}'\");\n\n// DOBRZE: FromSql zamienia {name} na parametr @p0\nvar safe = db.Users.FromSql($\"SELECT * FROM Users WHERE Name = {name}\");",
+          "lang": "csharp"
+        },
+        {
+          "h": "Jak o tym mówić na rozmowie",
+          "text": "Pytanie „jakie znasz problemy wydajnościowe EF Core?” to zaproszenie do uporządkowanej listy: N+1, ładowanie całych encji zamiast projekcji, śledzenie zmian tam, gdzie niepotrzebne, cartesian explosion, operacje masowe przez `SaveChanges` w pętli, filtrowanie po stronie klienta (`ToList()` przed `Where`). Do każdego dodaj, jak go **wykrywasz** (logi SQL, APM) i jak **naprawiasz**.\n\nAkcent seniorski: EF Core to nie wymówka, żeby nie znać SQL – zawsze patrz, co generuje. Wspomnij o scoped lifetime i `IDbContextFactory` w background services, idempotentnych skryptach migracji w CI oraz o tym, że Dapper i EF to nie wybór „albo-albo”."
+        }
+      ],
+      "takeaways": [
+        "DbContext to Unit of Work z identity map; rejestruj go jako scoped, nie używaj równolegle, a w singletonach korzystaj z IDbContextFactory.",
+        "AsNoTracking dla zapytań tylko do odczytu oszczędza pamięć i CPU, ale tak wczytanej encji SaveChanges nie zapisze.",
+        "N+1 to 1 zapytanie po listę i N po szczegóły; wykrywasz je w logach SQL lub APM, naprawiasz przez Include albo projekcję.",
+        "Projekcja do DTO pobiera tylko potrzebne kolumny i nie jest śledzona; Include stosuj, gdy encje będziesz modyfikować.",
+        "Kilka Include kolekcji w jednym zapytaniu grozi cartesian explosion; AsSplitQuery dzieli je na osobne zapytania kosztem round-tripów i spójności.",
+        "ExecuteUpdate/ExecuteDelete wykonują jedno polecenie od razu, z pominięciem change trackera i logiki SaveChanges.",
+        "Migracje przeglądaj przed wdrożeniem i uruchamiaj w CI przez skrypt idempotentny lub bundle, a nie Migrate() przy starcie wielu instancji.",
+        "FromSql/ExecuteSql parametryzują interpolację; FromSqlRaw z interpolowanym stringiem to SQL injection."
+      ],
+      "interview": [
+        "Jaki lifetime ma DbContext i dlaczego? Jak go użyć w BackgroundService?",
+        "Co to jest problem N+1 i jak go wykryć w aplikacji z EF Core?",
+        "Kiedy użyjesz AsNoTracking, a kiedy projekcji do DTO?",
+        "Czym są split queries i jakie mają wady?",
+        "Jak wdrażasz migracje EF Core na produkcję w zespole?"
+      ],
+      "exam": [
+        {
+          "id": "data-efcore-e1",
+          "q": "Endpoint wykonuje `await Task.WhenAll(db.Orders.ToListAsync(), db.Customers.ToListAsync())` na jednym wstrzykniętym DbContext. Co się stanie?",
+          "options": [
+            "Zapytania wykonają się równolegle i szybciej",
+            "EF automatycznie utworzy drugi kontekst",
+            "Zapytania zostaną połączone w jedno",
+            "Wystąpi wyjątek o drugiej operacji uruchomionej na tej samej instancji kontekstu"
+          ],
+          "correct": 3,
+          "why": "DbContext nie jest thread-safe i nie obsługuje równoległych operacji. Do równoległości potrzebne są osobne instancje, np. z IDbContextFactory."
+        },
+        {
+          "id": "data-efcore-e2",
+          "q": "Wczytujesz produkt przez `db.Products.AsNoTracking().FirstAsync(...)`, zmieniasz cenę i wołasz SaveChangesAsync. Co się stanie?",
+          "options": [
+            "Zmiana nie zostanie zapisana, bo kontekst nie śledzi tej encji",
+            "Zmiana zostanie zapisana normalnie",
+            "EF rzuci DbUpdateConcurrencyException",
+            "EF zapisze wszystkie kolumny produktu"
+          ],
+          "correct": 0,
+          "why": "AsNoTracking nie rejestruje encji w change trackerze, więc DetectChanges jej nie widzi. Trzeba ją dołączyć (Update/Attach) albo wczytać ze śledzeniem."
+        },
+        {
+          "id": "data-efcore-e3",
+          "q": "W logach jednego żądania widzisz jedno SELECT z Orders, a potem 200 niemal identycznych SELECT z Customers WHERE Id = @p. Co to za problem?",
+          "options": [
+            "Cartesian explosion",
+            "N+1",
+            "Parameter sniffing",
+            "Lost update"
+          ],
+          "correct": 1,
+          "why": "Jedno zapytanie po listę i osobne zapytanie dla każdego elementu to klasyczne N+1 – zwykle przez lazy loading lub zapytanie w pętli."
+        },
+        {
+          "id": "data-efcore-e4",
+          "q": "Endpoint zwraca listę zamówień z nazwą klienta i liczbą pozycji, tylko do odczytu. Które podejście jest najlepsze?",
+          "options": [
+            "Include(Customer).Include(Items) i mapowanie w pamięci",
+            "Lazy loading z wirtualnymi nawigacjami",
+            "Projekcja Select do DTO z o.Customer.Name i o.Items.Count",
+            "Wczytanie wszystkich tabel i złączenie w LINQ to Objects"
+          ],
+          "correct": 2,
+          "why": "Projekcja pobiera tylko potrzebne kolumny, liczy Count w SQL i nie śledzi wyników. Include wczytałby pełne encje, w tym wszystkie pozycje."
+        },
+        {
+          "id": "data-efcore-e5",
+          "q": "Zapytanie `Blogs.Include(b => b.Posts).Include(b => b.Tags)` dla bloga z 100 postami i 30 tagami zwraca 3 000 wierszy. Co pomoże?",
+          "options": [
+            "AsSplitQuery()",
+            "AsNoTracking()",
+            "Dodanie indeksu na Blogs.Id",
+            "Zamiana ToListAsync na ToArrayAsync"
+          ],
+          "correct": 0,
+          "why": "To cartesian explosion z dwóch kolekcji w jednym JOIN. Split query wykona osobne zapytania na kolekcje (1 + 100 + 30 wierszy). AsNoTracking nie zmienia liczby wierszy."
+        },
+        {
+          "id": "data-efcore-e6",
+          "q": "Która jest wadą split queries?",
+          "options": [
+            "Nie działają z SQL Server",
+            "Kolejne zapytania nie tworzą jednej migawki danych – dane mogą się zmienić między nimi",
+            "Zawsze zwracają więcej wierszy niż single query",
+            "Wymagają lazy loadingu"
+          ],
+          "correct": 1,
+          "why": "Split query to kilka round-tripów. Bez transakcji o odpowiedniej izolacji między nimi ktoś może zmienić dane, a przy Skip/Take potrzebne jest jednoznaczne sortowanie."
+        },
+        {
+          "id": "data-efcore-e7",
+          "q": "Masz w kontekście wczytany i śledzony produkt o Id 7. Wykonujesz `ExecuteUpdateAsync` zmieniający cenę wszystkich produktów z jego kategorii. Jaką cenę pokaże śledzony obiekt?",
+          "options": [
+            "Nową – EF odświeży śledzone encje",
+            "EF rzuci wyjątek, bo encja jest śledzona",
+            "Cena zostanie wyzerowana",
+            "Starą – ExecuteUpdate działa w bazie z pominięciem change trackera"
+          ],
+          "correct": 3,
+          "why": "ExecuteUpdate/ExecuteDelete wykonują SQL od razu w bazie i nie aktualizują encji w pamięci. Trzeba je przeładować lub użyć nowego kontekstu."
+        },
+        {
+          "id": "data-efcore-e8",
+          "q": "Nadpisałeś SaveChangesAsync, żeby ustawiał ModifiedAt na zmienionych encjach. Co się stanie przy użyciu ExecuteUpdateAsync?",
+          "options": [
+            "ModifiedAt zostanie ustawione automatycznie",
+            "ExecuteUpdateAsync wywoła SaveChangesAsync na końcu",
+            "ModifiedAt nie zostanie ustawione, chyba że dodasz SetProperty dla tego pola",
+            "Zapytanie się nie skompiluje"
+          ],
+          "correct": 2,
+          "why": "ExecuteUpdate omija SaveChanges i change tracker, więc logika audytowa z SaveChanges się nie wykona. Pole trzeba ustawić jawnie w SetProperty."
+        },
+        {
+          "id": "data-efcore-e9",
+          "q": "Aplikacja działa w 4 instancjach i przy starcie wywołuje `db.Database.Migrate()`. Jakie jest zalecane podejście zamiast tego?",
+          "options": [
+            "Wywoływać EnsureCreated() zamiast Migrate()",
+            "Generować w CI skrypt `dotnet ef migrations script --idempotent` (lub bundle) i uruchamiać go osobnym krokiem wdrożenia",
+            "Wyłączyć migracje i zmieniać schemat ręcznie w produkcji",
+            "Uruchamiać Migrate() w każdym żądaniu HTTP"
+          ],
+          "correct": 1,
+          "why": "Osobny krok wdrożenia daje kontrolę, przegląd SQL i brak wyścigu kilku instancji. EnsureCreated nie współpracuje z migracjami."
+        },
+        {
+          "id": "data-efcore-e10",
+          "q": "Które wywołanie jest podatne na SQL injection?",
+          "options": [
+            "db.Users.FromSqlRaw($\"SELECT * FROM Users WHERE Name = '{name}'\")",
+            "db.Users.FromSql($\"SELECT * FROM Users WHERE Name = {name}\")",
+            "db.Database.ExecuteSqlAsync($\"DELETE FROM Users WHERE Id = {id}\")",
+            "db.Users.Where(u => u.Name == name)"
+          ],
+          "correct": 0,
+          "why": "FromSqlRaw przyjmuje gotowy string, więc interpolacja wkleja wartość w tekst SQL. FromSql i ExecuteSql przyjmują FormattableString i zamieniają wartości na parametry; LINQ też parametryzuje."
+        }
+      ]
+    }
+  ]
+}

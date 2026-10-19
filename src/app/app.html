@@ -1,7 +1,14 @@
 <div class="wrap">
   <header class="top">
     <a class="brand" routerLink="/"><b><i>.NET</i> + <em>Angular</em></b><span class="muted" style="font-size:.85rem">rozmowa</span></a>
-    <span class="sync" [class.on]="sync.status() === 'synced'" [class.busy]="sync.status() === 'saving' || sync.status() === 'connecting'">{{ syncLabel() }}</span>
+    <span class="row" style="gap:12px;flex-wrap:nowrap">
+      <span class="sync" [class.on]="sync.status() === 'synced'" [class.busy]="sync.status() === 'saving' || sync.status() === 'connecting'">{{ syncLabel() }}</span>
+      @if (!inSession()) {
+        <a class="iconbtn" routerLink="/szukaj" aria-label="Szukaj" title="Szukaj">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></svg>
+        </a>
+      }
+    </span>
   </header>
 
   @if (!inSession()) {
