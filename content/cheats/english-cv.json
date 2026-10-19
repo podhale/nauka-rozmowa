@@ -1,0 +1,24 @@
+{
+ "cat": "english",
+ "sheets": [
+  {
+   "topic": "Moje projekty po angielsku",
+   "points": [
+    "I'm a full-stack developer with almost seven years of experience. — Jestem programistą full-stack z prawie 7-letnim doświadczeniem.",
+    "Right now I'm building a warehouse management system from scratch. — Obecnie buduję od podstaw system do zarządzania magazynem.",
+    "I was responsible for the back end and the business logic. — Byłem odpowiedzialny za backend i logikę biznesową.",
+    "I built integrations with external systems. — Zbudowałem integracje z zewnętrznymi systemami.",
+    "I developed plugins that automate repetitive tasks. — Tworzyłem wtyczki, które automatyzują powtarzalne zadania.",
+    "The AI models were on the back end, not my part. — Modele AI były na backendzie, to nie moja część.",
+    "For a short time, I supported another team. — Przez krótki czas wspierałem inny zespół.",
+    "One challenge was … We solved it by … — Jednym wyzwaniem było … Rozwiązaliśmy to przez …"
+   ],
+   "pitfalls": [
+    "„magazine” to czasopismo – magazyn to „warehouse”, stan magazynowy to „stock”.",
+    "Zakończone projekty → Past Simple (I worked), obecny → Present Simple (I work); nie „I have worked … in 2023”.",
+    "„responsible of” ✗ → „responsible for” ✓; „from zero” ✗ → „from scratch” ✓."
+   ],
+   "say": "I'm a full-stack .NET and Angular developer, and right now I'm building a warehouse system from scratch. (Jestem programistą full-stack .NET i Angular, a obecnie buduję od podstaw system magazynowy.)"
+  }
+ ]
+}

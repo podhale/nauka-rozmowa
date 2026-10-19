@@ -4,3 +4,4 @@ dist/
 public/content/content.json
 android/app/build/
 ios/App/build/
+apk/

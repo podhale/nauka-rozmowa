@@ -1,0 +1,316 @@
+{
+  "cat": "angular",
+  "name": "Angular",
+  "cards": [
+    {
+      "id": "angular-a001",
+      "topic": "Szablony i data binding",
+      "level": 1,
+      "q": "Z czego składa się komponent Angulara i jakie są rodzaje data bindingu w szablonie?",
+      "a": "Komponent to klasa TypeScript z dekoratorem `@Component`, który podaje metadane: `selector` (tag w HTML), `template`/`templateUrl`, `styles`/`styleUrl`, `imports` (zależności szablonu w standalone), opcjonalnie `changeDetection`, `providers`, `host`. Binding: interpolacja `{{ value }}` (tekst), property binding `[value]=\"expr\"` (właściwość DOM lub input komponentu), attribute binding `[attr.aria-label]` (gdy nie ma właściwości DOM), class/style binding `[class.active]`, `[style.width.px]`, event binding `(click)=\"save()\"` (dane w górę) i two-way `[(value)]` – skrót od `[value]` + `(valueChange)`. Kierunek danych: z klasy do widoku przez `[]`, z widoku do klasy przez `()`.",
+      "code": "@Component({\n  selector: 'app-search',\n  imports: [FormsModule],\n  template: `\n    <h2>{{ title() }}</h2>\n    <input [value]=\"query()\" (input)=\"onInput($event)\" [attr.aria-label]=\"label\" />\n    <button [disabled]=\"!query()\" (click)=\"search()\">Szukaj</button>\n    <input [(ngModel)]=\"draft\" />\n  `,\n})\nexport class SearchComponent { /* ... */ }",
+      "lang": "typescript",
+      "tip": "Częsty follow-up: różnica property vs attribute (np. `colspan` czy `aria-*` wymagają `[attr.]`). Interpolacja to też property binding do `textContent`, więc jest bezpieczna przed XSS."
+    },
+    {
+      "id": "angular-a002",
+      "topic": "Content projection",
+      "level": 2,
+      "q": "ViewChild vs ContentChild – czym się różnią i kiedy wynik jest dostępny?",
+      "a": "`viewChild`/`@ViewChild` szuka elementów we własnym szablonie komponentu, a `contentChild`/`@ContentChild` w treści przekazanej przez rodzica i wyświetlonej przez `<ng-content>`. Klasyczne dekoratory: wynik view query jest gotowy w `ngAfterViewInit` (z `static: true` już w `ngOnInit`, ale tylko gdy element nie jest w `@if`/`@for`), content query w `ngAfterContentInit`. Sygnałowe `viewChild()`/`contentChild()` (stabilne od v19) zwracają sygnał, który aktualizuje się sam – można go czytać w `computed`/`effect` bez martwienia się o hooki; `viewChild.required()` rzuca błąd, gdy elementu nie ma. Wersje mnogie (`viewChildren`, `contentChildren`) zwracają listę; `contentChildren` domyślnie szuka tylko bezpośrednich dzieci (opcja `descendants: true`).",
+      "code": "@Component({\n  selector: 'app-tabs',\n  template: `<input #filter /> <ng-content />`,\n})\nexport class TabsComponent {\n  filter = viewChild.required<ElementRef<HTMLInputElement>>('filter'); // własny szablon\n  tabs = contentChildren(TabComponent);                                // projekcja od rodzica\n  count = computed(() => this.tabs().length);\n}",
+      "lang": "typescript",
+      "deep": "Pod spodem obie kategorie to queries wyliczane przez runtime przy tworzeniu widoku; różnica wynika z tego, kto jest właścicielem szablonu – projektowana treść jest częścią widoku rodzica, a nie dziecka, dlatego ma osobny cykl (AfterContent przed AfterView). Typowe błędy: odczyt `@ViewChild` w konstruktorze lub ngOnInit (undefined), oczekiwanie, że ViewChild zobaczy element z ng-content, oraz ExpressionChangedAfterItHasBeenChecked, gdy w ngAfterViewInit ustawia się stan pokazywany w szablonie. Opcja `read` pozwala wybrać, co dostajemy z tego samego elementu (ElementRef, ViewContainerRef, instancję dyrektywy). Przy sygnałowych queries znika większość problemów z timingiem, ale nadal czyta się je dopiero po wyrenderowaniu – w konstruktorze `required` rzuci błąd."
+    },
+    {
+      "id": "angular-a003",
+      "topic": "Szablony i data binding",
+      "level": 2,
+      "q": "Do czego służą ng-template, ng-container i ngTemplateOutlet?",
+      "a": "`<ng-template>` definiuje fragment szablonu, który NIE jest renderowany, dopóki ktoś go nie wstawi – przez `ngTemplateOutlet`, dyrektywę strukturalną albo `ViewContainerRef.createEmbeddedView`. `<ng-container>` to logiczny kontener bez własnego elementu w DOM – grupuje węzły, np. żeby nałożyć dyrektywę bez dodatkowego `div`. `ngTemplateOutlet` renderuje szablon w danym miejscu z kontekstem (`$implicit` i nazwane zmienne), co pozwala komponentowi przyjąć od rodzica szablon wiersza/komórki – typowy wzorzec w tabelach i listach w design systemach.",
+      "code": "<!-- rodzic -->\n<app-list [items]=\"users\" [itemTpl]=\"row\" />\n<ng-template #row let-user let-i=\"index\">\n  {{ i + 1 }}. {{ user.name }}\n</ng-template>\n\n<!-- app-list -->\n@for (item of items(); track item.id) {\n  <ng-container *ngTemplateOutlet=\"itemTpl(); context: { $implicit: item, index: $index }\" />\n}",
+      "lang": "html",
+      "tip": "Pułapka: treść `<ng-content>` w `@if` i tak jest tworzona przez rodzica (lifecycle się wykonuje). Jeśli treść ma powstać dopiero przy pokazaniu – przekaż `ng-template` i renderuj ją przez `ngTemplateOutlet`."
+    },
+    {
+      "id": "angular-a004",
+      "topic": "Szablony i data binding",
+      "level": 1,
+      "q": "Czym są template reference variables (#ref) i na co mogą wskazywać?",
+      "a": "Zmienna `#nazwa` w szablonie daje referencję do: elementu DOM (gdy stoi na zwykłym elemencie), instancji komponentu (gdy stoi na komponencie) albo dyrektywy, gdy podamy `exportAs`, np. `#f=\"ngForm\"`, `#m=\"matMenu\"`. Na `<ng-template>` wskazuje TemplateRef. Można jej użyć w dowolnym miejscu tego samego szablonu (np. przekazać do metody w event bindingu) oraz jako selektor dla `viewChild('nazwa')`. Zasięg jest ograniczony do bloku szablonu – zmienna zadeklarowana w `@if`/`@for` nie jest widoczna na zewnątrz.",
+      "code": "<input #email type=\"email\" />\n<button (click)=\"invite(email.value)\">Zaproś</button>\n\n<app-player #player />\n<button (click)=\"player.play()\">Play</button>\n\n<form #f=\"ngForm\" (ngSubmit)=\"save(f.value)\">...</form>",
+      "lang": "html"
+    },
+    {
+      "id": "angular-a005",
+      "topic": "Dynamiczne komponenty",
+      "level": 2,
+      "q": "Jak dynamicznie tworzyć komponenty w Angularze (np. modal, widgety z konfiguracji)?",
+      "a": "Najprościej deklaratywnie: `NgComponentOutlet` (`*ngComponentOutlet=\"cmp; inputs: {...}\"`) albo `@defer`/lazy import, gdy chodzi tylko o leniwe ładowanie. Imperatywnie: `ViewContainerRef.createComponent(Typ)` zwraca `ComponentRef` – przez `ref.setInput('name', v)` ustawiamy inputy (działa też z `input()` i oznacza komponent do odświeżenia), przez `ref.instance` mamy dostęp do outputów, a `ref.destroy()` sprząta. Od Angular 20 `createComponent` przyjmuje też `bindings` (`inputBinding`, `outputBinding`, `twoWayBinding`), które wiążą inputy z sygnałami. Nie potrzeba już `entryComponents` ani `ComponentFactoryResolver` – to API z czasów View Engine, dziś deprecated.",
+      "code": "export class WidgetHost {\n  private vcr = inject(ViewContainerRef);\n  title = signal('Sprzedaż');\n\n  async add() {\n    const { ChartComponent } = await import('./chart.component');\n    const ref = this.vcr.createComponent(ChartComponent, {\n      bindings: [inputBinding('title', this.title)],\n    });\n    ref.setInput('data', [1, 2, 3]);\n  }\n}",
+      "lang": "typescript",
+      "deep": "Dynamiczny komponent jest wstawiany jako rodzeństwo kotwicy (ViewContainerRef), więc dziedziczy element injector z miejsca wstawienia – można też podać własny `injector`/`environmentInjector`. Ręczna zmiana `ref.instance.someInput = x` omija mechanizm inputów (brak ngOnChanges, brak oznaczenia OnPush jako dirty) – stąd `setInput`. Do renderowania poza drzewem (np. overlay na body) służy `createComponent` z `@angular/core` + `appRef.attachView`, ale zwykle lepiej użyć CDK Overlay/Portal albo Dialog, które to opakowują i dbają o a11y i focus. Trzeba pamiętać o `destroy()`, inaczej subskrypcje i listenery w dynamicznym komponencie wyciekną."
+    },
+    {
+      "id": "angular-a006",
+      "topic": "Szablony i data binding",
+      "level": 1,
+      "q": "ngClass/ngStyle czy [class]/[style] binding – co wybrać?",
+      "a": "Natywne bindingi pokrywają dziś prawie wszystko: `[class.active]=\"isActive()\"` dla jednej klasy, `[class]=\"{ active: a, disabled: b }\"` lub tablica/string dla wielu, `[style.width.px]=\"w\"` i `[style]=\"{...}\"` dla stylów. Nie wymagają importu dyrektyw (ngClass/ngStyle pochodzą z CommonModule) i są nieco tańsze. Dokumentacja Angulara zaleca natywne bindingi, a NgClass/NgStyle zostają głównie w starszym kodzie. Warto pamiętać, że `[class]` z obiektem łączy się z klasami statycznymi w HTML, a nie je nadpisuje.",
+      "code": "<li [class.selected]=\"item.id === selectedId()\"\n    [class]=\"{ done: item.done, urgent: item.priority > 3 }\"\n    [style.opacity]=\"item.archived ? 0.5 : 1\">\n  {{ item.title }}\n</li>",
+      "lang": "html"
+    },
+    {
+      "id": "angular-a007",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "markForCheck() vs detectChanges() vs detach() – czym się różnią?",
+      "a": "`markForCheck()` nie uruchamia change detection – tylko oznacza komponent i wszystkich przodków jako dirty, żeby zostali sprawdzeni w najbliższym cyklu (w zoneless dodatkowo planuje ten cykl). Używamy go w OnPush po zmianie stanu spoza szablonu (callback biblioteki, ręczna subskrypcja). `detectChanges()` synchronicznie i natychmiast sprawdza ten komponent i jego dzieci – przydaje się w testach albo gdy trzeba od razu odświeżyć widok przed pomiarem DOM. `detach()` odpina komponent od drzewa CD (nie będzie sprawdzany automatycznie), a `reattach()` przywraca – technika dla widoków aktualizowanych bardzo często, gdzie sami decydujemy, kiedy odświeżyć. Przy sygnałach w szablonie zwykle żadna z tych metod nie jest potrzebna.",
+      "code": "export class TickerComponent {\n  private cdr = inject(ChangeDetectorRef);\n  price = 0;\n  constructor() {\n    this.cdr.detach();                       // nie sprawdzaj przy każdym cyklu\n    externalFeed.on('tick', p => {\n      this.price = p;\n    });\n    setInterval(() => this.cdr.detectChanges(), 1000); // odśwież raz na sekundę\n  }\n}",
+      "lang": "typescript",
+      "deep": "W zone.js markForCheck jest tani, bo cykl i tak przyjdzie po zdarzeniu; w zoneless wywołanie markForCheck jest jednym z sygnałów dla schedulera, więc biblioteki, które na nim polegają, działają też bez stref. detectChanges wywołane w trakcie innego cyklu (np. w ngAfterViewInit rodzica) może powodować ExpressionChanged lub kaskady – to łatka, nie architektura. detach daje największą kontrolę, ale łatwo zapomnieć, że wtedy nawet zdarzenia z szablonu nie odświeżają widoku. Dziś zamiast detach/ręcznego detectChanges lepiej trzymać stan w sygnałach i ograniczyć odświeżenia przez throttling źródła (np. auditTime) – CD odświeży wtedy tylko widoki czytające sygnał. Profiler Angular DevTools pokazuje, które komponenty są sprawdzane w każdym cyklu."
+    },
+    {
+      "id": "angular-a008",
+      "topic": "Routing",
+      "level": 2,
+      "q": "Jak działają child routes, router-outlet i named (auxiliary) outlets?",
+      "a": "`<router-outlet />` to miejsce, w którym router renderuje komponent dopasowanej trasy. Trasa z `children` renderuje dzieci w outlecie umieszczonym w szablonie komponentu rodzica – tak buduje się layouty (shell z menu + zmienna treść). Trasa bez komponentu (`path: 'admin', children: [...]`) służy tylko do grupowania i wspólnych guardów/providerów. Named outlet (`<router-outlet name=\"aside\" />`) pozwala niezależnie sterować drugim obszarem, np. panelem bocznym lub czatem; trasa ma wtedy `outlet: 'aside'`, a URL wygląda jak `/orders(aside:chat)`. W praktyce named outlets stosuje się rzadko – często prościej użyć stanu lub dialogu.",
+      "code": "export const routes: Routes = [\n  {\n    path: '',\n    component: ShellComponent,            // ma <router-outlet /> w szablonie\n    children: [\n      { path: 'orders', loadComponent: () => import('./orders') },\n      { path: 'orders/:id', loadComponent: () => import('./order-details') },\n    ],\n  },\n  { path: 'chat', outlet: 'aside', loadComponent: () => import('./chat') },\n];\n// <a [routerLink]=\"[{ outlets: { aside: ['chat'] } }]\">Czat</a>",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-a009",
+      "topic": "Routing",
+      "level": 2,
+      "q": "Czym są preloading strategies w routerze i jak napisać własną?",
+      "a": "Lazy loading odkłada pobranie kodu trasy do momentu nawigacji, co spowalnia pierwsze wejście na nią. Preloading pobiera leniwe chunki w tle po starcie aplikacji: domyślnie `NoPreloading`, `PreloadAllModules` pobiera wszystko (dobre dla małych aplikacji), a własna strategia implementuje `PreloadingStrategy.preload(route, load)` i decyduje per trasa – np. flaga `data: { preload: true }`, rola użytkownika albo typ połączenia. Rejestracja: `provideRouter(routes, withPreloading(Strategia))`. Popularna jest też biblioteka ngx-quicklink (preload tras, których linki są widoczne na ekranie).",
+      "code": "@Injectable({ providedIn: 'root' })\nexport class FlagPreloading implements PreloadingStrategy {\n  preload(route: Route, load: () => Observable<unknown>) {\n    const slow = (navigator as any).connection?.saveData;\n    return route.data?.['preload'] && !slow ? load() : of(null);\n  }\n}\n\nprovideRouter(routes, withPreloading(FlagPreloading));",
+      "lang": "typescript",
+      "tip": "Preloading działa dla `loadChildren` i `loadComponent`. Nie myl z `@defer (prefetch on idle)` – to prefetch fragmentu szablonu, nie trasy."
+    },
+    {
+      "id": "angular-a010",
+      "topic": "Routing",
+      "level": 1,
+      "q": "Router.navigate vs navigateByUrl i jak reagować na zdarzenia routera?",
+      "a": "`navigate(['/orders', id], { queryParams, relativeTo })` przyjmuje tablicę segmentów (link params) i może nawigować względnie do aktualnej trasy (`relativeTo: this.route`). `navigateByUrl('/orders/5?tab=items')` przyjmuje pełny, absolutny URL (string lub UrlTree). Obie zwracają `Promise<boolean>` – false, gdy guard zablokował nawigację. Zdarzenia routera (`NavigationStart`, `NavigationEnd`, `NavigationCancel`, `NavigationError`) czytamy z `router.events`, filtrując po typie – np. do loadera, analityki czy przewinięcia strony. W szablonie zwykle wystarcza `routerLink` i `routerLinkActive`.",
+      "code": "private router = inject(Router);\nloading = toSignal(\n  this.router.events.pipe(\n    filter(e => e instanceof NavigationStart || e instanceof NavigationEnd\n             || e instanceof NavigationCancel || e instanceof NavigationError),\n    map(e => e instanceof NavigationStart),\n  ),\n  { initialValue: false },\n);",
+      "lang": "typescript",
+      "tip": "W guardzie nie wywołuj `router.navigate` – zwróć `UrlTree` (`router.createUrlTree(['/login'])`), żeby router sam przekierował bez wyścigu nawigacji."
+    },
+    {
+      "id": "angular-a011",
+      "topic": "Routing",
+      "level": 2,
+      "q": "PathLocationStrategy vs HashLocationStrategy – czym się różnią i co trzeba skonfigurować na serwerze?",
+      "a": "Domyślna strategia path daje ładne URL-e (`/orders/5`) oparte o History API, ale przy odświeżeniu strony albo wejściu z linku przeglądarka pyta serwer o `/orders/5` – serwer musi wtedy zwrócić `index.html` (fallback SPA, np. `try_files $uri /index.html` w nginx), inaczej dostaniemy 404. Ważne jest też poprawne `<base href>` przy hostowaniu w podkatalogu. Hash (`/#/orders/5`, `withHashLocation()`) nie wymaga konfiguracji serwera, bo część po `#` nie trafia do serwera, ale URL-e są brzydsze, gorzej działają z SSR/SEO i kotwicami. Dziś standardem jest path + fallback na serwerze; hash zostaje dla hostingu, na który nie mamy wpływu.",
+      "code": "# nginx\nlocation / {\n  try_files $uri $uri/ /index.html;\n}\n\n// Angular – tylko gdy nie da się skonfigurować serwera:\n// provideRouter(routes, withHashLocation())",
+      "lang": "text"
+    },
+    {
+      "id": "angular-a012",
+      "topic": "Formularze",
+      "level": 2,
+      "q": "Jak zbudować dynamiczny formularz z FormArray (dodawanie i usuwanie pozycji)?",
+      "a": "`FormArray` to kolekcja kontrolek lub grup o zmiennej długości – np. pozycje zamówienia czy lista telefonów. Tworzymy ją przez `fb.array([])`, dodajemy `push(this.createItem())`, usuwamy `removeAt(i)`, a wartość to tablica. W szablonie: `formArrayName` na kontenerze, a w pętli `[formGroupName]=\"$index\"`. Przy typed forms tablica jest typowana (`FormArray<FormGroup<...>>`). Walidator można podpiąć na całą tablicę (np. min. 1 pozycja).",
+      "code": "form = inject(NonNullableFormBuilder).group({\n  items: this.fb.array([this.createItem()], Validators.minLength(1)),\n});\nget items() { return this.form.controls.items; }\ncreateItem() {\n  return this.fb.group({ name: ['', Validators.required], qty: [1, Validators.min(1)] });\n}\n// <div formArrayName=\"items\">\n//   @for (g of items.controls; track g) {\n//     <div [formGroupName]=\"$index\"><input formControlName=\"name\" />\n//       <button type=\"button\" (click)=\"items.removeAt($index)\">x</button></div> }\n// </div>",
+      "lang": "typescript",
+      "tip": "Śledź w `@for` po instancji kontrolki (`track g`), nie po `$index` – inaczej po usunięciu środkowego wiersza inputy pomieszają focus i stan."
+    },
+    {
+      "id": "angular-a013",
+      "topic": "Formularze",
+      "level": 2,
+      "q": "Jak zrobić walidację zależną od kilku pól (np. hasło i powtórzenie hasła)?",
+      "a": "Walidator cross-field podpina się na `FormGroup`, a nie na pojedynczej kontrolce – dostaje grupę, czyta z niej pola i zwraca błąd na poziomie grupy (`form.errors`). Dzięki temu uruchamia się przy zmianie dowolnego z pól. Błąd pokazujemy w szablonie z `form.hasError('passwordMismatch')`; jeśli chcemy oznaczyć konkretne pole na czerwono, można dodatkowo ustawić błąd na kontrolce, ale trzeba go potem sam usuwać. Walidator powinien być czystą funkcją typu `ValidatorFn`.",
+      "code": "export const passwordsMatch: ValidatorFn = (group: AbstractControl) => {\n  const pass = group.get('password')?.value;\n  const confirm = group.get('confirm')?.value;\n  return pass && confirm && pass !== confirm ? { passwordMismatch: true } : null;\n};\n\nform = this.fb.group(\n  { password: ['', [Validators.required, Validators.minLength(8)]], confirm: [''] },\n  { validators: passwordsMatch },\n);",
+      "lang": "typescript"
+    },
+    {
+      "id": "angular-a014",
+      "topic": "Formularze",
+      "level": 2,
+      "q": "setValue vs patchValue, valueChanges, updateOn i emitEvent – co trzeba wiedzieć?",
+      "a": "`setValue` wymaga pełnego obiektu pasującego do struktury grupy (brak pola → błąd), `patchValue` ustawia tylko podane pola – typowo przy wypełnianiu formularza danymi z API. `valueChanges`/`statusChanges` to Observable emitujące przy każdej zmianie – dobre do autozapisu czy zależnych pól (z `debounceTime`, `distinctUntilChanged`, sprzątaniem przez `takeUntilDestroyed`). Opcja `{ emitEvent: false }` ustawia wartość bez emisji – chroni przed pętlami między zależnymi polami. `updateOn: 'blur' | 'submit'` ogranicza częstotliwość aktualizacji modelu i walidacji (np. drogie async walidatory). `form.value` pomija pola disabled, `getRawValue()` zwraca wszystkie.",
+      "code": "this.form.patchValue({ name: user.name, email: user.email });\n\nthis.form.controls.country.valueChanges\n  .pipe(distinctUntilChanged(), takeUntilDestroyed())\n  .subscribe(() => this.form.controls.city.setValue('', { emitEvent: false }));\n\nemail = new FormControl('', { validators: [Validators.email], updateOn: 'blur' });",
+      "lang": "typescript",
+      "deep": "Od Angular 18 każda kontrolka ma też ujednolicony strumień `events` (ValueChangeEvent, StatusChangeEvent, TouchedChangeEvent, PristineChangeEvent, FormSubmittedEvent), który rozwiązuje stary problem braku zdarzenia dla touched/pristine. `valueChanges` emituje synchronicznie wewnątrz `setValue`, więc zależne pola potrafią się zapętlić – stąd emitEvent: false albo `onlySelf`. Przy `disable()` wartość znika z `value`, co bywa źródłem błędów przy wysyłce do API. Konwersja `toSignal(form.valueChanges)` jest wygodna, ale pamiętaj o `initialValue` (valueChanges nie emituje wartości startowej) – albo poczekaj na Signal Forms, które są eksperymentalne w v21."
+    },
+    {
+      "id": "angular-a015",
+      "topic": "Formularze",
+      "level": 1,
+      "q": "Co oznaczają stany pristine/dirty, touched/untouched, valid/invalid/pending i jak dobrze pokazywać błędy?",
+      "a": "`dirty` – użytkownik zmienił wartość (przeciwieństwo `pristine`); `touched` – pole straciło focus przynajmniej raz; `valid`/`invalid` – wynik walidatorów; `pending` – trwa walidator asynchroniczny; `disabled` – pole wyłączone z walidacji i z `value`. Angular dodaje odpowiadające klasy CSS (`ng-touched`, `ng-invalid` itd.). Dobra praktyka UX: pokazywać błąd dopiero, gdy pole jest `invalid` i (`touched` albo formularz wysłano), a na submit wywołać `markAllAsTouched()`, żeby ujawnić wszystkie błędy naraz. Komunikat powinien być powiązany z polem przez `aria-describedby`.",
+      "code": "@let email = form.controls.email;\n<input formControlName=\"email\" [attr.aria-invalid]=\"email.invalid && email.touched\"\n       aria-describedby=\"email-err\" />\n@if (email.invalid && (email.touched || submitted())) {\n  <span id=\"email-err\">\n    @if (email.hasError('required')) { Podaj e-mail } @else { Niepoprawny e-mail }\n  </span>\n}",
+      "lang": "html"
+    },
+    {
+      "id": "angular-a016",
+      "topic": "Kompilacja (AOT, Ivy)",
+      "level": 2,
+      "q": "AOT vs JIT oraz czym jest Ivy?",
+      "a": "JIT (just-in-time) kompiluje szablony w przeglądarce w runtime – bundle musi zawierać kompilator, start jest wolniejszy, a błędy szablonów wychodzą dopiero w działaniu. AOT (ahead-of-time) kompiluje szablony do kodu JS podczas buildu: szybszy start, mniejszy bundle, błędy szablonów i typów (strictTemplates) w czasie kompilacji i mniejsza powierzchnia ataku (brak dynamicznej kompilacji HTML). AOT jest domyślne od Angular 9. Ivy to obecny kompilator i runtime renderujący (od v9; stary View Engine usunięto w v13): komponent kompiluje się do statycznych definicji i instrukcji renderowania, co daje lepszy tree-shaking, zasadę lokalności (komponent kompiluje się niezależnie) i umożliwiło standalone, a potem sygnały i nowy control flow.",
+      "tip": "Ciekawostka na rozmowę: w trybie dev w konsoli możesz użyć `ng.getComponent($0)` (globalne narzędzia Ivy) do podejrzenia instancji komponentu wskazanego elementu.",
+      "deep": "Zasada lokalności oznacza, że do skompilowania komponentu wystarczą informacje z jego dekoratora i bezpośrednich zależności – to przyspieszyło przebudowy inkrementalne i pozwoliło porzucić NgModule jako jednostkę kompilacji. Wygenerowany kod to wywołania funkcji runtime (tworzenie elementów, bindingi), więc nieużywane funkcje frameworka (np. animacje, i18n) wypadają z bundla przy tree-shakingu. Biblioteki publikowane są w formacie częściowej kompilacji (partial compilation), którą linker dokańcza w aplikacji – dzięki temu biblioteka nie musi być kompilowana tą samą wersją Angulara. JIT wciąż istnieje (np. bywa używany w testach), ale w produkcji aplikacja zawsze idzie w AOT."
+    },
+    {
+      "id": "angular-a017",
+      "topic": "Nowości v14–v21",
+      "level": 2,
+      "q": "Jakie były najważniejsze zmiany w Angularze od wersji 14 do 21?",
+      "a": "v14: typed forms, standalone (preview), `inject()` szerzej używane. v15: standalone stabilne, directive composition (`hostDirectives`), funkcyjne guardy i interceptory, NgOptimizedImage. v16: sygnały (developer preview), required inputs, `DestroyRef`/`takeUntilDestroyed`, non-destructive hydration (preview), binding parametrów trasy do inputów. v17: nowy control flow `@if/@for/@switch` i `@defer`, builder application (esbuild + Vite) domyślnie, nowa strona angular.dev; potem signal inputs, `model()`, signal queries. v18: zoneless eksperymentalnie, `@let`, event replay. v19: standalone domyślne, `linkedSignal` i `resource` (eksperymentalne), incremental hydration, render modes per trasa. v20: stabilizacja API sygnałów (`effect`, `linkedSignal`, `toSignal`), `httpResource` (eksperymentalny), w 20.2 zoneless stabilne i `animate.enter/leave`. v21: zoneless domyślny w nowych projektach, Vitest domyślnym runnerem, Signal Forms (eksperymentalne).",
+      "tip": "Nie recytuj listy – wybierz 3 zmiany, które realnie wpłynęły na Twój kod (np. standalone, sygnały, control flow) i powiedz, jak migrowałeś. Do migracji służą schematics `ng generate @angular/core:...` (control-flow, signal-input-migration, inject).",
+      "deep": "Kierunek od v14 jest spójny: odejście od NgModule (standalone), od dekoratorów na rzecz funkcji (`inject`, `input()`, funkcyjne guardy), od zone.js na rzecz fine-grained reaktywności (sygnały → zoneless) oraz poprawa ładowania (esbuild, @defer, hydracja przyrostowa). Angular wydaje major co ~6 miesięcy, każdy ma 18 miesięcy wsparcia (6 aktywnego + 12 LTS), więc w firmach często spotkasz v15–v17 – warto znać stare i nowe API obok siebie. Statusy (experimental/developer preview/stable) mają znaczenie: eksperymentalnych API (resource, httpResource, Signal Forms) można używać, ale ich kształt może się zmienić bez okresu deprecjacji. Przy upgrade zawsze `ng update` krok po kroku po jednej wersji major i sprawdzenie update.angular.dev."
+    },
+    {
+      "id": "angular-a018",
+      "topic": "Animacje",
+      "level": 2,
+      "q": "Jak robić animacje w Angularze – @angular/animations czy animate.enter/animate.leave?",
+      "a": "Pakiet `@angular/animations` (DSL `trigger/state/transition/animate`, `provideAnimationsAsync()`) przez lata był standardem, ale od Angular 20.2 jest oznaczony jako deprecated. Zastępują go natywne `animate.enter` i `animate.leave`: przypisują klasy CSS, gdy element pojawia się lub znika z DOM (np. w `@if`/`@for`), a przy wyjściu Angular czeka na koniec animacji CSS przed usunięciem elementu. Samą animację piszemy w CSS (`@keyframes`, `transition`) – jest wydajniejsza, bo działa na transform/opacity i nie wymaga ciężkiego runtime'u. Do złożonych sekwencji można podpiąć funkcję lub zewnętrzną bibliotekę przez wersję event binding `(animate.leave)`.",
+      "code": "@if (open()) {\n  <div class=\"panel\" animate.enter=\"slide-in\" animate.leave=\"fade-out\">...</div>\n}\n/* CSS */\n.slide-in { animation: slide-in 200ms ease-out; }\n.fade-out { animation: fade-out 150ms ease-in forwards; }\n@keyframes slide-in { from { transform: translateY(-8px); opacity: 0; } }\n@keyframes fade-out { to { opacity: 0; } }",
+      "lang": "html",
+      "tip": "Pytanie o animacje to dobry moment, by wspomnieć `prefers-reduced-motion` oraz to, że animowanie `top/height` powoduje reflow."
+    },
+    {
+      "id": "angular-a019",
+      "topic": "Service worker (PWA)",
+      "level": 2,
+      "q": "Jak dodać service worker / PWA do aplikacji Angular i jak obsłużyć aktualizacje wersji?",
+      "a": "`ng add @angular/pwa` dodaje `@angular/service-worker`, plik `ngsw-config.json`, manifest i rejestrację `provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' })`. W `ngsw-config.json` definiujemy `assetGroups` (pliki aplikacji, `installMode: prefetch` lub `lazy`) i `dataGroups` dla API ze strategią `freshness` (najpierw sieć) lub `performance` (najpierw cache). Service worker działa tylko na HTTPS (lub localhost) i w buildzie produkcyjnym. Po deployu nowa wersja jest pobierana w tle – przez `SwUpdate.versionUpdates` wykrywamy `VERSION_READY` i proponujemy użytkownikowi przeładowanie.",
+      "code": "export class UpdateService {\n  constructor() {\n    inject(SwUpdate).versionUpdates\n      .pipe(filter((e): e is VersionReadyEvent => e.type === 'VERSION_READY'), takeUntilDestroyed())\n      .subscribe(() => {\n        if (confirm('Dostępna nowa wersja. Przeładować?')) document.location.reload();\n      });\n  }\n}",
+      "lang": "typescript",
+      "deep": "Angularowy SW cache'uje aplikację jako całość wersji (manifest `ngsw.json` z hashami plików), więc użytkownik nie dostaje mieszanki starych i nowych chunków – ale oznacza to też, że po deployu pierwsze otwarcie wciąż pokazuje starą wersję. Częsty problem produkcyjny to cache'owanie `index.html` lub `ngsw.json` przez CDN – wtedy aktualizacje nie docierają; te pliki muszą mieć krótkie/zerowe cache. `SwUpdate.unrecoverable` informuje, gdy stara wersja nie może się dociągnąć (pliki usunięto z serwera) – wtedy trzeba wymusić reload. Do debugowania służy `/ngsw/state` i zakładka Application w DevTools. Dla API z danymi użytkownika ostrożnie z `dataGroups` – można niechcący pokazać nieaktualne lub cudze dane po wylogowaniu."
+    },
+    {
+      "id": "angular-a020",
+      "topic": "HttpClient",
+      "level": 3,
+      "q": "Jak obsłużyć wygasły access token – odświeżanie przez refresh token w interceptorze?",
+      "a": "Interceptor dodaje nagłówek `Authorization`, a na odpowiedź 401 (z wyłączeniem samego endpointu refresh i logowania) wywołuje odświeżenie tokena i ponawia oryginalne żądanie z nowym tokenem. Kluczowe jest, żeby przy wielu równoległych 401 wykonać tylko JEDNO odświeżenie – współdzielimy trwające żądanie (`shareReplay(1)` lub flaga + Subject), a pozostałe żądania czekają na wynik. Gdy refresh się nie uda – wylogowanie i przekierowanie na login, bez pętli. Bezpieczniejszą alternatywą jest BFF z ciasteczkiem HttpOnly, gdzie odświeżaniem zajmuje się backend.",
+      "code": "let refresh$: Observable<string> | null = null;\n\nexport const authInterceptor: HttpInterceptorFn = (req, next) => {\n  const auth = inject(AuthService);\n  const withToken = (t: string) => req.clone({ setHeaders: { Authorization: `Bearer ${t}` } });\n  return next(withToken(auth.token())).pipe(\n    catchError(err => {\n      if (err.status !== 401 || req.url.includes('/auth/')) return throwError(() => err);\n      refresh$ ??= auth.refresh().pipe(finalize(() => (refresh$ = null)), shareReplay(1));\n      return refresh$.pipe(switchMap(t => next(withToken(t))));\n    }),\n  );\n};",
+      "lang": "typescript",
+      "deep": "Bez współdzielenia odświeżenia dashboard z 5 równoległymi żądaniami wyśle 5 refreshy – przy rotacji refresh tokenów (każdy refresh unieważnia poprzedni) cztery z nich się nie udadzą i użytkownik zostanie wylogowany. Kolejność `finalize` przed `shareReplay` sprawia, że zmienna jest czyszczona po zakończeniu źródła, więc kolejne wygaśnięcie uruchomi nowy refresh. Warto też odświeżać proaktywnie (przed `exp` z JWT) – mniej nieudanych żądań i mniej mrugania UI. Trzeba pamiętać, że interceptor obejmuje wszystkie żądania HttpClient, więc token nie powinien trafiać do zewnętrznych domen (sprawdzaj URL/whitelistę). Przy BFF problem znika z frontu: przeglądarka wysyła cookie, a BFF trzyma tokeny po stronie serwera."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "angular-aq001",
+      "topic": "Change detection",
+      "level": 2,
+      "q": "Komponent OnPush subskrybuje WebSocket w konstruktorze i w callbacku robi `this.price = p; this.cdr.markForCheck();`. Aplikacja działa z zone.js. Co się stanie po nadejściu wiadomości?",
+      "options": [
+        "Widok odświeży się natychmiast, synchronicznie w callbacku, bo markForCheck uruchamia change detection",
+        "Komponent i jego przodkowie zostaną oznaczeni jako dirty, a widok odświeży się w najbliższym cyklu change detection",
+        "Nic się nie zmieni, bo OnPush reaguje wyłącznie na zmianę referencji inputów",
+        "Angular rzuci ExpressionChangedAfterItHasBeenCheckedError, bo pole zmieniono poza cyklem"
+      ],
+      "correct": 1,
+      "why": "markForCheck tylko oznacza ścieżkę do korzenia jako dirty; nie wykonuje CD. Cykl uruchomi zone.js po zakończeniu zadania (lub scheduler w zoneless). Synchroniczne odświeżenie daje detectChanges. OnPush reaguje nie tylko na inputy, a ExpressionChanged dotyczy zmian w trakcie cyklu w trybie dev."
+    },
+    {
+      "id": "angular-aq002",
+      "topic": "Content projection",
+      "level": 2,
+      "q": "Co wypisze ten kod, jeśli `<input #box>` jest w szablonie wewnątrz bloku `@if (show)` (show = true)?",
+      "code": "@ViewChild('box') box?: ElementRef;\nngOnInit() { console.log('init', !!this.box); }\nngAfterViewInit() { console.log('view', !!this.box); }",
+      "lang": "typescript",
+      "options": [
+        "init true, view true",
+        "init false, view false",
+        "init false, view true",
+        "init true, view false"
+      ],
+      "correct": 2,
+      "why": "Dynamiczne (domyślnie static: false) zapytanie widoku jest rozwiązywane po utworzeniu widoku – dostępne w ngAfterViewInit, nie w ngOnInit. Element w @if i tak nie może być static: true, bo jego istnienie zależy od warunku."
+    },
+    {
+      "id": "angular-aq003",
+      "topic": "Formularze",
+      "level": 2,
+      "q": "Grupa ma pola `name`, `email`, `phone`. Co się stanie po wywołaniu `form.setValue({ name: 'Ola', email: 'ola@x.pl' })`?",
+      "options": [
+        "Ustawi name i email, phone zostanie bez zmian",
+        "Ustawi name i email, a phone wyzeruje do null",
+        "Ustawi wartości, ale nie uruchomi walidacji",
+        "Rzuci błąd, bo setValue wymaga wartości dla wszystkich kontrolek grupy"
+      ],
+      "correct": 3,
+      "why": "setValue jest ścisłe – brak klucza dla istniejącej kontrolki powoduje błąd w runtime. Częściowe ustawienie wymaga patchValue. Walidacja uruchamia się w obu przypadkach."
+    },
+    {
+      "id": "angular-aq004",
+      "topic": "Formularze",
+      "level": 2,
+      "q": "Walidator `passwordsMatch` porównujący pola `password` i `confirm` podpięto jako walidator kontrolki `confirm`. Jaki jest problem?",
+      "options": [
+        "Walidator nie uruchomi się po zmianie pola password, więc po poprawieniu hasła błąd może zostać nieaktualny",
+        "Walidatory kontrolek nie mogą zwracać obiektów błędów, tylko boolean",
+        "Kontrolka nie ma dostępu do innych pól w żaden sposób, więc kod się nie skompiluje",
+        "Nie ma problemu – to zalecane miejsce dla walidacji cross-field"
+      ],
+      "correct": 0,
+      "why": "Walidator kontrolki uruchamia się przy zmianie tej kontrolki. Zmiana password nie przelicza walidacji confirm, więc stan bywa nieaktualny. Walidator cross-field powinien być na FormGroup (lub trzeba ręcznie wywoływać updateValueAndValidity). Dostęp przez control.parent technicznie istnieje, ale to obejście."
+    },
+    {
+      "id": "angular-aq005",
+      "topic": "Szablony i data binding",
+      "level": 1,
+      "q": "Co wyrenderuje ten szablon?",
+      "code": "<ng-template>\n  <p>Witaj</p>\n</ng-template>\n<ng-container>\n  <span>Świat</span>\n</ng-container>",
+      "lang": "html",
+      "options": [
+        "<p>Witaj</p><span>Świat</span>",
+        "Tylko <span>Świat</span>",
+        "Tylko <p>Witaj</p>",
+        "Nic – oba elementy wymagają dyrektywy strukturalnej"
+      ],
+      "correct": 1,
+      "why": "ng-template sam w sobie nic nie renderuje – trzeba go wstawić (ngTemplateOutlet, dyrektywa strukturalna, createEmbeddedView). ng-container renderuje swoją zawartość, nie dodając własnego elementu do DOM."
+    },
+    {
+      "id": "angular-aq006",
+      "topic": "Routing",
+      "level": 1,
+      "q": "Komponent pod trasą `/orders/5` wywołuje `this.router.navigate(['items'])` bez dodatkowych opcji. Dokąd nastąpi nawigacja?",
+      "options": [
+        "/orders/5/items",
+        "/orders/items",
+        "/items",
+        "Nigdzie – nawigacja względna rzuca błąd bez relativeTo"
+      ],
+      "correct": 2,
+      "why": "Bez relativeTo router.navigate traktuje segmenty względem korzenia, więc ['items'] prowadzi do /items. Do nawigacji względnej trzeba podać { relativeTo: this.route }. routerLink w szablonie jest domyślnie względny – stąd częste zaskoczenie."
+    },
+    {
+      "id": "angular-aq007",
+      "topic": "Routing",
+      "level": 2,
+      "q": "Aplikacja działa po kliknięciu linków, ale odświeżenie strony na `/reports/2024` daje 404 z nginx. Najbardziej prawdopodobna przyczyna?",
+      "options": [
+        "Brak withComponentInputBinding() w provideRouter",
+        "Trasa reports nie ma guarda canMatch",
+        "Lazy chunk dla reports nie został zbudowany w trybie produkcyjnym",
+        "Serwer nie ma fallbacku na index.html dla ścieżek SPA (PathLocationStrategy)"
+      ],
+      "correct": 3,
+      "why": "Przy odświeżeniu przeglądarka pyta serwer o /reports/2024 – takiego pliku nie ma, więc bez reguły typu try_files ... /index.html serwer zwraca 404. Nawigacja wewnątrz SPA działa, bo obsługuje ją History API bez zapytania do serwera."
+    },
+    {
+      "id": "angular-aq008",
+      "topic": "HttpClient",
+      "level": 3,
+      "q": "Interceptor na każdą odpowiedź 401 wywołuje `auth.refresh()` i ponawia żądanie. Dashboard wysyła równolegle 6 żądań po wygaśnięciu tokena, a backend rotuje refresh tokeny. Co się stanie?",
+      "options": [
+        "Wszystko zadziała – HttpClient automatycznie kolejkuje refresh",
+        "Poleci 6 równoległych refreshy; po rotacji większość z nich się nie uda i użytkownik może zostać wylogowany",
+        "Poleci jeden refresh, bo interceptory są singletonami",
+        "Żądania zawisną na zawsze, bo interceptor nie może wywołać HttpClient"
+      ],
+      "correct": 1,
+      "why": "Każdy 401 niezależnie uruchamia refresh. Przy rotacji pierwszy unieważnia stary refresh token, więc pozostałe dostają błąd. Trzeba współdzielić trwające odświeżenie (shareReplay(1) / Subject). Interceptor może wołać HttpClient (byle nie zapętlić się na endpoincie refresh)."
+    }
+  ]
+}

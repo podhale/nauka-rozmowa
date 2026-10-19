@@ -73,7 +73,23 @@ Synchronizacja postępu między telefonem a komputerem oraz funkcje AI działaj�
 3. Po ok. 5–10 minutach otwórz ten przebieg w **Actions** i pobierz z sekcji *Artifacts* paczkę `nauka-rozmowa-apk`. W środku jest `app-debug.apk`.
 4. Wgraj plik na telefon i zainstaluj (zgoda na instalację z nieznanych źródeł).
 
-**Lokalnie (wymaga Android Studio albo samego Android SDK + JDK 21):**
+**APK na własnym komputerze (bez Android Studio):**
+1. Java: `winget install Microsoft.OpenJDK.21`
+2. Android SDK, narzędzia z linii poleceń: ze strony https://developer.android.com/studio#command-line-tools-only pobierz „Command line tools only” (Windows). Rozpakuj tak, żeby powstał folder `C:\Android\cmdline-tools\latest\bin`.
+3. Zmienne środowiskowe (PowerShell), potem otwórz NOWY terminal:
+   ```powershell
+   setx ANDROID_HOME C:\Android
+   setx PATH "$env:PATH;C:\Android\cmdline-tools\latest\bin;C:\Android\platform-tools"
+   ```
+4. Pakiety SDK i licencje:
+   ```powershell
+   sdkmanager "platform-tools"
+   sdkmanager --licenses      # wpisuj y
+   ```
+5. Budowa: `npm install`, potem `npm run apk`. Gotowy plik trafi do `apk\nauka-rozmowa.apk`; Gradle sam dociągnie brakujące części SDK.
+6. Na telefon: przez kabel (debugowanie USB) `npm run apk:install` albo po prostu skopiuj plik i otwórz go na telefonie.
+
+**Lokalnie z Android Studio:**
 ```bash
 npx cap add android      # tylko za pierwszym razem
 npm run android          # build + sync + otwiera Android Studio

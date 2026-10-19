@@ -1,0 +1,192 @@
+{
+ "cat": "cv",
+ "sheets": [
+  {
+   "topic": "WMS (system magazynowy)",
+   "points": [
+    "**10.2025 – obecnie**, Software Interactive, **Fullstack Developer**.",
+    "System WMS budowany **od podstaw** – zarządzanie procesami magazynowymi.",
+    "Backend i logika biznesowa w **C#/.NET**, frontend w **Angularze** + integracja z backendem.",
+    "Współpraca z zespołem przy nowych modułach; **optymalizacja wydajności** i jakość kodu.",
+    "Podkreśl: budowa od zera (wpływ na fundamenty), model stanów (ruchy + stan bieżący), współbieżność rezerwacji (rowversion / atomowy UPDATE), wydajne listy (paginacja serwerowa, virtual scroll, debounce+switchMap).",
+    "Pojęcia domenowe: przyjęcie, put-away, picking, wydanie, inwentaryzacja, FEFO.",
+    "Do uzupełnienia przed rozmową: [skala], [wersje .NET/Angular], [Twoje moduły], [jeden przykład optymalizacji z liczbami]."
+   ],
+   "pitfalls": [
+    "Nie mów o liczbie magazynów/użytkowników/SKU, jeśli jej nie znasz.",
+    "Nie mów, że sam zaprojektowałeś całą architekturę, jeśli decyzje podejmował lead.",
+    "Nie mów, że `lock` w C# rozwiązuje współbieżność – przy kilku instancjach nie działa."
+   ],
+   "say": "Buduję od podstaw system WMS jako fullstack – logikę biznesową w .NET i frontend w Angularze – dbając o spójność stanów magazynowych i wydajność przy dużych listach."
+  },
+  {
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "points": [
+    "**01.2025 – 10.2025**, Software Interactive, **Fullstack Developer**.",
+    "Wtyczki do **AutoCAD i BricsCAD** automatyzujące powtarzalne czynności architektów i projektantów.",
+    "Nowe funkcje, automatyzacja operacji w dokumentacji projektowej, utrzymanie i optymalizacja pluginów, analiza wymagań użytkowników.",
+    "API: `Document` (rysunek), `Database` (obiekty, `ObjectId`), `Editor` (interakcja), `Transaction` (zmiany + `Commit`), `[CommandMethod]` (komendy).",
+    "BricsCAD: .NET API w dużym stopniu zgodne; inne biblioteki/namespace'y (m.in. `Bricscad.*`, `Teigha.*`) – wspólny kod + konfiguracje builda/adaptery.",
+    "Runtime = runtime hosta: AutoCAD ≤2024 → .NET Framework 4.8, AutoCAD 2025+ → .NET 8; konflikty zależności we wspólnym procesie.",
+    "Okno niemodalne/paleta → `doc.LockDocument()` przed modyfikacją.",
+    "Testy: logika oddzielona od API CAD (testy jednostkowe) + testy ręczne na rysunkach w obu programach."
+   ],
+   "pitfalls": [
+    "Nie mów, że API BricsCAD-a jest identyczne – „w dużym stopniu zgodne”.",
+    "Nie zgaduj wersji AutoCAD-a/BricsCAD-a i target framework – [uzupełnij].",
+    "Nie podawaj nazw klientów ani efektów liczbowych bez pewności."
+   ],
+   "say": "Rozwijałem w C#/.NET wtyczki do AutoCAD-a i BricsCAD-a, które automatyzują powtarzalną pracę projektantów – od analizy wymagań z użytkownikami po utrzymanie i optymalizację."
+  },
+  {
+   "topic": "System wizyjny AI (frontend)",
+   "points": [
+    "**09.2024 – 01.2025**, Software Interactive, **Frontend Developer**.",
+    "Aplikacja webowa systemu wizyjnego z modelami AI – monitorowanie, wykrywanie i analiza zdarzeń na hali produkcyjnej.",
+    "Rozwój w **Angularze**, widoki **konfiguracji i podglądu obszarów detekcji**, integracja z backendem.",
+    "SVG nad obrazem (`viewBox` = rozdzielczość źródła) do edycji kształtów; canvas przy tysiącach obiektów/animacji.",
+    "Współrzędne: zapisuj w pikselach źródła lub znormalizowane 0–1; x_źródło = x_ekran × (szer_źródła / szer_wyświetlana).",
+    "Częste aktualizacje: OnPush/signals, `bufferTime`/`throttleTime`, `track` po id, limit wyświetlanych zdarzeń.",
+    "Real-time (wiedza ogólna): polling → SSE → WebSocket → SignalR (fallbacki, huby, grupy)."
+   ],
+   "pitfalls": [
+    "Nie mów, że trenowałeś/tworzyłeś modele AI – byłeś frontend developerem.",
+    "Nie mów o WebSocket/SignalR w tym projekcie, jeśli ich nie było.",
+    "Nie mów, że aplikacja była zoneless/na signals, jeśli nie była."
+   ],
+   "say": "W systemie wizyjnym AI dla hali produkcyjnej odpowiadałem za frontend w Angularze – głównie widoki do konfiguracji i podglądu obszarów detekcji na obrazie z kamer."
+  },
+  {
+   "topic": "Analiza bezpieczeństwa domen",
+   "points": [
+    "**08.2024 – 09.2024**, Software Interactive, **Backend Developer** – krótki etap (nakłada się z projektem dla brokerów).",
+    "System automatyzujący analizę bezpieczeństwa domen klientów i generowanie raportów o zagrożeniach i podatnościach.",
+    "Backend w **.NET 7**, **Docker**; przetwarzanie wyników analiz; funkcje generowania raportów.",
+    "Przetwarzanie w tle: `BackgroundService` + `Channel<T>`; trwała kolejka/outbox, gdy zadania muszą przetrwać restart; scope DI w workerze; try/catch per element.",
+    "Docker: multi-stage (sdk → aspnet), cache warstw przez wcześniejsze `COPY *.csproj` + `restore`; od .NET 8 port 8080 i użytkownik nie-root.",
+    "Raporty: osobny model raportu, generowanie w tle, wynik w storage; biblioteki PDF mają różne licencje.",
+    "Wiedza domenowa (ogólna): SPF, DKIM, DMARC, TLS, nagłówki HTTP (HSTS, CSP), DNSSEC."
+   ],
+   "pitfalls": [
+    "Nie mów, że jesteś specjalistą security ani że zaprojektowałeś system.",
+    "Nie przypisuj systemowi konkretnych analiz/bibliotek, których nie znasz.",
+    "Nie ukrywaj, że projekt był krótki – powiedz to pierwszy."
+   ],
+   "say": "Przez krótki etap wspierałem backend w .NET 7 i Dockerze systemu do automatycznej analizy bezpieczeństwa domen – przetwarzanie wyników analiz i generowanie raportów."
+  },
+  {
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "points": [
+    "**01.2024 – 09.2024**, Software Interactive, **Fullstack Developer**.",
+    "System dla brokerów ubezpieczeniowych: formularze, archiwizacja danych, integracje zewnętrzne.",
+    "Backend i logika biznesowa; integracje **SharePoint, NIP24, TaxIdPro**; archiwizacja, **historia zmian**, raportowanie.",
+    "Stack: C#, **.NET Framework 4.5 i .NET 7**, **Razor Pages** – przygotuj wyjaśnienie, jak współistniały [uzupełnij].",
+    "Integracje: `IHttpClientFactory`, timeout, retry z backoffem tylko dla błędów przejściowych, circuit breaker, cache, logowanie (Polly w .NET 7; `AddStandardResilienceHandler` od .NET 8).",
+    "SharePoint: Microsoft Graph / REST / CSOM, rejestracja aplikacji w Entra ID (client credentials).",
+    "Audit: interceptor EF (kontekst: kto) vs temporal tables (kompletność) vs triggery; RODO i retencja.",
+    "Migracja (wiedza): inwentaryzacja, .NET Standard 2.0, strangler fig (YARP), Upgrade Assistant; cel dziś: .NET 8/10 LTS."
+   ],
+   "pitfalls": [
+    "Nie mów, że przeprowadziłeś migrację 4.5 → .NET 7, jeśli tylko pracowałeś w obu częściach.",
+    "Nie zgaduj, co dokładnie zwracał TaxIdPro/NIP24 ani jakiego API SharePoint używaliście – [uzupełnij].",
+    "Nie wymyślaj Polly/circuit breakera, jeśli ich nie było – mów „dziś dodałbym…”."
+   ],
+   "say": "W systemie dla brokerów ubezpieczeniowych rozwijałem backend i logikę biznesową – integracje z SharePointem, NIP24 i TaxIdPro oraz archiwizację i historię zmian danych."
+  },
+  {
+   "topic": "Formularze medyczne (PoC)",
+   "points": [
+    "**10.2023 – 12.2023**, Software Interactive, **Fullstack Developer** – **Proof of Concept**.",
+    "Aplikacja do zarządzania formularzami w placówkach medycznych.",
+    "Stack: **Angular 16**, Angular Material, RxJS, **NGXS**, HTML5, CSS/LESS/SCSS, Docker.",
+    "Komponenty i funkcjonalności formularzy, zarządzanie stanem, integracja z backendem.",
+    "NGXS: `@State` + `@Action` (async w akcji) + `@Selector`; NgRx: czyste reducery + Effects + selektory – znasz oba.",
+    "Dynamiczne formularze: definicja → fabryka `FormGroup` → renderowanie per typ; ukryte pola `disable()`; walidatory cross-field.",
+    "PoC: wąski zakres, świadome skróty, kryteria sukcesu ustalone na starcie.",
+    "Angular 16: signals w developer preview – nie mów, że były stabilne."
+   ],
+   "pitfalls": [
+    "Nie mów o wdrożeniach w placówkach – to był PoC.",
+    "Nie mów, że formularze były dynamiczne z JSON-a, jeśli były zakodowane na sztywno.",
+    "Dane medyczne: nie trzymaj ich w localStorage – rekruter może o to zahaczyć."
+   ],
+   "say": "Tworzyłem frontend Proof of Concept aplikacji do formularzy medycznych w Angularze 16 z NGXS i Angular Material – komponenty formularzy, stan i integrację z backendem."
+  },
+  {
+   "topic": "Platforma e-commerce",
+   "points": [
+    "**05.2023 – 10.2023**, Software Interactive, **Fullstack Developer**.",
+    "Platforma e-commerce: sprzedaż produktów i usług, komunikacja między użytkownikami, rezerwacja wizyt.",
+    "Stack: Angular, Material, RxJS, **NGXS**; C#, **.NET 7**, **EF + Dapper**, LINQ, **MSSQL/T-SQL**, **Azure**.",
+    "Nowe funkcje biznesowe, front i back, logika biznesowa i warstwa dostępu do danych, utrzymanie modułów.",
+    "EF do zapisów i logiki, Dapper do zapytań z pełną kontrolą SQL; wspólna transakcja przez `GetDbConnection()`/`GetDbTransaction()`.",
+    "Rezerwacje: unikalny indeks (filtrowany) + 409; atomowy UPDATE slotu; nakładanie przedziałów → blokada/SERIALIZABLE; hold z wygaśnięciem.",
+    "T-SQL: plan wykonania, SARGowalne warunki, indeksy z INCLUDE, Query Store.",
+    "Azure: wymień tylko usługi, z którymi miałeś styczność [uzupełnij]."
+   ],
+   "pitfalls": [
+    "Nie mów „Dapper, bo EF jest wolny”.",
+    "Nie mów „znam Azure” bez konkretów – określ zakres swojej styczności.",
+    "Nie podawaj liczby użytkowników/obrotów."
+   ],
+   "say": "Rozwijałem fullstackowo platformę e-commerce z rezerwacjami wizyt – Angular z NGXS na froncie, .NET 7 z EF i Dapperem na MSSQL w Azure na backendzie."
+  },
+  {
+   "topic": "Czas pracy kierowców (tachografy)",
+   "points": [
+    "**03.2023 – 05.2023**, Software Interactive, **Backend Developer** – krótki projekt.",
+    "System do analizy i rozliczania czasu pracy kierowców: dane z tachografów + dane ręczne.",
+    "Backend i logika analizy czasu pracy, **agregowanie i przetwarzanie danych**, raportowanie.",
+    "Stack: C#, **ASP.NET 6**, EF, **MSSQL + MongoDB**, **AutoMapper**, **SignalR**, React (front).",
+    "Agregacja: okresy w UTC → normalizacja/konflikty źródeł → cięcie na doby/tygodnie → sumy → reguły.",
+    "Normy UE (ogólnie): 9 h/dzień (2× 10 h), 56 h/tydz., 90 h/2 tyg., 45 min przerwy po 4,5 h jazdy.",
+    "Mongo vs SQL: kształt danych i wzorce dostępu; koszt: brak transakcji między bazami.",
+    "AutoMapper: wygoda vs ukryte mapowanie; od 2025 licencja komercyjna; alternatywy: ręcznie, Mapperly."
+   ],
+   "pitfalls": [
+    "Nie deklaruj się React developerem – byłeś backend developerem.",
+    "Nie mów, że system sprawdzał konkretne normy UE, jeśli nie wiesz.",
+    "Nie mów „Mongo jest szybsze” – zależy od danych i zapytań."
+   ],
+   "say": "W systemie do rozliczania czasu pracy kierowców rozwijałem backend w ASP.NET 6 – agregację danych z tachografów i wpisów ręcznych oraz raportowanie, na MSSQL i MongoDB."
+  },
+  {
+   "topic": "Oprogramowanie dla branży metalowej",
+   "points": [
+    "**11.2019 – 12.2022**, **Oroox LAB**, **Fullstack Developer** – najdłuższy projekt (ok. 3 lata).",
+    "Oprogramowanie dla branży metalowej – kluczowe procesy biznesowe, frontend i backend.",
+    "Angular + **NgRx** + RxJS; C#, **ASP.NET Core 3.1+**, **EF Core**, **MSSQL**; **mikroserwisy + CQRS**; **Jira, Azure DevOps**.",
+    "CQRS ≠ event sourcing ≠ dwie bazy; handlery komend/zapytań (np. MediatR – tylko jeśli było).",
+    "Mikroserwisy: własność danych, spójność ewentualna, outbox, saga, idempotencja, tracing.",
+    "NgRx: akcja → reducer (czysty) → effect (HTTP, `catchError` wewnątrz `switchMap`) → selektor.",
+    "Ewolucja .NET: 3.1 → 6 (minimal APIs) → 7 (rate limiting) → 8 LTS (keyed services) → 9 (OpenAPI) → 10 LTS.",
+    "Przygotuj 2–3 historie STAR z tego okresu [uzupełnij]."
+   ],
+   "pitfalls": [
+    "Nie dopowiadaj event sourcingu, kolejek ani API Gateway, jeśli ich nie było.",
+    "Nie krytykuj mikroserwisów jako „błędu” – mów o trade-offach.",
+    "Nie podawaj liczby serwisów/klientów bez pewności."
+   ],
+   "say": "Przez ponad trzy lata w Oroox LAB rozwijałem fullstackowo system dla branży metalowej – mikroserwisy w ASP.NET Core z CQRS i EF Core na MSSQL oraz frontend w Angularze z NgRx."
+  },
+  {
+   "topic": "Ścieżka kariery i podsumowanie",
+   "points": [
+    "Doświadczenie: **prawie 7 lat** (od 11.2019): Oroox LAB 11.2019–12.2022, Software Interactive od 03.2023.",
+    "9 projektów, wiele domen: metal, transport, e-commerce, medycyna, ubezpieczenia, security, produkcja z AI, CAD, logistyka.",
+    "Role: głównie fullstack; backend (tachografy, domeny); frontend (system wizyjny).",
+    "Mocne strony z CV: .NET od 3.1 do .NET 7+ (i Framework 4.5), Angular z NgRx i NGXS, MSSQL + MongoDB, mikroserwisy/CQRS, integracje, Docker, Azure.",
+    "„O sobie”: 30 s (kim jestem, lata, teraz WMS) → 90 s (+ Oroox, SI, 3–4 projekty) → 3 min (+ historia STAR).",
+    "Krótkie projekty = model software house'u + szybkie wejście w domeny; głębia = 3 lata w Oroox + WMS od podstaw.",
+    "Poziom: poziom + dowody + obszar rozwoju [uzupełnij].",
+    "Przygotuj: powód zmiany pracy, przerwa 12.2022–03.2023, nakładające się okresy 2024 [uzupełnij]."
+   ],
+   "pitfalls": [
+    "Krytyka obecnego pracodawcy/klientów.",
+    "„Jestem seniorem, bo mam 7 lat” – bez przykładów odpowiedzialności.",
+    "Wymienianie wszystkich 9 projektów z technologiami w „opowiedz o sobie”."
+   ],
+   "say": "Jestem fullstack developerem .NET i Angular z prawie siedmioletnim doświadczeniem w wielu domenach – obecnie buduję od podstaw system WMS."
+  }
+ ]
+}

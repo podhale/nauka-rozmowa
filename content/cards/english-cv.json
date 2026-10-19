@@ -1,0 +1,302 @@
+{
+ "cat": "english",
+ "name": "Angielski na rozmowę",
+ "cards": [
+  {
+   "id": "english-cv001",
+   "topic": "Moje projekty po angielsku",
+   "level": 1,
+   "q": "Pytanie rekrutera: Tell me about yourself. – wersja KRÓTKA (na bazie CV)",
+   "a": "I'm a full-stack developer. I work with C#, .NET and Angular. I have almost seven years of commercial experience. Right now I'm building a warehouse management system from scratch.",
+   "tr": "Jestem programistą full-stack. Pracuję z C#, .NET i Angularem. Mam prawie siedem lat doświadczenia komercyjnego. Obecnie buduję od podstaw system do zarządzania magazynem.",
+   "pron": "commercial – kemerszal; experience – ikspirijens; warehouse – łerhaus; scratch – skrecz",
+   "tip": "Cztery zdania – naucz się ich na pamięć. „From scratch” = od zera/od podstaw."
+  },
+  {
+   "id": "english-cv002",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Pytanie rekrutera: Tell me about yourself. – wersja DŁUŻSZA (na bazie CV)",
+   "a": "I'm a full-stack developer with almost seven years of experience. I use C# and .NET on the back end and Angular on the front end. I started at Oroox LAB in 2019. For three years, I worked on software for the metal industry. It used microservices and CQRS. In 2023, I joined Software Interactive. There I worked on many projects: e-commerce, insurance, medical forms, an AI vision system and CAD plugins. Now I'm building a warehouse system from scratch. [add: what you are looking for]",
+   "tr": "Jestem programistą full-stack z prawie siedmioletnim doświadczeniem. Na backendzie używam C# i .NET, a na frontendzie Angulara. Zaczynałem w Oroox LAB w 2019 roku. Przez trzy lata pracowałem nad oprogramowaniem dla branży metalowej. Używało mikroserwisów i CQRS. W 2023 roku dołączyłem do Software Interactive. Tam pracowałem przy wielu projektach: e-commerce, ubezpieczenia, formularze medyczne, system wizyjny AI i wtyczki CAD. Teraz buduję od podstaw system magazynowy. [dodaj: czego szukasz]",
+   "pron": "industry – indastri; microservices – majkroserwisiz; insurance – inszurens; plugins – plaginz",
+   "tip": "Na końcu dodaj jedno zdanie, czego szukasz, np. „I'm looking for a product company and a bigger impact on architecture.” Nie wymieniaj technologii każdego projektu – rekruter dopyta."
+  },
+  {
+   "id": "english-cv003",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Jak opisać projekt WMS (2–4 proste zdania)?",
+   "a": "Right now I'm building a warehouse management system, a WMS. We started it from scratch. I write the business logic in C# and .NET, and the front end in Angular. The system supports processes like receiving, stock management and shipping. [add: which modules you built]",
+   "tr": "Obecnie buduję system do zarządzania magazynem, WMS. Zaczęliśmy go od zera. Piszę logikę biznesową w C# i .NET, a frontend w Angularze. System obsługuje procesy takie jak przyjęcie towaru, zarządzanie stanami i wydanie. [dodaj: które moduły zbudowałeś]",
+   "pron": "warehouse – łerhaus; receiving – risiwing; shipping – szyping; stock – stok",
+   "tip": "Zmień listę procesów na te, które naprawdę są w systemie. „Stock” = stan magazynowy (nie „magazine”!)."
+  },
+  {
+   "id": "english-cv004",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Jak opisać projekt wtyczek AutoCAD/BricsCAD?",
+   "a": "I developed plugins for AutoCAD and BricsCAD. They automate repetitive tasks for architects and designers. I wrote them in C# and .NET. I added new features, maintained old plugins and talked with users about their needs.",
+   "tr": "Tworzyłem wtyczki do AutoCAD-a i BricsCAD-a. Automatyzują powtarzalne zadania architektów i projektantów. Pisałem je w C# i .NET. Dodawałem nowe funkcje, utrzymywałem stare wtyczki i rozmawiałem z użytkownikami o ich potrzebach.",
+   "pron": "repetitive – ripetytyw; architects – arkitekts; designers – dizajners; maintained – mejntejnd",
+   "tip": "„Repetitive tasks” = powtarzalne czynności – warto to słowo przećwiczyć."
+  },
+  {
+   "id": "english-cv005",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Jak opisać projekt systemu wizyjnego AI?",
+   "a": "I was a front-end developer in an AI vision system. The system monitors a production hall and detects events. I built Angular views to configure and preview detection areas on camera images. The AI models were on the back end, not my part.",
+   "tr": "Byłem frontend developerem w systemie wizyjnym AI. System monitoruje halę produkcyjną i wykrywa zdarzenia. Budowałem widoki w Angularze do konfiguracji i podglądu obszarów detekcji na obrazach z kamer. Modele AI były na backendzie, to nie była moja część.",
+   "pron": "vision – wiżyn; detection – ditekszyn; areas – eriaz; preview – priwju",
+   "tip": "Ostatnie zdanie jest ważne – jasno oddziela Twoją rolę od modeli AI."
+  },
+  {
+   "id": "english-cv006",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Jak opisać projekt analizy bezpieczeństwa domen?",
+   "a": "For a short time, I worked as a back-end developer on a security system. It analyzes the security of client domains and creates reports. I worked on processing analysis results and on report generation. We used .NET 7 and Docker.",
+   "tr": "Przez krótki czas pracowałem jako backend developer przy systemie bezpieczeństwa. Analizuje on bezpieczeństwo domen klientów i tworzy raporty. Pracowałem nad przetwarzaniem wyników analiz i generowaniem raportów. Używaliśmy .NET 7 i Dockera.",
+   "pron": "security – sikjuriti; analyzes – enalajzyz; generation – dżenerejszyn",
+   "tip": "„For a short time” od razu mówi, że to był krótki etap – uczciwie i bez tłumaczenia się."
+  },
+  {
+   "id": "english-cv007",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Jak opisać system dla brokerów ubezpieczeniowych?",
+   "a": "I worked on a system for insurance brokers. It handles forms, archives data and connects to external systems. I developed the back end and the business logic. I built integrations with SharePoint, NIP24 and TaxIdPro. I also worked on change history and reports.",
+   "tr": "Pracowałem nad systemem dla brokerów ubezpieczeniowych. Obsługuje formularze, archiwizuje dane i łączy się z zewnętrznymi systemami. Rozwijałem backend i logikę biznesową. Zbudowałem integracje z SharePointem, NIP24 i TaxIdPro. Pracowałem też nad historią zmian i raportami.",
+   "pron": "insurance – inszurens; brokers – brokers; archives – arkajwz; integrations – integrejszyns",
+   "tip": "Jeśli rekruter nie zna NIP24: „It's a Polish service for company data.” [sprawdź, czy to dobry opis]."
+  },
+  {
+   "id": "english-cv008",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Jak opisać PoC formularzy medycznych?",
+   "a": "I built a proof of concept for medical facilities. It was an app to manage medical forms. I worked on the Angular front end, with Angular Material and NGXS for state. It was a short project, about three months.",
+   "tr": "Zbudowałem proof of concept dla placówek medycznych. To była aplikacja do zarządzania formularzami medycznymi. Pracowałem nad frontendem w Angularze, z Angular Material i NGXS do zarządzania stanem. To był krótki projekt, około trzech miesięcy.",
+   "pron": "facilities – fesilitis; medical – medikal; concept – konsept; state – stejt",
+   "tip": "„Proof of concept” mów w całości lub „PoC” (pi-ou-si). Nie mów „implementation in hospitals” – to był PoC."
+  },
+  {
+   "id": "english-cv009",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Jak opisać platformę e-commerce?",
+   "a": "I worked on an e-commerce platform. Users can sell products and services, send messages and book appointments. I worked on both the Angular front end and the .NET back end. We used Entity Framework, Dapper and SQL Server, and the app ran on Azure.",
+   "tr": "Pracowałem nad platformą e-commerce. Użytkownicy mogą sprzedawać produkty i usługi, wysyłać wiadomości i rezerwować wizyty. Pracowałem zarówno nad frontendem w Angularze, jak i backendem w .NET. Używaliśmy Entity Framework, Dappera i SQL Servera, a aplikacja działała w Azure.",
+   "pron": "appointments – apojntments; platform – platform; Azure – eżer; Entity – entiti",
+   "tip": "„Book an appointment” = zarezerwować wizytę. „Reserve a visit” brzmi nienaturalnie."
+  },
+  {
+   "id": "english-cv010",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Jak opisać system czasu pracy kierowców (tachografy)?",
+   "a": "I was a back-end developer in a system for drivers' working time. It uses data from tachographs and data entered by hand. I worked on data aggregation, business logic and reports. The stack was ASP.NET 6, SQL Server, MongoDB and SignalR.",
+   "tr": "Byłem backend developerem w systemie do czasu pracy kierowców. Używa danych z tachografów i danych wprowadzanych ręcznie. Pracowałem nad agregacją danych, logiką biznesową i raportami. Stack to ASP.NET 6, SQL Server, MongoDB i SignalR.",
+   "pron": "tachographs – takografs; aggregation – egrigejszyn; drivers' – drajwerz",
+   "tip": "„Working time” = czas pracy. „Entered by hand” = wprowadzane ręcznie (prościej niż „manually entered”)."
+  },
+  {
+   "id": "english-cv011",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Jak opisać projekt dla branży metalowej?",
+   "a": "At Oroox LAB, I worked for three years on software for the metal industry. It was a microservices system with CQRS. I built Angular screens with NgRx and back-end features in ASP.NET Core with Entity Framework Core. I also optimized the SQL Server database.",
+   "tr": "W Oroox LAB przez trzy lata pracowałem nad oprogramowaniem dla branży metalowej. To był system mikroserwisowy z CQRS. Budowałem ekrany w Angularze z NgRx i funkcje backendowe w ASP.NET Core z Entity Framework Core. Optymalizowałem też bazę SQL Server.",
+   "pron": "metal – metl; optimized – optimajzd; database – dejtabejs; CQRS – si-kju-ar-es",
+   "tip": "To Twój najdłuższy projekt – miej gotowe jedno dodatkowe zdanie o efekcie [add: one result]."
+  },
+  {
+   "id": "english-cv012",
+   "topic": "Moje projekty po angielsku",
+   "level": 1,
+   "q": "Jak powiedzieć: „Byłem odpowiedzialny za backend i logikę biznesową.”",
+   "a": "I was responsible for the back end and the business logic.",
+   "tr": "Byłem odpowiedzialny za backend i logikę biznesową.",
+   "pron": "responsible – rispązybl; business – biznys; logic – lodżik",
+   "tip": "Po „responsible” zawsze „for”. Wersja w teraźniejszości: „I'm responsible for…”."
+  },
+  {
+   "id": "english-cv013",
+   "topic": "Moje projekty po angielsku",
+   "level": 1,
+   "q": "Jak opisać swoją rolę w WMS (fullstack)?",
+   "a": "In this project, I'm a full-stack developer. I write the back end in .NET and the front end in Angular. I also connect them through the API. I work with the team on new modules.",
+   "tr": "W tym projekcie jestem programistą full-stack. Piszę backend w .NET i frontend w Angularze. Łączę je też przez API. Pracuję z zespołem nad nowymi modułami.",
+   "pron": "modules – modżuls; API – ej-pi-aj",
+   "tip": "Przy obecnym projekcie używaj Present Simple (I write, I work), przy starych – Past Simple (I wrote, I worked)."
+  },
+  {
+   "id": "english-cv014",
+   "topic": "Moje projekty po angielsku",
+   "level": 1,
+   "q": "Pytanie rekrutera: What technologies do you use?",
+   "a": "On the back end, I use C#, .NET, Entity Framework and SQL Server. On the front end, I use Angular, TypeScript and RxJS. I also know NgRx and NGXS for state management. I have some experience with Docker, Azure and MongoDB.",
+   "tr": "Na backendzie używam C#, .NET, Entity Framework i SQL Servera. Na frontendzie używam Angulara, TypeScriptu i RxJS. Znam też NgRx i NGXS do zarządzania stanem. Mam trochę doświadczenia z Dockerem, Azure i MongoDB.",
+   "pron": "RxJS – ar-iks-dżej-es; management – menedżment; TypeScript – tajpskript",
+   "tip": "„Some experience” = uczciwie, że nie jesteś ekspertem. Nie mów „I know everything about Azure”."
+  },
+  {
+   "id": "english-cv015",
+   "topic": "Moje projekty po angielsku",
+   "level": 3,
+   "q": "Opowiedz jedno wyzwanie: współbieżność w WMS (dopasuj do prawdy)",
+   "a": "One challenge was stock consistency. [If true: two users reserved the same product at the same time.] We used optimistic concurrency with a row version. When there is a conflict, the system reloads data and tries again. [add: result]",
+   "tr": "Jednym wyzwaniem była spójność stanów magazynowych. [Jeśli prawda: dwóch użytkowników rezerwowało ten sam produkt w tym samym czasie.] Użyliśmy optimistic concurrency z wersją wiersza. Gdy jest konflikt, system przeładowuje dane i próbuje ponownie. [dodaj: efekt]",
+   "pron": "consistency – konsystensi; concurrency – konkarensi; conflict – konflikt",
+   "tip": "Używaj tylko, jeśli to naprawdę było wyzwanie w WMS. Słowo „consistency” = spójność."
+  },
+  {
+   "id": "english-cv016",
+   "topic": "Moje projekty po angielsku",
+   "level": 3,
+   "q": "Opowiedz jedno wyzwanie: dwa programy CAD (dopasuj do prawdy)",
+   "a": "One challenge was supporting two programs, AutoCAD and BricsCAD. Their .NET APIs are very similar, but not the same. [If true: we kept shared logic in one place and small adapters for each program.] We tested every feature in both programs.",
+   "tr": "Jednym wyzwaniem było wspieranie dwóch programów, AutoCAD-a i BricsCAD-a. Ich API w .NET są bardzo podobne, ale nie takie same. [Jeśli prawda: wspólną logikę trzymaliśmy w jednym miejscu, a małe adaptery dla każdego programu.] Testowaliśmy każdą funkcję w obu programach.",
+   "pron": "similar – similer; adapters – adapters; supporting – sapołting",
+   "tip": "„Similar, but not the same” – proste i bezpieczne sformułowanie."
+  },
+  {
+   "id": "english-cv017",
+   "topic": "Moje projekty po angielsku",
+   "level": 3,
+   "q": "Opowiedz jedno wyzwanie: integracje z zewnętrznymi API (dopasuj do prawdy)",
+   "a": "In the insurance project, external APIs were sometimes slow or down. [If true: I added timeouts and retries for temporary errors.] An error in the integration did not block the user. The user could still save the form.",
+   "tr": "W projekcie ubezpieczeniowym zewnętrzne API były czasem wolne lub niedostępne. [Jeśli prawda: dodałem timeouty i ponowienia dla błędów tymczasowych.] Błąd w integracji nie blokował użytkownika. Użytkownik nadal mógł zapisać formularz.",
+   "pron": "external – iksternal; temporary – temporeri; retries – ritrajz",
+   "tip": "„Down” = niedziałający (o serwisie). „Retries” = ponowienia."
+  },
+  {
+   "id": "english-cv018",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Pytanie rekrutera: You changed projects often. Why?",
+   "a": "Software Interactive is a software house. We work on projects for different clients. So I moved to new projects when the company needed me there. This helped me learn new domains fast. I also worked for three years on one product at Oroox LAB.",
+   "tr": "Software Interactive to software house. Pracujemy nad projektami dla różnych klientów. Dlatego przechodziłem do nowych projektów, gdy firma mnie tam potrzebowała. To pomogło mi szybko uczyć się nowych domen. Pracowałem też przez trzy lata nad jednym produktem w Oroox LAB.",
+   "pron": "domains – domejnz; clients – klajents; product – prodakt",
+   "tip": "Mów spokojnie, bez tłumaczenia się. Dopasuj zdanie 3 do prawdy [add: real reason]."
+  },
+  {
+   "id": "english-cv019",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Pytanie rekrutera: Are you a mid or a senior developer?",
+   "a": "I think I'm a strong mid-level developer. [or: I'm moving to a senior level.] I deliver features end to end on my own. I learn new code and new domains quickly. I want to grow in architecture and in [add: area].",
+   "tr": "Myślę, że jestem mocnym programistą na poziomie mid. [lub: Wchodzę na poziom senior.] Samodzielnie dowożę funkcje od początku do końca. Szybko uczę się nowego kodu i nowych domen. Chcę się rozwijać w architekturze i w [dodaj: obszar].",
+   "pron": "deliver – diliwer; features – ficzers; architecture – arkitekczer",
+   "tip": "Wybierz jedną wersję zgodną z ofertą i swoją oceną. „End to end” = od bazy do UI."
+  },
+  {
+   "id": "english-cv020",
+   "topic": "Moje projekty po angielsku",
+   "level": 3,
+   "q": "Pytanie rekrutera: What would you do differently today?",
+   "a": "In my older projects, I would write more automated tests earlier. [If true: in the CAD plugins, I would separate the logic from the CAD API.] This makes testing much easier. I would also agree on API contracts earlier with other teams.",
+   "tr": "W moich starszych projektach wcześniej pisałbym więcej testów automatycznych. [Jeśli prawda: we wtyczkach CAD oddzieliłbym logikę od API CAD-a.] To bardzo ułatwia testowanie. Wcześniej ustalałbym też kontrakty API z innymi zespołami.",
+   "pron": "automated – otomejtyd; separate – sepereit; contracts – kontrakts",
+   "tip": "Konstrukcja „I would + czasownik” = zrobiłbym. Nie krytykuj nikogo – mów o lekcjach."
+  },
+  {
+   "id": "english-cv021",
+   "topic": "Moje projekty po angielsku",
+   "level": 1,
+   "q": "Pytanie rekrutera: Why are you looking for a new job?",
+   "a": "I learned a lot in my current company. Now I'm looking for [add: e.g. a long-term product and more impact on architecture]. Your offer fits this well.",
+   "tr": "Dużo się nauczyłem w obecnej firmie. Teraz szukam [dodaj: np. długoterminowego produktu i większego wpływu na architekturę]. Wasza oferta dobrze do tego pasuje.",
+   "pron": "impact – impakt; offer – ofer; long-term – long-term",
+   "tip": "Nigdy nie krytykuj obecnej firmy. „Fits this well” = dobrze do tego pasuje."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "english-cvq001",
+   "topic": "Moje projekty po angielsku",
+   "level": 1,
+   "q": "Chcesz powiedzieć: „Zbudowałem ten system od zera.” Które zdanie jest poprawne?",
+   "options": [
+    "I built this system from zero.",
+    "I built this system from scratch.",
+    "I have built this system from the null.",
+    "I builded this system from start."
+   ],
+   "correct": 1,
+   "why": "Naturalny zwrot to „from scratch”. „From zero” to kalka z polskiego, „builded” nie istnieje (build – built – built)."
+  },
+  {
+   "id": "english-cvq002",
+   "topic": "Moje projekty po angielsku",
+   "level": 1,
+   "q": "Jak powiedzieć „stan magazynowy” po angielsku?",
+   "options": [
+    "magazine state",
+    "warehouse condition",
+    "stock level",
+    "store status"
+   ],
+   "correct": 2,
+   "why": "„Stock” / „stock level” = stan magazynowy. „Magazine” to czasopismo (false friend!), „warehouse” to magazyn jako budynek."
+  },
+  {
+   "id": "english-cvq003",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Opisujesz projekt, który już się zakończył (np. e-commerce 2023). Który czas jest poprawny?",
+   "options": [
+    "I work on an e-commerce platform in 2023.",
+    "I have worked on an e-commerce platform in 2023.",
+    "I am working on an e-commerce platform in 2023.",
+    "I worked on an e-commerce platform in 2023."
+   ],
+   "correct": 3,
+   "why": "Zakończona przeszłość z konkretną datą → Past Simple. Present Perfect nie łączy się z „in 2023”."
+  },
+  {
+   "id": "english-cvq004",
+   "topic": "Moje projekty po angielsku",
+   "level": 1,
+   "q": "Chcesz powiedzieć „Byłem odpowiedzialny za integracje”. Które zdanie jest poprawne?",
+   "options": [
+    "I was responsible for integrations.",
+    "I was responsible of integrations.",
+    "I was responsible about integrations.",
+    "I responsible for integrations."
+   ],
+   "correct": 0,
+   "why": "„Responsible FOR”. „Of/about” to typowy błąd; w ostatnim brakuje „was”."
+  },
+  {
+   "id": "english-cvq005",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Jak powiedzieć „zarezerwować wizytę” na platformie e-commerce?",
+   "options": [
+    "reserve a visit",
+    "book an appointment",
+    "make a visitation",
+    "order a meeting point"
+   ],
+   "correct": 1,
+   "why": "„Book an appointment” to naturalny zwrot. „Visitation” ma inne znaczenie (np. odwiedziny, kontrola)."
+  },
+  {
+   "id": "english-cvq006",
+   "topic": "Moje projekty po angielsku",
+   "level": 2,
+   "q": "Rekruter pyta o modele AI w systemie wizyjnym, a Ty robiłeś tylko frontend. Która odpowiedź jest najlepsza?",
+   "options": [
+    "I trained the AI models.",
+    "I don't know anything.",
+    "The AI models were on the back end. I built the Angular views for detection areas.",
+    "It is a secret."
+   ],
+   "correct": 2,
+   "why": "Jasno określ swoją rolę – prawda i konkret. Zmyślanie wyjdzie przy pierwszym dopytaniu."
+  }
+ ]
+}

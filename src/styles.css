@@ -287,3 +287,11 @@ mark{background:color-mix(in srgb, var(--warn) 30%, transparent);color:inherit;b
 /* --- pagination --- */
 .show-more{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-top:14px}
 .more-row{justify-content:center!important;color:var(--accent);font-weight:600;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;font:inherit;cursor:pointer}
+
+/* --- lesson reader (TTS) --- */
+.reader{position:sticky;top:calc(env(safe-area-inset-top,0px) + 62px);z-index:4;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--bg);padding-block:6px}
+.reader .btn{min-height:42px;padding:8px 14px}
+.reader .rate{display:flex;align-items:center;gap:6px;font-size:.85rem;color:var(--muted)}
+.reader .rate select{padding:6px 8px}
+.reader-pos{font-size:.85rem}
+.lesson-sec.reading,.takeaways.reading{box-shadow:-4px 0 0 var(--accent);border-radius:4px;background:color-mix(in srgb, var(--accent-soft) 45%, transparent);padding-left:10px;margin-left:-10px}

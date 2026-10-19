@@ -1,0 +1,34 @@
+{
+  "cat": "signals",
+  "name": "Angular Signals",
+  "cards": [
+    {
+      "id": "signals-a001",
+      "topic": "Lifecycle a sygnały",
+      "level": 2,
+      "q": "Czy w aplikacji opartej na sygnałach nadal potrzebujemy lifecycle hooks?",
+      "a": "W dużej mierze nie. `ngOnChanges` zastępuje `computed()` z signal inputów (albo `linkedSignal`, gdy stan lokalny ma się resetować przy zmianie inputu). `ngAfterViewInit` dla zapytań zastępuje `viewChild()`, który sam jest sygnałem. Sprzątanie robi `DestroyRef`/`takeUntilDestroyed`, a efekt ma `onCleanup`. Kod operujący na DOM po renderze trafia do `afterNextRender`/`afterRenderEffect`. Zostaje `ngOnInit` – nadal poprawne miejsce na jednorazowy start, bo dopiero tam inputy mają wartości; w konstruktorze odczyt `input.required()` rzuca błąd. Wiele zespołów pisze komponenty, które nie mają ani jednego hooka.",
+      "code": "export class OrderComponent {\n  id = input.required<number>();\n  // zamiast ngOnChanges:\n  title = computed(() => `Zamówienie #${this.id()}`);\n  // zamiast ngAfterViewInit:\n  chart = viewChild<ElementRef>('chart');\n  constructor() {\n    afterNextRender(() => initChart(this.chart()!.nativeElement));\n    inject(DestroyRef).onDestroy(() => disposeChart());\n  }\n}",
+      "lang": "typescript",
+      "deep": "Hooki nie są deprecated – to nadal oficjalne API i w kodzie mieszanym (dekoratory + sygnały) są potrzebne. Różnica jest koncepcyjna: hooki to model „wywołaj mnie w danym momencie cyklu”, sygnały to model „przelicz, gdy zmieni się zależność”, więc logika przestaje zależeć od kolejności faz. Pułapka: zastępowanie ngOnChanges efektem, który ustawia inny sygnał – to anty-wzorzec, właściwe narzędzie to computed/linkedSignal. Druga pułapka: czytanie inputów w konstruktorze (NG0950 dla required) albo w polach inicjalizowanych przy tworzeniu klasy poza computed. W zoneless hooki nadal działają tak samo, bo są wywoływane przez change detection, a nie przez zone.js."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "signals-aq001",
+      "topic": "Lifecycle a sygnały",
+      "level": 2,
+      "q": "Co się stanie przy tworzeniu tego komponentu (rodzic przekazuje `[userId]=\"5\"`)?",
+      "code": "export class ProfileComponent {\n  userId = input.required<number>();\n  url = `/api/users/${this.userId()}`;\n}",
+      "lang": "typescript",
+      "options": [
+        "url będzie równe '/api/users/5'",
+        "url będzie równe '/api/users/undefined', a później się zaktualizuje",
+        "Angular rzuci błąd, bo required input jest czytany, zanim rodzic ustawi wartość",
+        "Kompilator TypeScript odrzuci kod, bo input nie może być wywołany w inicjalizatorze pola"
+      ],
+      "correct": 2,
+      "why": "Inicjalizatory pól wykonują się w konstruktorze, zanim Angular ustawi inputy. Odczyt input.required() w tym momencie rzuca błąd NG0950. Rozwiązanie: url = computed(() => `/api/users/${this.userId()}`). TypeScript nie ma o tym wiedzy – to błąd runtime."
+    }
+  ]
+}

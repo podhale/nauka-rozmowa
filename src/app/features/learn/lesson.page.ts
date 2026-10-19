@@ -6,13 +6,13 @@ import { ProgressStore } from '../../core/progress.store';
 import { SessionService } from '../../core/session.service';
 import { UiStateService } from '../../core/ui-state.service';
 import { AskClaude } from '../../shared/ai-answer';
-import { SpeakButton } from '../../shared/speak';
+import { LessonReader } from '../../shared/lesson-reader';
 import { CatTag, CodeBlock, LevelBadge, MarkdownPipe, RichPipe } from '../../shared/ui';
 
 /** /nauka/:id — the lesson reader (route param bound as input). */
 @Component({
   selector: 'app-lesson-page',
-  imports: [RouterLink, CatTag, CodeBlock, LevelBadge, MarkdownPipe, RichPipe, SpeakButton, AskClaude],
+  imports: [RouterLink, CatTag, CodeBlock, LevelBadge, MarkdownPipe, RichPipe, LessonReader, AskClaude],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './lesson.page.html',
 })

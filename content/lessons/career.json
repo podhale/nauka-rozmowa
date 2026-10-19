@@ -75,7 +75,7 @@
           "id": "career-ai-e2",
           "q": "Czat „pamięta” wcześniejsze wiadomości w rozmowie. Jak to technicznie działa?",
           "options": [
-            "Model douczą się po każdej wiadomości",
+            "Model jest douczany po każdej wiadomości",
             "Model przechowuje rozmowy w swojej bazie wektorowej",
             "Aplikacja wysyła przy każdym zapytaniu historię rozmowy w kontekście",
             "Pamięć jest zapisywana w wagach modelu przez dostawcę"

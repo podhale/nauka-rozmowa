@@ -13,18 +13,18 @@
       </div>
       <h1 class="lesson-h1">{{ l.title }}</h1>
       <p class="lead" [innerHTML]="l.intro | rich"></p>
-      <app-speak [text]="plainText()" lang="pl-PL" label="Czytaj na głos" [rate]="1" />
+      <app-lesson-reader [lesson]="l" />
     </header>
 
-    @for (s of l.sections; track $index) {
-      <section class="lesson-sec">
+    @for (s of l.sections; track $index; let i = $index) {
+      <section class="lesson-sec" [id]="'sec-' + i">
         <h2>{{ s.h }}</h2>
         <div class="prose" [innerHTML]="s.text | markdown"></div>
         <app-code [code]="s.code" [lang]="s.lang" />
       </section>
     }
 
-    <section class="card takeaways">
+    <section class="card takeaways" [id]="'sec-' + l.sections.length">
       <h2>Najważniejsze do zapamiętania</h2>
       <ul>@for (t of l.takeaways; track $index) { <li [innerHTML]="t | rich"></li> }</ul>
     </section>

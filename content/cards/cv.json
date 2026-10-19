@@ -1,0 +1,1110 @@
+{
+ "cat": "cv",
+ "name": "Moje projekty (CV)",
+ "cards": [
+  {
+   "id": "cv-001",
+   "topic": "WMS (system magazynowy)",
+   "level": 2,
+   "q": "Opowiedz o projekcie WMS (wzorcowa odpowiedź 60–90 s).",
+   "a": "„Obecnie, od października 2025, w Software Interactive tworzę od podstaw system WMS – czyli system do zarządzania procesami magazynowymi. Biznesowo chodzi o to, żeby [uzupełnij: dla kogo – np. klient z branży …, ile magazynów / użytkowników] miał pod kontrolą przyjęcia, rozlokowanie towaru, stany i wydania. Architektonicznie to backend w .NET i C#, gdzie siedzi logika biznesowa, oraz frontend w Angularze, który z nim integruję [uzupełnij: np. REST API, baza – np. SQL Server, EF Core – jeśli tak]. Jestem fullstackiem: piszę logikę biznesową i endpointy, a po drugiej stronie projektuję i rozwijam widoki w Angularze; razem z zespołem [uzupełnij: ile osób] wdrażamy kolejne moduły. Ciekawe wyzwanie to [np. jeśli tak było: spójność stanów magazynowych, gdy kilku operatorów jednocześnie rezerwuje ten sam towar – rozwiązaliśmy to optimistic concurrency i atomowymi operacjami na stanie]. W CV mam też optymalizację wydajności – [uzupełnij: co konkretnie, np. paginacja po stronie serwera dla dużych list, projekcje w zapytaniach]. Efekt: [uzupełnij: np. które moduły już działają, czy system jest na produkcji].”",
+   "tip": "Struktura: kontekst biznesowy → architektura → moja rola → wyzwanie → efekt. Nie podawaj liczb (magazynów, SKU, użytkowników), których nie znasz – lepiej „średniej wielkości magazyn, dokładnych liczb nie podam z pamięci” niż zmyślona liczba, o którą rekruter dopyta. Podkreśl „od podstaw” – to rzadkie i cenne."
+  },
+  {
+   "id": "cv-002",
+   "topic": "WMS (system magazynowy)",
+   "level": 2,
+   "q": "WMS: Jaka była (jest) architektura systemu?",
+   "a": "„To aplikacja webowa: frontend SPA w Angularze i backend w .NET, komunikujące się przez [uzupełnij: np. REST API z JSON-em]. Backend dzielimy na [uzupełnij: np. moduły domenowe – przyjęcia, lokalizacje, stany, wydania – w ramach modularnego monolitu albo warstwy API / logika / dostęp do danych]. Dane trzymamy w [uzupełnij: np. SQL Server przez EF Core]. Ponieważ budujemy od zera, kluczowe decyzje to model danych stanów i ruchów magazynowych oraz to, gdzie żyje logika biznesowa – u nas [uzupełnij: np. w warstwie domeny/serwisów, nie w kontrolerach]. Na froncie [uzupełnij: np. moduły/feature'y per obszar magazynu, wspólne komponenty list i formularzy].”",
+   "tip": "Jeśli nie decydowałeś o architekturze, powiedz to wprost: „architekturę zaproponował [lead], ja rozwijałem moduły X i Y i miałem wpływ na …”. Przygotuj się na follow-up: „dlaczego monolit, a nie mikroserwisy?” – przy budowie od zera modularny monolit to rozsądny, łatwy do obrony wybór."
+  },
+  {
+   "id": "cv-003",
+   "topic": "WMS (system magazynowy)",
+   "level": 2,
+   "q": "WMS: Jakie było największe wyzwanie techniczne?",
+   "a": "Wzorzec (wybierz to, co było prawdą): „Największym wyzwaniem było [np. zapewnienie poprawnych stanów magazynowych przy równoległych operacjach]. Problem: [np. dwóch operatorów kompletuje zamówienia z tej samej lokalizacji i obaj widzą ten sam dostępny towar]. Rozwiązanie: [np. stan i rezerwacje zmieniamy jednym atomowym poleceniem albo z kontrolą wersji wiersza (optimistic concurrency); przy konflikcie operacja jest ponawiana lub użytkownik dostaje czytelny komunikat]. Efekt: [uzupełnij: np. brak ujemnych stanów / rozjazdów, testy na równoległe żądania].”\n\nInne wiarygodne kandydaty na wyzwanie w WMS (tylko jeśli były prawdziwe): wydajność dużych list i filtrów, modelowanie statusów dokumentów (maszyna stanów), obsługa partii/dat ważności, jednostki miary i przeliczniki.",
+   "tip": "Rekruter dopyta o szczegóły („jak dokładnie?”, „co by się stało, gdyby…”). Wybierz wyzwanie, które naprawdę rozwiązywałeś Ty, i umiej narysować je na kartce."
+  },
+  {
+   "id": "cv-004",
+   "topic": "WMS (system magazynowy)",
+   "level": 2,
+   "q": "WMS: Co byś dziś zrobił inaczej?",
+   "a": "„Projekt wciąż trwa, więc mówię raczej o tym, co poprawiłbym albo czego się nauczyłem. [np. jeśli tak było: wcześniej wprowadziłbym testy integracyjne na krytycznych operacjach stanowych, bo to tam błędy są najdroższe]. [np. jeśli tak było: od początku zapisywałbym każdy ruch magazynowy jako osobny rekord (ledger), a stan liczył/aktualizował z ruchów – łatwiej wtedy wyjaśnić, skąd wziął się dany stan]. [np.: wcześniej ustalilibyśmy z biznesem słownik pojęć – lokalizacja, nośnik, rezerwacja – bo różne rozumienie słów kosztowało nas poprawki].”",
+   "tip": "Dobra odpowiedź = konkretna lekcja + dlaczego + co zmieniłeś od tego czasu. Nie krytykuj zespołu ani klienta; mów „my” o decyzjach, „ja” o swoich wnioskach."
+  },
+  {
+   "id": "cv-005",
+   "topic": "WMS (system magazynowy)",
+   "level": 1,
+   "q": "Jakie procesy obsługuje typowy WMS? (rekruter sprawdza, czy rozumiesz domenę)",
+   "a": "Typowy WMS obsługuje: przyjęcie towaru (awizacja, przyjęcie na rampie, kontrola ilości/jakości), rozlokowanie (put-away) do lokalizacji, zarządzanie stanami i lokalizacjami (regały, strefy, nośniki/palety), kompletację (picking) zamówień, pakowanie i wydanie (wysyłka), przesunięcia międzymagazynowe i inwentaryzację. Często dochodzą partie, numery seryjne, daty ważności (FIFO/FEFO) i integracja z ERP. Na rozmowie dodaj: „U nas zaimplementowane są [uzupełnij: które z tych procesów], ja pracowałem głównie przy [uzupełnij].”",
+   "tip": "Rekruter nie oczekuje wiedzy logistyka, ale chce usłyszeć, że rozumiesz, PO CO jest system. Dwa–trzy pojęcia domenowe (put-away, picking, FEFO) robią dobre wrażenie."
+  },
+  {
+   "id": "cv-006",
+   "topic": "WMS (system magazynowy)",
+   "level": 3,
+   "q": "Jak zamodelować stany magazynowe w bazie danych?",
+   "a": "Sprawdzony model ma dwa poziomy: (1) ruchy magazynowe – niemutowalne zapisy „ile, czego, skąd, dokąd, kiedy, na podstawie jakiego dokumentu” (przyjęcie, wydanie, przesunięcie, korekta); (2) stan bieżący – tabela agregatu np. (produkt, lokalizacja, partia) → ilość fizyczna, ilość zarezerwowana, a dostępna = fizyczna − zarezerwowana. Stan aktualizujemy w tej samej transakcji co zapis ruchu, więc szybko go czytamy, a z ruchów zawsze odtworzymy historię i wyjaśnimy rozbieżność. Ilości trzymamy jako decimal w jednostce bazowej, a przeliczniki jednostek osobno. Powiązanie z projektem: „U nas [uzupełnij: jak to wygląda w Waszym WMS – czy jest osobna tabela ruchów, rezerwacje, partie].”",
+   "tip": "Nie mów, że WMS ma event sourcing / CQRS, jeśli tego nie ma. Model ledger + snapshot możesz przedstawić jako „tak bym to zrobił / tak to mniej więcej działa u nas [dopasuj]”.",
+   "deep": "Trade-offy: sam stan bez ruchów jest prosty, ale nie da się audytować ani odtworzyć historii; same ruchy (liczenie stanu SUM-em) są audytowalne, ale wolne przy dużej skali – stąd hybryda ledger + snapshot. Rezerwacja to osobny byt (zamówienie → pozycja → rezerwacja na konkretną lokalizację/partię albo tylko na produkt), bo przy kompletacji może się zmienić lokalizacja. Constrainty w bazie (CHECK ilość >= 0, unikalny klucz produkt+lokalizacja+partia) to ostatnia linia obrony przed błędami w kodzie. Inwentaryzacja to ruch korygujący, a nie nadpisanie stanu – inaczej gubimy ślad. Przy bardzo dużym ruchu (tysiące operacji/min na jednym SKU) gorące wiersze stają się wąskim gardłem – wtedy rozważa się krótkie transakcje, kolejkowanie operacji per lokalizacja albo rozbicie stanu. Event sourcing to naturalne rozszerzenie modelu ruchów, ale dodaje złożoność (projekcje, wersjonowanie zdarzeń) – w typowym WMS ledger w relacyjnej bazie wystarcza."
+  },
+  {
+   "id": "cv-007",
+   "topic": "WMS (system magazynowy)",
+   "level": 3,
+   "q": "Jak obsłużyć współbieżność przy rezerwacji tego samego towaru przez dwóch użytkowników?",
+   "a": "Problem to klasyczny lost update / overselling: dwa żądania czytają „dostępne 10”, każde rezerwuje 8. Rozwiązania: (1) atomowa aktualizacja warunkowa w bazie – `UPDATE … SET Reserved = Reserved + @q WHERE … AND OnHand - Reserved >= @q` i sprawdzenie liczby zmienionych wierszy; (2) optimistic concurrency – kolumna rowversion jako concurrency token w EF Core; przy konflikcie `DbUpdateConcurrencyException`, przeładowanie danych i ponowienie (z limitem prób) albo komunikat dla użytkownika; (3) pessimistic locking (np. `UPDLOCK` w SQL Server) – gdy konflikty są bardzo częste. Powiązanie: „W WMS [uzupełnij: które podejście stosujecie – jeśli żadne, powiedz, które byś wybrał i dlaczego].”",
+   "code": "public class Stock {\n    public int Id { get; set; }\n    public decimal OnHand { get; set; }\n    public decimal Reserved { get; set; }\n    [Timestamp] public byte[] RowVersion { get; set; } = default!;\n}\n\ntry {\n    stock.Reserved += qty;   // wcześniej: sprawdzenie OnHand - Reserved >= qty\n    await db.SaveChangesAsync(ct);\n} catch (DbUpdateConcurrencyException) {\n    // ktoś zmienił wiersz – przeładuj i ponów albo zwróć 409 Conflict\n}",
+   "lang": "csharp",
+   "tip": "Typowy follow-up: „a co, jeśli aplikacja działa na kilku instancjach?” – lock w C# (`lock`, `SemaphoreSlim`) nie pomoże, bo działa w jednym procesie; synchronizacja musi być w bazie.",
+   "deep": "Optimistic concurrency opłaca się, gdy konflikty są rzadkie – nic nie blokuje, płacimy tylko przy kolizji. Przy „gorącym” SKU (wiele rezerwacji na sekundę) ponowienia zaczynają się mnożyć – wtedy lepsza jest atomowa aktualizacja warunkowa (jedno polecenie, bez round-tripa) lub krótka blokada pesymistyczna. Ponowienie musi czytać świeże dane i mieć limit prób z małym jitterem. W API konflikt zwracamy jako 409 Conflict; po stronie Angulara warto obsłużyć go komunikatem „stan się zmienił, odśwież”. Izolacja SERIALIZABLE też rozwiąże problem, ale kosztem blokad zakresowych i deadlocków – zwykle przesada. Ważne: walidacja „czy wystarczy towaru” zrobiona tylko w C# przed zapisem bez tokenu współbieżności NIE chroni przed race condition. Dodatkowo CHECK constraint (Reserved <= OnHand) w bazie łapie błędy logiki."
+  },
+  {
+   "id": "cv-008",
+   "topic": "WMS (system magazynowy)",
+   "level": 2,
+   "q": "WMS ma długie listy (towary, lokalizacje, dokumenty). Jak zadbać o wydajność list w Angularze?",
+   "a": "Najpierw backend: paginacja, sortowanie i filtrowanie po stronie serwera (nie ładujemy 50 tys. wierszy do przeglądarki), projekcja tylko potrzebnych kolumn, indeksy pod filtry. Na froncie: `@for` z sensownym `track` (po id), komponenty `OnPush` / sygnały, żeby nie przeliczać całego drzewa, virtual scroll z CDK (`cdk-virtual-scroll-viewport`) dla bardzo długich list, debounce (`debounceTime`) + `switchMap` na polach wyszukiwania, żeby nie strzelać żądaniem na każdy znak i anulować stare żądania. Unikamy wywołań metod w szablonie – zamiast tego `computed()` albo pipe'y. Powiązanie: „W WMS [uzupełnij: co zastosowaliście – np. paginacja serwerowa w tabelach dokumentów, debounce w wyszukiwarce towarów].”",
+   "code": "this.results = toSignal(\n  this.search.valueChanges.pipe(\n    debounceTime(300),\n    distinctUntilChanged(),\n    switchMap(term => this.api.searchProducts(term, 0, 50))\n  ), { initialValue: [] }\n);",
+   "lang": "typescript",
+   "tip": "W CV masz „optymalizacja wydajności” – rekruter zapyta: „co konkretnie zoptymalizowałeś i o ile?”. Przygotuj jeden prawdziwy przykład z liczbami [uzupełnij: przed → po], a jeśli nie mierzyłeś – powiedz, jak byś zmierzył (DevTools Performance, Angular DevTools profiler, czas odpowiedzi API)."
+  },
+  {
+   "id": "cv-009",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 2,
+   "q": "Opowiedz o projekcie wtyczek AutoCAD/BricsCAD (wzorcowa odpowiedź 60–90 s).",
+   "a": "„Od stycznia do października 2025 rozwijałem w Software Interactive wtyczki do AutoCAD-a i BricsCAD-a. Kontekst biznesowy: architekci i projektanci wykonują w CAD-zie mnóstwo powtarzalnych czynności, a wtyczki je automatyzują – [uzupełnij: np. generowanie/aktualizacja elementów rysunku, zestawienia, operacje na dokumentacji projektowej]. Technicznie to biblioteki w C#/.NET ładowane do procesu CAD-a i korzystające z jego .NET API – komendy, operacje na bazie rysunku w transakcjach, interakcja z użytkownikiem przez Editor. Moja rola: implementowałem nowe funkcjonalności, automatyzowałem operacje na dokumentacji, utrzymywałem i optymalizowałem istniejące pluginy, a także analizowałem wymagania użytkowników razem z zespołem projektowym. Wyzwanie: [np. jeśli tak było: jeden kod dla dwóch programów – AutoCAD i BricsCAD mają bardzo podobne, ale nie identyczne API, więc trzeba było wydzielić różnice]. Efekt: [uzupełnij: np. skrócenie czasu konkretnej czynności, liczba nowych komend].”",
+   "tip": "To nietypowy projekt jak na fullstacka webowego – sprzedaj go jako dowód, że rozumiesz .NET „poza webem” (proces hosta, API desktopowe, kontakt z użytkownikiem końcowym). Nie podawaj nazw klientów ani liczb, jeśli ich nie masz w CV."
+  },
+  {
+   "id": "cv-010",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 2,
+   "q": "Wtyczki CAD: Jaka była architektura?",
+   "a": "„Wtyczka to biblioteka klas .NET (DLL) ładowana do procesu AutoCAD-a/BricsCAD-a – [uzupełnij: np. przez NETLOAD przy developmencie, a u użytkowników przez autoload/bundle albo instalator]. Klasa implementująca `IExtensionApplication` inicjalizuje wtyczkę, a komendy to metody oznaczone `[CommandMethod]`. [np. jeśli tak było: logikę biznesową – obliczenia, reguły, generowanie danych – trzymaliśmy w osobnym projekcie niezależnym od API CAD-a, a cienka warstwa adapterów odpowiadała za odczyt i zapis do rysunku; dzięki temu dało się ją testować i współdzielić między AutoCAD-em i BricsCAD-em]. UI: [uzupełnij: np. okna WinForms/WPF, palety, ribbon].”",
+   "tip": "Jeśli nie wiesz, jak dokładnie dystrybuowano wtyczki, powiedz: „wdrożeniem zajmował się …, ja testowałem lokalnie przez NETLOAD”. To uczciwe i brzmi profesjonalnie."
+  },
+  {
+   "id": "cv-011",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 2,
+   "q": "Wtyczki CAD: Jakie było największe wyzwanie techniczne?",
+   "a": "Wzorzec (wybierz prawdziwe): „Największym wyzwaniem było [np. wsparcie dwóch hostów – AutoCAD i BricsCAD – i różnych wersji programu jednym kodem]. [np.: różnice w przestrzeniach nazw i drobnych zachowaniach API rozwiązaliśmy osobnymi konfiguracjami builda i warstwą adapterów]. Inne możliwe wyzwania: [np. wydajność na dużych rysunkach – iteracja po tysiącach obiektów, otwieranie obiektów ForRead zamiast ForWrite, filtrowanie po typie przez `ObjectId.ObjectClass` zamiast otwierania każdego obiektu], [np. stabilność – nieobsłużony wyjątek w wtyczce może wywrócić cały program użytkownika, więc komendy mają try/catch i czytelne komunikaty]. Efekt: [uzupełnij].”",
+   "tip": "Dobrze brzmi zdanie: „błąd we wtyczce to błąd w programie, w którym projektant pracuje cały dzień – dlatego dbaliśmy o obsługę wyjątków i transakcje”."
+  },
+  {
+   "id": "cv-012",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 2,
+   "q": "Wtyczki CAD: Co byś dziś zrobił inaczej?",
+   "a": "„[np. jeśli tak było: wcześniej oddzieliłbym logikę od API CAD-a, bo kod mocno spleciony z transakcjami i obiektami rysunku trudno testować automatycznie]. [np.: zainwestowałbym w zestaw rysunków testowych i checklistę testów ręcznych dla obu programów, bo regresje wychodziły dopiero u użytkowników]. [np.: wcześniej rozmawiałbym bezpośrednio z użytkownikami – projektantami – bo ich sposób pracy często różnił się od opisu w wymaganiach].”",
+   "tip": "Ostatni punkt dobrze łączy się z CV („analiza wymagań użytkowników”). Mów o lekcji, nie o winie."
+  },
+  {
+   "id": "cv-013",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 3,
+   "q": "Wyjaśnij podstawowe obiekty .NET API AutoCAD-a: Document, Database, Editor, Transaction, CommandMethod.",
+   "a": "`Application.DocumentManager.MdiActiveDocument` daje aktywny `Document` – otwarty rysunek w oknie. `Document.Database` to baza rysunku: tablice symboli (warstwy, bloki, style) i obiekty (linie, bloki, teksty) identyfikowane przez `ObjectId`. `Document.Editor` to interakcja z użytkownikiem: komunikaty w linii poleceń, pobieranie punktów, wybór obiektów (`GetPoint`, `GetSelection`). Zmiany robimy w `Transaction` (`db.TransactionManager.StartTransaction()`): obiekty otwieramy przez `tr.GetObject(id, OpenMode.ForRead/ForWrite)`, nowe dodajemy do `BlockTableRecord` i `tr.AddNewlyCreatedDBObject`, na końcu `Commit()` – bez commita zmiany są wycofywane. `[CommandMethod(\"NAZWA\")]` rejestruje metodę jako komendę wpisywaną w CAD-zie.",
+   "code": "[CommandMethod(\"COUNTBLOCKS\")]\npublic void CountBlocks() {\n    Document doc = Application.DocumentManager.MdiActiveDocument;\n    Database db = doc.Database;\n    using Transaction tr = db.TransactionManager.StartTransaction();\n    var ms = (BlockTableRecord)tr.GetObject(\n        SymbolUtilityServices.GetBlockModelSpaceId(db), OpenMode.ForRead);\n    int n = 0;\n    foreach (ObjectId id in ms)\n        if (id.ObjectClass.DxfName == \"INSERT\") n++;\n    doc.Editor.WriteMessage($\"\\nBlocks: {n}\");\n    tr.Commit();\n}",
+   "lang": "csharp",
+   "tip": "Rekruter webowy zwykle nie zna tego API – mów prostym językiem i porównaj: Transaction ≈ unit of work (jak DbContext + SaveChanges), Database ≈ model dokumentu, Editor ≈ „konsola” użytkownika.",
+   "deep": "Obiekty bazy rysunku to wrappery na obiekty natywne (C++/ObjectARX) – trzeba je zwalniać; `using` na transakcji robi to za nas dla obiektów otwartych przez `GetObject`. Otwieraj ForRead, a `UpgradeOpen()` dopiero gdy musisz pisać – mniej kosztownych otwarć i mniej konfliktów. Commit nawet przy samym odczycie jest tańszy niż abort (wycofanie). Gdy kod działa z kontekstu aplikacji (np. paleta, okno niemodalne, event), trzeba zablokować dokument `doc.LockDocument()` przed modyfikacją – komenda z `CommandMethod` w kontekście dokumentu ma blokadę automatycznie. Flagi `CommandFlags` (np. `Modal`, `UsePickSet`, `Session`) zmieniają kontekst działania komendy. Filtrowanie po `ObjectId.ObjectClass` pozwala nie otwierać każdego obiektu – ważne przy dużych rysunkach."
+  },
+  {
+   "id": "cv-014",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 3,
+   "q": "Czym różni się pisanie wtyczek do BricsCAD-a od AutoCAD-a?",
+   "a": "BricsCAD udostępnia .NET API w dużym stopniu zgodne z AutoCAD-em – te same koncepcje (Document, Database, Transaction, Editor, CommandMethod), większość klas o tych samych nazwach. Różnią się głównie biblioteki referencyjne i przestrzenie nazw: w AutoCAD-zie `Autodesk.AutoCAD.*` (accoremgd/acdbmgd/acmgd), w BricsCAD-zie m.in. `Bricscad.*` i `Teigha.*` (BrxMgd, TD_Mgd). Dlatego popularne podejście to jeden kod źródłowy i osobne konfiguracje builda (symbole kompilacji / aliasy `using`) dla każdego hosta. Część funkcji jest specyficzna dla jednego programu albo działa nieco inaczej – trzeba to testować w obu. Powiązanie: „U nas [uzupełnij: jak rozwiązywaliście dwa hosty – wspólny kod z #if, osobne projekty, adaptery].”",
+   "code": "#if BRICSCAD\nusing Bricscad.ApplicationServices;\nusing Teigha.DatabaseServices;\nusing Teigha.Runtime;\n#else\nusing Autodesk.AutoCAD.ApplicationServices;\nusing Autodesk.AutoCAD.DatabaseServices;\nusing Autodesk.AutoCAD.Runtime;\n#endif",
+   "lang": "csharp",
+   "tip": "Ostrożnie ze szczegółami: jeśli nie pamiętasz nazw DLL czy namespace'ów BricsCAD-a, powiedz „API jest w dużej mierze zgodne, różnią się przestrzenie nazw i biblioteki referencyjne, resztę sprawdzaliśmy w dokumentacji” – to bezpieczna, prawdziwa odpowiedź.",
+   "deep": "Zgodność jest „w dużym stopniu”, nie 100% – przy szczegółach (konkretne metody, zachowanie eventów, UI typu ribbon/palety, wersje runtime .NET) trzeba sprawdzać dokumentację danej wersji. BricsCAD ma też natywne BRX (odpowiednik ObjectARX w C++), co ułatwia portowanie wtyczek C++. Wersjonowanie: wtyczka kompilowana pod konkretną wersję API; przy zmianie wersji głównej programu bywa konieczna rekompilacja i zmiana target framework. Wzorzec architektoniczny: logika domenowa w bibliotece bez referencji do CAD-a + adaptery per host + wspólne testy jednostkowe logiki. Pułapka: `#if` rozsiane po całym kodzie szybko robi się nieczytelne – lepiej zamknąć różnice w kilku klasach adapterów."
+  },
+  {
+   "id": "cv-015",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 3,
+   "q": "Dlaczego wtyczki CAD często są na .NET Framework i jakie to rodzi problemy?",
+   "a": "Wtyczka działa w procesie hosta, więc musi używać tego samego runtime'u co host – nie wybierasz wersji .NET sam. Przez lata AutoCAD działał na .NET Framework (4.x); od AutoCAD 2025 Autodesk przeszedł na .NET 8, więc wtyczki dla nowych wersji trzeba przenieść na .NET 8, a dla starszych zostaje .NET Framework 4.8. Dla BricsCAD-a wersję runtime trzeba sprawdzić w dokumentacji konkretnej wersji. Problemy: współdzielenie jednego procesu z innymi wtyczkami (konflikty wersji zależności, np. różne wersje tej samej biblioteki NuGet), ograniczony dostęp do nowych API, konieczność multi-targetingu, gdy wspieramy stare i nowe wersje programu. Powiązanie: „U nas [uzupełnij: jaki target framework, czy wspieraliście kilka wersji AutoCAD-a/BricsCAD-a].”",
+   "tip": "Nie wymyślaj, którą wersję AutoCAD-a/BricsCAD-a wspieraliście. Fakt „AutoCAD 2025 = .NET 8” jest dobrze znany i bezpieczny; resztę oznacz jako [uzupełnij].",
+   "deep": "Multi-targeting (`<TargetFrameworks>net48;net8.0-windows</TargetFrameworks>`) pozwala budować jedną bazę kodu na dwa runtime'y; różnice API zamyka się w `#if NET8_0_OR_GREATER`. Wspólną logikę można trzymać w bibliotece .NET Standard 2.0 – działa zarówno na .NET Framework 4.8, jak i na .NET 8. Konflikty zależności w .NET Framework: jedna wersja assembly na AppDomain – jeśli inna wtyczka załadowała starszą wersję Newtonsoft.Json, mamy problem; w .NET 8 dochodzi AssemblyLoadContext, ale host decyduje, jak ładuje wtyczki. Minimalizowanie zależności zewnętrznych to w pluginach realna zasada projektowa. Debugowanie: attach do procesu acad.exe / bricscad.exe albo uruchamianie hosta jako Start Action w Visual Studio."
+  },
+  {
+   "id": "cv-016",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 2,
+   "q": "Jak testowałeś wtyczki CAD, skoro API działa tylko wewnątrz programu?",
+   "a": "API CAD-a nie da się normalnie uruchomić w zwykłym teście jednostkowym poza procesem hosta, dlatego kluczowe jest oddzielenie logiki (obliczenia, reguły, transformacje danych) od kodu, który czyta i zapisuje rysunek. Logikę testujemy klasycznymi testami jednostkowymi (xUnit/NUnit), a integrację z CAD-em – ręcznie na zestawie rysunków testowych w obu programach, ewentualnie narzędziami do testów uruchamianych wewnątrz hosta. Powiązanie: „U nas [uzupełnij: jak testowaliście – np. testy ręczne według scenariuszy, rysunki referencyjne, testy jednostkowe części logiki].”",
+   "tip": "Jeśli testy były głównie ręczne – powiedz to i dodaj, co byś usprawnił. Uczciwość + plan poprawy wypada lepiej niż wymyślone „100% pokrycia”."
+  },
+  {
+   "id": "cv-017",
+   "topic": "System wizyjny AI (frontend)",
+   "level": 2,
+   "q": "Opowiedz o projekcie systemu wizyjnego AI (wzorcowa odpowiedź 60–90 s).",
+   "a": "„Od września 2024 do stycznia 2025 byłem frontend developerem w projekcie systemu wizyjnego, który wykorzystuje modele AI do monitorowania, wykrywania i analizy zdarzeń na hali produkcyjnej. Biznesowo chodzi o to, żeby [uzupełnij: np. automatycznie wykrywać określone zdarzenia – jakie, jeśli możesz o tym mówić – i dawać operatorom podgląd]. System ma backend z modelami AI [uzupełnij: np. przetwarzanie obrazu z kamer], a ja odpowiadałem za aplikację webową w Angularze. Implementowałem widoki do konfiguracji i podglądu obszarów detekcji – czyli użytkownik zaznacza na obrazie z kamery fragmenty, które system ma analizować – oraz integrowałem frontend z backendem. Wyzwanie: [np. jeśli tak było: poprawne mapowanie współrzędnych obszarów między rozdzielczością obrazu z kamery a rozmiarem wyświetlanym w przeglądarce]. Efekt: [uzupełnij: np. użytkownik sam konfiguruje strefy bez pomocy programisty].”",
+   "tip": "Nie twierdź, że trenowałeś lub tworzyłeś modele AI – w CV jesteś frontend developerem. Bezpieczne zdanie: „modele i analiza obrazu były po stronie backendu, ja dostarczałem UI do konfiguracji i podglądu”."
+  },
+  {
+   "id": "cv-018",
+   "topic": "System wizyjny AI (frontend)",
+   "level": 2,
+   "q": "System wizyjny: Jaka była architektura (z perspektywy frontendu)?",
+   "a": "„Aplikacja Angular jako SPA, komunikująca się z backendem systemu przez [uzupełnij: np. REST API do konfiguracji i ewentualnie kanał czasu rzeczywistego – WebSocket/SignalR/SSE – do podglądu zdarzeń, jeśli tak było]. Kluczowy element UI to widok obrazu z kamery [uzupełnij: obraz statyczny / strumień / klatki] z nałożoną warstwą obszarów detekcji, które użytkownik może dodawać, edytować i usuwać. Obszary zapisywaliśmy jako [uzupełnij: np. listę punktów wielokąta albo prostokąty, najlepiej we współrzędnych znormalizowanych 0–1 albo w pikselach obrazu źródłowego]. [np.: stan widoku – wybrany obszar, tryb edycji – trzymaliśmy w serwisie/sygnałach komponentu].”",
+   "tip": "Gdy nie znasz szczegółów backendu, powiedz: „backend był po stronie innego zespołu, ja konsumowałem jego API i ustalałem kontrakty”. To w pełni wystarczy."
+  },
+  {
+   "id": "cv-019",
+   "topic": "System wizyjny AI (frontend)",
+   "level": 2,
+   "q": "System wizyjny: Jakie było największe wyzwanie techniczne?",
+   "a": "Wzorzec (wybierz prawdziwe): „[np. Edycja obszarów detekcji na obrazie, który wyświetla się w różnych rozmiarach]. Obraz z kamery ma np. 1920×1080, a w przeglądarce bywa przeskalowany, więc współrzędne kliknięcia trzeba przeliczać na współrzędne obrazu źródłowego i z powrotem. [np.: rozwiązaliśmy to, zapisując punkty we współrzędnych znormalizowanych (0–1) albo w pikselach źródła i rysując warstwę SVG z viewBox równym rozdzielczości obrazu – wtedy skalowanie robi przeglądarka]. Inne kandydaty: [np. częste aktualizacje zdarzeń na żywo bez zamrażania UI, uzgadnianie kontraktu API z backendem].”",
+   "tip": "Przygotuj się narysować to na kartce: obraz, prostokąt, przeliczenie x_źródło = x_ekran × (szer_źródła / szer_wyświetlana)."
+  },
+  {
+   "id": "cv-020",
+   "topic": "System wizyjny AI (frontend)",
+   "level": 2,
+   "q": "System wizyjny: Co byś dziś zrobił inaczej?",
+   "a": "„[np. jeśli tak było: od początku zapisywałbym współrzędne niezależnie od rozdzielczości – zmiana kamery nie psułaby wtedy konfiguracji]. [np.: dziś użyłbym sygnałów (signal/computed) do stanu edytora obszarów zamiast ręcznych subskrypcji – mniej kodu i prostsze OnPush]. [np.: wcześniej ustaliłbym z backendem wersjonowany kontrakt API – zmiany po stronie backendu kilka razy psuły nam widoki].”",
+   "tip": "Wspomnienie o signals pokazuje, że śledzisz rozwój Angulara (projekt był w 2024, signals już wtedy były, a dziś są standardem)."
+  },
+  {
+   "id": "cv-021",
+   "topic": "System wizyjny AI (frontend)",
+   "level": 3,
+   "q": "Jak wyświetlić i edytować obszary detekcji na obrazie: canvas czy SVG?",
+   "a": "SVG: każdy obszar to element DOM (`<polygon>`, `<rect>`), więc mamy za darmo zdarzenia myszy na kształtach, style CSS, dostępność i łatwe bindowanie w Angularze; `viewBox` równy rozdzielczości obrazu sprawia, że współrzędne są w pikselach źródła, a skalowanie robi przeglądarka. Idealne dla dziesiątek–setek kształtów i edycji. Canvas: rysujemy piksele imperatywnie, sami robimy hit-testing (który kształt kliknięto) i przerysowanie; opłaca się przy tysiącach obiektów albo bardzo częstym odświeżaniu (np. ramki detekcji na wideo kilkadziesiąt razy na sekundę). Częsty układ: obraz/wideo pod spodem, nad nim warstwa SVG (edycja stref) lub canvas (szybkie nakładki). Powiązanie: „U nas [uzupełnij: SVG / canvas / biblioteka – np. jeśli była, podaj nazwę].”",
+   "code": "<div class=\"stage\">\n  <img [src]=\"frameUrl()\" />\n  <svg [attr.viewBox]=\"'0 0 ' + imgW + ' ' + imgH\"\n       preserveAspectRatio=\"none\" (click)=\"addPoint($event)\">\n    @for (z of zones(); track z.id) {\n      <polygon [attr.points]=\"toPoints(z)\"\n               [class.selected]=\"z.id === selectedId()\"\n               (click)=\"select(z.id); $event.stopPropagation()\" />\n    }\n  </svg>\n</div>",
+   "lang": "html",
+   "tip": "Nawet jeśli w projekcie była gotowa biblioteka, umiej wyjaśnić ten trade-off – to typowe pytanie „frontendowe-seniorskie”.",
+   "deep": "Przeliczanie kliknięcia na współrzędne SVG: `svg.getScreenCTM().inverse()` i `DOMPoint.matrixTransform` – działa też przy CSS transform i zoomie; prostsze rozwiązanie to proporcja względem `getBoundingClientRect()`. Współrzędne znormalizowane (0–1) uniezależniają konfigurację od rozdzielczości kamery – backend mnoży przez rozmiar klatki. Przeciąganie wierzchołków: pointer events (`pointerdown/move/up` + `setPointerCapture`) obsługują mysz i dotyk jednym kodem. Wydajność: aktualizacje w trakcie przeciągania warto robić poza strefą Angulara lub przez sygnały i `requestAnimationFrame`, żeby nie odpalać change detection kilkaset razy na sekundę. Walidacja geometrii (np. wielokąt samoprzecinający się, min. 3 punkty) – po stronie frontu dla UX i backendu dla bezpieczeństwa. Canvas nie ma dostępności „za darmo” – przy nim trzeba dodać alternatywny opis/listę obszarów."
+  },
+  {
+   "id": "cv-022",
+   "topic": "System wizyjny AI (frontend)",
+   "level": 2,
+   "q": "Jak frontend może dostawać zdarzenia z systemu w czasie rzeczywistym? (polling, SSE, WebSocket, SignalR)",
+   "a": "Polling – co N sekund GET; najprostszy, działa wszędzie, ale opóźnienie i zbędne żądania. Server-Sent Events – jednokierunkowy strumień serwer → przeglądarka po HTTP, automatyczny reconnect, dobry do powiadomień. WebSocket – dwukierunkowy, stałe połączenie, najniższe opóźnienie. SignalR (ASP.NET Core) – biblioteka nad WebSocket z fallbackiem do SSE/long pollingu, z hubami, grupami i automatycznym reconnectem; w Angularze klient `@microsoft/signalr` opakowany w serwis zwracający Observable. Powiązanie: „W systemie wizyjnym [uzupełnij: czy był kanał czasu rzeczywistego i jaki – jeśli był tylko polling/REST, powiedz to wprost].”",
+   "tip": "Ostrożnie: CV nie mówi o WebSocket/SignalR w tym projekcie. Jeśli nie było – „u nas wystarczał REST z odświeżaniem, ale gdybyśmy potrzebowali live, wybrałbym…”. SignalR masz za to w projekcie tachografów – możesz się na niego powołać."
+  },
+  {
+   "id": "cv-023",
+   "topic": "System wizyjny AI (frontend)",
+   "level": 3,
+   "q": "Jak zapobiec spowolnieniu UI w Angularze przy częstych aktualizacjach (np. zdarzenia z kamer)?",
+   "a": "Ograniczyć liczbę przeliczeń: komponenty `OnPush` albo sygnały (aktualizuje się tylko to, co zależy od zmienionego sygnału), w aplikacjach zoneless change detection i tak jest wyzwalana sygnałami. Ograniczyć częstotliwość: `throttleTime`/`auditTime`/`bufferTime` w RxJS – UI nie potrzebuje 30 aktualizacji na sekundę, człowiek zobaczy 2–5. Pracę niewidoczną robić poza strefą: `NgZone.runOutsideAngular` (w aplikacjach opartych na zone.js). Listy: `track` po id i limit wyświetlanych elementów (np. ostatnie 100 zdarzeń) lub virtual scroll. Ciężkie obliczenia – Web Worker. Powiązanie: „W systemie wizyjnym [uzupełnij: czy był problem z wydajnością i co zrobiliście].”",
+   "code": "events$ = this.socket.events$.pipe(\n  bufferTime(500),            // paczka co 0,5 s\n  filter(b => b.length > 0),\n  scan((all, b) => [...b, ...all].slice(0, 100), [] as Ev[])\n);",
+   "lang": "typescript",
+   "tip": "Wersje: projekt był w Angularze z 2024 (sprawdź jaką wersją – [uzupełnij]); nie mów, że był zoneless, jeśli nie był.",
+   "deep": "Koszt change detection w aplikacji z zone.js rośnie z każdym zdarzeniem asynchronicznym (setTimeout, WebSocket message, mousemove) – każde odpala sprawdzenie drzewa. OnPush skraca to do komponentów z nowym inputem/zdarzeniem/sygnałem. Od Angular 21 nowe projekty są domyślnie zoneless – wtedy kluczowe jest, by stan był w sygnałach albo przez `async` pipe, inaczej widok się nie odświeży. Mierzenie: Angular DevTools profiler pokazuje cykle CD i czas komponentów; Chrome Performance – long tasks > 50 ms. Przy rysowaniu w canvas aktualizacje batchuje się w `requestAnimationFrame`. Nie optymalizuj na ślepo – najpierw pomiar, potem jedna zmiana, potem znów pomiar."
+  },
+  {
+   "id": "cv-024",
+   "topic": "System wizyjny AI (frontend)",
+   "level": 1,
+   "q": "Jak integrowałeś frontend Angular z backendem? (pytanie ogólne do każdego projektu frontendowego)",
+   "a": "Przez `HttpClient` w serwisach (np. `ZonesApiService`) z typowanymi DTO w TypeScripcie, żeby komponenty nie znały URL-i. Interceptory (funkcyjne `HttpInterceptorFn`) do wspólnych rzeczy: token autoryzacyjny, obsługa błędów, wskaźnik ładowania. Błędy obsługujemy centralnie (komunikat dla użytkownika) i lokalnie tam, gdzie trzeba (np. walidacja formularza z 400). Kontrakt ustalamy z backendem – [uzupełnij: np. Swagger/OpenAPI, czy generowaliście klienta]. Powiązanie: „W systemie wizyjnym [uzupełnij: jak wyglądała współpraca z zespołem backendu].”",
+   "tip": "Krótko i konkretnie – to pytanie rozgrzewkowe. Dobry bonus: „przy zmianach kontraktu ustalaliśmy je najpierw na Swaggerze, zanim ktokolwiek zaczął kodować”, jeśli to prawda."
+  },
+  {
+   "id": "cv-025",
+   "topic": "Analiza bezpieczeństwa domen",
+   "level": 2,
+   "q": "Opowiedz o projekcie analizy bezpieczeństwa domen (wzorcowa odpowiedź 60–90 s).",
+   "a": "„W sierpniu i wrześniu 2024 pracowałem jako backend developer przy systemie, który automatyzuje analizę bezpieczeństwa domen klientów i generuje raporty o zagrożeniach i podatnościach. Kontekst biznesowy: zamiast ręcznie sprawdzać konfigurację domen, system [uzupełnij: np. uruchamia zestaw analiz i zbiera wyniki w jednym raporcie dla klienta]. Backend był w .NET 7, uruchamiany w kontenerach Docker. To był krótki, skupiony etap – rozwijałem backend, implementowałem mechanizmy przetwarzania wyników analiz oraz funkcje generowania raportów. Wyzwanie: [np. jeśli tak było: wyniki z różnych narzędzi/analiz miały różny format, więc trzeba je było znormalizować do jednego modelu, zanim trafiły do raportu]. Efekt: [uzupełnij: np. nowy typ raportu, szybsze przetwarzanie].”",
+   "tip": "Projekt trwał ok. 1–2 miesiące i zazębiał się z projektem dla brokerów – powiedz to sam, zanim rekruter zapyta („to był krótki etap, wsparcie zespołu przy …”). Nie mów, że projektowałeś cały system ani że jesteś specjalistą security."
+  },
+  {
+   "id": "cv-026",
+   "topic": "Analiza bezpieczeństwa domen",
+   "level": 2,
+   "q": "Analiza domen: Jaka była architektura?",
+   "a": "„[uzupełnij – wzorzec do dopasowania:] Backend w .NET 7 w kontenerach Docker. [np.: analizy uruchamiane były asynchronicznie – zlecenie trafiało do kolejki/bazy, proces w tle (worker, np. BackgroundService) wykonywał analizę lub odbierał wyniki, zapisywał je w bazie, a na końcu generowany był raport]. Moja część to [uzupełnij: przetwarzanie wyników analiz – parsowanie, normalizacja, ocena – oraz generowanie raportów].”",
+   "tip": "Jeśli nie znasz całej architektury (krótki projekt), powiedz: „wszedłem do istniejącego systemu i pracowałem w module X”. Rekruter doceni precyzję."
+  },
+  {
+   "id": "cv-027",
+   "topic": "Analiza bezpieczeństwa domen",
+   "level": 2,
+   "q": "Analiza domen: Jakie było największe wyzwanie i co zrobiłbyś dziś inaczej?",
+   "a": "Wyzwanie (wybierz prawdziwe): „[np. Szybkie wejście w istniejący kod i domenę bezpieczeństwa w krótkim czasie – zacząłem od przejścia ścieżki jednego raportu end-to-end i debugowania na lokalnym Dockerze]. [np.: Wyniki analiz w różnych formatach – wprowadziłem wspólny model wyniku (typ, poziom ryzyka, opis, rekomendacja) i osobne parsery per źródło].” Co inaczej: „[np. dodałbym testy na przykładowych wynikach (pliki wejściowe → oczekiwany model), bo parsery łatwo psuły się przy zmianie formatu]. [np.: generowanie raportu robiłbym w pełni w tle z informacją o postępie, zamiast w trakcie żądania HTTP].”",
+   "tip": "Przy krótkich projektach najlepszą historią jest często „jak szybko wdrożyłem się w nowy kod” – to umiejętność, której szukają rekruterzy."
+  },
+  {
+   "id": "cv-028",
+   "topic": "Analiza bezpieczeństwa domen",
+   "level": 3,
+   "q": "Jak w .NET realizuje się przetwarzanie w tle (np. wyników analiz)?",
+   "a": "Wbudowane: `BackgroundService` (implementacja `IHostedService`) – długo działająca pętla w procesie aplikacji lub osobnym Worker Service; do kolejkowania w pamięci `System.Threading.Channels` (producent: endpoint, konsument: worker). Gdy zadania muszą przetrwać restart, mieć retry i harmonogram – kolejka trwała: tabela w bazie, broker (RabbitMQ, Azure Service Bus) albo biblioteki jak Hangfire/Quartz.NET. Ważne: scope DI – w workerze tworzymy `IServiceScopeFactory.CreateScope()` dla DbContext; `CancellationToken` do łagodnego zamykania; obsługa wyjątków, żeby jeden błąd nie zabił pętli; idempotencja przetwarzania. Powiązanie: „W projekcie domen [uzupełnij: jak to było zrobione – jeśli nie wiesz, powiedz, jak byś to zrobił].”",
+   "code": "public class ResultsWorker(Channel<ScanResult> ch, IServiceScopeFactory sf,\n    ILogger<ResultsWorker> log) : BackgroundService {\n  protected override async Task ExecuteAsync(CancellationToken ct) {\n    await foreach (var r in ch.Reader.ReadAllAsync(ct)) {\n      try {\n        using var scope = sf.CreateScope();\n        var svc = scope.ServiceProvider.GetRequiredService<IResultProcessor>();\n        await svc.ProcessAsync(r, ct);\n      } catch (Exception ex) { log.LogError(ex, \"Result {Id} failed\", r.Id); }\n    }\n  }\n}",
+   "lang": "csharp",
+   "tip": "CV mówi „mechanizmy przetwarzania wyników analiz” – nie dopowiadaj, że był RabbitMQ czy Hangfire, jeśli nie był.",
+   "deep": "Channel w pamięci znika przy restarcie/deploymencie – do krytycznych zadań potrzebna trwała kolejka i wzorzec outbox (zapis zadania w tej samej transakcji co dane). Bounded channel (`Channel.CreateBounded`) daje backpressure zamiast nieograniczonego wzrostu pamięci. Przy kilku instancjach aplikacji (kilka kontenerów) worker w każdej instancji przetwarza swoją kolejkę w pamięci – przy kolejce w bazie trzeba unikać podwójnego pobrania (np. `UPDATE … OUTPUT` / `READPAST`, lease z timeoutem). Retry z backoffem i dead-letter dla zadań, które ciągle padają. Od .NET 6 nieobsłużony wyjątek w `ExecuteAsync` domyślnie zatrzymuje całego hosta (`BackgroundServiceExceptionBehavior.StopHost`) – stąd try/catch wewnątrz pętli. Obserwowalność: logi z id zadania, metryki długości kolejki i czasu przetwarzania."
+  },
+  {
+   "id": "cv-029",
+   "topic": "Analiza bezpieczeństwa domen",
+   "level": 2,
+   "q": "Jak wygląda Dockerfile dla aplikacji .NET i po co multi-stage build?",
+   "a": "Multi-stage: pierwszy etap na obrazie SDK (`mcr.microsoft.com/dotnet/sdk`) robi restore i publish, drugi na lekkim obrazie runtime (`mcr.microsoft.com/dotnet/aspnet`) kopiuje tylko wynik publish. Efekt: mały obraz bez SDK i kodu źródłowego, mniejsza powierzchnia ataku. Kopiowanie najpierw pliku .csproj i `dotnet restore` wykorzystuje cache warstw – zależności nie są pobierane przy każdej zmianie kodu. Konfiguracja przez zmienne środowiskowe, nie w obrazie; od .NET 8 obrazy domyślnie nasłuchują na porcie 8080 i mogą działać jako użytkownik nie-root (`USER app`). Powiązanie: „W projekcie domen [uzupełnij: Docker do uruchamiania lokalnie / na serwerze, docker-compose z bazą?]”; Dockera masz też w CV przy formularzach medycznych.",
+   "code": "FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build\nWORKDIR /src\nCOPY *.csproj .\nRUN dotnet restore\nCOPY . .\nRUN dotnet publish -c Release -o /app\n\nFROM mcr.microsoft.com/dotnet/aspnet:7.0\nWORKDIR /app\nCOPY --from=build /app .\nENTRYPOINT [\"dotnet\", \"Api.dll\"]",
+   "lang": "text",
+   "tip": "Port 8080 i użytkownik `app` to zmiana od .NET 8 – w projekcie .NET 7 domyślny był port 80. Dobra okazja, żeby pokazać, że wiesz, co się zmieniło."
+  },
+  {
+   "id": "cv-030",
+   "topic": "Analiza bezpieczeństwa domen",
+   "level": 2,
+   "q": "Jak generować raporty (np. PDF) w backendzie .NET?",
+   "a": "Typowe podejścia: biblioteka do PDF z kodu (np. QuestPDF – fluent API, licencja zależna od przychodu firmy; iText – licencja AGPL/komercyjna), szablon HTML (np. Razor) renderowany do PDF headless przeglądarką (np. Playwright), albo raport w Excelu/CSV. Architektura: dane do raportu zbieramy do osobnego modelu (ViewModel raportu), szablon tylko go wyświetla; generowanie dłuższe niż kilka sekund robimy w tle, wynik zapisujemy (blob/dysk) i udostępniamy link lub powiadomienie. Powiązanie: „W projekcie domen raporty były generowane [uzupełnij: w jakim formacie i jaką biblioteką].”",
+   "tip": "Nie strzelaj nazwą biblioteki, której nie używałeś – lepiej „nie pamiętam nazwy biblioteki, ale mechanizm wyglądał tak…”. Zwróć uwagę na licencje bibliotek PDF – rekruterzy seniorscy lubią to pytanie."
+  },
+  {
+   "id": "cv-031",
+   "topic": "Analiza bezpieczeństwa domen",
+   "level": 1,
+   "q": "Co zwykle sprawdza się przy analizie bezpieczeństwa domeny? (żebyś nie był zaskoczony pytaniem o domenę)",
+   "a": "Przykładowe obszary: rekordy DNS poczty – SPF, DKIM, DMARC (ochrona przed podszywaniem się pod domenę), certyfikat TLS (ważność, wystawca, łańcuch, wersje protokołu), nagłówki bezpieczeństwa HTTP (HSTS, CSP, X-Content-Type-Options), DNSSEC, otwarte porty i wersje usług, wygasanie domeny, subdomeny. Raport zwykle grupuje znaleziska według poziomu ryzyka i podaje rekomendacje. Powiązanie: „System, przy którym pracowałem, analizował [uzupełnij: które z tych rzeczy – jeśli nie wiesz, nie wymieniaj].”",
+   "tip": "To wiedza ogólna, a nie opis Twojego projektu. Nie przypisuj systemowi analiz, których nie znasz."
+  },
+  {
+   "id": "cv-032",
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "level": 2,
+   "q": "Opowiedz o systemie dla brokerów ubezpieczeniowych (wzorcowa odpowiedź 60–90 s).",
+   "a": "„Od stycznia do września 2024 jako fullstack developer rozwijałem system wspierający pracę brokerów ubezpieczeniowych. Biznesowo system obsługuje formularze, archiwizację danych i integracje z zewnętrznymi systemami – [uzupełnij: np. broker wprowadza dane klienta i polisy, a system uzupełnia dane firmy po NIP i archiwizuje dokumenty]. Technologicznie to C#, część na .NET Framework 4.5 i część na .NET 7, a UI w Razor Pages [uzupełnij: jak współistniały obie wersje – migracja, nowe moduły na .NET 7?]. Moja rola: rozwój backendu i logiki biznesowej, integracje z Microsoft SharePoint, NIP24 i TaxIdPro oraz mechanizmy archiwizacji, historii zmian i raportowania. Wyzwanie: [np. jeśli tak było: odporność integracji – zewnętrzne API bywały wolne lub niedostępne, więc dodaliśmy timeouty, ponawianie i czytelną obsługę błędów, żeby broker nie tracił wprowadzonych danych]. Efekt: [uzupełnij: np. automatyczne uzupełnianie danych firm, pełna historia zmian w dokumentach].”",
+   "tip": "To Twój najbardziej „backendowo-integracyjny” projekt – mów pewnie o integracjach i audycie. Nie podawaj nazw towarzystw ubezpieczeniowych ani klientów."
+  },
+  {
+   "id": "cv-033",
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "level": 2,
+   "q": "System dla brokerów: Jaka była architektura?",
+   "a": "„[uzupełnij – wzorzec:] Aplikacja webowa renderowana po stronie serwera w Razor Pages, backend w C#. Część systemu działała na .NET Framework 4.5, część na .NET 7 – [uzupełnij: np. starsza część była stopniowo przenoszona / nowe moduły powstawały na .NET 7 / była jednorazowa migracja]. Logika biznesowa w serwisach, dostęp do danych [uzupełnij: np. EF/EF Core, SQL Server]. Integracje zewnętrzne zamknięte w osobnych klientach (SharePoint – dokumenty, NIP24 i TaxIdPro – dane firm/weryfikacja podatników), żeby reszta kodu nie zależała od szczegółów API. Historia zmian i archiwizacja [uzupełnij: np. tabele audytu, statusy archiwalne].”",
+   "tip": "Kluczowy follow-up: „dlaczego dwie wersje .NET?” – przygotuj prawdziwą odpowiedź (patrz karta o migracji)."
+  },
+  {
+   "id": "cv-034",
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "level": 2,
+   "q": "System dla brokerów: Jakie było największe wyzwanie i co zrobiłbyś dziś inaczej?",
+   "a": "Wyzwanie (wybierz prawdziwe): „[np. Integracje z zewnętrznymi API – różne formaty odpowiedzi, limity zapytań, chwilowe awarie. Każdą integrację zamknąłem w typowanym kliencie z timeoutem, ponowieniami dla błędów przejściowych i logowaniem; błąd integracji nie blokował zapisu formularza]. [np.: historia zmian – trzeba było zapisywać kto, kiedy i co zmienił, bez dopisywania tego ręcznie w każdym miejscu kodu].” Co inaczej: „[np. wcześniej wydzieliłbym warstwę integracji do jednego projektu z kontraktami i testami na nagranych odpowiedziach API]. [np.: przy migracji szedłbym mniejszymi krokami – moduł po module].”",
+   "tip": "Integracje to temat, w którym łatwo pokazać dojrzałość: timeouty, retry tylko dla błędów przejściowych, idempotencja, logowanie z correlation id."
+  },
+  {
+   "id": "cv-035",
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "level": 3,
+   "q": "Jak podejść do migracji z .NET Framework 4.5 do .NET 7 (lub nowszego)?",
+   "a": "Najpierw inwentaryzacja: zależności (NuGet bez wsparcia .NET Core), użycie `System.Web`, WCF (serwer), WebForms, EF6, konfiguracja w web.config, AppDomain, rejestr Windows. Strategie: (1) big bang – przepisanie całości naraz, ryzykowne; (2) stopniowa – wspólne biblioteki przenosimy do .NET Standard 2.0 (działają w obu światach), a aplikację webową dzielimy wzorcem strangler fig: nowe/przeniesione endpointy w ASP.NET Core, reszta w starej aplikacji, ruch kierowany przez proxy (np. YARP). Narzędzia: .NET Upgrade Assistant, analizatory zgodności API. Typowe zmiany: web.config → appsettings.json + Options, wbudowane DI zamiast kontenerów/statyków, middleware zamiast modułów HTTP, EF6 → EF Core (lub EF6 na .NET Core jako krok pośredni). Powiązanie: „W systemie dla brokerów [uzupełnij: czy to była migracja, czy współistnienie; co dokładnie przenosiłeś – jeśli nie migrowałeś, powiedz, że pracowałeś w obu częściach].”",
+   "tip": "NIE mów „migrowałem system z 4.5 na .NET 7”, jeśli tylko pracowałeś w obu częściach. CV wymienia obie technologie – rekruter zapyta, a uczciwa odpowiedź z dobrą wiedzą o strategiach migracji wypadnie świetnie.",
+   "deep": "Docelowo dziś celuje się w LTS: .NET 8 (wsparcie do listopada 2026) albo .NET 10 (LTS od listopada 2025) – .NET 7 był wersją STS i zakończył wsparcie w maju 2024, więc rekruter może zapytać „czemu 7?” (odpowiedź: w momencie decyzji był aktualny [dopasuj]). 4.5 → najpierw ewentualnie podniesienie do 4.7.2/4.8, bo .NET Standard 2.0 jest w praktyce sensownie wspierany od 4.7.2. Ryzyka: różnice zachowania (kultura/formatowanie, serializacja JSON – Newtonsoft vs System.Text.Json, wielkość liter w nazwach właściwości), sesja i uwierzytelnianie (cookie współdzielone między starą i nową aplikacją), biblioteki tylko dla Windows. Testy charakteryzacyjne (zapis obecnego zachowania) przed migracją dają siatkę bezpieczeństwa. Korzyści do podania biznesowi: wydajność, wsparcie bezpieczeństwa, kontenery/Linux, nowoczesne DI i konfiguracja."
+  },
+  {
+   "id": "cv-036",
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "level": 3,
+   "q": "Jak budować odporne integracje z zewnętrznymi API REST (NIP24, TaxIdPro)?",
+   "a": "Typowany klient przez `IHttpClientFactory` (`AddHttpClient<TClient>`) – poprawne zarządzanie połączeniami, konfiguracja BaseAddress, nagłówków i klucza API w jednym miejscu. Timeout krótszy niż domyślne 100 s. Retry z exponential backoff + jitter tylko dla błędów przejściowych (5xx, 408, 429, błędy sieci) i tylko dla operacji idempotentnych (GET/weryfikacja). Circuit breaker, gdy API leży – nie dobijamy go i szybko zwracamy błąd. Cache wyników (dane firmy po NIP zmieniają się rzadko), mapowanie odpowiedzi na własny model, logowanie z correlation id, a w UI czytelny komunikat i możliwość ręcznego uzupełnienia danych. W .NET 7 robiło się to Polly (`Microsoft.Extensions.Http.Polly`), od .NET 8 jest `Microsoft.Extensions.Http.Resilience` z `AddStandardResilienceHandler()`. Powiązanie: „NIP24 służył nam do [uzupełnij: np. pobierania danych firmy po NIP], TaxIdPro do [uzupełnij]; zabezpieczenia: [uzupełnij, co faktycznie było].”",
+   "code": "builder.Services.AddHttpClient<INip24Client, Nip24Client>(c => {\n    c.BaseAddress = new Uri(builder.Configuration[\"Nip24:BaseUrl\"]!);\n    c.Timeout = TimeSpan.FromSeconds(10);\n})\n.AddTransientHttpErrorPolicy(p => p.WaitAndRetryAsync(3,\n    i => TimeSpan.FromSeconds(Math.Pow(2, i))));   // Polly, .NET 7\n\n// .NET 8+: .AddStandardResilienceHandler();",
+   "lang": "csharp",
+   "tip": "Nie dopowiadaj, że był Polly albo circuit breaker, jeśli nie było – możesz powiedzieć „dziś dodałbym…”. Nie myl NIP24 z oficjalnym API GUS/MF – to zewnętrzny serwis, z którego korzystaliście [sprawdź, jak go opisać].",
+   "deep": "Retry na nieidempotentnym POST może zdublować operację – wtedy potrzebny klucz idempotencji albo brak retry. Kolejność polityk ma znaczenie: timeout pojedynczej próby wewnątrz retry, a całkowity timeout na zewnątrz. 429 Too Many Requests: respektuj nagłówek `Retry-After`; przy limitach dziennych – cache i ewentualnie kolejka. `new HttpClient()` w każdym wywołaniu → wyczerpanie gniazd (socket exhaustion); statyczny HttpClient → nieodświeżany DNS; fabryka rozwiązuje oba problemy. Testowanie: `HttpMessageHandler` stub albo WireMock.Net z nagranymi odpowiedziami, w tym błędami i timeoutami. Klucze API w sekretach (user-secrets, zmienne środowiskowe, Key Vault), nigdy w repozytorium."
+  },
+  {
+   "id": "cv-037",
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "level": 2,
+   "q": "Jak można zintegrować aplikację .NET z Microsoft SharePoint?",
+   "a": "Dziś zalecana droga to Microsoft Graph API (biblioteka `Microsoft.Graph`): pliki w bibliotekach dokumentów (drive/driveItem), listy i metadane. Alternatywy: SharePoint REST API (`/_api/web/...`) albo CSOM / PnP Framework – często spotykane w starszych systemach .NET Framework. Uwierzytelnianie: rejestracja aplikacji w Microsoft Entra ID (dawniej Azure AD) i przepływ client credentials (aplikacja bez użytkownika) z uprawnieniami nadanymi przez administratora; sekret lub certyfikat w bezpiecznym miejscu. Typowe operacje: upload dokumentu (duże pliki – upload session w kawałkach), ustawienie metadanych, wersjonowanie, uprawnienia. Powiązanie: „W systemie dla brokerów SharePoint służył do [uzupełnij: np. przechowywania/archiwizacji dokumentów], a integrowaliśmy się przez [uzupełnij: Graph / REST / CSOM].”",
+   "tip": "Jeśli nie pamiętasz, jakiego API używaliście – powiedz o koncepcji (rejestracja aplikacji, uprawnienia, upload, metadane). Nie zgaduj nazwy biblioteki."
+  },
+  {
+   "id": "cv-038",
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "level": 3,
+   "q": "Jak zaimplementować historię zmian (audit trail) danych?",
+   "a": "Opcje: (1) interceptor EF Core (`SaveChangesInterceptor`) lub nadpisany `SaveChanges` – przeglądamy `ChangeTracker.Entries()` w stanie Added/Modified/Deleted i zapisujemy do tabeli audytu: encja, klucz, pole, stara i nowa wartość, kto, kiedy; (2) temporal tables w SQL Server – baza sama trzyma historię wierszy w tabeli historycznej z okresem ważności, EF Core (od 6) potrafi je mapować i odpytywać (`TemporalAsOf`, `TemporalAll`); (3) triggery w bazie; (4) zdarzenia domenowe / event sourcing, gdy historia jest częścią domeny. Wybór: interceptor daje kontekst aplikacji (użytkownik, powód zmiany), temporal tables – kompletność niezależną od aplikacji, ale bez informacji „kto”, jeśli jej nie zapiszemy w wierszu. Powiązanie: „U brokerów historia zmian była zrobiona [uzupełnij: jak – tabele historii, interceptor, triggery?] i służyła do [uzupełnij: np. podglądu zmian w formularzu/polisie].”",
+   "code": "public class AuditInterceptor(ICurrentUser user) : SaveChangesInterceptor {\n  public override ValueTask<InterceptionResult<int>> SavingChangesAsync(\n      DbContextEventData e, InterceptionResult<int> r, CancellationToken ct = default) {\n    foreach (var en in e.Context!.ChangeTracker.Entries<IAuditable>()\n             .Where(x => x.State is EntityState.Modified or EntityState.Added))\n      foreach (var p in en.Properties.Where(p => p.IsModified || en.State == EntityState.Added))\n        e.Context.Add(new AuditEntry(en.Metadata.Name, p.Metadata.Name,\n          p.OriginalValue?.ToString(), p.CurrentValue?.ToString(), user.Id, DateTime.UtcNow));\n    return base.SavingChangesAsync(e, r, ct);\n  }\n}",
+   "lang": "csharp",
+   "tip": "CV: „mechanizmy archiwizacji danych, historii zmian i raportowania” – to Twoja mocna karta. Przygotuj jeden konkretny przykład z projektu [uzupełnij] i umiej porównać 2–3 podejścia.",
+   "deep": "Interceptor nie złapie zmian zrobionych poza EF (raw SQL, `ExecuteUpdate`/`ExecuteDelete` w EF Core 7+, inne aplikacje) – temporal tables i triggery tak. Tabela audytu rośnie szybko: indeks po (encja, klucz, data), archiwizacja/partycjonowanie, polityka retencji (RODO – dane osobowe w audycie też podlegają usunięciu/anonimizacji!). Zapisywanie JSON-a całej zmiany (jeden wiersz na zapis) jest tańsze niż wiersz na pole, ale trudniej odpytać. Dla Added klucz generowany przez bazę nie jest znany przed zapisem – trzeba dopisać audyt po `SavedChanges` albo użyć kluczy generowanych w aplikacji (Guid v7). Archiwizacja ≠ audit: archiwizacja to przeniesienie/oznaczenie starych rekordów (soft delete, osobne tabele/bazy), żeby nie spowalniały bieżących zapytań i spełniały wymogi przechowywania."
+  },
+  {
+   "id": "cv-039",
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "level": 2,
+   "q": "Czym jest Razor Pages i czym różni się od MVC oraz SPA (np. Angular)?",
+   "a": "Razor Pages to model ASP.NET Core zorientowany na strony: każda strona to plik `.cshtml` + klasa `PageModel` z handlerami `OnGet`/`OnPost`, routing wynika ze struktury folderów. W MVC logika jest rozdzielona na kontrolery, akcje i widoki – lepiej pasuje do wielu akcji na zasobie i API. Razor Pages świetnie sprawdza się w aplikacjach formularzowych (CRUD), bo kod strony jest w jednym miejscu, jest wbudowany model binding, walidacja i ochrona antiforgery. SPA (Angular) renderuje UI w przeglądarce i rozmawia z API – lepsza interaktywność, ale więcej infrastruktury (dwa projekty, API, stan po stronie klienta). Powiązanie: „System dla brokerów był formularzowy, więc Razor Pages był naturalnym wyborem [dopasuj].”",
+   "code": "public class EditPolicyModel(IPolicyService svc) : PageModel {\n    [BindProperty] public PolicyForm Input { get; set; } = new();\n    public async Task OnGetAsync(int id) => Input = await svc.GetFormAsync(id);\n    public async Task<IActionResult> OnPostAsync(int id) {\n        if (!ModelState.IsValid) return Page();\n        await svc.SaveAsync(id, Input);\n        return RedirectToPage(\"Index\");\n    }\n}",
+   "lang": "csharp",
+   "tip": "Wzorzec Post-Redirect-Get (`RedirectToPage` po udanym POST) – dobry szczegół do wspomnienia."
+  },
+  {
+   "id": "cv-040",
+   "topic": "Formularze medyczne (PoC)",
+   "level": 2,
+   "q": "Opowiedz o PoC aplikacji do formularzy medycznych (wzorcowa odpowiedź 60–90 s).",
+   "a": "„Od października do grudnia 2023 tworzyłem Proof of Concept aplikacji do zarządzania formularzami w placówkach medycznych. Cel biznesowy PoC: sprawdzić, czy [uzupełnij: np. papierowe/rozproszone formularze można zastąpić aplikacją, w której placówka definiuje i wypełnia formularze]. Frontend był w Angularze 16 z Angular Material, RxJS i NGXS do zarządzania stanem; style w SCSS/LESS, a całość uruchamiana w Dockerze. Moja rola: rozwijałem frontend – komponenty i funkcjonalności obsługujące formularze, zarządzanie stanem i integrację z backendem. Wyzwanie: [np. jeśli tak było: formularze o zmiennej strukturze – budowaliśmy je dynamicznie z definicji, z walidacją i polami zależnymi od innych pól]. Efekt: [uzupełnij: np. PoC zaprezentowany klientowi, decyzja o dalszym rozwoju – jeśli wiesz].”",
+   "tip": "PoC = szybko, z świadomymi skrótami. Powiedz, jakie skróty były świadome (np. uproszczona autoryzacja), a co zrobiono porządnie. Nie mów o wdrożeniu w konkretnych szpitalach, jeśli go nie było."
+  },
+  {
+   "id": "cv-041",
+   "topic": "Formularze medyczne (PoC)",
+   "level": 2,
+   "q": "Formularze medyczne: Jaka była architektura frontendu?",
+   "a": "„Aplikacja Angular 16 [uzupełnij: moduły NgModule czy standalone – w 16 standalone już było, ale nie domyślne]. Stan aplikacji – lista formularzy, aktualnie edytowany formularz, statusy zapisu – w NGXS: stany jako klasy z `@State`, akcje i `@Selector`-y. Komunikacja z backendem przez serwisy HttpClient wywoływane z akcji NGXS. Formularze na reactive forms, UI z komponentów Angular Material, style SCSS [uzupełnij: gdzie był LESS – np. starsze style/motyw]. [np.: Docker do uruchamiania frontu (nginx) i backendu lokalnie i na środowisku demo].”",
+   "tip": "Gdy rekruter pyta „czemu NGXS, a nie NgRx?” – patrz karta porównawcza. Jeśli wybór był zastany, powiedz to."
+  },
+  {
+   "id": "cv-042",
+   "topic": "Formularze medyczne (PoC)",
+   "level": 2,
+   "q": "Formularze medyczne: Największe wyzwanie i co zrobiłbyś dziś inaczej?",
+   "a": "Wyzwanie (wybierz prawdziwe): „[np. Dynamiczne formularze: struktura formularza przychodziła z backendu, więc kontrolki, walidatory i zależności między polami trzeba było budować w locie; zrobiłem komponent renderujący pole na podstawie typu i fabrykę FormGroup z definicji].” Co inaczej (dziś): „[np. użyłbym standalone components i signals – w Angularze 16 signals były dopiero w developer preview]. [np.: przy tak małym PoC rozważyłbym prostszy stan – serwis z sygnałami zamiast pełnego store'a, bo NGXS dodał sporo boilerplate'u]. [np.: wcześniej ustaliłbym format definicji formularza z backendem i go wersjonował].”",
+   "tip": "Uwaga na wersje: signals pojawiły się w Angular 16 jako developer preview; signal/computed są stabilne od 17, effect ustabilizowano później. Nie mów, że używałeś signals w tym projekcie, jeśli nie używałeś."
+  },
+  {
+   "id": "cv-043",
+   "topic": "Formularze medyczne (PoC)",
+   "level": 2,
+   "q": "NGXS vs NgRx – czym się różnią i kiedy który?",
+   "a": "Oba to store'y w stylu Redux: jeden stan, akcje, niezmienność, selektory. NgRx: akcje (`createAction`/`createActionGroup`), czyste reducery (`createReducer`/`on`), efekty (`createEffect`) jako osobne strumienie RxJS do side-effectów, selektory memoizowane; więcej boilerplate'u, bardzo przewidywalny przepływ, świetne DevTools, duża społeczność; dziś dodatkowo NgRx SignalStore (lżejszy, oparty na signals). NGXS: stan jako klasa z dekoratorem `@State`, metody `@Action` modyfikują stan przez `ctx.setState/patchState` i mogą same robić wywołania asynchroniczne (bez osobnych efektów); mniej kodu, bardziej „angularowy” (DI, klasy), mniejsza społeczność. Powiązanie: „NGXS używałem w formularzach medycznych i e-commerce, NgRx w systemie dla branży metalowej – znam oba podejścia w praktyce.”",
+   "code": "@State<FormsStateModel>({ name: 'forms', defaults: { items: [], loading: false } })\n@Injectable()\nexport class FormsState {\n  private api = inject(FormsApi);\n  @Selector() static items(s: FormsStateModel) { return s.items; }\n\n  @Action(LoadForms)\n  load(ctx: StateContext<FormsStateModel>) {\n    ctx.patchState({ loading: true });\n    return this.api.getAll().pipe(\n      tap(items => ctx.patchState({ items, loading: false })));\n  }\n}",
+   "lang": "typescript",
+   "tip": "Masz rzadką przewagę: praktykę w OBU bibliotekach. Powiedz to wprost i daj jedną konkretną różnicę (efekty w NgRx vs async w akcji NGXS).",
+   "deep": "Kiedy w ogóle globalny store: wiele niezależnych komponentów współdzieli i modyfikuje ten sam stan, potrzebna historia/debugowanie akcji, duży zespół potrzebuje jednego wzorca. Kiedy nie: mały PoC albo stan lokalny dla jednej funkcji – serwis z sygnałami lub komponentowy store wystarczy. W 2026 trend: signals + NgRx SignalStore / proste serwisy stanu; klasyczny NgRx Store wciąż w dużych, starszych aplikacjach. NGXS też wspiera sygnały (`select` zwracające Signal w nowszych wersjach) – szczegóły sprawdź w dokumentacji, jeśli rekruter dopytuje. Pułapki: trzymanie w store wszystkiego (stan formularzy, flagi UI) i mutowanie stanu poza akcjami."
+  },
+  {
+   "id": "cv-044",
+   "topic": "Formularze medyczne (PoC)",
+   "level": 3,
+   "q": "Jak zbudować dynamiczny formularz w reactive forms na podstawie definicji (np. JSON z backendu)?",
+   "a": "Definicja opisuje pola: klucz, typ (tekst, liczba, data, wybór, checkbox), etykietę, walidatory (required, min/max, pattern), opcje i warunki widoczności. Fabryka buduje `FormGroup` z `FormControl`ami (lub `FormArray` dla powtarzalnych sekcji), a szablon przechodzi po definicji i dla każdego typu renderuje odpowiedni komponent (np. `mat-form-field` z `matInput`, `mat-select`, `mat-datepicker`). Zależności między polami: `valueChanges` lub walidatory na poziomie grupy (cross-field). Typowane formularze (od Angular 14) pomagają przy znanej strukturze; przy w pełni dynamicznej zostaje `FormRecord`/`FormGroup<any>`. Powiązanie: „W PoC formularzy medycznych [uzupełnij: czy formularze były dynamiczne z definicji, czy zakodowane na sztywno].”",
+   "code": "buildForm(fields: FieldDef[]): FormGroup {\n  const group: Record<string, FormControl> = {};\n  for (const f of fields) {\n    const v: ValidatorFn[] = [];\n    if (f.required) v.push(Validators.required);\n    if (f.max != null) v.push(Validators.max(f.max));\n    if (f.pattern) v.push(Validators.pattern(f.pattern));\n    group[f.key] = new FormControl(f.default ?? null, v);\n  }\n  return new FormGroup(group);\n}",
+   "lang": "typescript",
+   "tip": "Jeśli formularze nie były dynamiczne, i tak umiej to wyjaśnić – to klasyczne pytanie dla kogoś, kto ma „formularze” w opisie projektu.",
+   "deep": "Warunkowa widoczność: ukryte pole powinno być `disable()` – wtedy nie waliduje się i nie trafia do `value` (do `getRawValue()` tak). Duże formularze: `updateOn: 'blur'` zmniejsza liczbę walidacji; OnPush + `track` w pętli po polach. Walidatory asynchroniczne (np. sprawdzenie unikalności) z debounce, żeby nie zasypać API. Wersjonowanie definicji: wypełniony formularz musi pamiętać, według której wersji definicji powstał – inaczej zmiana definicji „psuje” stare dane. Dane medyczne: walidacja ostatecznie po stronie backendu, minimalizacja danych w stanie przeglądarki (localStorage to zły pomysł). Alternatywy: biblioteki typu ngx-formly; w Angular 21 eksperymentalne Signal Forms – na rozmowie warto wspomnieć, że istnieją, ale nie są jeszcze stabilne."
+  },
+  {
+   "id": "cv-045",
+   "topic": "Formularze medyczne (PoC)",
+   "level": 1,
+   "q": "Do czego służy Angular Material i CDK? Na co uważać?",
+   "a": "Angular Material to biblioteka gotowych komponentów UI zgodnych z Material Design (form fields, tabele z sortowaniem i paginacją, dialogi, datepicker, snackbar), z wbudowaną dostępnością (ARIA, obsługa klawiatury) i theming przez SCSS (od v18 oparty na Material 3 i design tokens). CDK (Component Dev Kit) to niższa warstwa bez wyglądu: overlay, drag & drop, virtual scroll, a11y, portal – można z niej budować własne komponenty. Uwaga: nadpisywanie stylów wewnętrznych klas komponentów (`::ng-deep`) jest kruche przy aktualizacjach – lepiej API motywu/tokenów; duże tabele `mat-table` potrzebują paginacji lub virtual scrollu. Powiązanie: „Material używałem w formularzach medycznych i e-commerce – głównie [uzupełnij: form fields, tabele, dialogi].”",
+   "tip": "Pytanie rozgrzewkowe – jedno zdanie definicji, jeden przykład z projektu, jedna pułapka."
+  },
+  {
+   "id": "cv-046",
+   "topic": "Formularze medyczne (PoC)",
+   "level": 1,
+   "q": "Na czym polega praca nad Proof of Concept i czym różni się od budowy produktu?",
+   "a": "PoC ma odpowiedzieć na konkretne pytanie (czy to się da zrobić, czy rozwiązanie spełni potrzebę, ile mniej więcej kosztuje) w krótkim czasie. Dlatego zakres jest wąski, priorytetem jest działająca ścieżka główna i demo, a skróty (uproszczone bezpieczeństwo, brak pełnych testów) są świadome i spisane. Ważne, żeby przed startem ustalić kryteria sukcesu i co się stanie z kodem po PoC – czy będzie wyrzucony, czy rozwijany dalej (wtedy skróty trzeba spłacić). Powiązanie: „Nasz PoC trwał ok. 3 miesiące [dopasuj] i miał pokazać [uzupełnij].”",
+   "tip": "Dobrze brzmi: „w PoC świadomie zrezygnowaliśmy z X, ale zostawiliśmy listę rzeczy do zrobienia przed produkcją”. Pokazuje dojrzałość."
+  },
+  {
+   "id": "cv-047",
+   "topic": "Platforma e-commerce",
+   "level": 2,
+   "q": "Opowiedz o platformie e-commerce (wzorcowa odpowiedź 60–90 s).",
+   "a": "„Od maja do października 2023 jako fullstack developer rozwijałem platformę e-commerce, która pozwala sprzedawać produkty i usługi, komunikować się użytkownikom między sobą i rezerwować wizyty. [uzupełnij: kontekst biznesowy – np. kto sprzedaje, kto kupuje, jakie usługi się rezerwuje]. Stack: frontend w Angularze z Angular Material, RxJS i NGXS, backend w .NET 7, dostęp do danych przez Entity Framework i Dapper, baza MSSQL z T-SQL, hosting w Azure. Moja rola: implementowałem nowe funkcjonalności biznesowe, rozwijałem zarówno front, jak i backend, modyfikowałem logikę biznesową i warstwę dostępu do danych oraz utrzymywałem istniejące moduły. Wyzwanie: [np. jeśli tak było: rezerwacje wizyt – nie można dopuścić, żeby dwie osoby zarezerwowały ten sam termin; albo wolne zapytanie przepisane z EF na Dapper/T-SQL]. Efekt: [uzupełnij].”",
+   "tip": "Masz tu pełny przekrój stacku – podkreśl, że pracowałeś „od bazy do UI”. Nie podawaj liczby użytkowników ani obrotów."
+  },
+  {
+   "id": "cv-048",
+   "topic": "Platforma e-commerce",
+   "level": 2,
+   "q": "E-commerce: Jaka była architektura?",
+   "a": "„[uzupełnij – wzorzec:] SPA w Angularze ze stanem w NGXS, backend .NET 7 z REST API. Warstwa danych: Entity Framework do typowych operacji CRUD i logiki domenowej, Dapper do [uzupełnij: np. zapytań raportowych / list z wieloma złączeniami, gdzie liczyła się wydajność], baza MSSQL z [uzupełnij: procedurami/widokami T-SQL?]. Moduły: katalog produktów i usług, zamówienia, komunikacja między użytkownikami, rezerwacje wizyt [uzupełnij: które rozwijałeś]. Azure: [uzupełnij: np. App Service, Azure SQL, Blob Storage – tylko to, co było].”",
+   "tip": "Przygotuj odpowiedź na „po co wam i EF, i Dapper?” – to pytanie padnie na pewno."
+  },
+  {
+   "id": "cv-049",
+   "topic": "Platforma e-commerce",
+   "level": 2,
+   "q": "E-commerce: Największe wyzwanie i co zrobiłbyś dziś inaczej?",
+   "a": "Wyzwanie (wybierz prawdziwe): „[np. Wydajność listy/wyszukiwarki: zapytanie EF generowało ciężki SQL z wieloma JOIN-ami; przeanalizowałem plan wykonania, przepisałem zapytanie na Dapper z ręcznym SQL i dodałem indeks – czas spadł z [X] do [Y]]. [np.: rezerwacje terminów bez podwójnych rezerwacji].” Co inaczej: „[np. wcześniej mierzyłbym wydajność zapytań (logowanie wolnych zapytań, Query Store), zamiast reagować na zgłoszenia]. [np.: spisałbym zasadę, kiedy EF, a kiedy Dapper, żeby zespół nie mieszał podejść przypadkowo].”",
+   "tip": "Jeśli podajesz liczby (czas przed/po) – muszą być prawdziwe. Bez liczb: „zauważalnie, z kilku sekund do poniżej sekundy” tylko jeśli to pamiętasz."
+  },
+  {
+   "id": "cv-050",
+   "topic": "Platforma e-commerce",
+   "level": 3,
+   "q": "Dlaczego używać EF Core i Dappera w jednym projekcie? Jak to połączyć?",
+   "a": "EF Core: produktywność, change tracking, migracje, LINQ, relacje i Unit of Work – świetny do zapisu i logiki domenowej. Dapper: micro-ORM – piszemy SQL sami, Dapper tylko mapuje wyniki na obiekty; minimalny narzut i pełna kontrola nad zapytaniem – dobry do odczytów raportowych, list z wieloma złączeniami, zapytań, których EF nie wygeneruje optymalnie. Typowy podział (CQRS-light): zapisy przez EF, ciężkie odczyty przez Dapper. Można współdzielić połączenie i transakcję: `db.Database.GetDbConnection()` i `GetDbTransaction()`. Powiązanie: „W e-commerce Dappera używaliśmy do [uzupełnij], a EF do [uzupełnij].”",
+   "code": "await using var tx = await db.Database.BeginTransactionAsync(ct);\nvar conn = db.Database.GetDbConnection();\nvar items = await conn.QueryAsync<OrderRow>(\n    \"SELECT o.Id, o.Total, c.Name FROM Orders o JOIN Customers c ON c.Id = o.CustomerId WHERE o.Status = @s\",\n    new { s = \"New\" }, tx.GetDbTransaction());\n// ... zmiany przez EF\nawait db.SaveChangesAsync(ct);\nawait tx.CommitAsync(ct);",
+   "lang": "csharp",
+   "tip": "Nie mów „Dapper bo EF jest wolny” – brzmi juniorsko. Powiedz „Dapper tam, gdzie chcieliśmy pełnej kontroli nad SQL i kształtem wyniku”.",
+   "deep": "EF Core mocno dogonił Dappera wydajnościowo (kompilowane zapytania, `AsNoTracking`, projekcje do DTO, od EF Core 7 `ExecuteUpdate/ExecuteDelete`, od EF Core 8 `SqlQuery<T>` dla typów niebędących encjami) – dziś Dapper to raczej wybór dla skomplikowanego SQL niż „bo EF jest wolny”. Koszt dwóch podejść: dwa sposoby mapowania, SQL w stringach bez kontroli kompilatora (testy integracyjne!), zmiany schematu trzeba poprawiać w dwóch miejscach. Bezpieczeństwo: Dapper z parametrami (`@s`) chroni przed SQL injection – nigdy konkatenacja stringów. Dane zmienione przez Dappera nie są widoczne w change trackerze EF w tym samym kontekście – trzeba uważać na kolejność i ewentualnie przeładować encje. Spójność: wspólna transakcja jak w przykładzie albo `TransactionScope`."
+  },
+  {
+   "id": "cv-051",
+   "topic": "Platforma e-commerce",
+   "level": 2,
+   "q": "Co pisałeś w T-SQL i jak analizujesz wolne zapytanie w MSSQL?",
+   "a": "Typowo w T-SQL pisze się: zapytania raportowe i listy z wieloma złączeniami, widoki, procedury składowane, skrypty migracji danych, indeksy. Analiza wolnego zapytania: plan wykonania (actual execution plan) – szukam Table/Clustered Index Scan na dużych tabelach, Key Lookup, ostrzeżeń o niejawnych konwersjach i złych estymacjach; `SET STATISTICS IO, TIME ON` – liczba odczytów logicznych; Query Store – historia planów i regresje. Poprawki: indeks pod filtr i sortowanie (z `INCLUDE` dla kolumn z SELECT), SARGowalne warunki (bez funkcji na kolumnie w WHERE), mniej kolumn, paginacja `OFFSET/FETCH` lub keyset, aktualne statystyki. Powiązanie: „W e-commerce pisałem [uzupełnij: jakie zapytania/procedury i czy optymalizowałeś coś konkretnego].”",
+   "code": "-- niesargowalne: funkcja na kolumnie blokuje użycie indeksu\nSELECT Id FROM Orders WHERE YEAR(CreatedAt) = 2023;\n-- sargowalne\nSELECT Id FROM Orders\nWHERE CreatedAt >= '2023-01-01' AND CreatedAt < '2024-01-01';",
+   "lang": "sql",
+   "tip": "Przykład z YEAR() to klasyk – rekruter go uwielbia. Masz MSSQL w 4 projektach – mów o nim pewnie."
+  },
+  {
+   "id": "cv-052",
+   "topic": "Platforma e-commerce",
+   "level": 3,
+   "q": "Jak zapobiec podwójnej rezerwacji tej samej wizyty (współbieżność przy rezerwacjach)?",
+   "a": "Najpewniej na poziomie bazy: unikalny indeks na (zasób/specjalista, termin) – drugi INSERT dostaje błąd naruszenia unikalności, który mapujemy na 409 „termin zajęty”. Gdy sloty są predefiniowane (wiersz na slot), rezerwujemy atomowo: `UPDATE Slots SET BookedBy = @u WHERE Id = @id AND BookedBy IS NULL` i sprawdzamy, czy zmienił się 1 wiersz; alternatywnie optimistic concurrency z rowversion w EF. Gdy terminy są dowolne (przedziały czasu), trzeba sprawdzić nakładanie się przedziałów w transakcji z odpowiednią blokadą (np. `UPDLOCK, HOLDLOCK` w SQL Server albo poziom SERIALIZABLE), bo sam unikalny indeks nie wykryje częściowego nakładania. UX: tymczasowa blokada slotu na czas płatności (hold z wygaśnięciem). Powiązanie: „W e-commerce rezerwacje były zabezpieczone [uzupełnij: jak; jeśli nie wiesz – „tak bym to zrobił”].”",
+   "code": "CREATE UNIQUE INDEX UX_Booking_Slot\n  ON Bookings (ProviderId, StartAt)\n  WHERE Status <> 'Cancelled';   -- indeks filtrowany",
+   "lang": "sql",
+   "tip": "To samo zagadnienie co rezerwacje w WMS – możesz połączyć obie historie: „problem współbieżności widziałem w dwóch domenach”.",
+   "deep": "Sprawdzenie „czy wolne” w C#, a potem INSERT, to race condition (check-then-act) – dwa żądania przejdą sprawdzenie jednocześnie. Indeks filtrowany pozwala zarezerwować ponownie anulowany termin. Hold z wygaśnięciem: rezerwacja w statusie Pending z `ExpiresAt`; job w tle zwalnia przeterminowane albo warunek w zapytaniu traktuje je jako wolne. Strefy czasowe: terminy w UTC (`datetimeoffset`), wyświetlanie w strefie użytkownika; uwaga na zmianę czasu (nieistniejąca/zdublowana godzina). Przy wysokiej konkurencji (popularne terminy) blokady pesymistyczne zwiększają czasy oczekiwania – optymistyczne podejście + szybka informacja dla przegranego jest lepsze dla UX. Idempotencja: ponowne kliknięcie „zarezerwuj” nie może stworzyć dwóch rezerwacji (klucz idempotencji)."
+  },
+  {
+   "id": "cv-053",
+   "topic": "Platforma e-commerce",
+   "level": 2,
+   "q": "Jakich usług Azure używaliście i do czego? (pytanie pewne, gdy w CV jest „Azure”)",
+   "a": "Wzorzec: „Aplikacja była hostowana w Azure – [uzupełnij: np. backend na App Service, baza Azure SQL Database, pliki/zdjęcia produktów w Blob Storage, sekrety w Key Vault, logi w Application Insights – wymień tylko to, co było]. Moja styczność z Azure to [uzupełnij: np. konfiguracja ustawień aplikacji, przeglądanie logów, wdrażanie przez pipeline – albo „głównie jako użytkownik, infrastrukturą zajmował się DevOps”].” Wiedza ogólna do dopowiedzenia: App Service = PaaS dla aplikacji webowych (sloty wdrożeniowe, skalowanie); Azure SQL = zarządzany SQL Server; Blob Storage = pliki (SAS do bezpiecznych linków); Key Vault = sekrety i certyfikaty, dostęp przez managed identity bez haseł w konfiguracji; Application Insights = telemetria i logi.",
+   "tip": "Najczęstszy błąd: „znam Azure” → pytanie o szczegóły → cisza. Określ precyzyjnie zakres swojej styczności."
+  },
+  {
+   "id": "cv-054",
+   "topic": "Platforma e-commerce",
+   "level": 2,
+   "q": "Jak zaimplementowałbyś komunikację między użytkownikami (wiadomości) na platformie?",
+   "a": "Podstawa: wiadomości zapisane w bazie (konwersacja, uczestnicy, wiadomość, autor, czas, status przeczytania) i REST API do pobierania historii z paginacją (np. keyset po dacie/id). Dostarczanie na żywo: SignalR – po zapisie wiadomości serwer wysyła ją do grupy/użytkownika odbiorcy; gdy odbiorca offline – powiadomienie e-mail/push. Bezpieczeństwo: sprawdzanie, czy użytkownik należy do konwersacji (inaczej IDOR), sanityzacja treści (XSS), limity zapytań przeciw spamowi. Front: stan konwersacji w store (NGXS) aktualizowany zarówno z API, jak i z wiadomości SignalR. Powiązanie: „W e-commerce komunikacja była zrobiona [uzupełnij: jak; czy ją rozwijałeś – jeśli nie, mów ogólnie].”",
+   "tip": "CV wymienia „komunikację między użytkownikami” jako funkcję platformy, nie Twoje zadanie – zaznacz, czy przy niej pracowałeś."
+  },
+  {
+   "id": "cv-055",
+   "topic": "Czas pracy kierowców (tachografy)",
+   "level": 2,
+   "q": "Opowiedz o systemie do rozliczania czasu pracy kierowców (wzorcowa odpowiedź 60–90 s).",
+   "a": "„Od marca do maja 2023, już w Software Interactive, byłem backend developerem w systemie do analizy i rozliczania czasu pracy kierowców. Biznesowo: firma transportowa musi wiedzieć, ile kierowca jechał, pracował i odpoczywał – na podstawie danych z tachografów i danych wprowadzanych ręcznie – żeby rozliczyć czas pracy i [uzupełnij: np. wykrywać naruszenia norm, przygotować raporty]. Backend był w ASP.NET 6 z Entity Framework, dane w MSSQL i MongoDB, mapowanie przez AutoMapper, powiadomienia w czasie rzeczywistym przez SignalR, a frontend w React. Moja rola: rozwój backendu i logiki biznesowej analizy czasu pracy, mechanizmy agregowania i przetwarzania danych oraz funkcje raportowe. Wyzwanie: [np. jeśli tak było: składanie ciągłej osi czasu z wielu źródeł – aktywności z tachografu i wpisy ręczne mogą się nakładać, mieć luki i przechodzić przez północ]. Efekt: [uzupełnij].”",
+   "tip": "Krótki projekt (ok. 3 miesiące) – nie przypisuj sobie budowy całego systemu. Frontend w React był częścią stacku; jeśli go nie dotykałeś lub tylko trochę – powiedz to."
+  },
+  {
+   "id": "cv-056",
+   "topic": "Czas pracy kierowców (tachografy)",
+   "level": 2,
+   "q": "Tachografy: Jaka była architektura?",
+   "a": "„[uzupełnij – wzorzec:] Backend ASP.NET 6 (Web API) z logiką analizy czasu pracy, frontend w React. MSSQL przez Entity Framework przechowywał [uzupełnij: np. dane podstawowe – kierowcy, pojazdy, rozliczenia], a MongoDB [uzupełnij: np. surowe/półstrukturalne dane z tachografów albo wyniki analiz – sprawdź, jak było]. AutoMapper mapował encje na DTO, a SignalR [uzupełnij: np. informował front o zakończeniu przetwarzania danych/raportu]. Moja część to [uzupełnij: moduł agregacji/analizy i raportów].”",
+   "tip": "Pytanie „po co dwie bazy?” jest pewne – patrz karta MongoDB vs MSSQL. Jeśli nie wiesz, dlaczego tak zdecydowano, powiedz: „zastałem ten podział; z mojej perspektywy uzasadnienie było takie…”."
+  },
+  {
+   "id": "cv-057",
+   "topic": "Czas pracy kierowców (tachografy)",
+   "level": 2,
+   "q": "Tachografy: Największe wyzwanie i co zrobiłbyś dziś inaczej?",
+   "a": "Wyzwanie (wybierz prawdziwe): „[np. Poprawna agregacja aktywności: okresy jazdy, pracy, dyspozycyjności i odpoczynku trzeba połączyć w ciągłą oś czasu, rozwiązać konflikty między danymi z tachografu i wpisami ręcznymi, a potem policzyć sumy dzienne/tygodniowe. Pomogło przechowywanie wszystkiego w UTC i pokrycie reguł testami na przygotowanych scenariuszach]. Co inaczej: „[np. jeszcze więcej testów jednostkowych na przypadkach brzegowych – północ, zmiana czasu, nakładające się wpisy]. [np.: zastąpiłbym AutoMappera jawnym mapowaniem tam, gdzie mapowanie miało logikę].”",
+   "tip": "Przypadki brzegowe czasu (UTC, północ, zmiana czasu letniego) to świetny materiał na rozmowę – pokazują dokładność."
+  },
+  {
+   "id": "cv-058",
+   "topic": "Czas pracy kierowców (tachografy)",
+   "level": 3,
+   "q": "Jak zaprojektować agregację danych czasu pracy (np. z tachografu)?",
+   "a": "Model: lista okresów aktywności (typ: jazda / inna praca / dyspozycyjność / odpoczynek, początek, koniec, źródło) w UTC. Kroki: (1) normalizacja – sortowanie, łączenie sąsiednich okresów tego samego typu, rozwiązywanie nakładania według priorytetu źródeł (np. tachograf ważniejszy od wpisu ręcznego – [dopasuj]); (2) cięcie na okna rozliczeniowe – doba, tydzień, przy czym okres przechodzący przez północ dzielimy; (3) agregacja – sumy per typ i okno; (4) reguły – porównanie z normami. Przykładowe normy UE (rozporządzenie 561/2006): dzienny czas jazdy 9 h (2× w tygodniu 10 h), tygodniowy 56 h, w dwóch kolejnych tygodniach 90 h, przerwa 45 min po 4,5 h jazdy. Powiązanie: „W naszym systemie [uzupełnij: które reguły/raporty liczyliście i gdzie – w C#, w SQL, w MongoDB?].”",
+   "code": "var daily = activities\n    .SelectMany(a => SplitAtMidnight(a))           // okres przez północ → 2 części\n    .GroupBy(a => (a.DriverId, Day: a.Start.Date, a.Type))\n    .Select(g => new DailyTotal(g.Key.DriverId, g.Key.Day, g.Key.Type,\n        TimeSpan.FromTicks(g.Sum(x => (x.End - x.Start).Ticks))));",
+   "lang": "csharp",
+   "tip": "Normy UE podawaj tylko jako wiedzę ogólną – nie twierdź, że system je sprawdzał, jeśli nie wiesz. Nie musisz pamiętać przepisów; ważne, że rozumiesz model danych i problemy z czasem.",
+   "deep": "Gdzie liczyć: w C# (logika czytelna, testowalna, łatwa do zmian reguł) vs w bazie (SQL `GROUP BY` / pipeline agregacji MongoDB – mniej transferu danych przy dużych wolumenach). Częsty kompromis: wstępna agregacja w bazie, reguły w C#. Okno „doby” w przepisach to nie zawsze doba kalendarzowa (liczy się od zakończenia odpoczynku) – dlatego reguły warto trzymać w osobnych, testowanych klasach. Wydajność: przeliczanie inkrementalne (tylko dni dotknięte nowymi danymi) zamiast całej historii; wyniki agregacji materializowane do raportów. Strefa czasowa: przechowywanie w UTC, raportowanie w lokalnej strefie firmy – inaczej doba ze zmianą czasu ma 23 lub 25 h. Idempotencja importu: ten sam plik z tachografu wczytany dwa razy nie może zdublować aktywności (hash pliku/klucz naturalny okresu)."
+  },
+  {
+   "id": "cv-059",
+   "topic": "Czas pracy kierowców (tachografy)",
+   "level": 3,
+   "q": "MongoDB obok MSSQL – kiedy dokumentowa baza, a kiedy relacyjna?",
+   "a": "MSSQL (relacyjna): dane silnie powiązane, transakcje ACID na wielu tabelach, spójność wymuszona schematem i kluczami obcymi, złożone zapytania z JOIN-ami i raportowanie – np. kierowcy, pojazdy, firmy, rozliczenia. MongoDB (dokumentowa): dane półstrukturalne o zmiennym kształcie, czytane i zapisywane jako całość (dokument = agregat), duże wolumeny zapisu, elastyczny schemat – np. surowe odczyty/zdarzenia z urządzeń, logi, wyniki analiz. Koszt dwóch baz: brak transakcji między nimi (spójność ewentualna, trzeba obsłużyć częściowe porażki), dwa modele danych, dwie technologie do utrzymania, backupy. Powiązanie: „W systemie tachografów w MongoDB trzymaliśmy [uzupełnij], a w MSSQL [uzupełnij] – [uzupełnij: uzasadnienie, jeśli je znasz].”",
+   "tip": "Nie mów, że „Mongo jest szybsze” – zależy od przypadku. Mów o kształcie danych i wzorcach dostępu.",
+   "deep": "MongoDB ma transakcje wielodokumentowe (od 4.0, w klastrach shardowanych od 4.2), ale model jest projektowany tak, żeby zwykle ich nie potrzebować – spójność w obrębie jednego dokumentu jest atomowa. Projektowanie: w Mongo modelujemy pod zapytania (embedding vs referencje), w SQL normalizujemy pod spójność. Indeksy w Mongo są tak samo kluczowe jak w SQL – zapytanie bez indeksu to COLLSCAN. Spójność między bazami: wzorzec outbox lub idempotentne przetwarzanie z ponawianiem. Alternatywa: SQL Server ma kolumny JSON (`OPENJSON`, `JSON_VALUE`, w nowszych wersjach natywny typ json) – często wystarczają do półstrukturalnych danych bez drugiej bazy. W .NET: oficjalny MongoDB.Driver, a od 2024 także EF Core provider dla MongoDB (z ograniczeniami)."
+  },
+  {
+   "id": "cv-060",
+   "topic": "Czas pracy kierowców (tachografy)",
+   "level": 2,
+   "q": "Czym jest SignalR i jak go użyć do powiadomień w czasie rzeczywistym?",
+   "a": "SignalR to biblioteka ASP.NET Core do komunikacji serwer ↔ klient w czasie rzeczywistym. Sama wybiera transport (WebSocket, potem Server-Sent Events, potem long polling) i zapewnia huby – klasy, przez które serwer wywołuje metody na klientach i odwrotnie. Adresowanie: wszyscy, konkretne połączenie, użytkownik (`Clients.User`), grupa (`Groups.AddToGroupAsync` – np. firma/dyspozytor). Z dowolnego serwisu wysyłamy przez `IHubContext<THub>`. Skalowanie na kilka instancji wymaga backplane'u (Redis) lub Azure SignalR Service. Powiązanie: „W systemie tachografów SignalR służył do [uzupełnij: np. powiadamiania frontendu, że import/analiza się zakończyły].”",
+   "code": "public class ReportsHub : Hub { }\n\n// w serwisie po zakończeniu przetwarzania\npublic class ReportNotifier(IHubContext<ReportsHub> hub) {\n    public Task ReportReady(string userId, int reportId) =>\n        hub.Clients.User(userId).SendAsync(\"reportReady\", reportId);\n}\n\n// Program.cs\nbuilder.Services.AddSignalR();\napp.MapHub<ReportsHub>(\"/hubs/reports\");",
+   "lang": "csharp",
+   "tip": "Follow-up: „co jeśli klient był offline?” – SignalR nie gwarantuje dostarczenia; stan trzeba móc pobrać przez REST po ponownym połączeniu."
+  },
+  {
+   "id": "cv-061",
+   "topic": "Czas pracy kierowców (tachografy)",
+   "level": 2,
+   "q": "AutoMapper – zalety, wady i kontrowersje. Użyłbyś go dziś?",
+   "a": "Zalety: mniej powtarzalnego kodu przy mapowaniu encji na DTO, konwencje nazw, `ProjectTo` w EF generuje SELECT tylko z potrzebnymi kolumnami. Wady: mapowanie „magiczne” i ukryte – błędy (brakujące pole, zła nazwa) wychodzą w runtime, trudniej debugować i nawigować w kodzie („Find usages” nie widzi mapowania), pokusa wkładania logiki biznesowej w profile. Mitygacja: `AssertConfigurationIsValid()` w teście, proste profile bez logiki. Od 2025 roku AutoMapper (od wersji 15) ma licencję komercyjną – to dodatkowy argument przy wyborze. Alternatywy: ręczne mapowanie (metody rozszerzające, konstruktory DTO), Mapperly (source generator – mapowanie generowane w czasie kompilacji), Mapster. Powiązanie: „W systemie tachografów używaliśmy AutoMappera do [uzupełnij]; dziś w nowym projekcie wybrałbym [Twoje zdanie + dlaczego].”",
+   "tip": "Rekruterzy lubią to pytanie, bo sprawdza samodzielne zdanie. Najlepsza odpowiedź: znam narzędzie z praktyki, znam jego koszty, umiem wybrać świadomie.",
+   "deep": "Argument wydajnościowy jest dziś drugorzędny – kluczowe są czytelność i bezpieczeństwo kompilacji. Mapperly generuje zwykły kod C#, więc błąd mapowania jest ostrzeżeniem/błędem kompilacji i łatwo go podejrzeć. `ProjectTo` z AutoMappera to realna zaleta przy EF – przy ręcznym mapowaniu robimy to samo projekcją `Select(x => new Dto(...))`. Szczegóły licencji AutoMappera (progi, darmowe warianty) sprawdź przed rozmową, jeśli chcesz o nich mówić."
+  },
+  {
+   "id": "cv-062",
+   "topic": "Czas pracy kierowców (tachografy)",
+   "level": 2,
+   "q": "React vs Angular – co Cię różni w pracy z nimi? (masz React w CV)",
+   "a": "Angular to framework „z bateriami”: DI, routing, formularze, HttpClient, CLI, opiniotwórcza struktura, TypeScript od początku; dziś signals i standalone components. React to biblioteka do UI: komponenty funkcyjne i hooki (`useState`, `useEffect`), JSX, jednokierunkowy przepływ danych; routing, formularze, stan i fetchowanie dobiera się z ekosystemu (np. React Router, TanStack Query, Redux Toolkit/Zustand). Reaktywność: React renderuje komponent ponownie przy zmianie stanu i porównuje wirtualny DOM; Angular dziś śledzi zależności sygnałów (fine-grained). Angular lepiej sprawdza się w dużych zespołach enterprise dzięki jednolitej strukturze; React daje więcej swobody. Powiązanie: „React był we frontendzie systemu tachografów; ja byłem tam backend developerem, więc z Reactem miałem [uzupełnij: np. kontakt przy integracji API / drobne zmiany / brak]. Moją główną technologią frontendową jest Angular.”",
+   "tip": "Nie deklaruj się jako React developer na podstawie tego projektu. Uczciwe „znam podstawy Reacta, na co dzień Angular” jest w pełni OK."
+  },
+  {
+   "id": "cv-063",
+   "topic": "Oprogramowanie dla branży metalowej",
+   "level": 2,
+   "q": "Opowiedz o projekcie dla branży metalowej (wzorcowa odpowiedź 60–90 s).",
+   "a": "„Od listopada 2019 do grudnia 2022 pracowałem w Oroox LAB jako fullstack developer przy oprogramowaniu dla branży metalowej. System realizuje kluczowe procesy biznesowe firm z tej branży – [uzupełnij: np. jakie procesy: zamówienia, produkcja, magazyn, wyceny – tylko to, co było]. Architektura była mikroserwisowa, oparta na wzorcu CQRS: backend w C# i ASP.NET Core 3.1 i nowszych, Entity Framework Core, baza MSSQL; frontend w Angularze z NgRx i RxJS. Moja rola: projektowałem i rozwijałem frontend w Angularze, programowałem backend i warstwę dostępu do danych, implementowałem nowe funkcjonalności w mikroserwisach, utrzymywałem i optymalizowałem bazę MSSQL. Pracowaliśmy w zespole z Jirą i Azure DevOps. Wyzwanie: [np. jeśli tak było: funkcjonalność przechodząca przez kilka serwisów – spójność danych i komunikacja między nimi]. Efekt: [uzupełnij]. To tu zbudowałem fundamenty: ponad 3 lata w jednym produkcie, pełny stack.”",
+   "tip": "Najdłuższy projekt w CV (ok. 3 lata) – rekruter często na nim się skupi. Przygotuj 2–3 historie STAR z tego okresu [uzupełnij]."
+  },
+  {
+   "id": "cv-064",
+   "topic": "Oprogramowanie dla branży metalowej",
+   "level": 2,
+   "q": "Branża metalowa: Jaka była architektura?",
+   "a": "„[uzupełnij – wzorzec:] Kilka mikroserwisów w ASP.NET Core [uzupełnij: ile i jakie obszary – np. zamówienia, produkcja, użytkownicy], każdy z własną [uzupełnij: bazą/schematem w MSSQL?] i EF Core. Wewnątrz serwisów CQRS: komendy zmieniają stan, zapytania tylko czytają – [uzupełnij: np. przez MediatR, handlery per przypadek użycia]. Komunikacja między serwisami: [uzupełnij: REST / kolejka – np. RabbitMQ, Azure Service Bus – tylko jeśli była]. Wejście z frontu: [uzupełnij: API Gateway czy bezpośrednio]. Frontend Angular z NgRx: akcje, reducery, efekty do wywołań API, selektory. CI/CD i repozytoria w Azure DevOps, zadania w Jirze.”",
+   "tip": "Nie dopowiadaj event sourcingu ani osobnych baz do odczytu, jeśli ich nie było – CQRS nie wymaga ani jednego, ani drugiego (to dobra rzecz do powiedzenia!)."
+  },
+  {
+   "id": "cv-065",
+   "topic": "Oprogramowanie dla branży metalowej",
+   "level": 2,
+   "q": "Branża metalowa: Największe wyzwanie i co zrobiłbyś dziś inaczej?",
+   "a": "Wyzwanie (wybierz prawdziwe): „[np. Funkcja wymagająca danych z kilku mikroserwisów – zamiast synchronicznych łańcuchów wywołań zrobiliśmy …]. [np.: Wolne zapytania w MSSQL – analiza planów wykonania, indeksy, przepisanie zapytań EF Core z projekcją do DTO]. [np.: Rozbudowany stan w NgRx – podział na feature state'y i selektory, żeby komponenty nie przeliczały się niepotrzebnie].” Co inaczej: „[np. Rozważyłbym, czy na tym etapie potrzebne były mikroserwisy – modularny monolit dałby podobny podział przy mniejszych kosztach operacyjnych]. [np.: Wcześniej wprowadziłbym testy kontraktowe/integracyjne między serwisami].”",
+   "tip": "Krytyka mikroserwisów z perspektywy czasu pokazuje dojrzałość – ale formułuj ją jako trade-off, nie jako „to był błąd”."
+  },
+  {
+   "id": "cv-066",
+   "topic": "Oprogramowanie dla branży metalowej",
+   "level": 3,
+   "q": "Wyjaśnij mikroserwisy i CQRS – jak to się łączy i jakie są koszty?",
+   "a": "Mikroserwisy: system podzielony na niezależnie wdrażane usługi, każda odpowiada za jeden obszar biznesowy (bounded context) i jest właścicielem swoich danych; komunikują się przez API lub komunikaty. Zalety: niezależne wdrożenia i skalowanie, izolacja awarii, autonomia zespołów. Koszty: sieć zawodzi, spójność ewentualna, rozproszone transakcje (saga, outbox), monitoring i tracing, trudniejsze testy i debugowanie. CQRS: rozdzielenie modelu zapisu (komendy – walidacja, reguły, zmiana stanu) od modelu odczytu (zapytania – szybkie, płaskie DTO). Może działać na jednej bazie; osobna baza do odczytu i event sourcing to opcjonalne rozszerzenia. W .NET często implementowany z MediatR: `IRequest` + handler per komenda/zapytanie, pipeline behaviors do walidacji i logowania. Powiązanie: „W systemie dla branży metalowej [uzupełnij: jak wyglądał CQRS – biblioteka, jedna czy dwie bazy, jak serwisy się komunikowały].”",
+   "code": "public record CreateOrder(int CustomerId, List<OrderLineDto> Lines) : IRequest<int>;\n\npublic class CreateOrderHandler(AppDbContext db) : IRequestHandler<CreateOrder, int> {\n    public async Task<int> Handle(CreateOrder cmd, CancellationToken ct) {\n        var order = Order.Create(cmd.CustomerId, cmd.Lines);   // reguły w domenie\n        db.Orders.Add(order);\n        await db.SaveChangesAsync(ct);\n        return order.Id;\n    }\n}",
+   "lang": "csharp",
+   "tip": "Jeśli w projekcie nie było MediatR – nie mów, że było. „Handlery komend i zapytań” to bezpieczne sformułowanie.",
+   "deep": "Dystrybuowany monolit (serwisy wspólnie wdrażane, wspólna baza, synchroniczne łańcuchy wywołań) ma koszty mikroserwisów bez ich zalet – częsty antywzorzec. Spójność między serwisami: outbox (zdarzenie zapisane w tej samej transakcji co dane, wysyłane przez worker), idempotentni konsumenci, saga (choreografia lub orkiestracja) z akcjami kompensującymi. Odczyty łączące dane wielu serwisów: API composition w gateway/BFF albo lokalna kopia danych budowana ze zdarzeń. CQRS bez potrzeby (prosty CRUD) to boilerplate – sensowny, gdy odczyty i zapisy mają różne wymagania lub domena jest złożona. MediatR – podobnie jak AutoMapper – od 2025 ma licencję komercyjną; wzorzec handlerów da się zrobić bez biblioteki. Obserwowalność: correlation id przekazywany między serwisami, distributed tracing (OpenTelemetry)."
+  },
+  {
+   "id": "cv-067",
+   "topic": "Oprogramowanie dla branży metalowej",
+   "level": 2,
+   "q": "NgRx – omów przepływ: akcje, reducery, efekty, selektory.",
+   "a": "Komponent wysyła akcję (`store.dispatch(loadOrders())`). Reducer – czysta funkcja – na jej podstawie zwraca nowy, niemutowany stan (np. `loading: true`). Efekt nasłuchuje akcji (`ofType`), wykonuje side-effect (HTTP) i wysyła akcję sukcesu lub błędu; reducer zapisuje dane. Komponent czyta stan przez memoizowane selektory (`store.select(selectOrders)` lub `selectSignal`). Dzięki temu przepływ jest jednokierunkowy, przewidywalny i debugowalny w Redux DevTools. Powiązanie: „W systemie dla branży metalowej używałem NgRx do [uzupełnij: np. list zleceń, filtrów, danych słownikowych].”",
+   "code": "export const loadOrders = createAction('[Orders] Load');\nexport const loadOrdersSuccess = createAction('[Orders] Load Success', props<{ orders: Order[] }>());\n\nloadOrders$ = createEffect(() => this.actions$.pipe(\n  ofType(loadOrders),\n  switchMap(() => this.api.getOrders().pipe(\n    map(orders => loadOrdersSuccess({ orders })),\n    catchError(() => of(loadOrdersFailure()))\n  ))\n));",
+   "lang": "typescript",
+   "tip": "Pułapka do wspomnienia: `catchError` musi być wewnątrz `switchMap` – inaczej po pierwszym błędzie efekt „umiera”. Jeśli w 2019–2022 pisałeś w starszym stylu (klasy akcji, `@Effect`) – możesz to powiedzieć, pokazuje historię."
+  },
+  {
+   "id": "cv-068",
+   "topic": "Oprogramowanie dla branży metalowej",
+   "level": 2,
+   "q": "Pracowałeś na ASP.NET Core 3.1 – co najważniejszego zmieniło się od tamtej pory do .NET 10?",
+   "a": ".NET 5 ujednolicił platformę (koniec podziału Core/Framework), .NET 6 (LTS) przyniósł minimal hosting (`Program.cs` bez `Startup`), minimal APIs, hot reload; .NET 7 – rate limiting middleware, output caching; .NET 8 (LTS) – keyed services w DI, Native AOT dla API, Identity API endpoints, domyślny port 8080 w kontenerach; .NET 9 – wbudowane generowanie OpenAPI (`Microsoft.AspNetCore.OpenApi`, Swashbuckle zniknął z szablonów), HybridCache; .NET 10 (LTS od listopada 2025) z C# 14. C# od 8 do 14: rekordy, init, pattern matching, file-scoped namespaces, global usings, required members, primary constructors dla klas, collection expressions. Powiązanie: „Zaczynałem na 3.1 w Oroox LAB, potem pracowałem na .NET 6 i 7, [uzupełnij: na jakiej wersji jest WMS] – więc przeszedłem tę ewolucję w praktyce.”",
+   "tip": "Świetna okazja, żeby pokazać ciągłość: 3.1 (metal) → ASP.NET 6 (tachografy) → .NET 7 (e-commerce, brokerzy, domeny) → [wersja w WMS]. Nie wymieniaj funkcji, których nie potrafisz wyjaśnić jednym zdaniem."
+  },
+  {
+   "id": "cv-069",
+   "topic": "Oprogramowanie dla branży metalowej",
+   "level": 1,
+   "q": "Jak wyglądała Twoja praca z Jira i Azure DevOps? Jak wygląda u Ciebie proces od zadania do produkcji?",
+   "a": "„Zadania i sprinty prowadziliśmy w [uzupełnij: Jira / Azure Boards – w CV są oba narzędzia; np. Jira do zadań, Azure DevOps do repozytoriów i pipeline'ów]. Mój typowy przepływ: zadanie z kryteriami akceptacji → doprecyzowanie z analitykiem/PO → branch → implementacja z testami → pull request z code review → build i testy w pipeline → wdrożenie na środowisko testowe → [uzupełnij: kto i jak wdrażał na produkcję]. Proces: [uzupełnij: Scrum – planowanie, daily, review, retro – albo Kanban].”",
+   "tip": "Pytanie o „jak pracujesz w zespole” – opowiedz proces i dodaj, co cenisz w code review (dawanie i przyjmowanie uwag)."
+  },
+  {
+   "id": "cv-070",
+   "topic": "Oprogramowanie dla branży metalowej",
+   "level": 2,
+   "q": "Jak optymalizowałeś bazę MSSQL i zapytania EF Core? (CV: „utrzymanie i rozwój bazy danych MSSQL oraz optymalizacja”)",
+   "a": "Typowe kroki, które warto umieć opowiedzieć: znalezienie wolnych zapytań (logowanie zapytań EF, Query Store, SQL Profiler/Extended Events), analiza planu wykonania, indeksy pod filtry i JOIN-y, usunięcie N+1 (`Include` lub lepiej projekcja `Select` do DTO), `AsNoTracking` dla odczytów, paginacja, unikanie pobierania całych encji z dużymi kolumnami, `AsSplitQuery` przy wielu kolekcjach. Powiązanie: „W projekcie dla branży metalowej [uzupełnij: jeden konkretny przykład: co było wolne, jak znalazłeś przyczynę, co zmieniłeś, jaki efekt].”",
+   "code": "// N+1: osobne zapytanie o klienta dla każdego zamówienia (lazy loading w pętli)\n// Projekcja: jedno zapytanie, tylko potrzebne kolumny\nvar list = await db.Orders\n    .AsNoTracking()\n    .Where(o => o.Status == Status.Open)\n    .Select(o => new OrderListDto(o.Id, o.Number, o.Customer.Name, o.Total))\n    .ToListAsync(ct);",
+   "lang": "csharp",
+   "tip": "Miej JEDEN konkretny przykład optymalizacji z liczbami [uzupełnij]. To pytanie zadaje prawie każdy rekruter backendowy."
+  },
+  {
+   "id": "cv-071",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 1,
+   "q": "„Opowiedz o sobie” – wersja 30 sekund.",
+   "a": "„Jestem fullstack developerem .NET i Angular z prawie siedmioletnim doświadczeniem komercyjnym – od listopada 2019. Zaczynałem w Oroox LAB przy systemie dla branży metalowej w architekturze mikroserwisowej, a od 2023 roku w Software Interactive pracuję przy projektach z różnych domen – e-commerce, ubezpieczenia, systemy wizyjne, wtyczki CAD. Obecnie tworzę od podstaw system WMS w .NET i Angularze. [uzupełnij: czego szukasz – np. projektu produktowego, w którym mogę wziąć większą odpowiedzialność za architekturę].”",
+   "tip": "30 s = kim jesteś teraz, ile lat, 1 zdanie historii, czego szukasz. Ćwicz na głos ze stoperem."
+  },
+  {
+   "id": "cv-072",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 2,
+   "q": "„Opowiedz o sobie” – wersja 60–90 sekund.",
+   "a": "„Jestem fullstack developerem – na backendzie C# i .NET, na frontendzie Angular. Komercyjnie programuję od listopada 2019, czyli prawie 7 lat. Pierwsze trzy lata spędziłem w Oroox LAB przy oprogramowaniu dla branży metalowej: mikroserwisy w ASP.NET Core z CQRS, EF Core, MSSQL, a na froncie Angular z NgRx. Tam nauczyłem się pracy w jednym, dużym produkcie i w zespole z Azure DevOps i Jirą. Od 2023 roku jestem w Software Interactive, gdzie pracowałem przy kilku projektach dla różnych klientów: platforma e-commerce z rezerwacjami, system dla brokerów ubezpieczeniowych z integracjami zewnętrznymi i historią zmian, PoC formularzy medycznych, frontend systemu wizyjnego AI i wtyczki do AutoCAD-a i BricsCAD-a. Od października 2025 buduję od podstaw system WMS jako fullstack. Najlepiej czuję się w [uzupełnij: np. backendzie i logice biznesowej / całym przekroju funkcji od bazy do UI]. Szukam [uzupełnij].”",
+   "tip": "Nie wymieniaj wszystkich 9 projektów z technologiami – wybierz 3–4, które pasują do oferty, resztę zostaw na pytania."
+  },
+  {
+   "id": "cv-073",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 2,
+   "q": "„Opowiedz o sobie” – wersja 2–3 minuty (gdy rekruter mówi „mamy czas, proszę opowiedzieć szerzej”).",
+   "a": "Struktura (do wypełnienia własnymi słowami):\n1) Kim jestem teraz (15 s): fullstack .NET + Angular, prawie 7 lat, obecnie WMS od podstaw.\n2) Początki – Oroox LAB 2019–2022 (40 s): branża metalowa, mikroserwisy + CQRS, ASP.NET Core 3.1+, EF Core, MSSQL, Angular + NgRx; [uzupełnij: jedno osiągnięcie].\n3) Software Interactive od 2023 (60 s): różnorodność – tachografy (agregacja danych, MongoDB + MSSQL, SignalR), e-commerce (EF + Dapper, Azure, rezerwacje), formularze medyczne (Angular 16, NGXS), brokerzy (integracje SharePoint/NIP24/TaxIdPro, historia zmian, .NET Framework 4.5 i .NET 7), analiza domen (.NET 7, Docker, raporty), system wizyjny AI (Angular, obszary detekcji), wtyczki AutoCAD/BricsCAD. Podsumuj: „szybko wchodzę w nowe domeny i kod”.\n4) Teraz (20 s): WMS od podstaw – [uzupełnij: Twój wpływ na architekturę/moduły].\n5) Czego szukam (15 s): [uzupełnij].",
+   "tip": "Przy dłuższej wersji wpleć jedną krótką historię sukcesu [uzupełnij] – rekruter zapamięta historię, nie listę technologii."
+  },
+  {
+   "id": "cv-074",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 1,
+   "q": "„Dlaczego zmieniasz pracę?”",
+   "a": "Wzorzec neutralny: „W Software Interactive nauczyłem się bardzo dużo, pracując przy wielu projektach i domenach. [uzupełnij: prawdziwy, pozytywnie sformułowany powód – np. chcę dłużej rozwijać jeden produkt i mieć większy wpływ na jego architekturę / szukam zespołu, w którym mogę rozwijać się w stronę seniora / interesuje mnie domena X]. Wasza oferta pasuje do tego, bo [uzupełnij: konkret z ogłoszenia].”",
+   "tip": "Mów o tym, DO CZEGO idziesz, nie OD CZEGO uciekasz. Nigdy nie krytykuj obecnego pracodawcy, klientów ani współpracowników. Jeśli powodem są pieniądze – można to powiedzieć spokojnie, ale nie jako jedyny argument."
+  },
+  {
+   "id": "cv-075",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 2,
+   "q": "„Jesteś fullstackiem czy bardziej backend/frontend?”",
+   "a": "Argumentacja z CV: większość ról to fullstack (WMS, wtyczki CAD, brokerzy, formularze medyczne, e-commerce, branża metalowa), ale miałem też role czysto backendowe (tachografy, analiza domen) i czysto frontendową (system wizyjny AI). Wzorzec: „Jestem fullstackiem z [uzupełnij: mocniejszym backendem / równym rozkładem]. Na backendzie najlepiej czuję się w [np. logice biznesowej, integracjach, bazie danych], na froncie w [np. Angularze, formularzach i zarządzaniu stanem – NgRx i NGXS]. Lubię dowieźć funkcję od bazy do UI, bo wtedy rozumiem cały problem biznesowy.”",
+   "tip": "Dopasuj akcent do oferty (backend-heavy vs frontend-heavy), ale nie zmieniaj faktów. Pytanie pomocnicze dla siebie: przy czym czas leci Ci najszybciej?"
+  },
+  {
+   "id": "cv-076",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 3,
+   "q": "„Jak oceniasz swój poziom – mid czy senior?”",
+   "a": "Fakty z CV do argumentacji: prawie 7 lat komercyjnie (od 11.2019); 9 projektów w różnych domenach (przemysł/metal, transport, e-commerce, ubezpieczenia, medycyna, bezpieczeństwo, produkcja z AI, CAD, logistyka); pełny stack .NET + Angular, oba popularne store'y (NgRx i NGXS); doświadczenie z mikroserwisami i CQRS, integracjami zewnętrznymi, dwiema wersjami .NET (Framework i nowoczesny), MSSQL i MongoDB, Docker, Azure; obecnie budowa systemu od podstaw. Wzorzec: „Uważam się za mocnego mida / [albo: wchodzącego w seniora]. Samodzielnie dowożę funkcje end-to-end i szybko wchodzę w nowe domeny i bazy kodu. Obszary, w których chcę jeszcze urosnąć do pełnego seniora, to [uzupełnij: np. odpowiedzialność za architekturę całego systemu, mentoring, decyzje infrastrukturalne].”",
+   "tip": "Nie mów „na pewno senior, bo 7 lat”. Lata to argument pomocniczy; ważniejsze są przykłady odpowiedzialności.",
+   "deep": "Co rekruterzy rozumieją przez „senior”: nie lata, tylko zakres odpowiedzialności – samodzielne podejmowanie decyzji technicznych i branie za nie odpowiedzialności, myślenie trade-offami, wpływ na zespół (review, mentoring, standardy), rozmowa z biznesem, prowadzenie funkcji od wymagań do produkcji i utrzymania. Ryzyko w Twoim CV: wiele krótkich projektów (2–9 miesięcy) – rekruter może zapytać o głębokość. Kontrargument: 3 lata w jednym produkcie (Oroox LAB) + obecny projekt od podstaw. Nie zawyżaj: jeśli deklarujesz seniora, rekruter zada pytania o architekturę, skalowanie, decyzje i błędy – przygotuj 2 historie, w których to Ty podjąłeś decyzję techniczną [uzupełnij]. Dobra strategia: podać poziom + dowody + obszar rozwoju – brzmi dojrzale niezależnie od tego, czy oferta jest na mida, czy seniora."
+  },
+  {
+   "id": "cv-077",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 2,
+   "q": "„W Software Interactive zmieniałeś projekty co kilka miesięcy – dlaczego?”",
+   "a": "„Software Interactive realizuje projekty dla różnych klientów, więc przydział do projektów wynikał z potrzeb firmy i klientów – [uzupełnij: np. projekty się kończyły, PoC miał zaplanowany czas, byłem przesuwany tam, gdzie potrzebne było wsparcie]. Dla mnie plusem było to, że w krótkim czasie poznałem wiele domen i technologii i nauczyłem się szybko wchodzić w istniejący kod. Jednocześnie mam doświadczenie długoterminowe: ponad 3 lata w jednym produkcie w Oroox LAB, a obecnie od października 2025 buduję WMS od podstaw.”",
+   "tip": "Nie tłumacz się – przedstaw fakty i zalety. Uwaga: niektóre okresy się nakładają (np. 08–09.2024 domeny i 01–09.2024 brokerzy) – miej gotowe wyjaśnienie [uzupełnij: np. równoległe wsparcie drugiego projektu]."
+  },
+  {
+   "id": "cv-078",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 2,
+   "q": "„Który projekt był dla Ciebie najciekawszy / z którego jesteś najbardziej dumny?”",
+   "a": "Wzorzec: „Najbardziej dumny jestem z [uzupełnij: np. WMS, bo buduję go od zera i mam wpływ na fundamenty / systemu dla brokerów, bo zrobiłem tam integracje i historię zmian / branży metalowej, bo tam najbardziej się rozwinąłem]. Konkretnie: [uzupełnij: sytuacja – co zrobiłeś – efekt]. Nauczyło mnie to [uzupełnij].”",
+   "tip": "Wybierz projekt, który pasuje do oferty, i opowiedz go metodą STAR. Duma = Twój wkład, nie sam projekt."
+  },
+  {
+   "id": "cv-079",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 1,
+   "q": "„Co robiłeś między grudniem 2022 a marcem 2023?” (przerwa w CV)",
+   "a": "Wzorzec: „Po zakończeniu współpracy z Oroox LAB [uzupełnij: prawdziwy powód w neutralnej formie – np. szukałem nowej pracy / odpoczynek / nauka / sprawy prywatne]. [uzupełnij, jeśli tak było: w tym czasie uczyłem się …]. W marcu 2023 dołączyłem do Software Interactive.”",
+   "tip": "Krótka przerwa to nic złego – odpowiadaj krótko, spokojnie i bez tłumaczenia się. Nie wymyślaj kursów, których nie robiłeś."
+  }
+ ],
+ "quiz": [
+  {
+   "id": "cv-q001",
+   "topic": "WMS (system magazynowy)",
+   "level": 2,
+   "q": "Rekruter: „Ilu użytkowników ma Wasz WMS?”. Nie znasz dokładnej liczby. Która odpowiedź wypadnie najlepiej?",
+   "options": [
+    "„Około 5 tysięcy” – podana z pewnością, żeby brzmieć konkretnie.",
+    "„Nie znam dokładnej liczby; system obsługuje [skala, którą znasz – np. jeden magazyn klienta], a my projektujemy go z myślą o [co wiesz].”",
+    "„To tajemnica handlowa, nie mogę nic powiedzieć.”",
+    "„Nie wiem, nie interesowałem się tym.”"
+   ],
+   "correct": 1,
+   "why": "Uczciwość + kontekst, który naprawdę znasz. Zmyślona liczba rozsypie się przy dopytaniu, zasłanianie się tajemnicą brzmi wykrętnie, a „nie interesowałem się” sugeruje brak zrozumienia biznesu."
+  },
+  {
+   "id": "cv-q002",
+   "topic": "WMS (system magazynowy)",
+   "level": 3,
+   "q": "Dwa żądania jednocześnie rezerwują towar. Kod sprawdza w C# `if (stock.OnHand - stock.Reserved >= qty)` i potem robi `SaveChanges`. Aplikacja działa na 2 instancjach. Co realnie chroni przed overbookingiem?",
+   "options": [
+    "`lock` w metodzie serwisu wokół sprawdzenia i zapisu.",
+    "Ustawienie serwisu jako Singleton w DI.",
+    "Concurrency token (rowversion) w EF Core albo atomowy warunkowy UPDATE w bazie.",
+    "Dodanie `await` przed `SaveChangesAsync`."
+   ],
+   "correct": 2,
+   "why": "Synchronizacja musi być tam, gdzie są wspólne dane – w bazie. `lock` i Singleton działają w jednym procesie, a instancje są dwie. `await` nie ma nic wspólnego z wyścigiem między żądaniami."
+  },
+  {
+   "id": "cv-q003",
+   "topic": "WMS (system magazynowy)",
+   "level": 2,
+   "q": "W WMS lista 30 tys. lokalizacji ładuje się bardzo wolno w Angularze. Co jest NAJLEPSZYM pierwszym krokiem?",
+   "options": [
+    "Paginacja i filtrowanie po stronie serwera (+ ewentualnie virtual scroll).",
+    "Zamiana `@for` na `*ngFor`.",
+    "Przeniesienie danych do localStorage.",
+    "Wyłączenie Angular Material."
+   ],
+   "correct": 0,
+   "why": "Najwięcej daje nieprzesyłanie i nierenderowanie 30 tys. wierszy. `*ngFor` nie jest szybszy od `@for`, localStorage nie rozwiązuje renderowania, a Material nie jest główną przyczyną."
+  },
+  {
+   "id": "cv-q004",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 2,
+   "q": "Masz komendę w pluginie AutoCAD, która tworzy linię, ale po wykonaniu linii nie ma w rysunku. Najbardziej prawdopodobna przyczyna?",
+   "options": [
+    "Brak `doc.Editor.Regen()`.",
+    "Brak `tr.Commit()` – transakcja została wycofana przy Dispose.",
+    "Komenda nie ma atrybutu `[STAThread]`.",
+    "Linia została dodana do Database zamiast do Document."
+   ],
+   "correct": 1,
+   "why": "Transakcja bez Commit jest przy Dispose wycofywana – zmiany znikają. Regen odświeża widok, ale nie zapisze zmian; STAThread nie ma tu znaczenia; obiekty dodaje się do BlockTableRecord w bazie rysunku – to poprawne."
+  },
+  {
+   "id": "cv-q005",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 3,
+   "q": "Okno niemodalne (paleta) w pluginie modyfikuje rysunek i dostaje eLockViolation. Co trzeba zrobić?",
+   "options": [
+    "Uruchomić kod w `Task.Run`.",
+    "Zmienić `OpenMode.ForWrite` na `ForRead`.",
+    "Zrestartować AutoCAD z uprawnieniami administratora.",
+    "Zablokować dokument: `using (doc.LockDocument()) { ... }` przed transakcją."
+   ],
+   "correct": 3,
+   "why": "Kod z kontekstu aplikacji (paleta, okno niemodalne) musi sam zablokować dokument; komendy z CommandMethod mają to automatycznie. Task.Run pogorszy sprawę (API CAD nie jest wątkowo bezpieczne), ForRead nie pozwoli zapisać."
+  },
+  {
+   "id": "cv-q006",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 2,
+   "q": "Rekruter: „Czy BricsCAD ma takie samo API jak AutoCAD?”. Która odpowiedź jest najbezpieczniejsza i prawdziwa?",
+   "options": [
+    "„Tak, identyczne, to ten sam kod bez zmian.”",
+    "„Nie, BricsCAD wymaga pisania wtyczek w C++.”",
+    "„.NET API BricsCAD-a jest w dużym stopniu zgodne z AutoCAD-em – te same koncepcje, ale inne biblioteki/przestrzenie nazw i różnice w szczegółach, więc testowaliśmy w obu.”",
+    "„BricsCAD nie obsługuje .NET.”"
+   ],
+   "correct": 2,
+   "why": "Zgodność jest duża, ale nie 100% – różnią się referencje i namespace'y (m.in. Bricscad.*, Teigha.*) i szczegóły. BricsCAD ma .NET API, a C++ (BRX) to dodatkowa opcja, nie wymóg."
+  },
+  {
+   "id": "cv-q007",
+   "topic": "Wtyczki AutoCAD/BricsCAD",
+   "level": 2,
+   "q": "Dlaczego wtyczka do AutoCAD-a 2024 jest pisana w .NET Framework 4.8, a nie w .NET 8?",
+   "options": [
+    "Bo .NET 8 nie obsługuje C#.",
+    "Wtyczka działa w procesie hosta i musi używać jego runtime'u – AutoCAD przeszedł na .NET 8 dopiero od wersji 2025.",
+    "Bo .NET Framework jest szybszy.",
+    "Bo Autodesk nie pozwala używać NuGet."
+   ],
+   "correct": 1,
+   "why": "Plugin nie wybiera runtime'u – ładuje się do procesu programu. AutoCAD 2025 przeszedł na .NET 8; starsze wersje działają na .NET Framework 4.8."
+  },
+  {
+   "id": "cv-q008",
+   "topic": "System wizyjny AI (frontend)",
+   "level": 3,
+   "q": "Obraz z kamery ma 1920×1080, a w przeglądarce wyświetla się w 960×540. Użytkownik klika w punkt (100, 50) względem obrazka. Jakie są współrzędne w pikselach obrazu źródłowego?",
+   "options": [
+    "(100, 50)",
+    "(50, 25)",
+    "(200, 100)",
+    "(1920, 1080)"
+   ],
+   "correct": 2,
+   "why": "Skala = 1920/960 = 2, więc (100×2, 50×2) = (200, 100). Dlatego warto zapisywać współrzędne w pikselach źródła lub znormalizowane (0–1), a SVG z viewBox w rozdzielczości źródła przelicza to za nas."
+  },
+  {
+   "id": "cv-q009",
+   "topic": "System wizyjny AI (frontend)",
+   "level": 2,
+   "q": "Masz do edycji kilkanaście wielokątów (obszarów detekcji) na obrazie, z klikaniem, zaznaczaniem i przeciąganiem wierzchołków. Co jest najrozsądniejszym wyborem?",
+   "options": [
+    "Canvas – zawsze szybszy.",
+    "Osobny `<div>` z border dla każdego punktu.",
+    "WebGL.",
+    "SVG nałożone na obraz – kształty jako elementy DOM ze zdarzeniami i bindowaniem."
+   ],
+   "correct": 3,
+   "why": "Przy kilkunastu–kilkuset kształtach SVG daje zdarzenia, style i bindowanie za darmo. Canvas wymaga ręcznego hit-testingu i opłaca się przy tysiącach obiektów lub animacji; WebGL to przesada."
+  },
+  {
+   "id": "cv-q010",
+   "topic": "System wizyjny AI (frontend)",
+   "level": 2,
+   "q": "Rekruter: „Jakich modeli AI używaliście w systemie wizyjnym i jak je trenowaliście?”. Byłeś frontend developerem. Najlepsza odpowiedź?",
+   "options": [
+    "„Modele i analiza obrazu były po stronie backendu/innego zespołu; ja dostarczałem UI do konfiguracji i podglądu obszarów detekcji i integrację z API. [Co wiesz o modelach – jeśli cokolwiek].”",
+    "„Używaliśmy YOLO, trenowałem je na GPU.” – bo tak zwykle się robi.",
+    "„Nie wiem, to nie moja sprawa.”",
+    "„Tego nie mogę zdradzić.”"
+   ],
+   "correct": 0,
+   "why": "Precyzyjne określenie swojej roli to najlepsza odpowiedź. Wymyślanie technologii rozsypie się przy dopytaniu; „nie moja sprawa” brzmi jak brak zainteresowania produktem."
+  },
+  {
+   "id": "cv-q011",
+   "topic": "Analiza bezpieczeństwa domen",
+   "level": 2,
+   "q": "BackgroundService przetwarza wyniki analiz. Przy jednym wadliwym wyniku cała aplikacja się zatrzymuje. Dlaczego (od .NET 6)?",
+   "options": [
+    "Bo BackgroundService działa w osobnym procesie.",
+    "Bo DbContext jest Singletonem.",
+    "Bo brakuje `ConfigureAwait(false)`.",
+    "Nieobsłużony wyjątek w `ExecuteAsync` domyślnie zatrzymuje hosta (StopHost) – brakuje try/catch wokół przetwarzania pojedynczego elementu."
+   ],
+   "correct": 3,
+   "why": "Od .NET 6 domyślne `BackgroundServiceExceptionBehavior` to StopHost. Rozwiązanie: try/catch per element + logowanie (+ retry/dead-letter). BackgroundService działa w procesie aplikacji; ConfigureAwait nie ma związku."
+  },
+  {
+   "id": "cv-q012",
+   "topic": "Analiza bezpieczeństwa domen",
+   "level": 1,
+   "q": "Po co w Dockerfile dla .NET stosuje się multi-stage build?",
+   "options": [
+    "Żeby budować w obrazie SDK, a w finalnym obrazie mieć tylko runtime i wynik publish – mniejszy i bezpieczniejszy obraz.",
+    "Żeby uruchomić kilka aplikacji w jednym kontenerze.",
+    "Żeby obraz działał jednocześnie na Windows i Linux.",
+    "Bo bez tego `dotnet publish` nie działa."
+   ],
+   "correct": 0,
+   "why": "Multi-stage oddziela środowisko budowania (SDK) od uruchomieniowego (aspnet runtime). Jeden kontener = zwykle jeden proces; system bazowy wybiera obraz, nie multi-stage."
+  },
+  {
+   "id": "cv-q013",
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "level": 3,
+   "q": "Integracja z NIP24 czasem zwraca 503. Które ustawienie jest najlepsze?",
+   "options": [
+    "Retry nieskończony co 100 ms, aż się uda.",
+    "Retry z exponential backoff (np. 3 próby) dla błędów przejściowych, timeout, cache wyników i czytelny komunikat w UI, gdy API nie działa.",
+    "`new HttpClient()` przy każdym wywołaniu, żeby mieć „świeże” połączenie.",
+    "Ignorowanie błędów i zapisywanie pustych danych firmy."
+   ],
+   "correct": 1,
+   "why": "Ograniczone ponowienia z backoffem nie dobijają usługi, timeout chroni wątki, cache zmniejsza liczbę wywołań. Nieskończony retry to DDoS na własne życzenie, `new HttpClient()` grozi wyczerpaniem gniazd, a ciche puste dane psują jakość."
+  },
+  {
+   "id": "cv-q014",
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "level": 2,
+   "q": "Rekruter widzi w CV „.NET Framework 4.5, .NET 7” i pyta: „Migrowałeś system?”. W rzeczywistości pracowałeś w obu częściach, ale migracji nie prowadziłeś. Najlepsza odpowiedź?",
+   "options": [
+    "„Tak, przeprowadziłem migrację.” – brzmi lepiej.",
+    "„Nie znam się na migracjach.”",
+    "„Nie prowadziłem migracji – [jak współistniały obie części]. Wiem, jak bym do niej podszedł: inwentaryzacja zależności, .NET Standard 2.0 dla wspólnych bibliotek, stopniowo wzorcem strangler fig.”",
+    "„.NET 7 i .NET Framework to to samo.”"
+   ],
+   "correct": 2,
+   "why": "Prawda + pokazanie wiedzy. Przypisanie sobie migracji wyjdzie przy pierwszym szczegółowym pytaniu."
+  },
+  {
+   "id": "cv-q015",
+   "topic": "System dla brokerów ubezpieczeniowych",
+   "level": 3,
+   "q": "Audit zrobiony interceptorem EF Core (`SaveChangesInterceptor`). Które zmiany NIE zostaną zarejestrowane?",
+   "options": [
+    "Zmiany przez `db.Update(entity)` i `SaveChanges`.",
+    "Dodanie nowej encji przez `db.Add`.",
+    "Zmiana właściwości śledzonej encji i `SaveChangesAsync`.",
+    "Zmiany przez `ExecuteUpdateAsync` lub surowy SQL."
+   ],
+   "correct": 3,
+   "why": "`ExecuteUpdate/ExecuteDelete` i raw SQL omijają ChangeTracker i SaveChanges, więc interceptor ich nie widzi. Jeśli audyt musi być kompletny – temporal tables lub triggery w bazie."
+  },
+  {
+   "id": "cv-q016",
+   "topic": "Formularze medyczne (PoC)",
+   "level": 2,
+   "q": "W dynamicznym formularzu pole „Nazwa leku” ma być widoczne i wymagane tylko, gdy „Przyjmuje leki = tak”. Jak najlepiej obsłużyć ukryte pole w reactive forms?",
+   "options": [
+    "Ukryć je CSS-em, zostawiając `Validators.required`.",
+    "Usunąć walidator na stałe.",
+    "Przy ukryciu wywołać `control.disable()`, przy pokazaniu `enable()` – wyłączona kontrolka nie jest walidowana i nie trafia do `value`.",
+    "Ustawić wartość na 'brak', żeby walidacja przeszła."
+   ],
+   "correct": 2,
+   "why": "Disabled kontrolka nie wpływa na ważność formularza i nie trafia do `form.value`. Ukrycie CSS-em zostawi niewidoczny błąd walidacji, a wpisywanie sztucznej wartości psuje dane."
+  },
+  {
+   "id": "cv-q017",
+   "topic": "Formularze medyczne (PoC)",
+   "level": 2,
+   "q": "Jaka jest główna różnica w obsłudze wywołań HTTP między NGXS a NgRx (klasyczny Store)?",
+   "options": [
+    "W NGXS metoda `@Action` może sama wykonać wywołanie asynchroniczne i zaktualizować stan; w NgRx side-effecty są w osobnych Effects, a reducery są czyste.",
+    "NgRx nie wspiera wywołań HTTP.",
+    "NGXS wymaga Reduxa jako zależności.",
+    "W NgRx reducer wywołuje HttpClient."
+   ],
+   "correct": 0,
+   "why": "To kluczowa różnica stylu: NGXS – logika i async w klasie stanu; NgRx – czyste reducery + Effects. Reducer w NgRx nigdy nie robi side-effectów."
+  },
+  {
+   "id": "cv-q018",
+   "topic": "Formularze medyczne (PoC)",
+   "level": 1,
+   "q": "Rekruter pyta o PoC formularzy medycznych: „Ilu placówkom to wdrożyliście?”. CV mówi tylko o Proof of Concept. Co powiesz?",
+   "options": [
+    "„Kilkunastu.” – brzmi wiarygodnie.",
+    "„To był Proof of Concept – celem było [cel PoC]. O dalszych wdrożeniach [co wiesz / nie mam wiedzy].”",
+    "„Wszystkim w Polsce.”",
+    "„Nie pamiętam, to było dawno.”"
+   ],
+   "correct": 1,
+   "why": "PoC z definicji nie jest wdrożeniem produkcyjnym – mów o celu i wyniku PoC. Zmyślanie wdrożeń to najszybsza droga do utraty wiarygodności."
+  },
+  {
+   "id": "cv-q019",
+   "topic": "Platforma e-commerce",
+   "level": 3,
+   "q": "Sprawdzasz `if (!await db.Bookings.AnyAsync(b => b.ProviderId == p && b.StartAt == t))` i dopiero potem dodajesz rezerwację. Dwie osoby klikają jednocześnie. Co się stanie i jak to naprawić?",
+   "options": [
+    "Nic złego – AnyAsync jest atomowe.",
+    "EF Core sam zablokuje tabelę.",
+    "Wystąpi deadlock; trzeba dodać `Task.Delay`.",
+    "Obie mogą przejść sprawdzenie (check-then-act); trzeba unikalnego indeksu (ProviderId, StartAt) w bazie i obsługi błędu jako 409."
+   ],
+   "correct": 3,
+   "why": "Sprawdzenie i zapis to dwie osobne operacje – między nimi wchodzi drugie żądanie. Unikalny indeks gwarantuje, że drugi INSERT się nie powiedzie. EF nie blokuje tabeli przy SELECT."
+  },
+  {
+   "id": "cv-q020",
+   "topic": "Platforma e-commerce",
+   "level": 2,
+   "q": "Rekruter: „Po co Wam był Dapper, skoro mieliście Entity Framework?”. Która odpowiedź jest najlepsza?",
+   "options": [
+    "„Bo EF jest zawsze wolny.”",
+    "„EF do zapisu i typowej logiki, Dapper do zapytań, gdzie chcieliśmy pełnej kontroli nad SQL i kształtem wyniku – np. [przykład z projektu].”",
+    "„Bo Dapper ma migracje.”",
+    "„Nie wiem, tak było.”"
+   ],
+   "correct": 1,
+   "why": "Rzeczowy podział odpowiedzialności z przykładem. „EF jest zawsze wolny” to mit (nowoczesny EF Core jest szybki przy projekcjach i AsNoTracking); Dapper nie ma migracji."
+  },
+  {
+   "id": "cv-q021",
+   "topic": "Platforma e-commerce",
+   "level": 2,
+   "q": "Które zapytanie pozwoli SQL Serverowi użyć indeksu na `CreatedAt`?",
+   "options": [
+    "`WHERE YEAR(CreatedAt) = 2023`",
+    "`WHERE CONVERT(date, CreatedAt) LIKE '2023%'`",
+    "`WHERE CreatedAt >= '2023-01-01' AND CreatedAt < '2024-01-01'`",
+    "`WHERE DATEDIFF(year, CreatedAt, '2023-01-01') = 0`"
+   ],
+   "correct": 2,
+   "why": "Warunek na „gołej” kolumnie jest SARGowalny – można zrobić Index Seek. Funkcje na kolumnie (YEAR, CONVERT, DATEDIFF) zwykle wymuszają skan."
+  },
+  {
+   "id": "cv-q022",
+   "topic": "Czas pracy kierowców (tachografy)",
+   "level": 3,
+   "q": "Aktywność kierowcy: jazda od 22:00 do 02:00 następnego dnia. Raport liczy czas jazdy per doba kalendarzowa. Co jest poprawne?",
+   "options": [
+    "Cały okres (4 h) do dnia rozpoczęcia.",
+    "Podzielić okres na północy: 2 h do pierwszego dnia, 2 h do drugiego (licząc w ustalonej strefie czasowej).",
+    "Cały okres do dnia zakończenia.",
+    "Pominąć okresy przechodzące przez północ."
+   ],
+   "correct": 1,
+   "why": "Okresy przecinające granice okien rozliczeniowych trzeba ciąć. Dane trzymamy w UTC, a granicę doby wyznaczamy w strefie, w której rozliczamy – inaczej przy zmianie czasu doba ma 23/25 h."
+  },
+  {
+   "id": "cv-q023",
+   "topic": "Czas pracy kierowców (tachografy)",
+   "level": 2,
+   "q": "Kiedy dodanie MongoDB obok MSSQL ma najwięcej sensu?",
+   "options": [
+    "Gdy potrzebujemy transakcji ACID między wieloma powiązanymi tabelami.",
+    "Zawsze – bo NoSQL jest szybszy.",
+    "Gdy dane są półstrukturalne, o zmiennym kształcie, czytane i zapisywane jako całe dokumenty (np. surowe dane z urządzeń), a ich spójność z danymi relacyjnymi może być ewentualna.",
+    "Gdy chcemy uniknąć indeksów."
+   ],
+   "correct": 2,
+   "why": "Mongo pasuje do dokumentów o zmiennym kształcie i dostępu po agregacie. Złożone transakcje i relacje to domena SQL; „szybszy zawsze” to mit, a indeksy w Mongo są równie ważne."
+  },
+  {
+   "id": "cv-q024",
+   "topic": "Oprogramowanie dla branży metalowej",
+   "level": 3,
+   "q": "W systemie mikroserwisowym serwis Zamówień zapisuje zamówienie i musi powiadomić serwis Produkcji. Co gwarantuje, że zdarzenie nie zginie, jeśli broker chwilowo nie działa?",
+   "options": [
+    "Wysłanie zdarzenia przed zapisem do bazy.",
+    "Rozproszona transakcja 2PC między bazą a każdym serwisem.",
+    "Synchroniczne wywołanie HTTP w tej samej metodzie z `try/catch`.",
+    "Wzorzec outbox: zdarzenie zapisane w tej samej transakcji co zamówienie, a osobny proces wysyła je do brokera z ponawianiem."
+   ],
+   "correct": 3,
+   "why": "Outbox łączy atomowość zapisu z niezawodną (at-least-once) publikacją; konsumenci muszą być idempotentni. Wysłanie przed zapisem może opublikować coś, czego nie ma; 2PC jest kosztowne i rzadko dostępne; HTTP z catch gubi zdarzenie przy awarii."
+  },
+  {
+   "id": "cv-q025",
+   "topic": "Oprogramowanie dla branży metalowej",
+   "level": 2,
+   "q": "Efekt NgRx po pierwszym błędzie HTTP przestaje reagować na kolejne akcje. Co jest nie tak?",
+   "code": "load$ = createEffect(() => this.actions$.pipe(\n  ofType(load),\n  switchMap(() => this.api.get()),\n  map(data => loadSuccess({ data })),\n  catchError(() => of(loadFailure()))\n));",
+   "lang": "typescript",
+   "options": [
+    "`catchError` jest na zewnątrz `switchMap`, więc błąd kończy główny strumień efektu.",
+    "Brakuje `providedIn: 'root'` w efekcie.",
+    "Trzeba użyć `mergeMap` zamiast `switchMap`.",
+    "Reducer nie obsługuje akcji błędu."
+   ],
+   "correct": 0,
+   "why": "Błąd, który dotrze do głównego strumienia `actions$`, kończy go. `catchError` musi być wewnątrz wewnętrznego Observable (w `switchMap`) i zwracać akcję błędu."
+  },
+  {
+   "id": "cv-q026",
+   "topic": "Oprogramowanie dla branży metalowej",
+   "level": 2,
+   "q": "Który opis CQRS jest poprawny?",
+   "options": [
+    "CQRS wymaga event sourcingu.",
+    "CQRS wymaga dwóch osobnych baz danych.",
+    "CQRS rozdziela model zapisu (komendy) od modelu odczytu (zapytania); może działać na jednej bazie, a osobne bazy i event sourcing są opcjonalne.",
+    "CQRS to biblioteka MediatR."
+   ],
+   "correct": 2,
+   "why": "CQRS to wzorzec rozdziału odpowiedzialności. Event sourcing i osobne bazy to rozszerzenia; MediatR to tylko jedna z możliwych implementacji mechanizmu handlerów."
+  },
+  {
+   "id": "cv-q027",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 2,
+   "q": "Rekruter: „Dlaczego chcesz odejść z obecnej firmy?”. Która odpowiedź wypadnie najlepiej?",
+   "options": [
+    "„Bo projekty są nudne, a szef nie zna się na rzeczy.”",
+    "„Szukam [konkretny cel – np. dłuższej pracy nad jednym produktem i większego wpływu na architekturę]; Wasza oferta daje [konkret z ogłoszenia].”",
+    "„Tylko dla pieniędzy.”",
+    "„Nie wiem, po prostu chcę coś zmienić.”"
+   ],
+   "correct": 1,
+   "why": "Pozytywna motywacja „do czegoś” + powiązanie z ofertą. Krytyka pracodawcy to czerwona flaga; same pieniądze lub brak powodu brzmią słabo."
+  },
+  {
+   "id": "cv-q028",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 3,
+   "q": "Rekruter: „Ma Pan wiele krótkich projektów – czy to nie znaczy, że nie zna Pan niczego dogłębnie?”. Najlepsza odpowiedź?",
+   "options": [
+    "„Tak, to prawda, niestety.”",
+    "„To wina firmy, która mnie przerzucała.”",
+    "„Krótkie projekty wynikały z modelu software house'u; dzięki nim szybko wchodzę w nowe domeny. Głębię mam z 3 lat w jednym produkcie w Oroox LAB i obecnego WMS budowanego od podstaw – np. [konkretny głęboki temat].”",
+    "„Wszystkie projekty znam w 100%.”"
+   ],
+   "correct": 2,
+   "why": "Fakty + przeformułowanie na zaletę + dowód głębokości. Przyznanie się bez kontekstu, obwinianie firmy i przesada brzmią źle."
+  },
+  {
+   "id": "cv-q029",
+   "topic": "Ścieżka kariery i podsumowanie",
+   "level": 2,
+   "q": "Ile lat komercyjnego doświadczenia wynika z CV (stan: październik 2026)?",
+   "options": [
+    "Ok. 3 lata – liczy się tylko Software Interactive.",
+    "Ok. 10 lat.",
+    "Ok. 5 lat.",
+    "Prawie 7 lat – od 11.2019 (Oroox LAB 2019–2022 + Software Interactive od 03.2023, z krótką przerwą)."
+   ],
+   "correct": 3,
+   "why": "11.2019–12.2022 (ok. 3 lata 2 mies.) + 03.2023–10.2026 (ok. 3 lata 7 mies.) ≈ 6 lat 9 miesięcy. Mów „prawie 7 lat” albo „ponad 6,5 roku”."
+  }
+ ]
+}

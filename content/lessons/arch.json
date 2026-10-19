@@ -721,12 +721,12 @@
           "id": "arch-cqrs-es-e10",
           "q": "Które zdanie o relacji DDD, CQRS i Event Sourcingu jest prawdziwe?",
           "options": [
-            "To niezależne pomysły; dobrze się łączą (agregat emituje zdarzenia, projekcje budują odczyt), ale każdy można stosować bez pozostałych",
+            "To osobne pomysły; dobrze się łączą (agregat emituje zdarzenia, projekcje budują odczyt), a DDD i CQRS można stosować bez pozostałych (ES w praktyce pociąga za sobą CQRS)",
             "Event Sourcing jest obowiązkową częścią DDD",
             "CQRS można stosować tylko razem z Event Sourcingiem",
             "DDD zabrania osobnych modeli odczytu"
           ],
-          "why": "DDD bez CQRS, CQRS bez ES czy DDD z CQRS bez ES to poprawne kombinacje. Wybiera się je według potrzeb, nie w pakiecie.",
+          "why": "DDD bez CQRS, CQRS bez ES czy DDD z CQRS bez ES to poprawne kombinacje. Wyjątek: Event Sourcing praktycznie wymaga CQRS, bo ze strumienia zdarzeń trudno robić zapytania – read modele buduje się projekcjami.",
           "correct": 0
         }
       ]

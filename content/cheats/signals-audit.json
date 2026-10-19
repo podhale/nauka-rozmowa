@@ -1,0 +1,22 @@
+{
+  "cat": "signals",
+  "sheets": [
+    {
+      "topic": "Lifecycle a sygnały",
+      "points": [
+        "`ngOnChanges` → `computed()` z `input()`; stan lokalny resetowany przy zmianie inputu → `linkedSignal()`.",
+        "`ngAfterViewInit` dla zapytań → `viewChild()`/`contentChild()` (są sygnałami).",
+        "`ngOnDestroy` → `DestroyRef.onDestroy`, `takeUntilDestroyed()`, `onCleanup` w `effect`.",
+        "Praca na DOM po renderze → `afterNextRender` (raz) / `afterRenderEffect` (reaktywnie).",
+        "`ngOnInit` nadal OK na jednorazowy start – inputy mają już wartości.",
+        "Inputy czytaj w `computed`/metodach/`ngOnInit`, **nie** w konstruktorze ani w inicjalizatorach pól (NG0950 dla required).",
+        "Hooki nie są deprecated – w kodzie mieszanym nadal ich używasz."
+      ],
+      "pitfalls": [
+        "Efekt kopiujący input do innego sygnału zamiast `computed`/`linkedSignal`.",
+        "`url = `/api/${this.id()}`` jako zwykłe pole – czyta input za wcześnie i nie jest reaktywne."
+      ],
+      "say": "W komponentach na sygnałach hooki są prawie zbędne: computed zastępuje ngOnChanges, viewChild – AfterViewInit, DestroyRef – OnDestroy, afterNextRender – pracę na DOM. ngOnInit zostaje jako miejsce startu, bo w konstruktorze inputów jeszcze nie ma."
+    }
+  ]
+}
